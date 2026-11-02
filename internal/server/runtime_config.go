@@ -50,7 +50,7 @@ func (s *Server) writeRuntimeConfig() {
 
 	var file bytes.Buffer
 	file.WriteString("// Written by the gateway on every start and after every settings save.\n")
-	file.WriteString("// `make web` restores the template from canvas/public/config.js.\n")
+	file.WriteString("// `make frontend` restores the template from frontend/public/config.js.\n")
 	file.WriteString("window.__RUNTIME_CONFIG__ = Object.assign(window.__RUNTIME_CONFIG__ || {}, ")
 	file.Write(escapeLineSeparators(payload))
 	file.WriteString(");\n")

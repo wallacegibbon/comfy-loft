@@ -41,13 +41,13 @@ the canvas frontend is a self-contained subtree beside it (see Credits):
 ├── workflows/         # what the product exposes: graphs + registry.json
 ├── resources.json     # what has to be installed: models, node packs, runtime deps
 ├── prompts/           # prompt skill files
-├── data/              # runtime state: tasks.json, resource-lock.json, outputs/ (not tracked)
+├── data/              # runtime state: tasks.json, settings.json, resource-lock.json (not tracked)
 ├── canvases/          # the workspace: one directory per canvas (not tracked)
 ├── bin/               # build output (not tracked)
-├── canvas/            # the canvas frontend (from the upstream project, since reworked)
+├── frontend/          # the canvas frontend (from the upstream project, since reworked)
 ├── docs/              # gateway API and env vars, the run protocol, prompt optimization, runtime deps
 ├── tools/             # development scripts
-├── Makefile           # make build / check / check-full / verify-static / web / web-check
+├── Makefile           # make build / check / check-full / verify-static / frontend / frontend-check
 └── start.sh           # starts the gateway and previews the canvas
 ```
 
@@ -76,10 +76,10 @@ Everything written for a human is **English**: documentation, code comments, log
 messages and commit messages. Two kinds of text do not follow the rule, and only because they
 are data or user-facing copy rather than prose:
 
-- **UI copy** lives in the i18n dictionaries (`canvas/src/i18n`), never inline in
+- **UI copy** lives in the i18n dictionaries (`frontend/src/i18n`), never inline in
   a component, so the same screen can be read in Chinese and English. That includes workflow
   metadata: `workflows/registry.json` is English (it is data the gateway serves) and the canvas
-  translates the labels it displays by model id — `canvas/src/lib/gateway-labels.ts`, decisions
+  translates the labels it displays by model id — `frontend/src/lib/gateway-labels.ts`, decisions
   #20.
 - **Model-facing and protocol Chinese** — H3 writing instructions in `internal/prompt`, the
   Chinese-matching regexes, and ComfyUI mode strings such as `文生视频(T2VA)` — stays Chinese
@@ -93,7 +93,7 @@ Chinese prose that still predates the rule is listed in
 
 ```bash
 # Dependencies (first run)
-make web               # installs canvas deps if needed, then vite build
+make frontend          # installs frontend deps if needed, then vite build
 make build             # Go gateway, static binary; start.sh builds it too if missing
 
 # Configure and start
@@ -105,8 +105,8 @@ cp .env.example .env   # adjust COMFY_URL / GATEWAY_HOST for this machine
 Canvas `http://127.0.0.1:3000` · gateway `http://127.0.0.1:8190`
 ComfyUI `http://127.0.0.1:8188` must already be running; the workbench only connects, never starts it.
 
-> The canvas bundle `canvas/dist/` is build output and is not tracked. After changing
-> `canvas/src/` run `make web` again (`make web-check` typechecks without emitting); `./start.sh`
+> The canvas bundle `frontend/dist/` is build output and is not tracked. After changing
+> `canvas/src/` run `make frontend` again (`make frontend-check` typechecks without emitting); `./start.sh`
 > refuses to start without a bundle and says so.
 
 ### Reaching the workbench from another device

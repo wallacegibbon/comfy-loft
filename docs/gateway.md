@@ -79,7 +79,7 @@ Every variable is optional; the defaults match the previous implementation.
 | `WORKFLOW_DIR`       | `<root>/workflows`                 | Registry directory.                                                                                                                                                |
 | `DATA_DIR`           | `<root>/data`                      | Tasks, locks, preferences.                                                                                                                                         |
 | `CANVAS_ROOT`        | `<root>/canvases`                  | The canvases, one directory each. This is the workspace: back it up and you have the work.                                                                          |
-| `RUNTIME_CONFIG_PATH` | *(unset)*                        | A file the gateway keeps current for the canvas's first paint (address + settings). `start.sh` points it at `canvas/dist/config.js`; unset means "the operator serves it". |
+| `RUNTIME_CONFIG_PATH` | *(unset)*                        | A file the gateway keeps current for the canvas's first paint (address + settings). `start.sh` points it at `frontend/dist/config.js`; unset means "the operator serves it". |
 | `PUBLIC_BASE_URL`    | `http://GATEWAY_HOST:GATEWAY_PORT` | Absolute prefix for the URLs the gateway returns (run outputs, previews). Set it when a proxy publishes the gateway under another address. |
 | `CORS_ORIGINS`       | canvas + ComfyUI origins           | Extra allow list for canvases on another host. A canvas on the gateway's own host is allowed by rule. `*` is refused.                                              |
 

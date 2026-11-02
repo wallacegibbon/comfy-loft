@@ -5532,3 +5532,30 @@ answer.
 **Where** `canvas/src/lib/canvas/save-queue.ts`, `canvas/src/stores/canvas/use-canvas-store.ts`,
 `canvas/src/components/canvas/canvas-conflict-dialog.tsx` (new), `canvas/src/pages/canvas/project.tsx`,
 `canvas/src/i18n/locales/*`, `canvas/tests/canvas-save-queue.test.ts`.
+
+## 159. The frontend is `frontend/`, and the build target says so
+
+**Decision** `canvas/` is now `frontend/`, and the npm targets are `make frontend`, `frontend-deps`,
+`frontend-check`, `frontend-clean` (they were `web`, `web-deps`, `web-check`, `web-clean`).
+
+**Why** Two directories one letter apart, and the letter pointed the wrong way: `canvas/` was the app
+and `canvases/` is the work. Every reader had to work out which was which — in the `Makefile`, in
+`start.sh`, in the `.gitignore`, in this file. The frontend is not a canvas; the workspace is a set of
+them.
+
+`canvas/` was upstream's layout, kept through #149 because it was where the app lived. With `web/`
+gone (#148) and the app no longer named after what it edits, the name was the last thing tying the
+markup directory to the domain. `cmd/`, `internal/`, `frontend/` reads as one repository.
+
+**What it cost** A `git mv` and seven references: the `Makefile` (its `WEB_DIR`/`WEB_STAMP` variables
+became `FRONTEND_*`), `start.sh` (three paths and two hints), `.gitignore` (three build-output lines),
+`README.md` (the tree and four paths), `docs/gateway.md` (one), and the two places that tell a reader
+what to run next (`internal/server/runtime_config.go`'s comment and `frontend/public/config.js`).
+
+**Not renamed** The `CANVAS_ROOT` variable, the `canvases/<id>/` layout and "back up your canvases" —
+those name the workspace, which is what a canvas is. `make frontend` still says "build the canvas
+bundle" in its help text, because that is what it builds.
+
+**Tested** `make frontend` (a fresh build into `frontend/dist`), `make frontend-check`, `npm run check`,
+127 canvas tests, `make check`, `make verify-static`, and `./start.sh`: the page, `config.js` and the API
+all answer, and the canvas loads in the browser with nothing in the console.

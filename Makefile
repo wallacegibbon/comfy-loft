@@ -1,5 +1,6 @@
 # Build and test automation for the gateway, which is the whole repository: the Go
-# binaries live under cmd/ and the canvas frontend is a self-contained subtree.
+# binaries live under cmd/, and the canvas frontend is a self-contained subtree
+# under frontend/.
 #
 # Two binaries, both statically linked:
 #   bin/comfyui-gateway  the service (HTTP API, workflows, the canvas's websocket)
@@ -16,14 +17,14 @@ MCP_BIN := $(BIN_DIR)/comfyloft-mcp
 GATEWAY_PKG := ./cmd/comfyui-gateway
 MCP_PKG     := ./cmd/comfyloft-mcp
 
-# The canvas is a separate npm project under canvas/. `build` stays
-# Go-only on purpose, so the bundle has its own entry points:
-# `web-deps` installs, `web` builds, `web-check` typechecks.
-WEB_DIR   := canvas
-NPM       ?= npm
-WEB_STAMP := $(WEB_DIR)/node_modules/.package-lock.json
+# The frontend is a separate npm project under frontend/. `build` stays Go-only on
+# purpose, so the bundle has its own entry points: `frontend-deps` installs,
+# `frontend` builds, `frontend-check` typechecks.
+FRONTEND_DIR   := frontend
+NPM            ?= npm
+FRONTEND_STAMP := $(FRONTEND_DIR)/node_modules/.package-lock.json
 # Every Go package lives under cmd/ or internal/. Listing them keeps the gates
-# off the vendored frontend: `./...` would walk canvas/node_modules, and a
+# off the vendored frontend: `./...` would walk frontend/node_modules, and a
 # stray .go file in a future npm package would then break `make check`.
 PKGS    := ./cmd/... ./internal/...
 GO_DIRS := cmd internal
@@ -34,7 +35,7 @@ LDFLAGS := -s -w
 export CGO_ENABLED := 0
 
 .DEFAULT_GOAL := build
-.PHONY: build run test test-race test-v vet fmt fmt-check lint check check-full verify-static size clean tidy web web-deps web-check web-clean help
+.PHONY: build run test test-race test-v vet fmt fmt-check lint check check-full verify-static size clean tidy frontend frontend-deps frontend-check frontend-clean help
 
 build: ## Compile both binaries into bin/
 	@mkdir -p $(BIN_DIR)
@@ -45,26 +46,26 @@ build: ## Compile both binaries into bin/
 run: ## Run the gateway from source
 	$(GO) run $(GATEWAY_PKG)
 
-web-deps: ## Install canvas dependencies when node_modules is missing or stale
-	@if [ ! -f $(WEB_STAMP) ] || [ $(WEB_DIR)/package-lock.json -nt $(WEB_STAMP) ]; then \
-		echo "installing canvas dependencies ($(WEB_DIR))"; \
-		cd $(WEB_DIR) && $(NPM) ci || exit 1; \
+frontend-deps: ## Install frontend dependencies when node_modules is missing or stale
+	@if [ ! -f $(FRONTEND_STAMP) ] || [ $(FRONTEND_DIR)/package-lock.json -nt $(FRONTEND_STAMP) ]; then \
+		echo "installing frontend dependencies ($(FRONTEND_DIR))"; \
+		cd $(FRONTEND_DIR) && $(NPM) ci || exit 1; \
 	else \
-		echo "canvas dependencies up to date"; \
+		echo "frontend dependencies up to date"; \
 	fi
 
-web: ## Build the canvas bundle into canvas/dist
-	@$(MAKE) --no-print-directory web-deps
-	cd $(WEB_DIR) && $(NPM) run build
-	@test -f $(WEB_DIR)/dist/index.html || { echo "ERROR: canvas build produced no dist/index.html"; exit 1; }
-	@echo "built $(WEB_DIR)/dist"
+frontend: ## Build the canvas bundle into frontend/dist
+	@$(MAKE) --no-print-directory frontend-deps
+	cd $(FRONTEND_DIR) && $(NPM) run build
+	@test -f $(FRONTEND_DIR)/dist/index.html || { echo "ERROR: frontend build produced no dist/index.html"; exit 1; }
+	@echo "built $(FRONTEND_DIR)/dist"
 
-web-check: ## Typecheck the canvas sources (tsc --noEmit)
-	@$(MAKE) --no-print-directory web-deps
-	cd $(WEB_DIR) && $(NPM) run typecheck
+frontend-check: ## Typecheck the frontend sources (tsc --noEmit)
+	@$(MAKE) --no-print-directory frontend-deps
+	cd $(FRONTEND_DIR) && $(NPM) run typecheck
 
-web-clean: ## Remove the canvas build output
-	rm -rf $(WEB_DIR)/dist
+frontend-clean: ## Remove the frontend build output
+	rm -rf $(FRONTEND_DIR)/dist
 
 test: ## Run the test suite
 	$(GO) test $(PKGS)

@@ -32,20 +32,20 @@ export GATEWAY_PORT="${GATEWAY_PORT:-8190}"
 CANVAS_HOST="${CANVAS_HOST:-127.0.0.1}"
 CANVAS_PORT="${CANVAS_PORT:-3000}"
 
-VITE_BIN="$ROOT/canvas/node_modules/.bin/vite"
+VITE_BIN="$ROOT/frontend/node_modules/.bin/vite"
 GATEWAY_BIN="$ROOT/bin/comfyui-gateway"
 MCP_BIN="$ROOT/bin/comfyloft-mcp"
-DIST_INDEX="$ROOT/canvas/dist/index.html"
+DIST_INDEX="$ROOT/frontend/dist/index.html"
 
 command -v node >/dev/null 2>&1 || { echo "node not found; install Node.js first" >&2; exit 1; }
-[ -x "$VITE_BIN" ] || { echo "missing $VITE_BIN; run: make web-deps" >&2; exit 1; }
-[ -f "$DIST_INDEX" ] || { echo "canvas bundle is missing; run: make web" >&2; exit 1; }
+[ -x "$VITE_BIN" ] || { echo "missing $VITE_BIN; run: make frontend-deps" >&2; exit 1; }
+[ -f "$DIST_INDEX" ] || { echo "frontend bundle is missing; run: make frontend" >&2; exit 1; }
 
 # The canvas's first paint. The gateway writes this file on every start and after every settings save,
 # with the address a browser should use plus the workspace preferences (docs/decisions.md #155), so the
-# theme and the language are known before the first frame. `make web` restores the template from
-# canvas/public/config.js, which is what a page served before the gateway is up reads.
-export RUNTIME_CONFIG_PATH="$ROOT/canvas/dist/config.js"
+# theme and the language are known before the first frame. `make frontend` restores the template from
+# frontend/public/config.js, which is what a page served before the gateway is up reads.
+export RUNTIME_CONFIG_PATH="$ROOT/frontend/dist/config.js"
 
 # The gateway accepts a canvas served from its own host already; this covers a canvas on
 # another machine or a name that differs from the address the browser used for the gateway.
@@ -73,7 +73,7 @@ echo "→ gateway   http://${GATEWAY_HOST}:${GATEWAY_PORT}   (ComfyUI at ${COMFY
 ( cd "$ROOT" && exec "$GATEWAY_BIN" ) & pids+=($!)
 
 echo "→ canvas    http://${CANVAS_HOST}:${CANVAS_PORT}"
-( cd "$ROOT/canvas" && exec "$VITE_BIN" preview --host "$CANVAS_HOST" --port "$CANVAS_PORT" ) & pids+=($!)
+( cd "$ROOT/frontend" && exec "$VITE_BIN" preview --host "$CANVAS_HOST" --port "$CANVAS_PORT" ) & pids+=($!)
 
 echo
 echo "Both services are up. Ctrl+C stops them."

@@ -15,9 +15,9 @@ node_modules/
 !.env.example
 
 # build output
-canvas/.next/
-canvas/out/
-canvas/dist/
+frontend/.next/
+frontend/out/
+frontend/dist/
 
 # python bytecode (a py_compile check, or ComfyUI itself, drops these into the vendored packs)
 __pycache__/
