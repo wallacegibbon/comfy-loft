@@ -31,8 +31,18 @@ func (s *Server) routesAgent(mux *http.ServeMux) {
 // the canvas, so deleting the canvas is what normally ends it; this route is the other half — the process
 // is released first, so nothing writes the file back after it is removed, and the client can end a
 // conversation without ending the canvas.
+//
+// A session with a turn in flight is refused with `409 agent_busy` and left exactly as it was: the turn
+// is writing the next entry of the file this would remove, and releasing it would cancel work nobody
+// asked to cancel. Nothing is half-done on that path — no release, no removal.
 func (s *Server) handleAgentSessionDelete(ctx *httpx.Ctx) error {
 	id := ctx.R.PathValue("session")
+	// A turn in flight is writing the next entry of the file this would delete, and releasing the agent
+	// would cancel work nobody asked to cancel. The panel disables its button for the same reason
+	// (docs/decisions.md #187) — this is the rule, and the button is the courtesy.
+	if s.agentSessions.Busy(id) {
+		return httpx.NewError(http.StatusConflict, "agent_busy", "the agent is in the middle of a turn: stop it, or wait for it to finish")
+	}
 	s.agentSessions.Close(id, "forgotten")
 
 	removed := false

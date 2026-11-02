@@ -6427,25 +6427,37 @@ new one (`pid=374193`), the file was gone, and the panel showed its empty state 
 canvas kept its two nodes and its picture. The next message wrote a fresh file whose first entry was that
 new message, and the answer did not mention the earlier turn.
 
-## 187. Clearing the history waits for an idle agent
+## 187. Clearing the history waits for an idle agent, and the gateway is what decides
 
-**Decision** The clear-history button is disabled while the panel has a turn in flight, and its label says
-why (`canvas.agent.clearHistoryBusy`) instead of only looking greyed out. A turn is in flight from the send
-until the agent's `done`, and any `delta`, `reasoning`, `tool_call` or `tool_result` frame also marks the
-panel busy — so a turn this panel did not start cannot leave the button live. `clearHistory` refuses a busy
-panel as a second guard.
+**Decision** Clearing is refused while a turn is in flight, at both ends. The panel disables the button
+(with a label that says why, `canvas.agent.clearHistoryBusy`), and the gateway refuses the request itself:
+`Session.Busy` is set when a prompt is written and cleared where the turn ends, so
+`DELETE /api/agent/session/{session}` answers `409 agent_busy` and changes nothing — no release, no
+removal. The client asks *before* it closes its socket, so a refusal leaves the conversation exactly as it
+was and the panel keeps working; only a delete that happened closes the socket and reopens a session.
 
-**Why** Mid-turn, the words being written are the next entry in the file the button deletes: the release
-cancels the turn, which is a different act from forgetting a conversation and not one anybody asked for by
-pressing "clear history". The panel already knows the difference — it shows Stop while it is busy — so the
-rule is the same one the rest of the panel obeys.
+**Why** Mid-turn, the words being written are the next entry of the file the button deletes — and the file
+may not even exist yet, because the agent writes it as the turn ends: a delete now would remove nothing and
+the turn would put the conversation back a second later. Releasing the session also cancels the turn,
+which is a different act from forgetting a conversation and not one anybody asked for by pressing "clear
+history". A client-side guard alone is not enough: the panel's idea of "busy" is its own state, and a
+second tab, a reload, or a stale page would each have their own; the process's turn is the fact.
 
-**Cost** A long answer has to finish (or be stopped) before the history can go. That is one more click for
-the impatient, and the stop button is right there.
+**Cost** A long answer has to finish (or be stopped) before the history can go. A refused delete is a
+message in the transcript rather than a silent no-op, and the canvas-deletion path still closes its socket
+either way (the directory is going away, so the process must not outlive it).
 
-**Tested** `npm run check` (i18n 898/884: one new key, none dead), `npx vitest run` (156). In the browser
-(a `/tmp/verify` copy, the real agent): idle, the header button read `Clear history`; one message in, it
-read `The agent is working — stop it or wait for it to finish` and was `[disabled]` at +2 s and at +27 s
-while the answer streamed, next to the panel's Stop; after `done` it was `Clear history` again, pressable.
+**Tested** `make check`, `go test -race`, `npm run check` (i18n 898/884), `npx vitest run` (156).
+`TestDeletingABusySessionIsRefused`: a prompt the fake agent answers slowly, `DELETE` 300 ms in answers
+`409 agent_busy`, the session file and the process are both untouched, and the same request after `done`
+answers 200 and removes the file. In the browser (a `/tmp/verify` copy, the real agent): idle the header
+read `Clear history`; one message in, it read `The agent is working — stop it or wait for it to finish` and
+was `[disabled]` at +2 s and at +27 s while the answer streamed, and a direct `DELETE` against the gateway
+at that moment answered `409 {"code":"agent_busy","message":"the agent is in the middle of a turn: stop it,
+or wait for it to finish"}`; after `done` the button read `Clear history` again, and pressing it —
+confirm, then `DELETE … 200`, release, new pid — left the file gone and the panel on its empty state.
 
-**Where** `frontend/src/components/canvas/canvas-agent-panel.tsx`, both locales.
+**Where** `internal/agent/sessions.go` (`Session.Busy`, `Sessions.Busy`, `Send`, `pump`),
+`internal/server/routes_agent.go`, `internal/server/agent_e2e_test.go`,
+`frontend/src/services/api/agent.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`, both
+locales.

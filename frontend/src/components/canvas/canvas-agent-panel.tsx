@@ -6,6 +6,7 @@ import { citationLabel, mentionSegments, referenceBlock, referenceEntries, refer
 import { nodeTitle } from "@/lib/canvas/node-title";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { confirm } from "@/components/kit/confirm";
+import { apiErrorMessage } from "@/services/api/http";
 import { AgentSettingsControls } from "./agent-settings-controls";
 import { cancelAgentSession, canvasAgent, clearAgentConversation, closeAgentSession, onAgentEvent, openAgentSession, sendAgentMessage, type AgentEvent } from "@/services/api/agent";
 import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
@@ -114,24 +115,27 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
     /**
      * Throw the conversation away on both sides, then open a new one.
      *
-     * The gateway releases the agent first and deletes its session file after — a process left writing
-     * into a file that is going away is the one thing that could put the old words back — so the next
-     * connect starts a new agent with no history to replay. This panel draws its transcript from that
-     * history, which is why an empty one is an empty panel rather than a second source of truth to clear.
+     * The gateway decides: it refuses a session with a turn in flight and changes nothing, and on success
+     * it has already released the agent and removed the file. Only then does this side drop the socket
+     * and open a new one, which spawns an agent with nothing to replay. This panel draws its transcript
+     * from that history, which is why an empty one is an empty panel rather than a second source of truth
+     * to clear.
      */
     const clearHistory = async () => {
-        // Only an idle agent has a conversation that can be thrown away: mid-turn, the words being
-        // written are the next entry in the file this would delete.
+        // The button is disabled mid-turn, and this is the same refusal one layer down: the panel is not
+        // the authority on whether the agent is idle, the gateway is (docs/decisions.md #187).
         if (busy) return;
-        setBusy(false);
-        setStatus("connecting");
         try {
             await clearAgentConversation(config, session);
-            await connectRef.current();
         } catch (error) {
-            setStatus("closed");
-            setMessages((current) => [...current, { id: nextId(), role: "error", text: error instanceof Error ? error.message : t("canvas.agent.clearHistoryFailed"), mentions: [], reasoning: "", tools: [], streaming: false }]);
+            // The gateway's own words: "the agent is in the middle of a turn" is actionable in a way that
+            // "could not clear" is not, and nothing was changed, so the conversation is still usable.
+            setMessages((current) => [...current, { id: nextId(), role: "error", text: apiErrorMessage(error, t("canvas.agent.clearHistoryFailed")), mentions: [], reasoning: "", tools: [], streaming: false }]);
+            return;
         }
+        setBusy(false);
+        // A failed connect reports itself; there is nothing left here to undo.
+        void connectRef.current();
     };
 
     useEffect(() => {

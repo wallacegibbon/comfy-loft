@@ -52,6 +52,13 @@ while IFS= read -r line; do
       esac ;;
     UX*'die'*)
       exit 0 ;;
+    UX*slow*)
+      printf '%s\n' "$line"
+      if [ -n "$SESSION" ]; then printf '%s\n' "$line" >> "$SESSION"; fi
+      printf 'SM{"type":"task","data":{"in_progress":true}}\n'
+      sleep 2
+      printf 'Ax{"id":"2","type":"text","text":"slow answer"}\n'
+      printf 'SM{"type":"task","data":{"in_progress":false}}\n' ;;
     UX*text*)
       printf '%s\n' "$line"
       if [ -n "$SESSION" ]; then printf '%s\n' "$line" >> "$SESSION"; fi ;;
@@ -581,6 +588,60 @@ func TestDeletingASessionForgetsTheConversation(t *testing.T) {
 	if replayed, _ := history["history"].([]any); len(replayed) != 0 {
 		t.Fatalf("history = %v, want none after the canvas was deleted", history["history"])
 	}
+}
+
+// TestDeletingABusySessionIsRefused: a turn in flight is writing the next entry of the file a delete would
+// remove, so the gateway refuses and changes nothing — no release, no removal. The panel disables its
+// button for the same reason (#187); this is the rule it is being courteous about.
+func TestDeletingABusySessionIsRefused(t *testing.T) {
+	gateway, server, _ := startMCPGateway(t)
+	session := canvasSession(t, gateway)
+	conn := openSocket(t, gateway, session)
+	file, err := server.sessionFile(session)
+	if err != nil {
+		t.Fatalf("session file: %v", err)
+	}
+
+	// The fake agent takes two seconds over this one, which is the window the refusal has to fit in.
+	send(t, conn, map[string]any{"prompt": "answer slowly"})
+	time.Sleep(300 * time.Millisecond)
+
+	status, body := deleteSession(t, gateway, session)
+	if status != http.StatusConflict || !strings.Contains(body, "agent_busy") {
+		t.Fatalf("delete during a turn answered %d %q, want 409 agent_busy", status, body)
+	}
+	if _, err := os.Stat(file); err != nil {
+		t.Fatalf("the refused delete removed the conversation anyway: %v", err)
+	}
+	if got := spawns(t, os.Getenv("FAKE_SPAWN_LOG")); got != 1 {
+		t.Fatalf("spawned %d agents, want the busy one still running", got)
+	}
+
+	// The turn ends, and now the same request goes through.
+	until(t, conn, "done")
+	if status, body := deleteSession(t, gateway, session); status != http.StatusOK {
+		t.Fatalf("delete after the turn answered %d %q, want 200", status, body)
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Fatalf("the session file survived an idle delete: %v", err)
+	}
+}
+
+// deleteSession asks the gateway to forget a conversation and reports what it answered.
+func deleteSession(t *testing.T, gateway *httptest.Server, session string) (int, string) {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodDelete, gateway.URL+"/api/agent/session/"+session, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	response, err := gateway.Client().Do(request)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	defer response.Body.Close()
+	body := make([]byte, 512)
+	read, _ := response.Body.Read(body)
+	return response.StatusCode, string(body[:read])
 }
 
 // TestDeletingACanvasTakesItsConversationWithIt: the conversation is part of the canvas, so deleting the

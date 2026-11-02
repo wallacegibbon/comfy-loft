@@ -1,6 +1,6 @@
 import i18n from "@/i18n";
 import { gatewayProtocolRoot } from "@/services/api/runs";
-import { apiErrorMessage } from "@/services/api/http";
+import { apiErrorMessage, httpJson } from "@/services/api/http";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { AiConfig } from "@/stores/use-config-store";
 import type { ReferenceImage } from "@/types/image";
@@ -393,14 +393,15 @@ export function endAgentSession(name: string): void {
 /**
  * Forget a conversation: the file, and the agent holding it.
  *
- * The gateway releases the process first and removes the file after it, so nothing is left writing what
- * was just deleted; the next connect spawns a fresh agent, which finds no session file and starts a new
- * one. Nothing here keeps the old words around — that is the point.
+ * The gateway answers first and this side acts second. It refuses a session with a turn in flight
+ * (`409 agent_busy`) and then changes nothing — so the socket is closed only after a delete that
+ * happened, and a refusal leaves the conversation exactly as it is, which is what lets the panel go on
+ * using it. On success the gateway has already released the process and removed the file; the next
+ * connect spawns a fresh agent, which finds nothing to replay.
  */
 export async function clearAgentConversation(config: AiConfig, session: string): Promise<void> {
+    await httpJson(`${gatewayProtocolRoot(config.baseUrl)}/api/agent/session/${encodeURIComponent(session)}`, { method: "DELETE" });
     closeAgentSession(session);
-    const response = await fetch(`${gatewayProtocolRoot(config.baseUrl)}/api/agent/session/${encodeURIComponent(session)}`, { method: "DELETE" });
-    if (!response.ok) throw new Error(apiText("requestFailed"));
 }
 
 /**
@@ -415,9 +416,14 @@ export async function clearAgentConversation(config: AiConfig, session: string):
  * line in the console, because it means an agent process outlived its canvas.
  */
 export async function forgetCanvasConversation(config: AiConfig, canvasId: string): Promise<void> {
+    const name = canvasAgent(canvasId);
     try {
-        await clearAgentConversation(config, canvasAgent(canvasId));
+        await clearAgentConversation(config, name);
     } catch (error) {
-        console.warn(`agent: the gateway did not forget ${canvasAgent(canvasId)}`, error);
+        // Mid-turn the gateway refuses, and this canvas is going away regardless: the socket still has
+        // to close, or the process would outlive the directory it writes into.
+        console.warn(`agent: the gateway did not forget ${name}`, error);
+    } finally {
+        closeAgentSession(name);
     }
 }

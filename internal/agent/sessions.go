@@ -45,6 +45,12 @@ type Session struct {
 	// sink on its way out.
 	watchGeneration uint64
 
+	// busy says a turn is in flight: a prompt went in and its `done` has not come back. It is a fact
+	// about the conversation, not about one connection, so it has a lock of its own — a second tab
+	// asking, and the delete route refusing, both read it.
+	busyMu sync.Mutex
+	busy   bool
+
 	// pending is the tool calls waiting for the canvas to answer them, by the id the gateway gave them,
 	// and calls counts the ones asked so far. A tool call is a question only the page can answer, so it
 	// leaves through the same sink and comes back as a message on the same socket.
@@ -136,6 +142,13 @@ func (s *Sessions) Lookup(id string) (*Session, bool) {
 	defer s.mu.RUnlock()
 	session, ok := s.list[id]
 	return session, ok
+}
+
+// Busy reports whether the session filed under this name has a turn in flight. A name nobody is behind
+// is not busy: there is no process, and so nothing writing to the file a delete would remove.
+func (s *Sessions) Busy(id string) bool {
+	session, ok := s.Lookup(id)
+	return ok && session.Busy()
 }
 
 // List is every connected session. The MCP route uses it to find the session that owns a workspace,
@@ -357,6 +370,9 @@ func (s *Session) pump() {
 		ended := turnStep(&s.state, frame, true, s.publish)
 		s.stateMu.Unlock()
 		if ended {
+			// Cleared before the `done` leaves, so a caller that acts on the end of a turn — the panel
+			// reopening its session, the delete route deciding — sees an idle agent.
+			s.setBusy(false)
 			s.publish(Event{Type: "done"})
 		}
 	}
@@ -364,10 +380,32 @@ func (s *Session) pump() {
 
 // Send writes one message into the process. Writing is what a connection does when the user types; the
 // answer arrives through the watcher, not here.
+//
+// A prompt is a turn, and a turn ends at the agent's `done` — the one place this flag is cleared. A
+// command is not: it answers with its own `CO` and the session is as idle afterwards as it was before.
 func (s *Session) Send(req Request) error {
 	s.write.Lock()
 	defer s.write.Unlock()
-	return writeRequest(s.proc, req)
+	if err := writeRequest(s.proc, req); err != nil {
+		return err
+	}
+	if req.Prompt != "" {
+		s.setBusy(true)
+	}
+	return nil
+}
+
+// Busy reports whether a turn is in flight.
+func (s *Session) Busy() bool {
+	s.busyMu.Lock()
+	defer s.busyMu.Unlock()
+	return s.busy
+}
+
+func (s *Session) setBusy(busy bool) {
+	s.busyMu.Lock()
+	s.busy = busy
+	s.busyMu.Unlock()
 }
 
 // Cancel asks the agent to wind its current task down. A turn is the agent's to finish, so this is a

@@ -59,7 +59,12 @@ export function Popover({ content, placement = "top", mouseEnterDelay = 0.1, chi
     );
 }
 
-type DropdownItem = { key?: string; icon?: ReactNode; label?: ReactNode; onClick?: () => void; disabled?: boolean; danger?: boolean; type?: never } | { type: "divider"; key?: string };
+type DropdownItem =
+    | { key?: string; icon?: ReactNode; label?: ReactNode; shortcut?: string; onClick?: () => void; disabled?: boolean; danger?: boolean; type?: never }
+    | { type: "divider"; key?: string }
+    | { type: "label"; key?: string; text: string };
+
+export type { DropdownItem };
 
 export function Dropdown({ menu, className, children }: { menu?: { items?: DropdownItem[] }; className?: string; children?: ReactNode }): ReactNode {
     return (
@@ -69,6 +74,9 @@ export function Dropdown({ menu, className, children }: { menu?: { items?: Dropd
                 <RadixDropdownMenu.Content data-canvas-overlay align="start" sideOffset={6} className={cn("z-[1500] min-w-44 rounded-lg border border-stone-200 bg-white p-1 shadow-xl dark:border-stone-700 dark:bg-stone-900", className)}>
                     {(menu?.items ?? []).map((item, index) => {
                         if (item.type === "divider") return <RadixDropdownMenu.Separator key={item.key ?? `divider-${index}`} className="my-1 h-px bg-stone-200 dark:bg-stone-700" />;
+                        // A heading for the items under it: a menu that grew past a handful of commands is
+                        // read in sections, and an empty group label is not worth a line.
+                        if (item.type === "label") return <RadixDropdownMenu.Label key={item.key ?? `label-${index}`} className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-stone-400 dark:text-stone-500">{item.text}</RadixDropdownMenu.Label>;
                         return (
                             <RadixDropdownMenu.Item
                                 key={item.key ?? `item-${index}`}
@@ -83,6 +91,7 @@ export function Dropdown({ menu, className, children }: { menu?: { items?: Dropd
                             >
                                 {item.icon ? <span className="flex shrink-0 items-center text-stone-400">{item.icon}</span> : null}
                                 <span className="min-w-0 flex-1">{item.label}</span>
+                                {item.shortcut ? <span className="shrink-0 pl-3 text-[11px] text-stone-400 dark:text-stone-500">{item.shortcut}</span> : null}
                             </RadixDropdownMenu.Item>
                         );
                     })}
