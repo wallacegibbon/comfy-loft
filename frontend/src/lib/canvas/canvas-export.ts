@@ -28,7 +28,7 @@ export async function exportCanvas(project: CanvasProject, fileName = i18n.t("ca
         if (!name || !url) continue;
         // The file already has a name on disk; the zip keeps it, which is what lets an import put the same
         // name back and leave the document's references alone.
-        const blob = await (await fetch(url)).blob().catch(() => null);
+        const blob = await fetchFileBlob(url);
         if (!blob) continue;
         entries.push({ name: `files/${name}`, data: blob });
     }
@@ -51,7 +51,7 @@ export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n
             const title = node.title || node.type;
             const storageKey = node.metadata?.storageKey || "";
             if (storageKey) {
-                const blob = await (await fetch(activeFileUrl(storageKey))).blob().catch(() => null);
+                const blob = await fetchFileBlob(activeFileUrl(storageKey));
                 if (blob) return void zipFiles.push({ name: uniqueName(title, fileExtension(blob.type)), data: blob });
             }
             if (node.type === CanvasNodeType.Text) return void zipFiles.push({ name: uniqueName(title, "txt"), data: node.metadata?.content || node.metadata?.prompt || "" });
@@ -66,6 +66,20 @@ export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n
 
     const zip = await createZip(zipFiles);
     saveAs(zip, `${safeFileName(fileName)}.zip`);
+}
+
+/**
+ * The bytes of one canvas file, or null when it is not there.
+ *
+ * `fetch` resolves for a 404 as readily as for a 200, so the status is checked before the body is read: a
+ * missing file used to be zipped as whatever the gateway's error envelope said, and an import then restored
+ * that JSON under a `.png` name.
+ */
+async function fetchFileBlob(url: string): Promise<Blob | null> {
+    if (!url) return null;
+    const response = await fetch(url).catch(() => null);
+    if (!response?.ok) return null;
+    return response.blob().catch(() => null);
 }
 
 function collectStorageKeys(value: unknown, keys = new Set<string>()) {
