@@ -159,8 +159,8 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 	for _, tool := range tools {
 		names = append(names, tool.(map[string]any)["name"].(string))
 	}
-	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,generate,read_node,delete_node,focus_node" {
-		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, generate, read_node, delete_node, focus_node", names)
+	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,generate,read_node,delete_node,focus_node,move_node" {
+		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, generate, read_node, delete_node, focus_node, move_node", names)
 	}
 }
 

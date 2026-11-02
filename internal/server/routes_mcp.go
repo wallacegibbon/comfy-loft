@@ -202,6 +202,24 @@ func (s *Server) mcpTools() []mcpTool {
 			"required": ["nodeId"],
 			"additionalProperties": false
 		}`),
+	}, {
+		Name:        "move_node",
+		Description: "Move one node so its top-left corner lands where you say, the way dragging it does: a node dropped on a group becomes one of its members. It changes nothing else about the node — moving is not running it, and the node keeps its prompt and its result.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeId": {"type": "string", "description": "The id list_nodes reported."},
+				"position": {
+					"type": "object",
+					"properties": {"x": {"type": "number"}, "y": {"type": "number"}},
+					"required": ["x", "y"],
+					"additionalProperties": false,
+					"description": "Top-left corner in canvas coordinates, the same space list_nodes reports."
+				}
+			},
+			"required": ["nodeId", "position"],
+			"additionalProperties": false
+		}`),
 	}}
 }
 

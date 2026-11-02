@@ -982,6 +982,25 @@ function InfiniteCanvasPage() {
         [projectId],
     );
 
+    /**
+     * Put one node's top-left corner where a tool says, the way the end of a drag does.
+     *
+     * The snap a drag performs while the pointer moves is not repeated here — the tool states a corner,
+     * so that corner is where the node goes. What is repeated is the part a drag leaves behind: a node
+     * whose centre now sits inside a group becomes a member of it, which is what makes moving a node onto
+     * a group mean the same thing either way.
+     */
+    const moveNodesTo = useCallback((nodeId: string, position: Position) => {
+        setNodes((prev) => {
+            const moved = prev.map((node) => (node.id === nodeId ? { ...node, position } : node));
+            const node = moved.find((item) => item.id === nodeId);
+            if (!node || node.type === CanvasNodeType.Group) return moved;
+            const groupId = findContainingGroupId(node, moved);
+            if (node.metadata?.groupId === groupId) return moved;
+            return moved.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, groupId } } : item));
+        });
+    }, []);
+
     const groupSelection = useCallback(() => {
         const selectedIds = selectedNodeIdsRef.current;
         const members = collectGroupMemberNodes(selectedIds, nodesRef.current);
@@ -2061,6 +2080,7 @@ function InfiniteCanvasPage() {
         connectNodes: addConnection,
         deleteNodes: (nodeIds) => deleteNodes(new Set(nodeIds)),
         focusNode,
+        moveNode: moveNodesTo,
     });
 
     const generateImageFromTextNode = useCallback(

@@ -6337,3 +6337,27 @@ there's nothing to keep in step and no ambiguity about which version you meant".
 **Where** `internal/server/agent_instructions.go`, `internal/server/routes_agent.go`,
 `internal/server/routes_mcp.go`, `internal/agent/spawn.go`, `internal/agent/args_test.go`,
 `internal/server/mcp_test.go`, `docs/gateway.md`.
+
+## 184. The agent can move a node
+
+**Decision** `move_node(nodeId, position)` puts one node's top-left corner where the tool says — the same
+space `list_nodes` and `create_node` speak — and changes nothing else about the node. It is the page's
+own end-of-drag outcome: a node whose centre now sits inside a group becomes a member of it, and one moved
+out of a group stops being one.
+
+**Why** The previous tool could make nodes where the view was looking and point at one, and nothing could
+tidy the result: a row of nodes the agent made sits on top of the canvas the user was working in, and the
+only way to separate them was to drag each one by hand.
+
+**Cost** No collision test and no snapping: the corner stated is the corner the node gets, so a tool can
+place two nodes on top of each other, and the drag's own "snap into the group" is not repeated. The user
+can undo it — a move is a history entry like any other edit.
+
+**Tested** `make check`, `go test -race`, `make verify-static`, `npm run check`, `npx vitest run`.
+`TestMCPHandshakeIsEnoughToDiscoverTheTools` pins the ten names in order. In the browser (a `/tmp/verify`
+copy on 8191/3001, its own `AGENT_CONFIG_PATH`, the real bridge fed one `tools/call` at a time): the
+startup frame reported `10 tools loaded`; `move_node` moved an image node to `(640, -260)` — `list_nodes`
+and the DOM transform (`translate(640px, -260px)`) and the saved `canvas.json` all agreed — a call with no
+`position` answered `move_node needs a position: {x, y} in canvas coordinates` as an error, an unknown id
+answered with the node lookup's own message, moving the node onto an empty group node set
+`metadata.groupId` to it, and moving it back out cleared it.

@@ -26,6 +26,7 @@ export function useCanvasAgentTools({
     connectNodes,
     deleteNodes,
     focusNode,
+    moveNode,
 }: {
     nodesRef: RefObject<CanvasNodeData[]>;
     connectionsRef: RefObject<CanvasConnection[]>;
@@ -35,6 +36,7 @@ export function useCanvasAgentTools({
     connectNodes: CanvasHands["connectNodes"];
     deleteNodes: CanvasHands["deleteNodes"];
     focusNode: CanvasHands["focusNode"];
+    moveNode: CanvasHands["moveNode"];
 }) {
     // The refs and callbacks outlive a render, and a tool call can arrive between two of them.
     const hands = useRef<CanvasHands>({
@@ -46,6 +48,7 @@ export function useCanvasAgentTools({
         connectNodes,
         deleteNodes,
         focusNode,
+        moveNode,
     });
     hands.current = {
         nodes: () => nodesRef.current || [],
@@ -56,6 +59,7 @@ export function useCanvasAgentTools({
         connectNodes,
         deleteNodes,
         focusNode,
+        moveNode,
     };
 
     useEffect(
@@ -83,6 +87,7 @@ type CanvasHands = {
     connectNodes: (firstNodeId: string, secondNodeId: string, firstHandleType: "source" | "target") => boolean;
     deleteNodes: (nodeIds: string[]) => void;
     focusNode: (nodeId: string) => void;
+    moveNode: (nodeId: string, position: Position) => void;
 };
 
 /** One tool's result: the content blocks the agent reads, and whether it failed rather than did something. */
@@ -113,6 +118,8 @@ async function runTool(name: string, args: unknown, hands: CanvasHands): Promise
             return deleteNode(hands, args);
         case "focus_node":
             return focusNode(hands, args);
+        case "move_node":
+            return moveNode(hands, args);
         default:
             return { content: [textBlock(`this canvas has no tool called ${name}`)], isError: true };
     }
@@ -284,6 +291,24 @@ function focusNode(hands: CanvasHands, args: unknown): ToolAnswer {
 
     hands.focusNode(node.id);
     return { content: [textBlock(`selected ${node.id} (${node.type}) and moved the view to it`)], isError: false };
+}
+
+/**
+ * Move one node so its top-left corner lands where the tool says, the way dragging it there does.
+ *
+ * It is the same space `list_nodes` and `create_node` speak: canvas coordinates, the corner, not the
+ * centre. Nothing else about the node moves — not its prompt, not its result — so a node can be tidied
+ * out of the way without being re-run.
+ */
+function moveNode(hands: CanvasHands, args: unknown): ToolAnswer {
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
+    const position = readPosition(argsOf(args).position);
+    if (!position) return { content: [textBlock("move_node needs a position: {x, y} in canvas coordinates")], isError: true };
+
+    const corner = { x: Math.round(position.x), y: Math.round(position.y) };
+    hands.moveNode(node.id, corner);
+    return { content: [textBlock(`moved ${node.id} (${node.type}) to (${corner.x}, ${corner.y})`)], isError: false };
 }
 
 /**
