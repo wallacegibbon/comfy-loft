@@ -5,6 +5,11 @@ costs — so a future change can be measured against the original intent instead
 
 Format is deliberately short: decision, why, consequences, where it lives.
 
+**Paths are as the tree was when the entry was written.** Entries record a moment, and the tree has
+moved since: the canvas frontend has been `canvas/web/`, then `canvas/` (#149), and is `frontend/`
+today (`README.md`, Layout, is always the current tree). A path an entry names for something it
+deleted is the path it was deleted from, which is the only one that ever existed.
+
 ---
 
 ## 1. The gateway is Go, built as a static binary with CGO disabled
@@ -42,15 +47,15 @@ close). Reconnect logic lives in the caller.
 ## 3. The Go module is the repository root
 
 **Decision** `main.go`, `internal/`, `go.mod`, `Makefile` and the runtime assets (`workflows/`,
-`resources/`, `prompts/`) sit at the top level; the canvas frontend is a sibling subtree in
-`canvas/`.
+`resources.json`, `prompts/`) sit at the top level; the canvas frontend is a sibling subtree in
+`frontend/`.
 
 **Why** The repository _is_ a Go service with one vendored frontend. An extra `gateway/`
 directory only made sense while a second, Node implementation lived next to it.
 
-**Cost** `go build ./...` would walk `canvas/web/node_modules`, so the Makefile uses an
-explicit package list (`. ./internal/...`). Measured difference: `go vet` 0.64 s vs 0.89 s, plus
-protection from a stray `.go` file inside an npm package.
+**Cost** `go build ./...` would walk `frontend/node_modules`, so the Makefile uses an
+explicit package list (`./cmd/... ./internal/...`). Measured difference: `go vet` 0.64 s vs 0.89 s,
+plus protection from a stray `.go` file inside an npm package.
 
 **Where** `Makefile` (`PKGS`), `README.md` (Layout).
 
@@ -276,12 +281,12 @@ is a string that only ever renders in Chinese and cannot be reviewed by the half
 audience that reads English. Writing the rule down is the only way to stop the next
 contribution from adding one more.
 
-**Cost** Chinese prose that predates the rule has to be translated (tracked in
-`docs/known-issues.md` #6), and a reviewer has to reject inline copy even when it works in
+**Cost** Chinese prose that predates the rule has to be translated (the list of what is left, and
+why, is `docs/known-issues.md` #5), and a reviewer has to reject inline copy even when it works in
 the current UI language.
 
 **Where** `README.md` (Language), `docs/gateway.md` (Language policy),
-`docs/known-issues.md` #5 and #6, decisions #8 and #9.
+`docs/known-issues.md` #5, decisions #8 and #9.
 
 ---
 
@@ -7349,3 +7354,145 @@ write before the page goes, so the debounce is a save-rate choice rather than a 
 `frontend/src/lib/canvas/canvas-document.ts`, `frontend/src/stores/canvas/use-canvas-agent-store.ts`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/src/pages/canvas/project.tsx`,
 `frontend/tests/canvas-document.test.ts`, `frontend/tests/canvas-agent-window.test.ts`.
+
+## 208. A save's version check and its write are one step
+
+**Decision** `canvas.Store.Write` takes `Store.writeMu` for the read-check-write, so the rev a save is
+compared against cannot move between the comparison and the rename that follows it.
+
+**Why** The check was a plain read: two saves that named the same rev both read it, both matched, and both
+wrote — the later rename winning, and the earlier caller told its document had been stored under a rev that
+no longer describes it. That is a lost edit with no conflict reported, which is the one outcome `If-Match`
+exists to prevent. Measured on the unguarded code with eight goroutines writing against one rev: five were
+answered 200 and three 409, so four of the five "successes" never reached the disk.
+
+**Cost** One mutex for every canvas. A save is a few milliseconds of local I/O and the queue already
+serialises per canvas, so the contention is theoretical. `Create` and `Delete` do not take it: they touch a
+directory nobody else names.
+
+**Tested** `TestTwoSavesAgainstOneRevHaveExactlyOneWinner` in `internal/canvas/canvas_test.go` — eight
+goroutines, one winner, seven conflicts, and the surviving document is a whole one. It fails without the lock
+(5 winners) and passes with it; `go test -race` on the package is clean.
+
+**Where** `internal/canvas/canvas.go`, `internal/canvas/canvas_test.go`.
+
+## 209. A stored document's connection ids are repaired by reading it
+
+**Decision** `normalizeConnections` (`frontend/src/lib/canvas/canvas-document.ts`) is applied by
+`readDocument` (`frontend/src/services/api/canvases.ts`): the first connection keeps its id, a later duplicate
+is given a fresh one, and an entry that names no node is dropped. The repaired ids are what the next save
+writes, so a canvas is fixed by being opened and an old export by being imported.
+
+**Why** #205 stopped *minting* duplicate ids and left the documents that already had them. The canvas #205
+measured as evidence — `canvases/3df8b7a65088/canvas.json` — still carried two connections with
+`conn-1793652015279`, and the consequence was live: clicking one lit both (one click, two paths at
+`stroke-width="3"`), and a delete of either removed both.
+
+**Cost** Reading a document may change it. The ids are opaque — nothing parses them (#205) — and the endpoints
+are untouched, so the only difference is which wire a click highlights.
+
+**Tested** Four assertions in `frontend/tests/canvas-document.test.ts` (a whole one is kept, a duplicate gets a
+fresh id, an entry with no endpoints is dropped, a non-list is empty). In the browser: reloading Canvas 1
+replaced `conn-1793652015279` with `wlH8vm06xPNVXcN4k0rcS`, the four DOM ids became distinct, the save that
+follows a load wrote them to disk, and one click then lit exactly one path.
+
+**Where** `frontend/src/lib/canvas/canvas-document.ts`, `frontend/src/services/api/canvases.ts`,
+`frontend/tests/canvas-document.test.ts`.
+
+## 210. An import skips directory entries
+
+**Decision** `importArchive` (`internal/server/canvas_import.go`) ignores a zip entry that is a directory.
+Everything else about the archive is unchanged: `canvas.json`, `manifest.json` and `files/<name>`, with `..`
+still refused before the name is cleaned.
+
+**Why** `files/` is what every zip tool writes for a folder — `zip -r`, Finder's Archive Utility, Explorer —
+so the ordinary way of moving an export (unzip it, zip it again) produced an archive this gateway refused with
+`422 import_unexpected_entry`, naming an entry that carries no bytes at all.
+
+**Cost** A directory entry is no longer an error. Nothing was ever restored from one, and an archive whose
+`files/` entry is a directory with contents still fails on those contents only if they are not
+`files/<valid name>`.
+
+**Tested** `TestAnImportAcceptsTheDirectoryEntriesARezipAdds` builds the same archive `zip -r` produces; the
+live gateway was checked both ways — `422 import_unexpected_entry` before, `200` and a fetchable file after.
+
+**Where** `internal/server/canvas_import.go`, `internal/server/canvas_e2e_test.go`.
+
+## 211. A run that panics fails its task, not the gateway
+
+**Decision** `task.Store.pump` calls the run through `runGuarded`, which recovers a panic and turns it into
+that task's error. The queue records the failure and starts the next task.
+
+**Why** Go has no per-goroutine recovery: an unrecovered panic in the worker goroutine takes the process down —
+every canvas, every other run, and the queue with it. The run is the one place here that executes code shaped
+by data (a graph from `workflows/`, its parameters, ComfyUI's answer), so it is the one place worth guarding;
+`httpx.Recover` already does the same for a request.
+
+**Cost** A panic no longer crashes the process, so a deterministic bug becomes a run that always fails instead
+of a stack trace at startup. The log line names the task and the panic value; the stack is not printed, which
+is the one thing a developer would want — `debug.Stack()` is the obvious next step if that turns out to
+matter.
+
+**Tested** `TestAPanickingRunFailsItsTaskAndTheQueueCarriesOn`: the first task fails with "the run panicked",
+the second one queued behind it completes.
+
+**Where** `internal/task/task.go`, `internal/task/task_test.go`.
+
+## 212. A WebSocket write has a deadline
+
+**Decision** `ws.Conn.writeFrame` sets a 30-second write deadline on the underlying connection before every
+write.
+
+**Why** A write to a peer that stopped reading — a suspended tab, a network that went away without a FIN —
+blocks in the kernel once the send window fills, and nothing on this side can interrupt it. The write holds the
+connection's mutex, so the keep-alive ping that would have noticed cannot go out either, and the writer (the
+agent's pump, under the session's lock) waits with it: one dead tab could hold a whole session's routes. The
+deadline turns "blocked for ever" into an error, and an error shuts the connection down, which wakes the
+reader and detaches the session.
+
+**Cost** A frame that cannot be delivered in 30 seconds closes the socket instead of waiting. The largest
+frame this socket carries is an 8 MiB message bound, and the client is a browser on the same machine or the
+LAN, so 30 seconds is generous by an order of magnitude.
+
+**Tested** The package's existing tests (handshake, frames, ping/pong, close) pass with it; `go test -race`
+on `internal/ws` and `internal/server` is clean. Not reproduced against a stalled peer: a blocked socket is
+not something a unit test can build without a fake transport.
+
+**Where** `internal/ws/ws.go`.
+
+## 213. An export asks whether the file is there before zipping it
+
+**Decision** `exportCanvas` and `exportCanvasNodes` (`frontend/src/lib/canvas/canvas-export.ts`) go through
+`fetchFileBlob`, which returns null on a non-2xx response instead of the body.
+
+**Why** `fetch` resolves for a 404 as readily as for a 200, so the old `(await fetch(url)).blob()` zipped the
+gateway's error envelope, and an import then restored that JSON under a `.png` name — a canvas whose picture
+is a sentence. A file can genuinely be missing: the sweep has a 24-hour grace (#156), a task record can
+outlive its canvas, and a canvas can be exported from a copy whose `files/` was edited by hand.
+
+**Cost** An export silently carries fewer files. That is the same information the missing node will show on
+screen (a broken reference) rather than a corrupt one it cannot explain.
+
+**Tested** `tsc --noEmit` and the existing suites. The behaviour is not covered by a test: the module calls
+`saveAs` and the browser's download machinery, which vitest does not run.
+
+**Where** `frontend/src/lib/canvas/canvas-export.ts`.
+
+## 214. An answer stops listening for its abort when the turn ends
+
+**Decision** `askAgentSession` (`frontend/src/services/api/agent.ts`) removes its `abort` listener in the
+`finally` that already detaches the event listener, and refuses a request whose signal is already aborted.
+
+**Why** The listener was added with `{ once: true }` and never removed on the success path, so it outlived the
+turn it belonged to. A caller that reuses one `AbortController` for several questions — the shape the node
+panels use — accumulated one listener per answer, and an abort later on cancelled whatever the agent was doing
+*then*, not the turn the caller meant to stop. An already-aborted signal was the mirror failure: `addEventListener`
+never fires on it, so the ask waited for an answer to a question nobody was going to cancel.
+
+**Cost** Nothing measurable; one closure per turn.
+
+**Tested** `tsc --noEmit` and the existing suites (179 tests). Not covered by a test: the module owns a
+module-level `WebSocket` map and the failure is a listener that is not there, which a unit test would have to
+reach through the socket.
+
+**Where** `frontend/src/services/api/agent.ts`.

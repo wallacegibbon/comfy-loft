@@ -101,33 +101,36 @@ not exhaustive.
 
 ---
 
-## 6. The agent panel's size is the session's, not the canvas's
+## 6. The Go half has no "nothing calls this" gate, and fifteen symbols are in that state
 
-**Symptom** Drag the agent panel's corner to a size that suits the canvas, reload, and it opens at the
-default share of the window again. Export the canvas, open it on another machine, and the size is not there
-either — which is the part that matters: a canvas is worked on away from the machine that made it, and how
-much of the screen the panel takes is a property of *that canvas's* work.
+The canvas rejects an export nobody imports (`scripts/check-exports.cjs`, #37, #41), and `tsc` catches an
+unused local. The Go half has neither, so a function whose last caller a refactor removed stays behind as a
+promise with no promisee — and one of them still carries a doc comment that describes the system as it was.
+Measured against the current tree, counting every reference outside comments and outside the declaration
+itself, tests included (so "0" means the test suite does not use it either):
 
-**State** Deliberate, and documented as such: `frontend/src/stores/canvas/use-canvas-agent-store.ts` keeps
-`size` and `position` in memory, and its doc comment argues that "where a panel sits is the window's
-business, not the canvas's … no place in the project blob, in an export, or in the undo history". That
-argument holds for `position` and not for `size`, which is the split this entry is about.
+| Symbol | Where | What it still says |
+| --- | --- | --- |
+| `Client.Queue` | `internal/comfy/client.go` | reads ComfyUI's `/queue`; nothing polls it |
+| `WithAudioTimeout`, `WithGatewayPort`, `WithMaxImportBytes`, `WithPublicBaseURL` | `internal/config/config.go` | `config.Load` options no caller and no test passes |
+| `WriteJSONError` | `internal/httpx/httpx.go` | "for middleware that has no `*Error`" — no middleware uses it |
+| `Manager.DerivedDependencies` | `internal/resource/derive.go` | "the single source of truth for a workflow's dependency list"; the status path calls the private `entryDeps` it wraps |
+| `Manager.IsAvailable`, `Manager.ModelCandidates` | `internal/setup/setup.go` | the verdict is read through `WorkflowStatus`, and replacements through the resource panel's own path |
+| `MainModels.Snapshot` | `internal/store/preferences.go` | "for diagnostics"; nothing asks |
+| `NormalizeModelPath` | `internal/workflow/helpers.go` | "exposes … for callers comparing model names"; the callers use the private helper |
+| `ReadGraphFile` | `internal/workflow/registry.go` | `Registry.readGraph` is the one that runs |
+| `Store.OutputPath` (+ `withinOutput`, `within`) | `internal/task/task.go` | only `task_test.go` calls it — artifacts are served from the canvas's `files/` since #156. Its record is read under the lock now, so the torn-slice race it had is gone whether or not it is kept |
+| `Hub.promptByRequest` | `internal/generate/preview.go` | written on every prompt and reaped with its progress record, never read |
 
-**Fix to decide** Persist the size, in the canvas:
+**Fix to decide** Delete them, or add the missing gate. Deleting `OutputPath` also takes four assertions in
+`task_test.go` with it, and those tests are about reconciliation (the record is repaired at load), not about
+path building, so they can be rewritten against `Files()`/`Read`. A gate would be a small check in the
+`Makefile` that fails on an exported Go identifier with no reference outside its own file — the Go
+counterpart of `check-exports.cjs`, and cheaper than the table above getting longer.
 
-- `size` goes into `CanvasDocument` (`frontend/src/services/api/canvases.ts`), which is what `canvas.json`
-  holds and what an export's zip carries (#152, #172), so it arrives with the canvas on any machine.
-  `viewport` is the precedent: view state that belongs to the document rather than to the window.
-- `position` stays out. A pixel position is about the screen the canvas is on; a width and a height are about
-  the canvas.
-- `null` keeps meaning "the default share" (`Math.min(520, roomWidth - 24)`), and the read path keeps the
-  existing clamp (`320 … host - 16`), or a canvas sized on a 2560px screen opens wider than a 1280px window.
-- Write on pointer-up, not on every pointer-move, and keep it out of the undo history: resizing a panel is
-  not a document edit, the same way moving the view is not.
-- Amend that store's doc comment when this lands. It argues the opposite today, and a comment that
-  contradicts the code is worse than no comment.
-
----
+**Not a candidate, deliberately** `GET /api/runs` has no frontend caller and is not dead: `docs/protocol.md`
+publishes it as part of the run protocol ("listed in `GET /api/runs`"), and a documented contract is not
+obliged to have the one client this repository ships.
 
 ---
 
@@ -147,6 +150,9 @@ import only what it ships — but the pack and the workflow it served are gone a
   `format:check` is a gate; #50.
 - **Thirteen routes with no caller, the one-shot agent path, the heartbeat, the unused locals and
   translation keys** — #107–#109, #114. The gates that let them live (#115) now fail on the next one.
-- **Chinese prose in the plugin subtree** (#6) — the subtree is gone: the plugin mechanism, its SDK and
+- **Chinese prose in the plugin subtree** — the subtree is gone: the plugin mechanism, its SDK and
   its packages were removed in #148, and the one node it carried is now a built-in with its strings in
   the dictionaries like everything else.
+- **The agent panel's size was the session's, not the canvas's** — #207: `open`, `position` and `size`
+  are fields of `canvas.json`, written through the save queue and restored with the viewport, so a
+  reload or another machine opens the panel where the person left it.
