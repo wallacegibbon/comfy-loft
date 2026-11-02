@@ -137,9 +137,12 @@ export function CanvasTopBar({
                                     ],
                                 }}
                             >
+                                {/* The same hover as the buttons beside it: a background, not the dashed
+                                    underline this used to draw under the name — a second way of saying
+                                    "clickable" inside one bar, and the uglier one. */}
                                 <button
                                     type="button"
-                                    className="flex min-w-0 items-center gap-1.5 rounded-md border-b border-dashed border-transparent text-left text-lg font-semibold tracking-normal transition hover:border-current"
+                                    className="-mx-1.5 flex min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left text-lg font-semibold tracking-normal transition-colors hover:bg-black/5 dark:hover:bg-white/10"
                                     title={t("canvas.switchProject")}
                                     aria-label={t("canvas.switchProject")}
                                 >
