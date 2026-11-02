@@ -136,7 +136,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "connect",
-		Description: "Connect two nodes, the way dragging from one handle to the other does: what the source node holds becomes an input to the target — a picture connected into a config node is what makes the next generation a variant of it. This is how what is already on the canvas is reused: a node that holds what another needs is connected to it, not copied. A text node's words are added to the target's own prompt when it generates, so a target that already says them in its own prompt would say them twice: clear that prompt first.",
+		Description: "Connect two nodes, the way dragging from one handle to the other does: what the source node holds becomes an input to the target — a picture connected into a config node is what makes the next generation a variant of it. This is how what is already on the canvas is reused: a node that holds what another needs is connected to it, not copied. The words into the picture: fromNodeId is the text node, toNodeId is the image node. The other order is real too — a picture into a text node is a reference that text node reads. A text node's words are added to the target's own prompt when it generates, so a target that already says them in its own prompt would say them twice: clear that prompt first.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {

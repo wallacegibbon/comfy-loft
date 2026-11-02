@@ -180,10 +180,17 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 	}
 
 	// The mechanism, not just the policy: `connect` says what a text connection does, because that is the
-	// fact the agent got wrong — it took the connection as a reason the box did not matter.
+	// fact the agent got wrong — it took the connection as a reason the box did not matter — and it carries
+	// one worked example of each order, because the table used to describe only a picture into a config node
+	// and text into a picture is the wiring #203 asks for (#206).
 	for _, tool := range server.mcpTools() {
-		if tool.Name == "connect" && !strings.Contains(tool.Description, "say them twice") {
-			t.Fatalf("connect does not say what a text connection does: %q", tool.Description)
+		if tool.Name != "connect" {
+			continue
+		}
+		for _, want := range []string{"say them twice", "fromNodeId is the text node", "a picture into a text node"} {
+			if !strings.Contains(tool.Description, want) {
+				t.Fatalf("connect does not say %q: %q", want, tool.Description)
+			}
 		}
 	}
 }
