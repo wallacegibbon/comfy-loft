@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } 
 import { ChevronRight, Download, Eye, FileText, Image as ImageIcon, LayoutGrid, ListChecks, Music2, Rows3, Search, Settings2, Square, Type, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { CheckMark } from "@/components/canvas/canvas-side-panel-parts";
+import { CheckMark, PanelHeaderRow } from "@/components/canvas/canvas-side-panel-parts";
 import { Input } from "@/components/kit/input";
 import { Select } from "@/components/kit/select";
 import { toast } from "@/components/kit/toast";
@@ -157,7 +157,7 @@ export function CanvasElementsSection({
 
     return (
         <div className="flex h-full flex-col" onMouseLeave={() => onHoverNode(null)}>
-            <div className="flex items-center gap-2 px-3 pb-2.5 pt-1">
+            <PanelHeaderRow>
                 {filtered.length ? <span className="shrink-0 text-xs opacity-35">{filtered.length}</span> : null}
                 <button
                     type="button"
@@ -187,7 +187,7 @@ export function CanvasElementsSection({
                 >
                     {nodeViewMode === "grid" ? <Rows3 className="size-3.5" /> : <LayoutGrid className="size-3.5" />}
                 </button>
-            </div>
+            </PanelHeaderRow>
             <div className="px-3 pb-2.5">
                 <Input size="small" allowClear prefix={<Search className="size-3.5 text-stone-400" />} placeholder={t("canvas.sidePanel.searchNodes")} value={keyword} onChange={(e) => setKeyword(e.target.value)} />
             </div>

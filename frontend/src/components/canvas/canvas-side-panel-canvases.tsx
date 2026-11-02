@@ -4,7 +4,7 @@ import { Check, Download, FileUp, ListChecks, MoreHorizontal, Pencil, Plus, Tras
 import { useTranslation } from "react-i18next";
 
 import { CanvasDeleteProjectsDialog } from "@/components/canvas/canvas-delete-projects-dialog";
-import { CheckMark } from "@/components/canvas/canvas-side-panel-parts";
+import { CheckMark, PanelHeaderRow } from "@/components/canvas/canvas-side-panel-parts";
 import { Button } from "@/components/kit/button";
 import { Dropdown } from "@/components/kit/floating";
 import { Input } from "@/components/kit/input";
@@ -113,7 +113,7 @@ export function CanvasCanvasesSection({ projectId }: { projectId: string }) {
 
     return (
         <div className="flex h-full flex-col">
-            <div className="flex items-center gap-1 px-3 pb-2.5 pt-1">
+            <PanelHeaderRow>
                 <Tooltip title={t("canvas.create")}>
                     <button
                         type="button"
@@ -147,7 +147,7 @@ export function CanvasCanvasesSection({ projectId }: { projectId: string }) {
                     <ListChecks className="size-3.5" />
                     {selectMode ? t("common.cancel") : t("canvas.sidePanel.select")}
                 </button>
-            </div>
+            </PanelHeaderRow>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
                 {!ready ? (
