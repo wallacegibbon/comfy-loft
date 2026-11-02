@@ -1,11 +1,11 @@
-import { Eye, EyeOff, Search as SearchIcon } from "lucide-react";
 import { useEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 import { cn } from "@/lib/utils";
 
 /**
- * Text entry, replacing antd's `Input` and its `TextArea` / `Password` / `Search` children,
- * plus `InputNumber` and `Slider`.
+ * Text entry, replacing antd's `Input` and its `TextArea` child, plus `InputNumber` and
+ * `Slider`. antd's `Password` and `Search` children went with their last callers: the unlock
+ * dialog (deleted in #193) and a search box that had none.
  *
  * Props keep antd's names where call sites use them (`size`, `prefix`, `status`,
  * `onPressEnter`, `allowClear`, `rows`, `autoSize`). `onChange` receives the native change
@@ -80,37 +80,7 @@ function TextArea({ rows = 3, autoSize, status = "normal", className, ...props }
     return <textarea ref={ref} rows={autoSize ? (minRows ?? 2) : rows} className={cn(FIELD, "resize-none px-2.5 py-1.5 text-sm", BORDERS[status], autoSize && "overflow-hidden", className)} {...props} />;
 }
 
-function Password({ value, onChange, className, size = "middle", status = "normal", ...props }: Omit<InputProps, "prefix">): ReactNode {
-    const [visible, setVisible] = useState(false);
-    return (
-        <span className={cn("relative inline-flex w-full items-center", className)}>
-            <input type={visible ? "text" : "password"} value={value} onChange={onChange} className={cn(FIELD, HEIGHTS[size], BORDERS[status], "px-2.5 pr-9")} {...props} />
-            <button type="button" aria-label={visible ? "Hide" : "Show"} onClick={() => setVisible((current) => !current)} className="absolute right-2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200">
-                {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            </button>
-        </span>
-    );
-}
-
-function Search({ onSearch, className, value, onChange, ...props }: InputProps & { onSearch?: (value: string) => void }): ReactNode {
-    return (
-        <span className={cn("inline-flex w-full items-stretch", className)}>
-            <Input value={value} onChange={onChange} onPressEnter={() => onSearch?.(String(value ?? ""))} prefix={<SearchIcon className="size-4" />} className="flex-1 [&>input]:rounded-r-none" {...props} />
-            {/* Flush with the field, the way antd joined them into one control. */}
-            <button
-                type="button"
-                onClick={() => onSearch?.(String(value ?? ""))}
-                className="-ml-px rounded-r-md border border-l-0 border-stone-300 px-3 text-stone-600 transition-colors hover:bg-stone-50 dark:border-stone-700 dark:text-stone-300 dark:hover:bg-stone-800"
-            >
-                <SearchIcon className="size-4" />
-            </button>
-        </span>
-    );
-}
-
 Input.TextArea = TextArea;
-Input.Password = Password;
-Input.Search = Search;
 
 /** Number entry, replacing antd's `InputNumber`. Emits `number | null`, as antd did. */
 export function InputNumber({
