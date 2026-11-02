@@ -106,9 +106,9 @@ cp .env.example .env   # adjust COMFY_URL / GATEWAY_HOST for this machine
 Canvas `http://127.0.0.1:3000` · gateway `http://127.0.0.1:8190`
 ComfyUI `http://127.0.0.1:8188` must already be running; the workbench only connects, never starts it.
 
-> The canvas bundle `frontend/dist/` is build output and is not tracked. After changing
-> `frontend/src/` run `make frontend` again (`make frontend-check` typechecks without emitting); `./start.sh`
-> refuses to start without a bundle and says so.
+> The canvas bundle `frontend/dist/` is build output and is not tracked. `./start.sh` rebuilds it when it is
+> missing or older than the sources it is built from, so a restart is enough; `make frontend` builds it
+> without starting anything, and `make frontend-check` typechecks without emitting.
 
 ### Reaching the workbench from another device
 

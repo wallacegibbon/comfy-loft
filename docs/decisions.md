@@ -6253,3 +6253,24 @@ canvas-generation-helpers,generated-media,canvas-document}.ts`, `frontend/src/pa
 hooks/use-generation-runs.ts}`, `frontend/src/components/canvas/{canvas-node,canvas-side-panel,
 canvas-image-settings-popover,canvas-node-hover-toolbar}.tsx`, `frontend/src/components/image-settings-panel.tsx`,
 `frontend/src/stores/use-config-store.ts`, both locales.
+
+## 181. The start script rebuilds a bundle older than its sources
+
+**Decision** `./start.sh` compares `frontend/dist/index.html` with `frontend/src`, `frontend/public`,
+`index.html`, `vite.config.ts`, `package.json` and `package-lock.json`, and runs `make frontend` when the
+bundle is missing or older. It does this before the gateway starts, so the gateway's write of
+`dist/config.js` still lands in the file the browser reads first.
+
+**Why** The rule was "the bundle is build output, so remember to run `make frontend`", and forgetting it is
+invisible: the page loads, the old code runs, and a fix looks like it did nothing. That is not a rule worth
+remembering — it is a rule that punishes remembering nothing. The build is two seconds when it happens at all.
+
+**Cost** Starting without changing anything still touches the filesystem to check, and a source tree whose
+mtime moved without its content changing rebuilds a bundle that did not need it. Both are cheaper than a
+stale page.
+
+**Tested** A copy of the workspace with a bundle older than its sources: `./start.sh` printed "building the
+canvas bundle (missing, or older than its sources)", built, and served; a second start printed nothing and
+served the same bundle.
+
+**Where** `start.sh`, `README.md`.

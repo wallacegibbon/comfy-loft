@@ -39,7 +39,17 @@ DIST_INDEX="$ROOT/frontend/dist/index.html"
 
 command -v node >/dev/null 2>&1 || { echo "node not found; install Node.js first" >&2; exit 1; }
 [ -x "$VITE_BIN" ] || { echo "missing $VITE_BIN; run: make frontend-deps" >&2; exit 1; }
-[ -f "$DIST_INDEX" ] || { echo "frontend bundle is missing; run: make frontend" >&2; exit 1; }
+
+# The bundle is build output: `frontend/src` moves on, `dist/` does not, and a start script that served
+# the old one changed the meaning of "restart it and try again". Rebuild when the bundle is missing or
+# older than anything that goes into it — before serving, and before the gateway writes `dist/config.js`,
+# so the runtime address still lands in the file the browser reads first (docs/decisions.md #180).
+if [ ! -f "$DIST_INDEX" ] || [ -n "$(find "$ROOT/frontend/src" "$ROOT/frontend/public" "$ROOT/frontend/index.html" \
+  "$ROOT/frontend/vite.config.ts" "$ROOT/frontend/package.json" "$ROOT/frontend/package-lock.json" \
+  -newer "$DIST_INDEX" -print -quit 2>/dev/null)" ]; then
+  echo "→ building the canvas bundle (missing, or older than its sources)"
+  ( cd "$ROOT" && make frontend ) || { echo "canvas build failed" >&2; exit 1; }
+fi
 
 # The canvas's first paint. The gateway writes this file on every start and after every settings save,
 # with the address a browser should use plus the workspace preferences (docs/decisions.md #155), so the
