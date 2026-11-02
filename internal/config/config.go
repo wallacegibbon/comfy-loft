@@ -34,6 +34,10 @@ type Config struct {
 	WorkflowDir string
 	DataDir     string
 	OutputDir   string
+	// CanvasRoot is where the canvases live, one directory each. It is the workspace itself, so it
+	// is named by its own variable rather than nested under DATA_DIR: data/ is the gateway's
+	// bookkeeping (tasks, uploads), and a user who backs up their work backs up this.
+	CanvasRoot string
 
 	PublicBaseURL string
 	CorsOrigins   []string
@@ -111,6 +115,9 @@ func WithDataDir(dir string) Option { return func(c *Config) { c.DataDir = dir }
 // WithOutputDir overrides the output directory.
 func WithOutputDir(dir string) Option { return func(c *Config) { c.OutputDir = dir } }
 
+// WithCanvasRoot overrides the canvas root.
+func WithCanvasRoot(dir string) Option { return func(c *Config) { c.CanvasRoot = dir } }
+
 // WithoutScanOnStart disables the startup scan (tests).
 func WithoutScanOnStart() Option {
 	return func(c *Config) { c.ScanOnStart = false }
@@ -176,6 +183,7 @@ func Load(opts ...Option) (*Config, error) {
 	cfg.WorkflowDir = absOrJoin(root, os.Getenv("WORKFLOW_DIR"), "workflows")
 	cfg.DataDir = absOrJoin(root, os.Getenv("DATA_DIR"), "data")
 	cfg.OutputDir = absOrJoin(root, os.Getenv("OUTPUT_DIR"), filepath.Join("data", "outputs"))
+	cfg.CanvasRoot = absOrJoin(root, os.Getenv("CANVAS_ROOT"), "canvases")
 
 	for _, opt := range opts {
 		opt(cfg)
@@ -185,6 +193,7 @@ func Load(opts ...Option) (*Config, error) {
 	cfg.WorkflowDir = absPath(cfg.WorkflowDir)
 	cfg.DataDir = absPath(cfg.DataDir)
 	cfg.OutputDir = absPath(cfg.OutputDir)
+	cfg.CanvasRoot = absPath(cfg.CanvasRoot)
 	cfg.ComfyURL = strings.TrimRight(cfg.ComfyURL, "/")
 
 	if cfg.PublicBaseURL == "" {
@@ -200,7 +209,7 @@ func Load(opts ...Option) (*Config, error) {
 		return nil, fmt.Errorf("CORS_ORIGINS must not be a wildcard; list the canvas origins explicitly (a canvas served from the same host as the gateway is allowed automatically)")
 	}
 
-	for _, dir := range []string{cfg.WorkflowDir, cfg.DataDir, cfg.OutputDir} {
+	for _, dir := range []string{cfg.WorkflowDir, cfg.DataDir, cfg.OutputDir, cfg.CanvasRoot} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, fmt.Errorf("cannot create directory %s: %w", dir, err)
 		}

@@ -14,7 +14,7 @@ func isolateEnv(t *testing.T) {
 		"GATEWAY_PORT", "GATEWAY_HOST", "COMFY_URL",
 		"INSTALL_INTO_COMFY",
 		"SCAN_ON_START",
-		"WORKFLOW_DIR", "DATA_DIR", "OUTPUT_DIR", "PUBLIC_BASE_URL", "CORS_ORIGINS",
+		"WORKFLOW_DIR", "DATA_DIR", "OUTPUT_DIR", "CANVAS_ROOT", "PUBLIC_BASE_URL", "CORS_ORIGINS",
 		"REQUEST_TIMEOUT_MS", "VIDEO_TIMEOUT_MS", "POLL_INTERVAL_MS",
 		"COMFY_RETRY_ATTEMPTS", "COMFY_RETRY_DELAY_MS", "TASK_RETENTION_DAYS",
 		"MAX_STORED_TASKS", "CLEANUP_INTERVAL_MS",
@@ -53,7 +53,7 @@ func TestDefaults(t *testing.T) {
 	if cfg.VideoTimeoutMs != 0 {
 		t.Errorf("VideoTimeoutMs = %d, want 0", cfg.VideoTimeoutMs)
 	}
-	for _, dir := range []string{cfg.WorkflowDir, cfg.DataDir, cfg.OutputDir} {
+	for _, dir := range []string{cfg.WorkflowDir, cfg.DataDir, cfg.OutputDir, cfg.CanvasRoot} {
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			t.Errorf("directory %q was not created", dir)
 		}
@@ -220,5 +220,39 @@ func TestIsLoopbackHost(t *testing.T) {
 		if IsLoopbackHost(host) {
 			t.Errorf("IsLoopbackHost(%q) = true", host)
 		}
+	}
+}
+
+// The canvas root is the workspace itself, so it is its own variable with its own default: DATA_DIR
+// is the gateway's bookkeeping, and moving it must not move somebody's canvases with it.
+func TestCanvasRootHasItsOwnDefaultAndItsOwnVariable(t *testing.T) {
+	isolateEnv(t)
+	root := t.TempDir()
+	t.Setenv("GATEWAY_ROOT", root)
+	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
+	t.Setenv("OUTPUT_DIR", filepath.Join(root, "data", "outputs"))
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if want := filepath.Join(root, "canvases"); cfg.CanvasRoot != want {
+		t.Errorf("CanvasRoot = %q, want %q", cfg.CanvasRoot, want)
+	}
+
+	elsewhere := filepath.Join(root, "somewhere-else")
+	t.Setenv("CANVAS_ROOT", elsewhere)
+	moved, err := Load()
+	if err != nil {
+		t.Fatalf("Load with CANVAS_ROOT: %v", err)
+	}
+	if moved.CanvasRoot != elsewhere {
+		t.Errorf("CanvasRoot = %q, want %q", moved.CanvasRoot, elsewhere)
+	}
+	if info, err := os.Stat(elsewhere); err != nil || !info.IsDir() {
+		t.Errorf("CANVAS_ROOT was not created: %v", err)
+	}
+	if moved.DataDir != cfg.DataDir {
+		t.Errorf("moving the canvases moved DATA_DIR to %q", moved.DataDir)
 	}
 }

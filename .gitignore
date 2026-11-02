@@ -5,6 +5,7 @@ node_modules/
 # local runtime state
 /bin/
 /data/
+/canvases/
 *.log
 *.tsbuildinfo
 

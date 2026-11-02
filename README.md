@@ -42,6 +42,7 @@ the canvas frontend is a self-contained subtree beside it (see Credits):
 ├── resources.json     # what has to be installed: models, node packs, runtime deps
 ├── prompts/           # prompt skill files
 ├── data/              # runtime state: tasks.json, resource-lock.json, outputs/ (not tracked)
+├── canvases/          # the workspace: one directory per canvas (not tracked)
 ├── bin/               # build output (not tracked)
 ├── canvas/            # the canvas frontend (from the upstream project, since reworked)
 ├── docs/              # gateway API and env vars, the run protocol, prompt optimization, runtime deps

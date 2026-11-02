@@ -79,6 +79,7 @@ Every variable is optional; the defaults match the previous implementation.
 | `WORKFLOW_DIR`       | `<root>/workflows`                 | Registry directory.                                                                                                                                                |
 | `DATA_DIR`           | `<root>/data`                      | Tasks, locks, preferences.                                                                                                                                         |
 | `OUTPUT_DIR`         | `<data>/outputs`                   | Generated files served under `/files/`.                                                                                                                            |
+| `CANVAS_ROOT`        | `<root>/canvases`                  | The canvases, one directory each. This is the workspace: back it up and you have the work.                                                                          |
 | `PUBLIC_BASE_URL`    | `http://GATEWAY_HOST:GATEWAY_PORT` | Absolute prefix for the URLs the gateway returns (run outputs, previews). Set it when a proxy publishes the gateway under another address. |
 | `CORS_ORIGINS`       | canvas + ComfyUI origins           | Extra allow list for canvases on another host. A canvas on the gateway's own host is allowed by rule. `*` is refused.                                              |
 
@@ -301,6 +302,34 @@ Metadata and management:
 | `GET`  | `/api/loras`             | The LoRA files ComfyUI reports, filtered by `?q=`. |
 | `POST` | `/api/system/free-memory` | Ask ComfyUI to free VRAM, then report what that freed. `503` when ComfyUI is unreachable. |
 | `GET`  | `/files/{name}`          | A file from `data/outputs` by name — the export path, not a generation one. |
+
+Workspace:
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| `GET` | `/api/canvases` | Every canvas, newest first: id, title, timestamps, `rev`, document size. |
+| `POST` | `/api/canvases` | Create one. `{title, document}`; the document may be omitted and is then `{}`. |
+| `GET` | `/api/canvases/{id}` | One canvas and its document. |
+| `PUT` | `/api/canvases/{id}` | Save the document. `{document, title?}`; `If-Match: <rev>` refuses a stale write with `409`. |
+| `DELETE` | `/api/canvases/{id}` | Delete it, and everything under it. |
+
+A canvas is a directory, not a row:
+
+```
+<CANVAS_ROOT>/<id>/canvas.meta.json   id, title, createdAt, updatedAt, rev — what the list needs
+<CANVAS_ROOT>/<id>/canvas.json        the document
+<CANVAS_ROOT>/<id>/files/             the media its nodes point at
+```
+
+The id is the directory name and is never derived from the title, so renaming a canvas never moves a
+directory. The gateway does **not** parse `canvas.json`: it checks that it is a JSON object under
+16 MiB and otherwise stores the bytes. What a node is, is the canvas's business — a gateway that
+understood nodes would have to be rebuilt every time one was added.
+
+Two rules make the directory safe to write on every keystroke. Every write goes through a temporary
+file in the same directory and is renamed into place, so a reader never sees half a document. Every
+write also bumps `rev`, and a save whose `If-Match` names an older one is refused with `409` and the
+current summary in `details.current` — the browser is a cache now, and a cache that races must lose.
 
 A run carries its own `preview` (`{url, mime}` with a timestamp) and its own `progress` in the
 payload, so a client polling a run needs no second endpoint for either — there is no `/api/previews`

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"comfyloft/internal/agent"
+	"comfyloft/internal/canvas"
 	"comfyloft/internal/comfy"
 	"comfyloft/internal/config"
 	"comfyloft/internal/generate"
@@ -41,6 +42,9 @@ type Server struct {
 	registry   *workflow.Registry
 	tasks      *task.Store
 	uploads    *upload.Store
+	// canvases is the workspace: one directory per canvas, owned by the gateway and backed up by
+	// copying it. Nothing else in the gateway knows what a node is, and this is the reason.
+	canvases *canvas.Store
 	// agentSessions holds the agents a socket started, one per client-chosen name.
 	agentSessions *agent.Sessions
 	setup         *setup.Manager
@@ -61,6 +65,7 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 	// again, so startup is the one moment it can be swept safely.
 	util.SweepTempFiles(cfg.DataDir)
 	util.SweepTempFiles(cfg.OutputDir)
+	util.SweepTempFiles(cfg.CanvasRoot)
 
 	comfyClient, err := comfy.New(comfy.Options{
 		BaseURL:       cfg.ComfyURL,
@@ -109,6 +114,11 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 	}
 	uploads.Load()
 
+	canvases, err := canvas.New(cfg.CanvasRoot)
+	if err != nil {
+		return nil, err
+	}
+
 	skins := store.NewSkins(cfg.DataDir, logger)
 	skins.Load()
 	visibility := store.NewVisibility(cfg.DataDir, logger)
@@ -146,6 +156,7 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 		registry:      registry,
 		tasks:         tasks,
 		uploads:       uploads,
+		canvases:      canvases,
 		setup:         setupManager,
 		resources:     resources,
 		agentSessions: agent.NewSessions(logger),

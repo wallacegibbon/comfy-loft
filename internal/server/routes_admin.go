@@ -18,6 +18,7 @@ import (
 func (s *Server) routes(mux *http.ServeMux) {
 	s.routesGeneration(mux)
 	s.routesRuns(mux)
+	s.routesCanvas(mux)
 	s.routesAdmin(mux)
 	// The agent's MCP endpoint is NOT here: it lives on a second, loopback-only listener so a tool that
 	// creates nodes and starts generations is not reachable from whatever address GATEWAY_HOST names.
