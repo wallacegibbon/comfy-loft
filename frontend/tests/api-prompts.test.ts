@@ -115,8 +115,21 @@ describe("requestPromptChat", () => {
 
         expect(socket.lastSent().images).toEqual(["data:image/png;base64,AAAA"]);
 
+        socket.emit({ type: "delta", text: "a teapot" });
         socket.emit({ type: "done" });
         await pending;
+    });
+
+    // The agent closes its session when it gives up, and that close used to arrive as a silent success:
+    // the node was written with the empty string and looked as though nothing had been asked (#160).
+    it("treats a turn that ends without a word as a failure", async () => {
+        await connectedSession("node:empty");
+
+        const pending = requestPromptChat("node:empty", config(), { prompt: "say nothing" });
+        await settle();
+        FakeSocket.last.emit({ type: "done" });
+
+        await expect(pending).rejects.toThrow();
     });
 
     it("reports the answer as it arrives", async () => {

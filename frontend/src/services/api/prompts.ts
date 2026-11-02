@@ -1,3 +1,4 @@
+import i18n from "@/i18n";
 import { askOnceAgentSession, openAgentSession, type AgentEvent } from "@/services/api/agent";
 import type { AiConfig } from "@/stores/use-config-store";
 import type { ReferenceImage } from "@/types/image";
@@ -31,5 +32,10 @@ export async function requestPromptChat(session: string, config: AiConfig, param
             },
         },
     );
-    return answer || streamed;
+    const text = (answer || streamed).trim();
+    // A turn that ends without a word is a failure, not an answer: writing the empty string into the node
+    // made it look as though nothing had happened at all (#160). The agent closes its session when it
+    // gives up, and that close is what used to arrive here as a silent success.
+    if (!text) throw new Error(i18n.t("canvas.runtime.agentEmptyAnswer"));
+    return text;
 }

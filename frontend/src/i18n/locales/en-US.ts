@@ -603,6 +603,7 @@ export default {
             generate: "Generate",
         },
         runtime: {
+            agentEmptyAnswer: "The agent returned nothing. Try again, or pick another model.",
             stopTitle: "Stop generation?",
             stopDescription: "The current request will be interrupted. Completed results will be kept.",
             stop: "Stop",

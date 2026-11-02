@@ -136,16 +136,11 @@ func (s *Server) handleAgentSocket(ctx *httpx.Ctx) error {
 		return nil
 	}
 	session := connected.Session
-	if !session.Watch(send) {
-		// A second tab on the same canvas: the agent is already being read, and two readers would split
-		// every answer between them.
-		_ = send(agent.Event{Type: "error", Message: "这个画布在另一个连接里已经打开了"})
-		if s.logger != nil {
-			s.logger.Warn("agent: socket %q refused, already watched", id)
-		}
-		return nil
-	}
-	defer session.Unwatch()
+	// The newest connection reads the session, and the one it replaces is told so (#160). Refusing the
+	// new one meant a second tab — or a socket somebody forgot to close — left every later question
+	// unanswered, with only `closed` in the log to show for it.
+	stopWatching := session.Watch(send)
+	defer stopWatching()
 	if s.logger != nil {
 		s.logger.Info("agent: socket open session=%s spawned=%t", session.ID, connected.Spawned)
 	}

@@ -41,6 +41,9 @@ type Session struct {
 	// inside a blocking read nobody can interrupt.
 	mu   sync.Mutex
 	sink func(Event) error
+	// watchGeneration counts watch handovers, so a connection replaced by a newer one cannot clear the
+	// sink on its way out.
+	watchGeneration uint64
 
 	// pending is the tool calls waiting for the canvas to answer them, by the id the gateway gave them,
 	// and calls counts the ones asked so far. A tool call is a question only the page can answer, so it
@@ -171,14 +174,32 @@ func (s *Sessions) Close(id, reason string) {
 // Watch attaches the one connection that draws what this agent says, and reports whether it got the
 // seat. One conversation has one set of eyes: two watchers would each half-produce the same answer, and
 // the events carry no addressee to tell them apart.
-func (s *Session) Watch(sink func(Event) error) bool {
+// Watch makes this connection the session's reader, replacing whoever had it.
+//
+// The newest connection wins, and the one it replaces is told: the alternative — refusing the new one —
+// is what a second tab on the same canvas used to hit, and the tab that gets refused is the one the
+// person is looking at. Deltas are still never split: exactly one sink receives them, and the old one
+// hears `closed` and can reconnect.
+func (s *Session) Watch(sink func(Event) error) func() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.sink != nil {
-		return false
-	}
+	previous := s.sink
+	s.watchGeneration++
+	generation := s.watchGeneration
 	s.sink = sink
-	return true
+	s.mu.Unlock()
+	if previous != nil {
+		_ = previous(Event{Type: "closed"})
+	}
+	return func() {
+		s.mu.Lock()
+		// Only the current watcher may clear the sink: a replaced connection closing late must not
+		// silence the one that took over.
+		still := s.watchGeneration == generation
+		s.mu.Unlock()
+		if still {
+			s.Unwatch()
+		}
+	}
 }
 
 // snapshotEvent is the startup broadcast of a live session, read under its own lock.

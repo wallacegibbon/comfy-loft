@@ -608,6 +608,7 @@ export default {
             generate: "开始生成",
         },
         runtime: {
+            agentEmptyAnswer: "agent 没有返回内容。可以再试一次，或换一个模型。",
             stopTitle: "停止生成？",
             stopDescription: "当前生成请求会被中断，已经生成完成的内容会保留。",
             stop: "停止",

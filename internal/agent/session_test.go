@@ -105,9 +105,11 @@ func openFakeSession(t *testing.T) fakeSession {
 	}
 
 	watcher := &recorder{}
-	if !connected.Session.Watch(watcher.sink) {
-		t.Fatal("the session refused its first watcher")
+	stopWatching := connected.Session.Watch(watcher.sink)
+	if stopWatching == nil {
+		t.Fatal("Watch returned nothing to stop it with")
 	}
+	t.Cleanup(stopWatching)
 	return fakeSession{sessions: sessions, session: connected.Session, watcher: watcher, log: log}
 }
 
@@ -211,9 +213,11 @@ func TestSessionWithoutAWatcherDropsTheEvents(t *testing.T) {
 		t.Fatalf("connect: %v", err)
 	}
 	watcher := &recorder{}
-	if !connected.Session.Watch(watcher.sink) {
-		t.Fatal("the session refused its first watcher")
+	stopWatching := connected.Session.Watch(watcher.sink)
+	if stopWatching == nil {
+		t.Fatal("Watch returned nothing to stop it with")
 	}
+	t.Cleanup(stopWatching)
 	connected.Session.Unwatch()
 
 	if err := connected.Session.Send(Request{Prompt: "hi"}); err != nil {

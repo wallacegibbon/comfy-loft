@@ -232,9 +232,10 @@ func TestSocketAnswersAgainOnTheSameConnection(t *testing.T) {
 	}
 }
 
-// TestSocketIsOnePerCanvas: a second connection to the same name is refused with a message, because two
-// readers would take half the frames each.
-func TestSocketIsOnePerCanvas(t *testing.T) {
+// TestTheNewestSocketTakesTheSessionOver: two connections to one name, and the agent's words go to the
+// one that opened last — the tab the person is looking at. The first is told it lost the session instead
+// of being left to wait for answers that will never arrive (#160).
+func TestTheNewestSocketTakesTheSessionOver(t *testing.T) {
 	gateway, _ := startAgentGateway(t)
 	first := openSocket(t, gateway, "canvas-1")
 
@@ -245,15 +246,21 @@ func TestSocketIsOnePerCanvas(t *testing.T) {
 	}
 	defer second.Close()
 
-	event := nextEvent(t, second)
-	if event["type"] != "error" {
-		t.Fatalf("second socket got %v, want a refusal", event)
+	// The new connection gets the startup broadcast, not a refusal.
+	if event := nextEvent(t, second); event["type"] != "models" {
+		t.Fatalf("second socket got %v, want the model list", event)
 	}
 
-	// The first connection is unaffected: it is still the one being answered.
-	send(t, first, map[string]any{"prompt": "hi"})
-	if seen := until(t, first, "done"); textOf(seen) != "hello world" {
-		t.Fatalf("first connection stopped working: %v", seen)
+	// And it is the one the agent answers.
+	send(t, second, map[string]any{"prompt": "hi"})
+	if seen := until(t, second, "done"); textOf(seen) != "hello world" {
+		t.Fatalf("second connection did not get the answer: %v", seen)
+	}
+
+	// The first connection heard that it was replaced.
+	replaced := nextEvent(t, first)
+	if replaced["type"] != "closed" {
+		t.Fatalf("the replaced socket got %v, want closed", replaced)
 	}
 }
 

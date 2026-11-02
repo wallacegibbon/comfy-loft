@@ -5559,3 +5559,46 @@ bundle" in its help text, because that is what it builds.
 **Tested** `make frontend` (a fresh build into `frontend/dist`), `make frontend-check`, `npm run check`,
 127 canvas tests, `make check`, `make verify-static`, and `./start.sh`: the page, `config.js` and the API
 all answer, and the canvas loads in the browser with nothing in the console.
+
+## 160. The newest connection reads the agent, and an empty turn is a failure
+
+**Decision** `Session.Watch` hands the session to the newest connection and tells the one it replaced
+(`closed`), instead of refusing the newcomer. And a prompt turn that ends without a single word is an
+error, not an empty answer.
+
+**The report** A text node's agent wrote nothing at all, and the log showed `state closed`.
+
+**What was actually happening** The agent was fine: the same prompt over the same socket streams
+reasoning, then deltas, then `done`. The failure was in who is allowed to read a session. `Watch`
+accepted one sink and refused every later one with "这个画布在另一个连接里已经打开了" — so a second tab
+on the same canvas (and there were seven open while this was investigated) got an `error` instead of the
+model list, the ask rejected, and `askOnceAgentSession`'s `finally` closed a session it had never been
+able to use. That close is the `state closed` in the log, which is *normal* for a node's one-shot ask:
+connect, ask once, close.
+
+**Why the refusal was wrong** The rule exists so deltas are never split between two readers, and that
+part stays: exactly one sink receives them. But refusing the *newest* connection protects a socket
+nobody is looking at, and the tab it strands is the one in front of the person. Now the new connection
+takes over, and the old one hears `closed` — which is also true, so it can reconnect and say so.
+
+A handover cannot be undone by a late close: `Watch` returns a stop function, and only the watcher that
+still owns the session may clear it (a generation counter, since a func value cannot be compared).
+
+**Why an empty turn had to become visible** When a turn ended with nothing — which is what a closed
+session looks like from the other side — the node was written with the empty string and marked
+successful, so the canvas showed a blank text node and no reason. `requestPromptChat` now throws
+instead, and the node's own error path (a toast and `NODE_STATUS_ERROR`) says what happened.
+
+**Tested** The gateway's old `TestSocketIsOnePerCanvas` (which asserted the refusal) is replaced by
+`TestTheNewestSocketTakesTheSessionOver`: the second connection gets the model list, receives the
+answer, and the first one is told `closed`. `requestPromptChat` gained a test for the empty turn. Then
+`make check`, 128 canvas tests, `npm run check`, `make frontend`.
+
+**In the browser and over the socket** With the real agent: a second socket on one session name is
+accepted, the first is told `closed`, and the second received 942 text events and `done` for the same
+prompt that had produced nothing.
+
+**Where** `internal/agent/sessions.go`, `internal/server/routes_agent.go`,
+`internal/server/agent_e2e_test.go`, `internal/agent/session_test.go`,
+`frontend/src/services/api/prompts.ts`, `frontend/src/i18n/locales/*`,
+`frontend/tests/api-prompts.test.ts`.
