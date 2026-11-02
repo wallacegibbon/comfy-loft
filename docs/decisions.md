@@ -7096,6 +7096,14 @@ sees the old list or the new one, never half of either, and an interrupted write
 key truncated. The gateway never writes that file. The one config file it does write, `mcp.conf`, is installed
 the same way (`agent_config.go`: temp file in the same directory, then a rename).
 
+**Why the log redactor learned a second spelling** Because this is the first change that puts a *complete*
+model list — keys included, since the gateway has just put them back — into a frame the gateway itself writes.
+`redactKeys` matched `"api_key":"…"`, the spelling of a field in a frame; `:model_sync`'s argument is the list
+as a JSON **string**, so its keys are escaped (`\"api_key\":\"…\"`) and went into the transcript in cleartext.
+Found by pointing the transcript at a canary key and grepping it, which is now what
+`TestRedactKeysReachesInsideAnArgument` does in miniature. The frontend was never involved: that frame goes the
+other way, towards AlayaCore.
+
 **Why a dialog rather than five inputs under the list** The first shape put them inline, and the verdict was
 immediate and correct: a model is a small document, and five labelled fields wrapped into a row of inputs nobody
 read. The list stays a list; the form appears when there is a form to fill.
@@ -7119,6 +7127,16 @@ retyping only the second model's key changed only that key; deleting the middle 
 and reasoning intact. The canvas agent panel's picker offered the model added a moment earlier without a reload.
 Atomicity measured, not assumed: `stat -c %i` reported a different inode after an edit (38282622 → 38283412) —
 a rename rather than a truncate — and no `.tmp-*` file was left in the config directory.
+
+And a canary run for what must never travel: a `model.conf` whose two keys are `sk-CANARY-…` strings that exist
+nowhere else, a real AlayaCore, and a socket client that captured every frame while it set a model, edited the
+list without a key, added a model with one, and sent a prompt — 8 frames, 1175 bytes, **no canary in any of
+them**. A model entry as the canvas receives it is
+`{"id":1,"name":"…","protocolType":"openai","baseUrl":"http://…","modelName":"…","contextLimit":262144,"hasKey":true}`.
+Every HTTP route the page can reach (`/health`, `/api/settings`, `/api/workflows`, `/api/canvases`, `/api/runs`,
+`/api/loras`, `/api/resources/status`, `/api/resources/replacement`, `/api/system/stats`, `/system_stats`) was
+fetched and searched: no canary. The gateway's own log has none either, after the redactor fix above. The two
+canaries *are* in `model.conf` on disk, which is where a key belongs.
 
 **Where** `internal/agent/{events.go,models.go,run.go,models_test.go}`, `internal/server/routes_agent.go`,
 `internal/server/agent_e2e_test.go`, `frontend/src/components/settings/{agent-models-section.tsx,agent-model-dialog.tsx,preferences-dialog.tsx}`,
