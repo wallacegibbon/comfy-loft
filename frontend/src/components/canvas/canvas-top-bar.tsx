@@ -98,12 +98,11 @@ export function CanvasTopBar({
                     <TopBarButton label={t("canvas.projects")} onClick={() => openManager(true)}>
                         <LayoutGrid className="size-4" />
                     </TopBarButton>
-                    {/* The name is the right end of the bar, so its divider and its text share the column's
-                        right edge with the panel and the dock below (#191). `ml-auto` does the pushing; the
-                        title has no `flex-1` for that reason, and shrinks instead of pushing the buttons. */}
-                    <span className="mx-0.5 ml-auto h-6 w-px shrink-0" style={{ background: theme.toolbar.border }} />
-
-                    <div ref={titleRef} className="flex min-w-0 items-center gap-2">
+                    {/* The name is the right end of the bar, sharing the column's right edge with the panel and the
+                        dock below (#191). `ml-auto` does the pushing; the title has no `flex-1` for that reason,
+                        and shrinks instead of pushing the buttons. No divider in front of it: it used to separate
+                        the name from the icons it sat against, and now there is nothing between them to split. */}
+                    <div ref={titleRef} className="ml-auto flex min-w-0 items-center gap-2">
                         {isTitleEditing ? (
                             <input
                                 autoFocus

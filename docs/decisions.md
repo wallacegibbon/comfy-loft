@@ -6596,10 +6596,12 @@ the same frame, no close button, and the skip footer with the new hint.
 **Decision** The bar at the top left, the side panel and the zoom dock are one column — same width, same
 left edge, same radius, same shadow — and they are *stacked*: the bar on top, the panel under it, the dock
 at its foot. The panel's bottom edge *is* the dock's height plus the two gaps (`CANVAS_ABOVE_DOCK_BOTTOM`),
-so opening the panel shortens the panel and moves nothing else. The canvas name and its divider sit at the
-right end of the bar (`ml-auto`), so the column has one left edge *and* one right edge — and the name hovers
-the way its neighbours do, a background rather than the dashed underline it used to draw: one bar should not
-say "clickable" in two ways, least of all the uglier one.
+so opening the panel shortens the panel and moves nothing else. The canvas name sits at the right end of the
+bar (`ml-auto`), so the column has one left edge *and* one right edge — and the name hovers the way its
+neighbours do, a background rather than the dashed underline it used to draw: one bar should not say
+"clickable" in two ways, least of all the uglier one. The divider that used to stand in front of the name is
+gone with the move: it separated the name from the icons it sat against, and at the far end there is nothing
+to separate.
 
 The width is the panel's `width` in `use-canvas-side-panel-store` (280 to start, 220–480), so the drag
 handle on its right edge resizes the whole column. `useCanvasChromeWidth()` hands it over as a CSS length,
