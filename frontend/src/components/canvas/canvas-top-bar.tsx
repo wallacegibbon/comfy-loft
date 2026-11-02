@@ -12,7 +12,6 @@ import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { byUpdatedAtDesc } from "@/lib/canvas/last-canvas";
 import { CANVAS_TOP_BAR_ROW, useCanvasChromeWidth } from "@/stores/canvas/use-canvas-side-panel-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
-import { useCanvasPanelStore } from "@/stores/canvas/use-canvas-panel-store";
 import { useCanvasSidePanelStore } from "@/stores/canvas/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -69,8 +68,9 @@ export function CanvasTopBar({
     const sidePanelOpen = useCanvasSidePanelStore((state) => state.panelOpen);
     const toggleSidePanel = useCanvasSidePanelStore((state) => state.togglePanel);
     const canvases = useCanvasStore((state) => state.canvases);
-    // The canvas list is a panel over the canvas, not a route.
-    const openManager = useCanvasPanelStore((state) => state.setCanvasManagerOpen);
+    // The canvas list is the column's other section: this button opens the column on it, which is what the
+    // window it used to open answered in one click (#195).
+    const openCanvases = useCanvasSidePanelStore((state) => state.openSection);
     // Current canvas first, the rest most-recent-first: switching is a "where am I" question,
     // so the answer you are most likely looking for should not be buried.
     const orderedProjects = useMemo(() => {
@@ -95,7 +95,7 @@ export function CanvasTopBar({
                     <TopBarButton label={sidePanelOpen ? t("canvas.collapsePanel") : t("canvas.expandPanel")} onClick={toggleSidePanel}>
                         {sidePanelOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
                     </TopBarButton>
-                    <TopBarButton label={t("canvas.projects")} onClick={() => openManager(true)}>
+                    <TopBarButton label={t("canvas.projects")} onClick={() => openCanvases("canvases")}>
                         <LayoutGrid className="size-4" />
                     </TopBarButton>
                     {/* The name is the right end of the bar, sharing the column's right edge with the panel and the

@@ -34,7 +34,6 @@ import { ActiveConnectionPath, ConnectionPath } from "@/components/canvas/canvas
 import { CanvasConflictDialog } from "@/components/canvas/canvas-conflict-dialog";
 import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
 import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
-import { CanvasManagerDialog } from "@/components/canvas/canvas-manager-dialog";
 import { CanvasNodeContextMenu } from "@/components/canvas/canvas-context-menu";
 
 // The angle dialog drags in three.js (~136 kB gzip) for one control panel that most sessions
@@ -2270,7 +2269,7 @@ function InfiniteCanvasPage() {
     return (
         <main className="flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.background, color: theme.node.text }}>
             <section className="relative min-w-0 flex-1 overflow-hidden">
-                <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onHoverNode={handleSidebarHoverNode} />
+                <CanvasSidePanel projectId={projectId} nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onHoverNode={handleSidebarHoverNode} />
                 {agentOpen ? null : (
                     <button
                         type="button"
@@ -2285,7 +2284,6 @@ function InfiniteCanvasPage() {
                 )}
                 <CanvasAgentPanel canvasId={projectId} nodes={nodes} onFocusNode={focusNode} onPickNode={pickNodeForAgent} />
                 <CanvasConflictDialog projectId={projectId} />
-                <CanvasManagerDialog />
                 <CanvasTopBar
                     projectId={projectId}
                     title={currentProject?.title || t("canvas.runtime.untitledCanvas")}

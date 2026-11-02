@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 import { readSetting, writeSetting } from "@/stores/use-settings-store";
 
-export const CANVAS_SIDE_PANEL_MOTION_MS = 500;
+export const CANVAS_SIDE_PANEL_MOTION_MS = 240;
 export const CANVAS_SIDE_PANEL_MIN_WIDTH = 220;
 export const CANVAS_SIDE_PANEL_MAX_WIDTH = 480;
 const CANVAS_SIDE_PANEL_DEFAULT_WIDTH = 280;
@@ -23,6 +23,16 @@ export const CANVAS_TOP_BAR_ROW = 64;
 /** The bottom offset of anything that floats above the dock: the dock itself, the gutter under it, one gap. */
 export const CANVAS_ABOVE_DOCK_BOTTOM = CANVAS_CHROME_GUTTER + CANVAS_ZOOM_DOCK_HEIGHT + CANVAS_CHROME_GAP;
 /**
+ * The height of the column's middle box, from the bar's row down to the dock's offset.
+ *
+ * The panel opens by growing to this height from its top edge and closes by giving it back (#195), so the
+ * number is needed in two places that cannot read it off each other: the box that animates, and the content
+ * inside it, which stays at its full height and is clipped instead of squashed. It is in `dvh` because the
+ * app's layout is one full-window column (`layouts/user-layout.tsx`) — there is no chrome above the canvas
+ * and none below it, so the window *is* the section's height.
+ */
+export const CANVAS_COLUMN_HEIGHT = `calc(100dvh - ${CANVAS_TOP_BAR_ROW + CANVAS_ABOVE_DOCK_BOTTOM}px)`;
+/**
  * What the bar at the right end of the row needs, gutter and gap included, so the column can stop before
  * it. Measured from the default contents (the system readout and five buttons); a little slack either way
  * is harmless — the bar has no width of its own and gives way first.
@@ -32,8 +42,20 @@ const CANVAS_RIGHT_BAR_RESERVE = 300;
 const WIDTH_KEY = "canvas-side-panel-width";
 const OPEN_KEY = "canvas-side-panel-open";
 const NODE_VIEW_KEY = "canvas-side-panel-node-view";
+const SECTION_KEY = "canvas-side-panel-section";
 
 type CanvasNodeViewMode = "list" | "grid";
+
+/**
+ * Which of the column's two lists is on screen: the canvases in the workspace, or the nodes in this one.
+ *
+ * One column, two sections, one at a time. They are lists of the same species — a name, a picture, a
+ * click that takes you there — but they answer different questions ("which canvas?" and "which node?"),
+ * and the column is 220–480px wide: stacked, each would get half a column and the elements list would lose
+ * the room its hover preview needs (#195). The section is remembered, so the column comes back the way it
+ * was left, and `openSection` is how a button outside the column asks for one of them.
+ */
+export type CanvasPanelSection = "canvases" | "elements";
 
 function initialWidth() {
     const stored = Number(readSetting(WIDTH_KEY, 0));
@@ -50,20 +72,30 @@ function initialNodeView(): CanvasNodeViewMode {
     return readSetting<CanvasNodeViewMode>(NODE_VIEW_KEY, "list") === "grid" ? "grid" : "list";
 }
 
+/** The elements first: the canvas is what you came for, and its list is the surface you work in. */
+function initialSection(): CanvasPanelSection {
+    return readSetting<CanvasPanelSection>(SECTION_KEY, "elements") === "canvases" ? "canvases" : "elements";
+}
+
 type CanvasSidePanelStore = {
     width: number;
     panelOpen: boolean;
+    section: CanvasPanelSection;
     nodeViewMode: CanvasNodeViewMode;
     setWidth: (width: number) => void;
     /** Write the current width to storage. Called when a drag ends, not on every pixel. */
     commitWidth: () => void;
     setNodeViewMode: (mode: CanvasNodeViewMode) => void;
     togglePanel: () => void;
+    setSection: (section: CanvasPanelSection) => void;
+    /** Show one section, opening the column if it was shut — one click from a button outside it. */
+    openSection: (section: CanvasPanelSection) => void;
 };
 
 export const useCanvasSidePanelStore = create<CanvasSidePanelStore>((set, get) => ({
     width: initialWidth(),
     panelOpen: initialOpen(),
+    section: initialSection(),
     nodeViewMode: initialNodeView(),
     setWidth: (width) => set({ width }),
     commitWidth: () => writeSetting(WIDTH_KEY, get().width),
@@ -75,6 +107,15 @@ export const useCanvasSidePanelStore = create<CanvasSidePanelStore>((set, get) =
         const open = !get().panelOpen;
         writeSetting(OPEN_KEY, open);
         set({ panelOpen: open });
+    },
+    setSection: (section) => {
+        writeSetting(SECTION_KEY, section);
+        set({ section });
+    },
+    openSection: (section) => {
+        writeSetting(SECTION_KEY, section);
+        writeSetting(OPEN_KEY, true);
+        set({ section, panelOpen: true });
     },
 }));
 

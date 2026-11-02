@@ -60,7 +60,16 @@ const en = loadLocale("en-US.ts");
 // Keys reached through `t(item.labelKey)`, where the value comes from a table in the same file. Listed one
 // by one because the tool cannot resolve them: a new `t(variable)` has to be added here, or the keys behind
 // that branch are reported as dead.
-const HAND_RESOLVED = ["canvas.mossLayout.kindObject", "canvas.mossLayout.kindCharacter", "canvas.mossLayout.kindText", "canvas.outpaint.original", "config.preferences.defaultImageModel", "config.preferences.defaultVideoModel"];
+const HAND_RESOLVED = [
+    "canvas.mossLayout.kindObject",
+    "canvas.mossLayout.kindCharacter",
+    "canvas.mossLayout.kindText",
+    "canvas.outpaint.original",
+    "config.preferences.defaultImageModel",
+    "config.preferences.defaultVideoModel",
+    "canvas.sidePanel.tab.canvases",
+    "canvas.sidePanel.tab.elements",
+];
 
 // Namespaces reached by string concatenation, declared one by one. Two forms:
 //   values: [...]  the suffix can only be one of these (node modes, positions…), and only they count as
