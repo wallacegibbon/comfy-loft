@@ -143,13 +143,22 @@ export function CanvasNodePromptPanel({
         onConfigChange(node.id, { ...(nextModel ? { model: nextModel } : {}), videoMode: value, ...(value === "frames" ? { frameMode } : {}) });
     };
 
-    // Restore prompts only when switching nodes; preserve the current input after generation on the same node.
+    // The words this panel shows are the node's — `composerContent` once it holds a result, `prompt` before
+    // that — which is the field the agent's `set_prompt` writes too.
+    const storedPrompt = node.metadata?.composerContent ?? node.metadata?.prompt ?? "";
+
+    // Follow the store, and only the store. A generation leaves the words alone, so nothing here is clobbered
+    // by pressing generate; an agent's `set_prompt` is a different writer, and before this the textarea kept
+    // showing what it had when the node was opened until the panel was collapsed and opened again. What the
+    // user is typing wins: a box with the caret in it is not the store's to rewrite, and their next keystroke
+    // reaches the store anyway.
     useEffect(() => {
-        const initial = node.metadata?.composerContent ?? node.metadata?.prompt ?? "";
-        setPrompt(initial);
-        setDraft(initial);
+        if (storedPrompt === promptRef.current) return;
+        if (document.activeElement === textareaRef.current) return;
+        setPrompt(storedPrompt);
+        setDraft(storedPrompt);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [node.id]);
+    }, [node.id, storedPrompt]);
 
     const commitPrompt = (value = textareaRef.current?.value ?? draft) => {
         if (value === promptRef.current) return;
@@ -496,7 +505,7 @@ export function CanvasNodePromptPanel({
                                 placement="topLeft"
                                 hasReferences={imageReferences.length > 0}
                                 buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3"
-                                onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
+                                onConfigChange={(key, value) => onConfigChange(node.id, { [key]: value })}
                                 onParamsChange={(params) => onConfigChange(node.id, { params: { ...node.metadata?.params, ...params } })}
                                 onMissingConfig={() => openConfigDialog(true)}
                                 onOpenChange={onImageSettingsOpenChange}
@@ -740,7 +749,6 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         audioFormat: node.metadata?.audioFormat || globalConfig.audioFormat || defaultConfig.audioFormat,
         audioSpeed: node.metadata?.audioSpeed || globalConfig.audioSpeed || defaultConfig.audioSpeed,
         audioInstructions: node.metadata?.audioInstructions || globalConfig.audioInstructions || defaultConfig.audioInstructions,
-        count: String(node.metadata?.count || (mode === "image" ? globalConfig.canvasImageCount || globalConfig.count : globalConfig.count) || defaultConfig.count),
         seed: node.metadata?.seed || globalConfig.seed || "",
         seedFixed: node.metadata?.seedFixed ?? globalConfig.seedFixed ?? "false",
         params: node.metadata?.params || globalConfig.params,
