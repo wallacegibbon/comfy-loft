@@ -77,3 +77,31 @@ export async function uploadCanvasFile(canvasId: string, blob: Blob, filename: s
         bytes: typeof upload.bytes === "number" ? upload.bytes : blob.size,
     };
 }
+
+/**
+ * Put bytes at a name the document already uses.
+ *
+ * This is the import path, and the only caller. Importing an exported canvas means restoring files whose
+ * names the document contains (`files/<name>`), so the name has to survive the trip — the upload route
+ * names files itself, and using it here would mean rewriting every reference in the document afterwards
+ * (decisions #171). The gateway refuses a name that is taken: a file's URL is its own ETag.
+ */
+export async function writeCanvasFile(canvasId: string, name: string, blob: Blob, signal?: AbortSignal): Promise<UploadedCanvasFile> {
+    if (!canvasId) throw new Error("no canvas is open");
+    const payload = await httpJson<{ file?: { name?: string; mime?: string; bytes?: number } }>(`${LOCAL_GATEWAY_BASE_URL}/api/canvases/${encodeURIComponent(canvasId)}/files/${encodeURIComponent(name)}`, {
+        method: "PUT",
+        headers: { "Content-Type": blob.type || "application/octet-stream" },
+        body: blob,
+        signal,
+        timeout: 10 * 60_000,
+    });
+    const file = payload?.file;
+    if (!file?.name) throw new Error("the gateway wrote no file");
+    return {
+        key: fileKey(file.name),
+        name: file.name,
+        url: canvasFileUrl(canvasId, fileKey(file.name)),
+        mimeType: file.mime || blob.type || "application/octet-stream",
+        bytes: typeof file.bytes === "number" ? file.bytes : blob.size,
+    };
+}

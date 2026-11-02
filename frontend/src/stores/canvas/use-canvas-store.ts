@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import i18n from "@/i18n";
+import { documentOf } from "@/lib/canvas/canvas-document";
 import { createSaveQueue, type SaveQueue } from "@/lib/canvas/save-queue";
 import { emptyCanvasDocument, requestCanvas, requestCanvasCreate, requestCanvasDelete, requestCanvasSave, requestCanvases, type CanvasDocument, type CanvasSummary } from "@/services/api/canvases";
 
@@ -39,8 +40,11 @@ type CanvasStore = {
     conflicts: Record<string, CanvasSummary>;
     refresh: () => Promise<void>;
     loadCanvas: (id: string, options?: { force?: boolean }) => Promise<CanvasProject | null>;
-    createCanvas: (title?: string) => Promise<string>;
-    importCanvas: (source: Partial<CanvasDocument> & { title?: string }) => Promise<string>;
+    /**
+     * Create a canvas. The document travels with it, so a canvas never exists in a state where opening it
+     * and reading it disagree — and an import is one request, not a create plus a save.
+     */
+    createCanvas: (title?: string, document?: CanvasDocument) => Promise<string>;
     renameCanvas: (id: string, title: string) => Promise<void>;
     deleteCanvases: (ids: string[]) => Promise<void>;
     updateProject: (id: string, patch: Partial<CanvasDocument>) => void;
@@ -50,35 +54,6 @@ type CanvasStore = {
     /** Re-read the canvas list entry and mark the canvas if the disk moved on without us. */
     checkForNewerCopy: (id: string) => Promise<void>;
 };
-
-/** The document half of a project: what belongs in `canvas.json`, without the gateway's own fields. */
-function documentOf(project: CanvasProject): CanvasDocument {
-    return {
-        nodes: project.nodes.map(withoutResolvedUrls),
-        connections: project.connections,
-        backgroundMode: project.backgroundMode,
-        showImageInfo: project.showImageInfo,
-        viewport: project.viewport,
-    };
-}
-
-/**
- * A node as it belongs on disk: media named by reference, never by the URL it was rendered from.
- *
- * The editor holds absolute URLs in `metadata.content` because that is what an `<img>` needs. Writing them
- * back would put this gateway's host and port into the workspace — a document that breaks on another
- * machine, and the exact thing #152 said a canvas may not contain.
- */
-function withoutResolvedUrls(node: CanvasProject["nodes"][number]) {
-    const metadata = node.metadata;
-    if (!metadata) return node;
-    const next = { ...metadata };
-    if (metadata.storageKey) next.content = metadata.storageKey;
-    if (Array.isArray(metadata.images)) {
-        next.images = metadata.images.map((image) => (image.storageKey ? { ...image, content: image.storageKey } : image));
-    }
-    return { ...node, metadata: next };
-}
 
 function projectOf(summary: CanvasSummary, document: CanvasDocument): CanvasProject {
     return { ...document, ...summary };
@@ -173,21 +148,10 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
         return project;
     },
 
-    // The empty document travels with the create, so a canvas never exists in a state where opening it
-    // and reading it disagree. A failure is thrown: the caller is a dialog with a toast, and a canvas
-    // that silently did not get created is worse than an error message.
-    createCanvas: async (title = i18n.t("canvas.project.untitled")) => {
-        const record = await requestCanvasCreate(title, emptyCanvasDocument());
-        const project = projectOf(record.summary, record.document);
-        set((state) => ({ canvases: upsertSummary(state.canvases, record.summary), projects: [project, ...state.projects] }));
-        return record.summary.id;
-    },
-
-    // An import is a create whose document came from a zip. The id is new, always: the exported id is
-    // the id of the canvas it was exported from, which still exists.
-    importCanvas: async (source) => {
-        const document: CanvasDocument = { ...emptyCanvasDocument(), ...source };
-        const record = await requestCanvasCreate(source.title || i18n.t("canvas.project.imported"), document);
+    // A failure is thrown: the caller is a dialog with a toast, and a canvas that silently did not get
+    // created is worse than an error message.
+    createCanvas: async (title = i18n.t("canvas.project.untitled"), document = emptyCanvasDocument()) => {
+        const record = await requestCanvasCreate(title, document);
         const project = projectOf(record.summary, record.document);
         set((state) => ({ canvases: upsertSummary(state.canvases, record.summary), projects: [project, ...state.projects] }));
         return record.summary.id;

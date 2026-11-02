@@ -1,6 +1,7 @@
 import { saveAs } from "file-saver";
 
 import i18n from "@/i18n";
+import { documentOf } from "@/lib/canvas/canvas-document";
 import { createZip } from "@/lib/zip";
 import { activeFileUrl, canvasFileUrl, fileNameOf } from "@/services/canvas-files";
 import type { CanvasExportProjectFile, CanvasExportFile } from "@/types/canvas-export";
@@ -26,7 +27,10 @@ export async function exportCanvasProjects(projects: CanvasProject[], fileName =
                     zipFiles.push({ name: path, data: blob });
                 }),
             );
-            return { project, files };
+            // The document as the gateway would have stored it, plus the title the list shows: a zip carries
+            // no id and no rev, because importing it makes a new canvas (decisions #171). A node's media is
+            // named by `files/<name>`, never by the URL this browser happened to render it from.
+            return { project: { ...documentOf(project), title: project.title }, files };
         }),
     );
 
