@@ -1,5 +1,5 @@
-// Package store holds the gateway's small JSON-backed state: the three user preference files
-// (skins, workflow visibility, main models). Nothing here runs anything; it remembers what the user
+// Package store holds the gateway's small JSON-backed state: the two user preference files
+// (workflow visibility, main models). Nothing here runs anything; it remembers what the user
 // chose.
 package store
 
@@ -7,133 +7,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 
 	"comfyloft/internal/logx"
 	"comfyloft/internal/util"
 )
-
-// Skins records which canvas skins the user has unlocked.
-type Skins struct {
-	mu       sync.Mutex
-	file     string
-	logger   *logx.Logger
-	unlocked map[string]SkinEntry
-}
-
-// SkinEntry is one unlocked skin and when it was unlocked.
-type SkinEntry struct {
-	SkinID     string `json:"skinId"`
-	UnlockedAt string `json:"unlockedAt"`
-}
-
-var skinIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
-
-// NewSkins builds the skin store.
-func NewSkins(dataDir string, logger *logx.Logger) *Skins {
-	return &Skins{
-		file:     filepath.Join(dataDir, "skin-unlocks.json"),
-		logger:   logger,
-		unlocked: map[string]SkinEntry{},
-	}
-}
-
-// Load reads the persisted unlocks.
-func (s *Skins) Load() {
-	data, err := os.ReadFile(s.file)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			s.logger.Warn("failed to read skin unlocks: %s", err)
-		}
-		return
-	}
-	var document struct {
-		Unlocked []json.RawMessage `json:"unlocked"`
-	}
-	if err := json.Unmarshal(stripBOM(data), &document); err != nil {
-		s.logger.Warn("failed to read skin unlocks: %s", err)
-		return
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, raw := range document.Unlocked {
-		var entry SkinEntry
-		var id string
-		if err := json.Unmarshal(raw, &id); err == nil {
-			entry = SkinEntry{SkinID: id, UnlockedAt: util.NowIso()}
-		} else if err := json.Unmarshal(raw, &entry); err != nil {
-			continue
-		}
-		entry.SkinID = strings.ToLower(strings.TrimSpace(entry.SkinID))
-		if !skinIDPattern.MatchString(entry.SkinID) {
-			continue
-		}
-		if entry.UnlockedAt == "" {
-			entry.UnlockedAt = util.NowIso()
-		}
-		s.unlocked[entry.SkinID] = entry
-	}
-}
-
-// List returns the unlocked skin ids.
-func (s *Skins) List() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]string, 0, len(s.unlocked))
-	for id := range s.unlocked {
-		out = append(out, id)
-	}
-	return out
-}
-
-// Entries returns the full unlock records.
-func (s *Skins) Entries() []SkinEntry {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.entriesLocked()
-}
-
-// Unlock marks a skin unlocked, returning the existing record when already present.
-func (s *Skins) Unlock(value string) (SkinEntry, error) {
-	skinID := strings.ToLower(strings.TrimSpace(value))
-	if !skinIDPattern.MatchString(skinID) {
-		return SkinEntry{}, &InvalidIDError{Message: "invalid skin id", ErrorCode: "invalid_skin_id"}
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if entry, ok := s.unlocked[skinID]; ok {
-		return entry, nil
-	}
-	entry := SkinEntry{SkinID: skinID, UnlockedAt: util.NowIso()}
-	s.unlocked[skinID] = entry
-	if err := s.persistLocked(); err != nil {
-		return SkinEntry{}, err
-	}
-	return entry, nil
-}
-
-func (s *Skins) entriesLocked() []SkinEntry {
-	out := make([]SkinEntry, 0, len(s.unlocked))
-	for _, entry := range s.unlocked {
-		out = append(out, entry)
-	}
-	return out
-}
-
-func (s *Skins) persistLocked() error {
-	payload, err := json.MarshalIndent(map[string]any{
-		"version":  1,
-		"unlocked": s.entriesLocked(),
-	}, "", "  ")
-	if err != nil {
-		return err
-	}
-	return util.WriteFileAtomic(s.file, append(payload, '\n'))
-}
 
 // Visibility records which workflows the user hid from the canvas.
 type Visibility struct {

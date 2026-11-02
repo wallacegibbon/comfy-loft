@@ -36,7 +36,6 @@ type Server struct {
 	comfy      *comfy.Client
 	hub        *generate.Hub
 	runner     *generate.Runner
-	skins      *store.Skins
 	visibility *store.Visibility
 	mainModels *store.MainModels
 	registry   *workflow.Registry
@@ -118,8 +117,6 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 		return nil, err
 	}
 
-	skins := store.NewSkins(cfg.DataDir, logger)
-	skins.Load()
 	visibility := store.NewVisibility(cfg.DataDir, logger)
 	visibility.Load()
 
@@ -149,7 +146,6 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 		comfy:         comfyClient,
 		hub:           hub,
 		runner:        generate.NewRunner(comfyClient, hub, logger, cfg.RequestTimeoutMs, cfg.PollIntervalMs),
-		skins:         skins,
 		visibility:    visibility,
 		mainModels:    mainModels,
 		registry:      registry,

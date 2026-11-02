@@ -43,8 +43,6 @@ func (s *Server) routesAdmin(mux *http.ServeMux) {
 	s.route(mux, "POST /api/workflows/{id}/visibility", s.handleWorkflowVisibility)
 
 	s.route(mux, "GET /api/loras", s.handleLoras)
-	s.route(mux, "GET /api/skin-unlocks", s.handleSkinUnlocksGet)
-	s.route(mux, "POST /api/skin-unlocks", s.handleSkinUnlocksPost)
 
 	s.route(mux, "GET /api/system/stats", s.handleSystemStats)
 	s.route(mux, "POST /api/system/free-memory", s.handleFreeMemory)
@@ -282,32 +280,6 @@ func (s *Server) handleLoras(ctx *httpx.Ctx) error {
 		}
 	}
 	okJSON(ctx.W, map[string]any{"loras": names})
-	return nil
-}
-
-// handleSkinUnlocksGet implements GET /api/skin-unlocks.
-func (s *Server) handleSkinUnlocksGet(ctx *httpx.Ctx) error {
-	okJSON(ctx.W, map[string]any{
-		"unlocked": s.skins.List(),
-		"entries":  s.skins.Entries(),
-	})
-	return nil
-}
-
-// handleSkinUnlocksPost implements POST /api/skin-unlocks.
-func (s *Server) handleSkinUnlocksPost(ctx *httpx.Ctx) error {
-	body, err := bodyOrEmpty(ctx)
-	if err != nil {
-		return err
-	}
-	entry, err := s.skins.Unlock(httpx.String(body, "skinId"))
-	if err != nil {
-		return err
-	}
-	okJSON(ctx.W, map[string]any{
-		"unlocked": s.skins.List(),
-		"entry":    entry,
-	})
 	return nil
 }
 

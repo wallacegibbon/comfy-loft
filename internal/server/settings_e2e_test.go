@@ -30,7 +30,7 @@ func TestSettingsStartEmptyAndRoundTrip(t *testing.T) {
 	}
 
 	document := map[string]any{
-		"theme":  map[string]any{"theme": "light", "cardSkin": "warm"},
+		"theme":  map[string]any{"theme": "light"},
 		"locale": "en-US",
 	}
 	status, payload = doJSON(t, client, http.MethodPut, gateway.URL+"/api/settings", map[string]any{"settings": document})

@@ -2,7 +2,6 @@ package store
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
 	"comfyloft/internal/logx"
@@ -44,55 +43,6 @@ func TestVisibilityRejectsEmptyID(t *testing.T) {
 	visibility := NewVisibility(t.TempDir(), quietLogger())
 	if err := visibility.SetHidden("", true); err == nil {
 		t.Fatal("expected an error for an empty workflow id")
-	}
-}
-
-func TestSkinsUnlockAndValidate(t *testing.T) {
-	dir := t.TempDir()
-	skins := NewSkins(dir, quietLogger())
-	skins.Load()
-
-	entry, err := skins.Unlock("  Midnight-blue  ")
-	if err != nil {
-		t.Fatalf("Unlock: %v", err)
-	}
-	if entry.SkinID != "midnight-blue" {
-		t.Errorf("skinId = %q, want it lowercased and trimmed", entry.SkinID)
-	}
-	if entry.UnlockedAt == "" {
-		t.Error("unlockedAt should be set")
-	}
-
-	// Unlocking twice is idempotent.
-	again, err := skins.Unlock("midnight-blue")
-	if err != nil || again.UnlockedAt != entry.UnlockedAt {
-		t.Errorf("second unlock changed the record: %+v vs %+v", again, entry)
-	}
-
-	if _, err := skins.Unlock("Bad ID!"); err == nil {
-		t.Error("expected an error for an invalid skin id")
-	}
-
-	reloaded := NewSkins(dir, quietLogger())
-	reloaded.Load()
-	if len(reloaded.List()) != 1 {
-		t.Errorf("list = %v, want the persisted entry", reloaded.List())
-	}
-}
-
-func TestSkinsReadLegacyStringEntries(t *testing.T) {
-	dir := t.TempDir()
-	// Older files stored a bare string array; it must still load.
-	payload := `{"version":1,"unlocked":["classic","neon"]}`
-	if err := os.WriteFile(filepath.Join(dir, "skin-unlocks.json"), []byte(payload), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	skins := NewSkins(dir, quietLogger())
-	skins.Load()
-
-	if got := len(skins.List()); got != 2 {
-		t.Errorf("loaded %d skins, want 2", got)
 	}
 }
 
