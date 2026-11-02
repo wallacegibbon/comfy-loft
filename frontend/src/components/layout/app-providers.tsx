@@ -14,7 +14,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
  *
  * This used to wrap the tree in three providers: antd's `ConfigProvider` (theme) and
  * `App` (static `message` / `modal` helpers), and react-query's `QueryClientProvider`.
- * All three are gone. Colours come from Tailwind classes over `design-tokens`, toasts
+ * All three are gone. Colours come from Tailwind classes over the `stone` scale, toasts
  * from `@/components/kit/toast`, confirmations from `@/components/kit/confirm`, and
  * every network call is a plain async function in `services/` — nothing ever called
  * `useQuery`, so the client was a cache that only ever stayed empty. Nothing here is

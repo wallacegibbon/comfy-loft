@@ -5,7 +5,6 @@ import i18n from "@/i18n";
 import { gatewayModelLabel } from "@/lib/gateway-labels";
 import { gatewayRoot, LOCAL_GATEWAY_BASE_URL, LOCAL_GATEWAY_CHANNEL_ID } from "@/constant/app-mode";
 import { mirrorToSettings, readSetting } from "@/stores/use-settings-store";
-import { normalizeProgressRingSkin, type ProgressRingSkinId } from "@/lib/canvas/progress-ring-skins";
 
 export type ModelCapability = "image" | "video" | "text" | "audio";
 
@@ -65,7 +64,6 @@ export type AiConfig = {
     size: string;
     background: string;
     autoFocusOnSelect: boolean;
-    progressRingSkin: ProgressRingSkinId;
     seed?: string;
     seedFixed?: string;
     params?: Record<string, unknown>;
@@ -112,7 +110,6 @@ export const defaultConfig: AiConfig = {
     size: "1:1",
     background: "",
     autoFocusOnSelect: false,
-    progressRingSkin: "cyan",
 };
 
 type ConfigStore = {
@@ -275,7 +272,6 @@ function hydrateConfig(stored: Partial<AiConfig>): AiConfig {
         videoMode: config.videoMode === "reference" || config.videoMode === "text" ? config.videoMode : "frames",
         videoSelfLiftMode: config.videoSelfLiftMode === "quality" ? "quality" : "fast",
         autoFocusOnSelect: Boolean(config.autoFocusOnSelect),
-        progressRingSkin: normalizeProgressRingSkin(config.progressRingSkin),
     };
 }
 

@@ -6,9 +6,10 @@ import { cn } from "@/lib/utils";
  * Segmented control, replacing antd's `Segmented`.
  *
  * Items carry `data-slot="segmented-item"` and `data-active`, because three places need to
- * reach them from CSS: the canvas config panel recolours unselected labels per card skin,
- * the image settings popover rounds the control into a pill, and the canvas toolbar makes
- * the items fill the row. Those used to select antd's `.ant-segmented-*` internals.
+ * reach them from CSS: the canvas config panel recolours unselected labels to the canvas
+ * node's text colour, the image settings popover rounds the control into a pill, and the
+ * canvas toolbar makes the items fill the row. Those used to select antd's
+ * `.ant-segmented-*` internals.
  */
 type SegmentedOption<T extends string | number> = { value: T; label?: ReactNode; disabled?: boolean };
 

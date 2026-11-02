@@ -86,8 +86,6 @@ const DYNAMIC_PREFIXES = new Map([
     ["settingsPanels.video", { why: "the suffix is a labelKey from a data table (sizes, speed steps, mode hints)" }],
     ["settingsPanels.video.modes", { why: "the suffix is a mode labelKey from a data table, plus the literals of two hint branches" }],
     ["settingsPanels.model.capabilities", { why: "the suffix is the ModelCapability union; its values live in the type" }],
-    ["config.preferences.cardSkins", { why: "the suffix is a table of skin ids; .label and .description are fields of that table" }],
-    ["config.preferences.progressRingSkins", { why: "the same, for the progress-ring skins" }],
     ["config.localStorage.stores", { why: "the suffix is a table of localStorage store keys" }],
     ["canvas.videoFrames", { why: "the suffix is one of first/last/both plus a Title suffix; the template cannot say which" }],
     ["apiErrors", { why: "the suffix of apiText(key) is an error-code constant from the calling service" }],

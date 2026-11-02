@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 
 import { useLocalGatewaySync } from "@/hooks/use-local-gateway-sync";
-import { useSkinUnlockPersistence } from "@/hooks/use-skin-unlock-persistence";
 import { flushCanvasSaves, useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useSettingsStore } from "@/stores/use-settings-store";
 
@@ -19,7 +18,6 @@ import { useSettingsStore } from "@/stores/use-settings-store";
  */
 export function ClientRootInit({ children }: { children: ReactNode }) {
     useLocalGatewaySync();
-    useSkinUnlockPersistence();
 
     useEffect(() => {
         void useCanvasStore.getState().refresh();

@@ -1,35 +1,55 @@
-import { useId } from "react";
-import { useTranslation } from "react-i18next";
-
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
-import { useConfigStore } from "@/stores/use-config-store";
-import { getProgressRingSkin, type ProgressRingPalette } from "@/lib/canvas/progress-ring-skins";
 
 const ringPad = 2;
 const ringRadius = 26;
 
+/**
+ * The one charge light: a breathing halo, a brushing midpoint and a tapered tail that rides the
+ * card's rounded rectangle as the run advances.
+ *
+ * Deliberately not a palette table. It was seven of them, picked in the preferences window, and the
+ * effect was the same in all seven — so the look is fixed here and there is nothing to choose
+ * (docs/decisions.md #193).
+ */
+const glow = {
+    dark: { aura: "#38d6ff", mid: "#8cefff", core: "#d7fbff", gradient: ["#8cefff", "#6edcff", "#4aa3ff"] },
+    light: { aura: "#2f9bff", mid: "#5bb8ff", core: "#0b6fd6", gradient: ["#0b6fd6", "#2f9bff", "#7dd3fc"] },
+} as const;
+
+const look = {
+    coreWidth: 1.4,
+    auraWidth: 11,
+    auraOpacity: 0.05,
+    auraBlur: 8,
+    haloWidth: 6,
+    haloOpacity: 0.11,
+    haloBlur: 5,
+    midWidth: 3,
+    midOpacity: 0.18,
+    midBlur: 2,
+    tailLength: 9,
+    tailWidth: 3.4,
+    tailOpacity: 0.15,
+    tailBlur: 3,
+    headScale: 1,
+    breatheSeconds: 2.8,
+} as const;
+
 export function CanvasNodeProgressRing({ width, height, step, total, complete = false }: { width: number; height: number; step: number; total: number; complete?: boolean }) {
     const themeName = useThemeStore((state) => state.theme);
-    const skinId = useConfigStore((state) => state.config.progressRingSkin);
     const theme = useCanvasTheme();
-    const dark = themeName === "dark";
-    const skin = getProgressRingSkin(skinId);
-    const palette = dark ? skin.dark : skin.light;
-    const look = skin.style;
+    const palette = glow[themeName];
     const ratio = complete ? 1 : total > 0 ? Math.min(1, Math.max(0, step / total)) : 0;
-    if ((skin.mode || "ring") === "tide") {
-        return <TideOverlay width={width} height={height} ratio={ratio} complete={complete} palette={palette} />;
-    }
     const boxWidth = width + ringPad * 2;
     const boxHeight = height + ringPad * 2;
     const radius = Math.min(ringRadius, boxWidth / 2, boxHeight / 2);
     const coreWidth = look.coreWidth;
     const path = roundedRectPath(boxWidth, boxHeight, radius, coreWidth);
     const head = pointAtProgress(boxWidth, boxHeight, radius, ratio, coreWidth / 2);
-    const { glow, mid, core } = palette;
+    const { aura, mid, core } = palette;
     const track = theme.node.stroke;
-    const gradientId = `canvas-ring-gradient-${skin.id}-${dark ? "dark" : "light"}`;
+    const gradientId = `canvas-ring-gradient-${themeName}`;
     const fillLength = ratio * 100;
     const tailLength = Math.min(look.tailLength, fillLength);
 
@@ -57,7 +77,7 @@ export function CanvasNodeProgressRing({ width, height, step, total, complete = 
                             <path
                                 d={path}
                                 fill="none"
-                                stroke={glow}
+                                stroke={aura}
                                 strokeWidth={look.auraWidth}
                                 strokeLinecap="round"
                                 pathLength={100}
@@ -71,14 +91,14 @@ export function CanvasNodeProgressRing({ width, height, step, total, complete = 
                             <path
                                 d={path}
                                 fill="none"
-                                stroke={glow}
+                                stroke={aura}
                                 strokeWidth={look.haloWidth}
                                 strokeLinecap="round"
                                 pathLength={100}
                                 style={{
                                     strokeDasharray: `${fillLength} 100`,
                                     opacity: look.haloOpacity,
-                                    filter: `blur(${look.haloBlur}px) drop-shadow(0 0 4px ${glow})`,
+                                    filter: `blur(${look.haloBlur}px) drop-shadow(0 0 4px ${aura})`,
                                     transition: "stroke-dasharray 320ms cubic-bezier(.22,.61,.36,1)",
                                     animation: `canvas-ring-breathe ${look.breatheSeconds}s ease-in-out infinite`,
                                 }}
@@ -102,7 +122,7 @@ export function CanvasNodeProgressRing({ width, height, step, total, complete = 
                                 <path
                                     d={path}
                                     fill="none"
-                                    stroke={glow}
+                                    stroke={aura}
                                     strokeWidth={look.tailWidth}
                                     strokeLinecap="round"
                                     pathLength={100}
@@ -128,7 +148,7 @@ export function CanvasNodeProgressRing({ width, height, step, total, complete = 
                             opacity={0.9}
                             style={{
                                 strokeDasharray: `${fillLength} 100`,
-                                filter: `drop-shadow(0 0 2px ${glow})`,
+                                filter: `drop-shadow(0 0 2px ${aura})`,
                                 transition: "stroke-dasharray 320ms cubic-bezier(.22,.61,.36,1)",
                             }}
                         />
@@ -141,7 +161,7 @@ export function CanvasNodeProgressRing({ width, height, step, total, complete = 
                             }}
                         >
                             <g style={{ animation: `canvas-ring-head ${Math.max(1.4, look.breatheSeconds - 0.9)}s ease-in-out infinite` }}>
-                                <circle r={4.5 * look.headScale} fill={glow} opacity={0.14} style={{ filter: "blur(3px)" }} />
+                                <circle r={4.5 * look.headScale} fill={aura} opacity={0.14} style={{ filter: "blur(3px)" }} />
                                 <circle r={2.2 * look.headScale} fill={mid} opacity={0.28} style={{ filter: "blur(1px)" }} />
                                 <circle r={0.9 * look.headScale} fill={core} opacity={0.95} />
                             </g>
@@ -149,94 +169,12 @@ export function CanvasNodeProgressRing({ width, height, step, total, complete = 
                     ) : null}
                     {complete ? (
                         <>
-                            <path d={path} fill="none" stroke={glow} strokeWidth={look.haloWidth + 3} strokeLinecap="round" opacity={0} style={{ filter: `blur(${look.haloBlur}px)`, animation: "canvas-ring-flash .95s ease-out forwards" }} />
-                            <path d={path} fill="none" stroke={core} strokeWidth={coreWidth + 0.2} strokeLinecap="round" opacity={0} style={{ filter: `drop-shadow(0 0 4px ${glow})`, animation: "canvas-ring-core-flash .95s ease-out forwards" }} />
+                            <path d={path} fill="none" stroke={aura} strokeWidth={look.haloWidth + 3} strokeLinecap="round" opacity={0} style={{ filter: `blur(${look.haloBlur}px)`, animation: "canvas-ring-flash .95s ease-out forwards" }} />
+                            <path d={path} fill="none" stroke={core} strokeWidth={coreWidth + 0.2} strokeLinecap="round" opacity={0} style={{ filter: `drop-shadow(0 0 4px ${aura})`, animation: "canvas-ring-core-flash .95s ease-out forwards" }} />
                         </>
                     ) : null}
                 </g>
             </svg>
-        </div>
-    );
-}
-
-function TideOverlay({ width, height, ratio, complete, palette }: { width: number; height: number; ratio: number; complete: boolean; palette: ProgressRingPalette }) {
-    const { t } = useTranslation();
-    const uid = useId().replace(/:/g, "");
-    const waterId = `tide-water-${uid}`;
-    const level = complete ? 1 : Math.max(0, Math.min(1, ratio));
-    const wavePath = "M -50 3 Q -37.5 -2 -25 3 T 0 3 T 25 3 T 50 3 T 75 3 T 100 3 T 125 3 T 150 3 L 150 100 L -50 100 Z";
-    const crestPath = "M -50 3 Q -37.5 -2 -25 3 T 0 3 T 25 3 T 50 3 T 75 3 T 100 3 T 125 3 T 150 3";
-
-    return (
-        <div className="pointer-events-none absolute inset-0 z-[58] overflow-hidden" style={{ width, height, borderRadius: 24 }}>
-            <style>{`
-                @keyframes tide-wave-a { to { transform: translateX(-50px); } }
-                @keyframes tide-wave-b { to { transform: translateX(-50px); } }
-                @keyframes tide-shimmer { 0%, 100% { opacity: .22 } 50% { opacity: .5 } }
-                @keyframes tide-bubble { 0% { transform: translateY(8px) scale(.6); opacity: 0 } 20% { opacity: .45 } 100% { transform: translateY(-46px) scale(1.1); opacity: 0 } }
-                @keyframes tide-flash { 0% { opacity: 0 } 30% { opacity: .85 } 100% { opacity: 0 } }
-                @keyframes tide-fade { 0%, 70% { opacity: 1 } 100% { opacity: 0 } }
-            `}</style>
-            <div className="absolute inset-0" style={{ animation: complete ? "tide-fade 1.45s ease forwards" : undefined }}>
-                <div
-                    className="absolute inset-x-0 bottom-0 overflow-hidden"
-                    style={{
-                        height: `${level * 100}%`,
-                        transition: "height 620ms cubic-bezier(.2,.8,.2,1)",
-                        backdropFilter: "blur(1.5px) saturate(1.3)",
-                        boxShadow: `inset 0 0 36px ${palette.glow}33, 0 -10px 30px ${palette.glow}55`,
-                    }}
-                >
-                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full" aria-hidden="true">
-                        <defs>
-                            <linearGradient id={waterId} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor={palette.core} stopOpacity={0.5} />
-                                <stop offset="35%" stopColor={palette.mid} stopOpacity={0.32} />
-                                <stop offset="100%" stopColor={palette.glow} stopOpacity={0.2} />
-                            </linearGradient>
-                        </defs>
-                        <path d={wavePath} fill={`url(#${waterId})`} />
-                        <g style={{ animation: "tide-wave-a 5.5s linear infinite" }}>
-                            <path d={crestPath} fill="none" stroke={palette.core} strokeOpacity={0.95} strokeWidth={1.2} vectorEffect="non-scaling-stroke" style={{ filter: `drop-shadow(0 0 6px ${palette.glow})` }} />
-                        </g>
-                        <g style={{ animation: "tide-wave-b 8s linear infinite", opacity: 0.4 }}>
-                            <path d={wavePath} fill={palette.glow} fillOpacity={0.12} transform="translate(12.5 1.5)" />
-                            <path d={crestPath} fill="none" stroke={palette.glow} strokeOpacity={0.5} strokeWidth={0.8} vectorEffect="non-scaling-stroke" transform="translate(12.5 1.5)" />
-                        </g>
-                    </svg>
-                    <div className="absolute inset-x-0 top-0 h-4 -translate-y-1/2" style={{ background: `linear-gradient(to top, ${palette.glow}55, transparent)`, filter: "blur(5px)", opacity: 0.8 }} />
-                    <div className="absolute inset-0" style={{ background: `linear-gradient(120deg, transparent 15%, ${palette.core}22 48%, transparent 62%)`, mixBlendMode: "screen", animation: "tide-shimmer 3.6s ease-in-out infinite" }} />
-                    {[18, 36, 57, 74].map((left, index) => (
-                        <span
-                            key={left}
-                            className="absolute rounded-full"
-                            style={{
-                                left: `${left}%`,
-                                bottom: `${14 + index * 13}%`,
-                                width: 3 + index,
-                                height: 3 + index,
-                                background: palette.core,
-                                opacity: 0.45,
-                                filter: "blur(.4px)",
-                                boxShadow: `0 0 6px ${palette.glow}`,
-                                animation: `tide-bubble ${4.2 + index * 0.7}s ease-in ${index * 0.8}s infinite`,
-                            }}
-                        />
-                    ))}
-                </div>
-                <div className="absolute inset-x-0 bottom-3 flex justify-center">
-                    <span className="rounded-full bg-black/30 px-2.5 py-1 text-[10px] font-medium tracking-[0.18em] text-white/85 backdrop-blur-sm">{t("canvas.node.generating")}</span>
-                </div>
-                {complete ? (
-                    <>
-                        <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 50% 72%, ${palette.core}d9 0%, ${palette.glow}66 38%, transparent 72%)`, animation: "tide-flash .75s ease-out .5s forwards", opacity: 0 }} />
-                        <div
-                            className="absolute inset-x-0 top-0 h-px"
-                            style={{ background: `linear-gradient(90deg, transparent, ${palette.core}, transparent)`, boxShadow: `0 0 10px ${palette.glow}`, animation: "tide-flash .6s ease-out .5s forwards", opacity: 0 }}
-                        />
-                    </>
-                ) : null}
-            </div>
         </div>
     );
 }
