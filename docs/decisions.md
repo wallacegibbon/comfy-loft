@@ -7259,3 +7259,28 @@ earlier). I'll just reply."), so the limit held without a second sentence. `make
 `TestAgentSpawnCarriesTheCanvasRule` (which pins the new trigger's wording), `npm run check`, `npx vitest run`.
 
 **Where** `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`, `docs/gateway.md`.
+
+## 205. A connection's id is not a timestamp
+
+**Decision** `addConnection` — the one function a drag, the reference bar and the agent's `connect` all end
+up in — names a connection with `nanoid()`, not `conn-${Date.now()}`. The other places that make one
+(`createConnectedNode`, `selectNodeReference`, `duplicateNode`, the paste path) already did.
+
+**Why** The agent wires several nodes in one batch, so three `connect` calls finish inside the same
+millisecond, and a timestamp is not unique at that resolution: `canvases/3df8b7a65088/canvas.json` holds
+three connections that all carry `conn-1793651086334`. The id is not cosmetic — it is what selecting,
+highlighting and deleting go by (`deleteConnection` filters on it, `relatedHighlight` collects it, React uses
+it as the key), so deleting one of those three connections would have removed all three, and clicking one
+would have lit up the others. Found while verifying #203, which makes the agent wire text into image nodes.
+
+**Cost** An id is no longer readable as a timestamp, which nothing ever read.
+
+**Tested** On a `/tmp/verify` copy (8191/3011, its own data directory and `AGENT_CONFIG_PATH`): a canvas
+seeded with one text node and three empty image nodes, and one message asking the agent to wire all three —
+three `canvas_connect` calls answered in one batch (three `UF` frames at 20:47:21.049–.067) — then the saved
+`canvas.json` held three connections with three distinct ids (`XNyw9uV2g0qVsKpK6xVjL`,
+`8s_-1Jsq57ZSS_Zb6Liro`, `4uuoCxPREuq_dFLde1dcR`), where before the change the same gesture produced one id
+three times. `tsc --noEmit`, `prettier --check`, `npx vitest run` (22 files, 169 tests), `npm run build`,
+`make check`, `go test -race`.
+
+**Where** `frontend/src/pages/canvas/project.tsx`.
