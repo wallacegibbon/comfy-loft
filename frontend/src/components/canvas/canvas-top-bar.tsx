@@ -4,7 +4,7 @@ import { Check, ChevronDown, LayoutGrid, PanelLeftClose, PanelLeftOpen, Pencil, 
 import { useTranslation } from "react-i18next";
 
 import { Dialog } from "@/components/kit/dialog";
-import { Dropdown } from "@/components/kit/floating";
+import { Dropdown, type DropdownItem } from "@/components/kit/floating";
 import { Tooltip } from "@/components/kit/tooltip";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { CanvasSystemStatus } from "@/components/canvas/canvas-system-status";
@@ -27,6 +27,7 @@ export function CanvasTopBar({
     onSwitchProject,
     onCreateProject,
     onDeleteProject,
+    menuItems,
 }: {
     /** The canvas on screen. The id, not the title: two canvases may be called the same thing. */
     projectId: string;
@@ -40,12 +41,15 @@ export function CanvasTopBar({
     onSwitchProject: (id: string) => void;
     onCreateProject: () => void;
     onDeleteProject: () => void;
+    /** The canvas's own commands — creating nodes, undo, the grid, export, clear (`canvas-menu.tsx`). */
+    menuItems: DropdownItem[];
 }) {
     const colorTheme = useThemeStore((state) => state.theme);
     const { t } = useTranslation();
     const theme = canvasThemes[colorTheme];
-    // The same recipe as the dock at the bottom: these are bars that sit on the canvas, so they have to
-    // read as bars — a surface, a border, and a shadow — not as glyphs printed onto someone's artwork.
+    // The same recipe as the zoom dock in the bottom corner: these are bars that sit on the canvas, so they
+    // have to read as bars — a surface, a border, and a shadow — not as glyphs printed onto someone's
+    // artwork.
     const barStyle = {
         background: theme.toolbar.panel,
         borderColor: theme.toolbar.border,
@@ -118,6 +122,8 @@ export function CanvasTopBar({
                                         { key: "rename", icon: <Pencil className="size-4" />, label: t("canvas.project.rename"), onClick: onStartTitleEditing },
                                         { key: "new", icon: <Plus className="size-4" />, label: t("canvas.create"), onClick: onCreateProject },
                                         { key: "delete", danger: true, icon: <Trash2 className="size-4" />, label: t("canvas.deleteCurrent"), onClick: onDeleteProject },
+                                        { type: "divider" as const },
+                                        ...menuItems,
                                     ],
                                 }}
                             >

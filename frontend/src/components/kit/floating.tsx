@@ -59,10 +59,7 @@ export function Popover({ content, placement = "top", mouseEnterDelay = 0.1, chi
     );
 }
 
-type DropdownItem =
-    | { key?: string; icon?: ReactNode; label?: ReactNode; shortcut?: string; onClick?: () => void; disabled?: boolean; danger?: boolean; type?: never }
-    | { type: "divider"; key?: string }
-    | { type: "label"; key?: string; text: string };
+type DropdownItem = { key?: string; icon?: ReactNode; label?: ReactNode; shortcut?: string; onClick?: () => void; disabled?: boolean; danger?: boolean; type?: never } | { type: "divider"; key?: string } | { type: "label"; key?: string; text: string };
 
 export type { DropdownItem };
 
@@ -76,7 +73,12 @@ export function Dropdown({ menu, className, children }: { menu?: { items?: Dropd
                         if (item.type === "divider") return <RadixDropdownMenu.Separator key={item.key ?? `divider-${index}`} className="my-1 h-px bg-stone-200 dark:bg-stone-700" />;
                         // A heading for the items under it: a menu that grew past a handful of commands is
                         // read in sections, and an empty group label is not worth a line.
-                        if (item.type === "label") return <RadixDropdownMenu.Label key={item.key ?? `label-${index}`} className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-stone-400 dark:text-stone-500">{item.text}</RadixDropdownMenu.Label>;
+                        if (item.type === "label")
+                            return (
+                                <RadixDropdownMenu.Label key={item.key ?? `label-${index}`} className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-stone-400 dark:text-stone-500">
+                                    {item.text}
+                                </RadixDropdownMenu.Label>
+                            );
                         return (
                             <RadixDropdownMenu.Item
                                 key={item.key ?? `item-${index}`}

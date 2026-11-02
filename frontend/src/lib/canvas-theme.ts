@@ -1,4 +1,4 @@
-export type CanvasColorTheme = "light" | "dark";
+type CanvasColorTheme = "light" | "dark";
 export type CanvasBackgroundMode = "dots" | "lines" | "blank";
 
 /**

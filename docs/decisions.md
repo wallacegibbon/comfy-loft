@@ -6461,3 +6461,45 @@ confirm, then `DELETE … 200`, release, new pid — left the file gone and the 
 `internal/server/routes_agent.go`, `internal/server/agent_e2e_test.go`,
 `frontend/src/services/api/agent.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`, both
 locales.
+
+## 188. The bottom dock is gone; its commands live in the canvas menu
+
+**Decision** The icon dock across the bottom of the canvas is deleted (`canvas-toolbar.tsx`), and its
+commands became sections of the menu that opens on the canvas's name: **New** (text, image, video, group,
+LoRA, upload files), **Edit** (undo, redo, center focus, delete selected), **View** (select/move tool, grid:
+dots/lines/blank, image info) and, after a divider, export current canvas and clear canvas. Items that
+toggle show a tick; items with a real keyboard shortcut show it. The viewport's own controls — zoom,
+minimap, reset view — stay in the bottom-left dock: they are a dial, not a menu.
+
+**Why** The dock was sixteen glyphs with no words, each one needing a tooltip to be readable, and the
+thing pressed once a session (export, clear) took exactly the room of the thing pressed constantly (a new
+node). It also sat in the middle of the canvas's bottom edge, which is where a node's own panel opens. A
+menu is where a command that needs a name can have one, and the canvas menu already held the commands that
+belong to the canvas as a whole (rename, new, delete).
+
+**Cost** Every one of these is now two clicks instead of one, and nothing is discoverable by looking at the
+canvas: a first-time user has to open the menu to find out what can be made. The commands still answer
+their keyboard shortcuts (undo, redo, delete, clear's confirmation), which is what the menu shows beside
+them.
+
+**Sediment removed with it** `bottomInset` in `focusViewportForNode` and the test that measured it (the
+dock was the only thing that fed it — the inset said "do not centre a panel under the dock"; with no dock
+the whole height is usable), the `[data-canvas-bottom-toolbar]` lookup in `measureFocusFrame`,
+`canvas-toolbar.tsx`'s `ToolbarButton`/`DockTip`/`toolLabel`/`getTipX`/`CanvasThemeButton` and its
+appearance popover, the `CanvasColorTheme` export (nothing outside `canvas-theme.ts` names it any more), and
+seven i18n keys the popover owned (`canvas.toolbar.appearance`, `audio`, `config`, `themeMode`, `light`,
+`dark`, `gridStyle`). `Dropdown` gained a section heading and a shortcut column for this, which is the only
+kit change.
+
+**Tested** `npm run check` (i18n 894/880: seven keys gone, three added — `canvas.menu.create/edit/view`; no
+dead or missing keys), `npx vitest run` (155: one test removed with `bottomInset`), `make check`. In the
+browser (a `/tmp/verify` copy at 8191/3001): no dock in the page at all (only minimap/reset/zoom at the
+bottom left), the menu shows the four sections in that order, **Text** created a node, **Undo** removed it
+again (the saved `canvas.json` agreed both times), **Blank** wrote `backgroundMode: "blank"`, and **Clear
+canvas** opened the existing confirmation.
+
+**Where** `frontend/src/components/canvas/canvas-menu.tsx` (new),
+`frontend/src/components/canvas/canvas-toolbar.tsx` (deleted),
+`frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/components/kit/floating.tsx`,
+`frontend/src/pages/canvas/project.tsx`, `frontend/src/lib/canvas/canvas-node-geometry.ts`,
+`frontend/tests/canvas-focus-viewport.test.ts`, both locales.

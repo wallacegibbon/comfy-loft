@@ -45,16 +45,3 @@ test("keeps an open overlay inside the viewport, leaving a smaller gap below the
     // The open panel must shrink the node compared to focusing it alone.
     expect(viewport.k).toBeLessThan(focusViewportForNode(node, size).k);
 });
-
-test("keeps the panel clear of the bottom dock, leaving a smaller gap below it", () => {
-    const size = { width: 900, height: 700 };
-    const node = { position: { x: 0, y: 0 }, width: 340, height: 240 };
-    const bottomInset = 76;
-    const below = 316;
-    const viewport = focusViewportForNode(node, size, { below, bottomInset });
-    const top = viewport.y + node.position.y * viewport.k;
-    const bottom = viewport.y + (node.position.y + node.height) * viewport.k + below;
-    const usableBottom = size.height - bottomInset;
-    expect(bottom).toBeLessThanOrEqual(usableBottom);
-    expect(usableBottom - bottom).toBeCloseTo(top / 3, 6);
-});

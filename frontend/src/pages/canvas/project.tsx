@@ -55,7 +55,6 @@ import { Minimap } from "@/components/canvas/canvas-mini-map";
 import { CanvasNode } from "@/components/canvas/canvas-node";
 import { LoraNodePanel } from "@/components/canvas/nodes/lora-node";
 import { CanvasNodePromptPanel, type CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
-import { CanvasToolbar } from "@/components/canvas/canvas-toolbar";
 import { CanvasAgentPanel } from "@/components/canvas/canvas-agent-panel";
 import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
@@ -100,6 +99,7 @@ import { getNodeDefinition, isBuiltinNodeType } from "@/lib/canvas/node-registry
 import { registerBuiltinNodes } from "@/components/canvas/nodes/builtin-nodes";
 import { confirm } from "@/components/kit/confirm";
 import { CanvasRefreshShell } from "@/components/canvas/canvas-refresh-shell";
+import { canvasMenuItems } from "@/components/canvas/canvas-menu";
 import { CanvasTopBar } from "@/components/canvas/canvas-top-bar";
 import { ConnectionCreateMenu, NodeCreateMenu, type PendingConnectionCreate } from "@/components/canvas/canvas-create-menus";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type ConnectionHandle, type ContextMenuState, type Position, type SelectionBox, type ViewportTransform } from "@/types/canvas";
@@ -159,10 +159,9 @@ function measureFocusFrame(container: HTMLDivElement | null, nodeId: string) {
     const nodeRect = container.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`)?.getBoundingClientRect();
     const panelRect = container.querySelector<HTMLElement>(`[data-node-id="${nodeId}"] [data-node-panel]`)?.getBoundingClientRect();
     const toolbarRect = document.querySelector<HTMLElement>(`[data-node-toolbar="${nodeId}"]`)?.getBoundingClientRect();
-    const dockRect = document.querySelector<HTMLElement>("[data-canvas-bottom-toolbar]")?.getBoundingClientRect();
     const below = nodeRect && panelRect ? panelRect.bottom - nodeRect.bottom : 0;
     const above = nodeRect && toolbarRect ? nodeRect.top - toolbarRect.top : 0;
-    return { above, below, bottomInset: dockRect && below > 0 ? Math.max(0, container.getBoundingClientRect().bottom - dockRect.top) : 0 };
+    return { above, below };
 }
 
 function InfiniteCanvasPage() {
@@ -2299,6 +2298,30 @@ function InfiniteCanvasPage() {
                     onSwitchProject={(id) => navigate(`/canvas/${id}`)}
                     onCreateProject={createAndOpenProject}
                     onDeleteProject={deleteCurrentProject}
+                    menuItems={canvasMenuItems({
+                        t,
+                        canvasTool,
+                        canUndo: historyState.canUndo,
+                        canRedo: historyState.canRedo,
+                        selectedCount: selectedNodeIds.size,
+                        backgroundMode,
+                        showImageInfo,
+                        onCanvasToolChange: setCanvasTool,
+                        onAddText: () => createNode(CanvasNodeType.Text),
+                        onAddImage: () => createNode(CanvasNodeType.Image),
+                        onAddVideo: () => createNode(CanvasNodeType.Video),
+                        onAddGroup: () => createNode(CanvasNodeType.Group),
+                        onAddLora: () => createNode(CanvasNodeType.Lora),
+                        onUpload: () => handleUploadRequest(),
+                        onUndo: undoCanvas,
+                        onRedo: redoCanvas,
+                        onFocusSelected: focusSelectedNode,
+                        onDeleteSelected: () => deleteNodes(new Set(selectedNodeIds)),
+                        onBackgroundModeChange: setBackgroundMode,
+                        onShowImageInfoChange: setShowImageInfo,
+                        onExport: () => void exportCurrentProject(),
+                        onClear: () => setClearConfirmOpen(true),
+                    })}
                 />
 
                 <InfiniteCanvas
@@ -2507,30 +2530,6 @@ function InfiniteCanvasPage() {
                         onSyncPlay={syncPlaySelectedVideos}
                     />
                 ) : null}
-
-                <CanvasToolbar
-                    selectedCount={selectedNodeIds.size}
-                    canvasTool={canvasTool}
-                    canUndo={historyState.canUndo}
-                    canRedo={historyState.canRedo}
-                    onFocusSelected={focusSelectedNode}
-                    backgroundMode={backgroundMode}
-                    showImageInfo={showImageInfo}
-                    onAddImage={() => createNode(CanvasNodeType.Image)}
-                    onAddVideo={() => createNode(CanvasNodeType.Video)}
-                    onAddText={() => createNode(CanvasNodeType.Text)}
-                    onAddGroup={() => createNode(CanvasNodeType.Group)}
-                    onAddLora={() => createNode(CanvasNodeType.Lora)}
-                    onUndo={undoCanvas}
-                    onRedo={redoCanvas}
-                    onUpload={() => handleUploadRequest()}
-                    onExport={() => void exportCurrentProject()}
-                    onDelete={() => deleteNodes(new Set(selectedNodeIds))}
-                    onClear={() => setClearConfirmOpen(true)}
-                    onCanvasToolChange={setCanvasTool}
-                    onBackgroundModeChange={setBackgroundMode}
-                    onShowImageInfoChange={setShowImageInfo}
-                />
 
                 {isMiniMapOpen ? <Minimap nodes={nodes} viewport={viewport} viewportSize={size} onViewportChange={setViewport} /> : null}
 
