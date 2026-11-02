@@ -1,7 +1,7 @@
 import i18n from "@/i18n";
 import { normalizeAudioFormatValue } from "@/lib/audio-generation";
 import type { UploadedFile } from "@/services/file-storage";
-import { apiErrorMessage } from "@/services/api/http";
+import { apiErrorMessage, throwIfCanceled } from "@/services/api/http";
 import { createRun, waitForRun, type Run } from "@/services/api/runs";
 import { generatedAudio } from "@/lib/canvas/generated-media";
 import { resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
@@ -47,6 +47,7 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
         // The run wrote the clip into the canvas; the node references it there (#173).
         return await generatedAudio(requestConfig, finished);
     } catch (error) {
+        throwIfCanceled(error);
         throw new Error(apiErrorMessage(error, apiText("audioGenerationFailed")));
     }
 }

@@ -14,6 +14,8 @@ import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
  *
  * So the save stops here instead of winning, and this asks which copy is meant. Neither button is
  * highlighted: overwriting the other tab is a real choice, and discarding what is on screen is too.
+ * Neither is dismissal: there is no close button, the backdrop and Escape do nothing, and the window
+ * cannot be put away with a gesture that silently answers "use the disk" (decisions #176).
  *
  * The "disk" answer reloads the page rather than patching the editor's state: the nodes, the undo stack
  * and the selection are all derived from the document that was read at load, and a reload is how you get
@@ -27,6 +29,7 @@ export function CanvasConflictDialog({ projectId }: { projectId: string }) {
 
     if (!conflict) return null;
 
+    // Answering "use the disk" is a reload, which is the one reload in this app a person asked for (#157).
     const useDisk = () => window.location.reload();
 
     const useMine = async () => {
@@ -44,6 +47,9 @@ export function CanvasConflictDialog({ projectId }: { projectId: string }) {
             open
             title={t("canvas.conflict.title")}
             onClose={useDisk}
+            closable={false}
+            maskClosable={false}
+            escapeClosable={false}
             size="form"
             footer={
                 <>

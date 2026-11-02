@@ -6057,9 +6057,16 @@ artifact is never fetched). Gates: `npm run check`, `npx vitest run` (147).
 byte counts; the images rendered; a reload rendered them again from the same names. The canvas was deleted
 afterwards.
 
+**And the shims went with it** Two branches existed only for documents written while the browser owned the
+media: `resolveMetadataReferences` resolved `image:` keys, and `hydrateCanvasImages` uploaded a node's inline
+`data:` picture on load, so that opening an old canvas rewrote it. Nothing this build writes has either shape
+(the workspace was checked), so both are gone: an inline picture is shown as it is and left alone, which is
+honest for a document no build can produce any more. `canvas-export.ts` lost the same dead fallback.
+
 **Where** `frontend/src/lib/canvas/generated-media.ts` (new), `frontend/src/services/api/{runs,image,video,audio}.ts`,
 `frontend/src/pages/canvas/hooks/{use-generation-runs,use-image-editors,use-video-editors}.ts`,
-`frontend/src/pages/canvas/project.tsx`, `frontend/src/services/{image-storage,file-storage}.ts`.
+`frontend/src/pages/canvas/project.tsx`, `frontend/src/services/{image-storage,file-storage}.ts`,
+`frontend/src/lib/canvas/canvas-generation-helpers.ts`.
 
 ## 174. A reference is named, not copied
 
@@ -6092,3 +6099,65 @@ poll) and `media: {image: ["up-abcdef12.png"]}`, while a source with none still 
 
 **Where** `frontend/src/services/canvas-files.ts` (`mediaIdOf`), `frontend/src/services/api/image.ts`,
 `frontend/src/services/api/video.ts`.
+
+## 175. A cancellation is a value, not a sentence
+
+**Decision** Every service rethrows a request the caller cancelled *as itself* (`throwIfCanceled`) before it
+wraps an error into a sentence for the user, and the canvas decides "the person pressed stop" by the error's
+name (`AbortError`). The agent's socket refuses an aborted turn the same way, instead of rejecting with a
+translated sentence.
+
+**What was wrong** `isGenerationCanceled` compared `error.message` against `i18n.t("common.requestCanceled")`
+while the wrapping services produced `apiText("requestCanceled")` — a different dictionary key that happens to
+hold the same words today. Change either string and stopping a generation would be reported as a failure and
+paint the node red. The agent path was already wrong in a second way: an aborted turn rejected with the generic
+"request failed" message, so a text node cancelled mid-answer showed an error and kept it.
+
+**Cost** Two message constants (`apiErrors.requestCanceled`, `common.requestCanceled`) still exist, for display;
+neither is load-bearing for control flow now.
+
+**Tested** `tests/api-runs.test.ts`, `tests/api-video-runs.test.ts` and the generation hooks' own cases all
+assert on `name === "AbortError"` paths; `npm run check` and `npx vitest run` (150).
+
+**Where** `frontend/src/services/api/http.ts` (`throwIfCanceled`), `frontend/src/services/api/{image,video,audio,runs,agent}.ts`,
+`frontend/src/lib/canvas/canvas-generation-helpers.ts`.
+
+## 176. A dialog with no safe default cannot be dismissed
+
+**Decision** The conflict dialog has no close button, its backdrop does nothing, and Escape does nothing. The
+two buttons — load the disk copy, or keep this one — are the only ways out. `kit/dialog` grew
+`escapeClosable` for it; the other dialogs are unchanged.
+
+**What was wrong** `onClose` was wired to "use the disk copy", which is `window.location.reload()`. So a stray
+Escape, or a click outside, silently answered "throw my changes away and reload" — the one answer that loses
+work, chosen by accident. The close button sat in the header offering the same thing.
+
+**Cost** A person who does not want to choose must reload the browser tab by hand (which is the same answer, but
+deliberate), or pick one. That is the point: this dialog only exists because a decision is required.
+
+**Tested** In the browser: two tabs on one canvas, both edited, the second save answered 409 → the dialog
+appeared with only its two buttons; Escape left it on screen; "keep this one" saved this tab's document (rev
+moved, the other tab's node replaced) and closed it.
+
+**Where** `frontend/src/components/kit/dialog.tsx`, `frontend/src/components/canvas/canvas-conflict-dialog.tsx`.
+
+## 177. The last save before a page leaves is sent with keepalive, when it fits
+
+**Decision** The flush that runs on `pagehide` (`flushAll` for canvases, `flush()` for settings) asks the
+transport to keep the request alive across the navigation. `http.ts` honours that only for a body under 60 kB —
+Chrome's budget for in-flight keepalive bodies is 64 KiB and it *rejects* a request over it, so a bigger
+document is sent as an ordinary request instead of a request that cannot exist.
+
+**Why** A debounced save started as the page unloads is the one write that can be lost: the request is issued
+and the document goes away under it. Keepalive is what tells the browser to deliver it anyway. The size line is
+the part that has to be honest — a canvas document is usually a few kilobytes, and a document that inlined
+media (16 MiB is the store's ceiling) can never travel this way.
+
+**Cost** Two code paths to reason about (kept and not kept), and a threshold that a browser could change. The
+alternative was pretending: `keepalive: true` on a 2 MB body fails the fetch, which is worse than a normal
+request that usually still arrives.
+
+**Tested** `tests/canvas-save-queue.test.ts`: `flushAll` marks its saves `keepalive`, a debounced save does not.
+
+**Where** `frontend/src/services/api/http.ts`, `frontend/src/services/api/{canvases,settings}.ts`,
+`frontend/src/lib/canvas/save-queue.ts`, `frontend/src/stores/{canvas/use-canvas-store,use-settings-store}.ts`.

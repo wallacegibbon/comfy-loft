@@ -1,6 +1,6 @@
 import { LOCAL_GATEWAY_BASE_URL } from "@/constant/app-mode";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
-import { ApiError, httpJson, httpVoid } from "@/services/api/http";
+import { ApiError, KEEPALIVE_BYTES, httpJson, httpVoid } from "@/services/api/http";
 import type { CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
 
 /**
@@ -131,12 +131,15 @@ export async function requestCanvasImport(archive: Blob, signal?: AbortSignal): 
  * answers 409 with the current summary, which becomes a `CanvasConflictError` rather than a plain
  * failure: the caller has to decide something different for it than it would for a network error.
  */
-export async function requestCanvasSave(id: string, rev: string, document: CanvasDocument, title?: string): Promise<CanvasSummary> {
+export async function requestCanvasSave(id: string, rev: string, document: CanvasDocument, title?: string, options: { keepalive?: boolean } = {}): Promise<CanvasSummary> {
+    const body = JSON.stringify(title === undefined ? { document } : { document, title });
     try {
         const payload = await httpJson<{ summary?: CanvasSummary }>(`${BASE}/${id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json", ...(rev ? { "If-Match": `"${rev}"` } : {}) },
-            body: JSON.stringify(title === undefined ? { document } : { document, title }),
+            body,
+            // A document too big for the browser to keep is sent normally: a refused keepalive saves nothing.
+            keepalive: options.keepalive === true && body.length <= KEEPALIVE_BYTES,
             timeout: 8000,
         });
         if (!payload?.summary?.rev) throw new ApiError(502, payload);

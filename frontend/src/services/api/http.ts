@@ -37,7 +37,22 @@ type HttpInit = Omit<RequestInit, "signal"> & {
     /** Milliseconds, as axios's `timeout`. Aborts with a `TimeoutError`. */
     timeout?: number;
     signal?: AbortSignal;
+    /**
+     * Send this request even if the page is going away.
+     *
+     * Only honoured for a body a browser will keep (`KEEPALIVE_BYTES`); the caller that cares passes it and
+     * this layer drops it when it cannot work, because a refused keepalive request is no request at all.
+     */
+    keepalive?: boolean;
 };
+
+/**
+ * The largest body a browser keeps alive across a navigation.
+ *
+ * Chrome's budget for in-flight keepalive bodies is 64 KiB, and it *rejects* a request over it rather than
+ * trimming it — so this is an all-or-nothing line, and everything bigger is sent as an ordinary request.
+ */
+export const KEEPALIVE_BYTES = 60_000;
 
 function isDomError(error: unknown, name: string): boolean {
     return error instanceof DOMException && error.name === name;
@@ -49,12 +64,24 @@ export function isCancelled(error: unknown): boolean {
 }
 
 /**
+ * Let a cancelled request keep travelling as a cancellation.
+ *
+ * A caller that stopped a generation is not a failure, and the layers above test that by name
+ * (`isGenerationCanceled`). Every service here wraps an error into a sentence for the user
+ * (`apiErrorMessage`), which would turn "the user pressed stop" into a message nobody can tell from a
+ * real one — so the cancellation is rethrown untouched before that wrapping happens.
+ */
+export function throwIfCanceled(error: unknown): void {
+    if (isCancelled(error) || (error instanceof Error && error.name === "AbortError")) throw error;
+}
+
+/**
  * One `fetch` wrapper: links the caller's signal, applies the timeout, and reports a
  * network failure as a `TypeError` the way `fetch` does — `apiErrorMessage` turns that
  * into the same "request failed" string axios's `ERR_NETWORK` produced.
  */
 async function send(url: string, init: HttpInit): Promise<Response> {
-    const { timeout, signal, ...rest } = init;
+    const { timeout, signal, keepalive, ...rest } = init;
     const timeoutController = timeout ? new AbortController() : undefined;
     const timer = timeoutController ? setTimeout(() => timeoutController.abort(new DOMException(`timeout after ${timeout}ms`, "TimeoutError")), timeout) : undefined;
 
@@ -64,7 +91,7 @@ async function send(url: string, init: HttpInit): Promise<Response> {
     signal?.addEventListener("abort", relay, { once: true });
 
     try {
-        const response = await fetch(url, { ...rest, signal: timeoutController ? timeoutController.signal : signal });
+        const response = await fetch(url, { ...rest, ...(keepalive ? { keepalive: true } : {}), signal: timeoutController ? timeoutController.signal : signal });
         // Any answer — including a 4xx — means the gateway is back. This is the whole recovery check:
         // no probe, no timer (#157).
         noteGatewayResponse(url);

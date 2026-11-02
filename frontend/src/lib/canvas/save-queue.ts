@@ -30,7 +30,13 @@ export type SaveSnapshot = { document: CanvasDocument; rev: string; title?: stri
 type SaveQueueOptions = {
     /** The canvas as it is now, or null if it is gone (deleted while a save was queued). */
     snapshot: (id: string) => SaveSnapshot | null;
-    save: (id: string, snapshot: SaveSnapshot) => Promise<CanvasSummary>;
+    /**
+     * Write one snapshot.
+     *
+     * `keepalive` is set when this flush happens because the page is going away: the request has to survive
+     * the navigation, and the transport decides whether the body is small enough to be kept (decisions #177).
+     */
+    save: (id: string, snapshot: SaveSnapshot, options?: { keepalive?: boolean }) => Promise<CanvasSummary>;
     onSaved: (id: string, summary: CanvasSummary) => void;
     onConflict: (id: string, current: CanvasSummary) => void;
     /** The canvas is gone. Nothing to retry: what is on screen can only be exported now. */
@@ -118,7 +124,7 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
         arm(id, entry);
     };
 
-    const flush = async (id: string): Promise<void> => {
+    const flush = async (id: string, flushOptions?: { keepalive?: boolean }): Promise<void> => {
         const entry = entryOf(id);
         if (entry.running) return;
         cancel(entry.timer);
@@ -135,7 +141,7 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
         entry.dirty = false;
         entry.running = true;
         try {
-            const summary = await options.save(id, snapshot);
+            const summary = await options.save(id, snapshot, flushOptions?.keepalive ? { keepalive: true } : undefined);
             entry.conflicts = 0;
             entry.attempt = 0;
             entry.exhausted = false;
@@ -179,9 +185,15 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
         }
     };
 
+    /**
+     * Flush everything, for a page that is closing.
+     *
+     * The saves carry `keepalive` so the transport can ask the browser to deliver them across the navigation;
+     * nothing here waits for an answer, because nothing survives the unload.
+     */
     const flushAll = async () => {
         const ids = [...entries.entries()].filter(([, entry]) => entry.dirty || entry.timer !== undefined).map(([id]) => id);
-        await Promise.all(ids.map((id) => flush(id)));
+        await Promise.all(ids.map((id) => flush(id, { keepalive: true })));
     };
 
     return {

@@ -1,7 +1,7 @@
 import i18n from "@/i18n";
 import { activeCanvasId } from "@/services/canvas-files";
 import { gatewayRoot } from "@/constant/app-mode";
-import { apiErrorMessage, httpJson } from "@/services/api/http";
+import { apiErrorMessage, httpJson, throwIfCanceled } from "@/services/api/http";
 import type { AiConfig } from "@/stores/use-config-store";
 
 /**
@@ -105,6 +105,7 @@ export async function createRun(config: AiConfig, request: RunRequest): Promise<
         if (!run?.id) throw new Error(apiText("runCreateFailed"));
         return run;
     } catch (error) {
+        throwIfCanceled(error);
         throw new Error(apiErrorMessage(error, apiText("runCreateFailed")));
     }
 }
@@ -130,6 +131,7 @@ export async function uploadMedia(config: AiConfig, file: Blob, filename: string
         if (!payload?.upload?.id) throw new Error(apiText("runUploadFailed"));
         return payload.upload;
     } catch (error) {
+        throwIfCanceled(error);
         throw new Error(apiErrorMessage(error, apiText("runUploadFailed")));
     }
 }
@@ -141,6 +143,7 @@ async function getRun(config: AiConfig, id: string): Promise<Run> {
             headers: JSON_HEADERS,
         });
     } catch (error) {
+        throwIfCanceled(error);
         throw new Error(apiErrorMessage(error, apiText("runQueryFailed")));
     }
 }

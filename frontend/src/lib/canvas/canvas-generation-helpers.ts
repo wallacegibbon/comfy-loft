@@ -1,8 +1,8 @@
 import { defaultConfig, resolveModelForCapability, type AiConfig } from "@/stores/use-config-store";
 import i18n from "@/i18n";
-import { ensureImagePreview, resolveImageUrl, uploadImage } from "@/services/image-storage";
+import { ensureImagePreview, resolveImageUrl } from "@/services/image-storage";
 import { resolveMediaUrl } from "@/services/file-storage";
-import { imageMetadata, referenceUrl } from "@/lib/canvas/canvas-node-factory";
+import { referenceUrl } from "@/lib/canvas/canvas-node-factory";
 import type { NodeGenerationInput } from "@/components/canvas/canvas-node-generation";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import type { CanvasImageAngleParams } from "@/components/canvas/canvas-node-angle-dialog";
@@ -30,16 +30,15 @@ export function generationReferenceUrls(context: { referenceImages: ReferenceIma
     ];
 }
 
-export async function resolveMetadataReferences(metadata: CanvasNodeMetadata) {
+export function resolveMetadataReferences(metadata: CanvasNodeMetadata) {
     if (metadata.generationType !== "edit") return [];
     if (!metadata.references?.length) return null;
-    const references = await Promise.all(
-        metadata.references.map(async (url, index) => {
-            const dataUrl = url.startsWith("image:") ? await resolveImageUrl(url, "") : url;
-            return dataUrl ? { id: `${index}`, name: `reference-${index}.png`, type: "image/png", dataUrl, storageKey: url.startsWith("image:") ? url : undefined } : null;
-        }),
-    );
-    return references.every(Boolean) ? (references as ReferenceImage[]) : null;
+    // A reference this build wrote is a file of the canvas (`files/<name>`); anything else is a URL or an
+    // inline image, which is the reference itself (#173 removed the branch that resolved blob-era keys).
+    return metadata.references.map((reference, index) => {
+        const storageKey = reference.startsWith("files/") ? reference : undefined;
+        return { id: `${index}`, name: `reference-${index}.png`, type: "image/png", dataUrl: storageKey ? "" : reference, storageKey };
+    });
 }
 
 export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
@@ -56,12 +55,9 @@ export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
                     return { ...image, content: await resolveImageUrl(image.storageKey, image.content) };
                 }),
             );
-            if (metadata.storageKey) {
-                void ensureImagePreview(metadata.storageKey);
-                return { ...node, metadata: { ...metadata, content: await resolveImageUrl(metadata.storageKey, content), images } };
-            }
-            if (!content.startsWith("data:image/")) return node;
-            return { ...node, metadata: { ...metadata, ...imageMetadata(await uploadImage(content)) } };
+            if (!metadata.storageKey) return { ...node, metadata: { ...metadata, images } };
+            void ensureImagePreview(metadata.storageKey);
+            return { ...node, metadata: { ...metadata, content: await resolveImageUrl(metadata.storageKey, content), images } };
         }),
     );
 }
@@ -160,8 +156,15 @@ export function clearStaleNodeErrors(nodes: CanvasNodeData[]) {
     return nodes.map((node) => (node.metadata?.status === "error" ? { ...node, metadata: { ...node.metadata, status: "idle" as const, errorDetails: undefined } } : node));
 }
 
+/**
+ * Whether this error is the user stopping, rather than something going wrong.
+ *
+ * By name: every service rethrows a cancellation as an `AbortError` before wrapping an error into a sentence
+ * (`throwIfCanceled`), so the test does not depend on which words the dictionary happens to use for it. It used
+ * to compare two translated strings, which agreed by luck.
+ */
 export function isGenerationCanceled(error: unknown) {
-    return error instanceof Error && (error.message === i18n.t("common.requestCanceled") || error.name === "AbortError");
+    return error instanceof Error && error.name === "AbortError";
 }
 
 export function findRetrySourceNode(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {

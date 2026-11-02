@@ -22,7 +22,7 @@ function snapshotOf(marker: string, rev = "rev-1"): SaveSnapshot {
 }
 
 /** A queue wired to a fake canvas whose snapshot the test controls. */
-function harness(overrides: { save?: (id: string, snapshot: SaveSnapshot) => Promise<CanvasSummary> } = {}) {
+function harness(overrides: { save?: (id: string, snapshot: SaveSnapshot, options?: { keepalive?: boolean }) => Promise<CanvasSummary> } = {}) {
     const state = {
         snapshots: new Map<string, SaveSnapshot>(),
         saved: [] as Array<{ id: string; snapshot: SaveSnapshot }>,
@@ -30,13 +30,16 @@ function harness(overrides: { save?: (id: string, snapshot: SaveSnapshot) => Pro
         conflicts: [] as Array<{ id: string; current: CanvasSummary }>,
         errors: [] as Array<{ id: string; error: unknown }>,
         missing: [] as string[],
+        /** Which saves asked to survive the page going away. */
+        keepalive: [] as string[],
     };
     const queue = createSaveQueue({
         snapshot: (id) => state.snapshots.get(id) ?? null,
         save:
             overrides.save ??
-            (async (id, snapshot) => {
+            (async (id, snapshot, options) => {
                 state.saved.push({ id, snapshot });
+                if (options?.keepalive) state.keepalive.push(id);
                 return summary(id, `rev-${state.saved.length + 1}`);
             }),
         onSaved: (_id, summaryValue) => state.summaries.push(summaryValue),
@@ -303,6 +306,29 @@ describe("the edges", () => {
 
         await queue.flushAll();
         expect(state.saved.map((item) => item.id)).toEqual(["c1", "c2"]);
+    });
+
+    test("flushAll asks for a save the browser will keep across the navigation", async () => {
+        const { queue, state } = harness();
+        state.snapshots.set("c1", snapshotOf("a"));
+
+        queue.schedule("c1");
+        await queue.flushAll();
+
+        expect(state.saved.map((item) => item.id)).toEqual(["c1"]);
+        // The debounced save is an ordinary one; only the pagehide flush has to survive the unload (#177).
+        expect(state.keepalive).toEqual(["c1"]);
+    });
+
+    test("a debounced save does not ask for keepalive", async () => {
+        const { queue, state } = harness();
+        state.snapshots.set("c1", snapshotOf("a"));
+
+        queue.schedule("c1");
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+        expect(state.saved).toHaveLength(1);
+        expect(state.keepalive).toEqual([]);
     });
 
     test("forget drops the pending save", async () => {

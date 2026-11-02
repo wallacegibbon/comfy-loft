@@ -52,13 +52,13 @@ export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n
             const storageKey = node.metadata?.storageKey || "";
             if (storageKey) {
                 const blob = await (await fetch(activeFileUrl(storageKey))).blob().catch(() => null);
-                if (blob) return void zipFiles.push({ name: uniqueName(title, fileExtension(blob.type, storageKey)), data: blob });
+                if (blob) return void zipFiles.push({ name: uniqueName(title, fileExtension(blob.type)), data: blob });
             }
             if (node.type === CanvasNodeType.Text) return void zipFiles.push({ name: uniqueName(title, "txt"), data: node.metadata?.content || node.metadata?.prompt || "" });
             const content = node.metadata?.content;
             if (content && content.startsWith("data:")) {
                 const blob = await (await fetch(content)).blob();
-                return void zipFiles.push({ name: uniqueName(title, fileExtension(blob.type, storageKey)), data: blob });
+                return void zipFiles.push({ name: uniqueName(title, fileExtension(blob.type)), data: blob });
             }
             zipFiles.push({ name: uniqueName(title, "json"), data: JSON.stringify(node, null, 2) });
         }),
@@ -81,7 +81,7 @@ function safeFileName(value: string) {
     return value.replace(/[\\/:*?"<>|]/g, "_");
 }
 
-function fileExtension(mimeType: string, storageKey: string) {
+function fileExtension(mimeType: string) {
     if (mimeType.includes("png")) return "png";
     if (mimeType.includes("jpeg")) return "jpg";
     if (mimeType.includes("webp")) return "webp";
@@ -91,5 +91,5 @@ function fileExtension(mimeType: string, storageKey: string) {
     if (mimeType.includes("mpeg") || mimeType.includes("mp3")) return "mp3";
     if (mimeType.includes("wav")) return "wav";
     if (mimeType.includes("ogg")) return "ogg";
-    return storageKey.startsWith("image:") ? "png" : "bin";
+    return "bin";
 }

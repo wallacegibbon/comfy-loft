@@ -330,7 +330,9 @@ async function askAgentSession(name: string, request: { prompt: string; images?:
                 () => {
                     if (live.waiting === turn) live.waiting = undefined;
                     cancelAgentSession(name);
-                    reject(new Error(apiText("requestFailed")));
+                    // A stopped turn is not a failed one: the name is what the callers test, and a
+                    // translated sentence here read as an error and marked the node red.
+                    reject(new DOMException("Aborted", "AbortError"));
                 },
                 { once: true },
             );

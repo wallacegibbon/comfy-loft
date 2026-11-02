@@ -58,6 +58,8 @@ type DialogProps = {
     closable?: boolean;
     /** Whether clicking the backdrop closes. Defaults to true. */
     maskClosable?: boolean;
+    /** Whether Escape closes. Defaults to true; a dialog with no safe default answer passes false. */
+    escapeClosable?: boolean;
 };
 
 const SIZE_CLASS: Record<DialogProps["size"], string> = {
@@ -67,7 +69,7 @@ const SIZE_CLASS: Record<DialogProps["size"], string> = {
     auto: "max-h-[90dvh] w-auto",
 };
 
-export function Dialog({ open, onClose, title, label, children, footer, size, className, bodyClassName, bodyStyle, closable = true, maskClosable = true }: DialogProps) {
+export function Dialog({ open, onClose, title, label, children, footer, size, className, bodyClassName, bodyStyle, closable = true, maskClosable = true, escapeClosable = true }: DialogProps) {
     return (
         <RadixDialog.Root
             open={open}
@@ -86,6 +88,11 @@ export function Dialog({ open, onClose, title, label, children, footer, size, cl
                     // Escape still does, which is the contract the call sites expect.
                     onPointerDownOutside={(event) => {
                         if (!maskClosable) event.preventDefault();
+                    }}
+                    // Escape is a dismissal like the backdrop is; a dialog that demands an answer turns it off
+                    // too, or the answer is "close it and hope".
+                    onEscapeKeyDown={(event) => {
+                        if (!escapeClosable) event.preventDefault();
                     }}
                     className={cn(
                         "fixed left-1/2 top-1/2 z-[1301] flex max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xl outline-none dark:border-stone-800 dark:bg-stone-900 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",

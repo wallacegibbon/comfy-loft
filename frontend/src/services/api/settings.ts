@@ -1,5 +1,5 @@
 import { LOCAL_GATEWAY_BASE_URL } from "@/constant/app-mode";
-import { httpJson } from "@/services/api/http";
+import { KEEPALIVE_BYTES, httpJson } from "@/services/api/http";
 
 /**
  * The workspace preferences, as the gateway keeps them (#155).
@@ -18,11 +18,14 @@ export async function requestSettings(): Promise<SettingsBlob> {
     return payload?.settings && typeof payload.settings === "object" ? payload.settings : {};
 }
 
-export async function requestSettingsSave(settings: SettingsBlob): Promise<SettingsBlob> {
+export async function requestSettingsSave(settings: SettingsBlob, options: { keepalive?: boolean } = {}): Promise<SettingsBlob> {
+    const body = JSON.stringify({ settings });
     const payload = await httpJson<{ settings?: SettingsBlob }>(URL, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings }),
+        body,
+        // Only a body the browser will actually keep; see KEEPALIVE_BYTES.
+        keepalive: options.keepalive === true && body.length <= KEEPALIVE_BYTES,
         timeout: 8000,
     });
     return payload?.settings && typeof payload.settings === "object" ? payload.settings : settings;

@@ -87,7 +87,7 @@ const queue: SaveQueue = createSaveQueue({
         const summary = state.canvases.find((item) => item.id === id);
         return { document: documentOf(project), rev: summary?.rev ?? project.rev, title: project.title };
     },
-    save: (id, snapshot) => requestCanvasSave(id, snapshot.rev, snapshot.document, snapshot.title),
+    save: (id, snapshot, options) => requestCanvasSave(id, snapshot.rev, snapshot.document, snapshot.title, options),
     onSaved: (id, summary) => {
         useCanvasStore.setState((state) => ({
             canvases: state.canvases.map((item) => (item.id === id ? summary : item)),

@@ -71,12 +71,13 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
         }, SAVE_DEBOUNCE_MS);
     },
 
+    // The page is going away: ask for the write to survive the navigation, not just to start.
     flush: () => {
         if (saveTimer) {
             clearTimeout(saveTimer);
             saveTimer = null;
         }
-        void save();
+        void save(true);
     },
 }));
 
@@ -88,7 +89,7 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
  * request is on the wire is written by the next one; a failure is left for the next change (or `flush`)
  * to retry rather than looped on here.
  */
-function save(): void {
+function save(keepalive = false): void {
     if (saving || !pending) return;
     const state = useSettingsStore.getState();
     if (!state.ready) return;
@@ -97,7 +98,7 @@ function save(): void {
     saving = (async () => {
         let written = true;
         try {
-            await requestSettingsSave(document);
+            await requestSettingsSave(document, { keepalive });
             useSettingsStore.setState({ error: null });
         } catch (error) {
             // Keep the change in memory and try again with the next one: preferences are cheap to lose, but

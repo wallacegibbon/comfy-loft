@@ -1,5 +1,5 @@
 import i18n from "@/i18n";
-import { apiErrorMessage, isCancelled } from "@/services/api/http";
+import { apiErrorMessage, isCancelled, throwIfCanceled } from "@/services/api/http";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio } from "@/lib/media-size";
 import { VIDEO_INTERPOLATE_WORKFLOW } from "@/lib/canvas/tool-workflows";
@@ -71,6 +71,7 @@ export async function createVideoInterpolateTask(config: AiConfig, source: Video
         });
         return { id: run.id, model: VIDEO_INTERPOLATE_WORKFLOW };
     } catch (error) {
+        throwIfCanceled(error);
         throw new Error(apiErrorMessage(error, apiText("videoTaskCreateFailed")));
     }
 }
@@ -219,7 +220,7 @@ async function referenceMediaToFile(item: { name: string; type?: string; url?: s
         try {
             blob = await (await fetch(url, { signal: options?.signal })).blob();
         } catch (error) {
-            if (error instanceof DOMException && error.name === "AbortError") throw error;
+            throwIfCanceled(error);
             throw new Error(apiText(errorKey));
         }
     }

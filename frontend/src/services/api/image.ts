@@ -7,7 +7,7 @@ import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { IMAGE_ANGLE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 import { imageToDataUrl, type UploadedImage } from "@/services/image-storage";
 import { imageSizePresets } from "@/lib/media-size";
-import { apiErrorMessage } from "@/services/api/http";
+import { apiErrorMessage, throwIfCanceled } from "@/services/api/http";
 import { createRun, uploadMedia, waitForRun, type Run } from "@/services/api/runs";
 import { generatedImages } from "@/lib/canvas/generated-media";
 import type { ReferenceImage } from "@/types/image";
@@ -154,6 +154,7 @@ async function requestGatewayImages(input: {
         // The run wrote these files into the canvas; the node references them where they are (#173).
         return await generatedImages(config, finished, { signal: options?.signal });
     } catch (error) {
+        throwIfCanceled(error);
         throw new Error(apiErrorMessage(error, apiText("requestFailed"), "imageTimeout"));
     }
 }
