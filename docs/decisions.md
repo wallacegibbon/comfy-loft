@@ -7142,3 +7142,32 @@ canaries *are* in `model.conf` on disk, which is where a key belongs.
 `internal/server/agent_e2e_test.go`, `frontend/src/components/settings/{agent-models-section.tsx,agent-model-dialog.tsx,preferences-dialog.tsx}`,
 `frontend/src/lib/agent-models.ts`, `frontend/src/services/api/agent.ts`,
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `frontend/tests/agent-models.test.ts`.
+
+## 202. The workflow list has one frame, not three
+
+**Decision** Only the top level of the resource panel is drawn as a frame. A pack is still a bordered card; the
+workflows inside it are filled blocks — emerald while the workflow is in the model picker, plain while it is
+hidden — and the resources inside a workflow are rows divided by a hairline on that same fill. `ResourceCard`
+and the inline "run this yourself" command block lost their borders the same way, keeping a fill. The pulsing
+emerald ring on an enabled workflow (`workflow-active`, a `box-shadow` animation that drew a second border) is
+gone, together with its keyframes.
+
+**Why** The panel was a column of boxes inside boxes: pack card, workflow card inside it, resource surface inside
+that, each with its own 1px outline and the innermost one the smallest of the three — so the loudest frames were
+the ones carrying the least. Three outlines around fifteen rows of text also made the list hard to scan: what a
+row *belonged* to was stated in three places at once. One frame plus fills says the same thing with fewer marks,
+and the frame that remains is the one that groups the most.
+
+**Cost** The enabled/hidden distinction now rests on a fill rather than an outline, so it is weaker in a
+screenshot printed in greyscale — the `Enabled` / `Hidden` label and the muted name still carry it, and 40% of
+`emerald-950` in the dark theme keeps it legible on the screen. The extent of an expanded workflow is implied by
+the edge of its fill instead of drawn; nothing marks the group when the tints are turned off by a display filter.
+
+**Tested** `npm run check` (zh 845 / en 831 keys, no dead ones, exports clean, prettier, `tsc --noEmit`),
+`npx vitest run` (22 files, 165 tests), `npm run build`. In the browser (`/tmp/verify`, gateway 8191 and canvas
+3011 on its own data directory, the real `resources.json` index so the packs and their rows are the ones the
+report was about) in dark and light, collapsed and expanded, with one workflow enabled and one hidden: the pack
+card is the only frame: the collapsed list of seven packs, the expanded pack, the expanded workflow with its four
+resource rows and a hidden workflow beside two enabled ones were screenshotted before and after and compared.
+
+**Where** `frontend/src/components/settings/resource-center-panel.tsx`, `frontend/src/styles/globals.css`.
