@@ -38,7 +38,7 @@ function outputName(prefix: string, blob: Blob) {
     return `${prefix}.${extension}`;
 }
 
-function readVideoMeta(url: string) {
+export function readVideoMeta(url: string) {
     return new Promise<{ width: number; height: number; durationMs?: number }>((resolve) => {
         const video = document.createElement("video");
         const done = () => resolve({ width: video.videoWidth || 1280, height: video.videoHeight || 720, durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : undefined });
@@ -48,7 +48,7 @@ function readVideoMeta(url: string) {
     });
 }
 
-function readAudioMeta(url: string) {
+export function readAudioMeta(url: string) {
     return new Promise<{ durationMs?: number }>((resolve) => {
         const audio = document.createElement("audio");
         const done = () => resolve({ durationMs: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1000) : undefined });

@@ -1,7 +1,7 @@
 import i18n from "@/i18n";
 import { activeCanvasId } from "@/services/canvas-files";
 import { gatewayRoot } from "@/constant/app-mode";
-import { apiErrorMessage, httpBlob, httpJson } from "@/services/api/http";
+import { apiErrorMessage, httpJson } from "@/services/api/http";
 import type { AiConfig } from "@/stores/use-config-store";
 
 /**
@@ -17,7 +17,7 @@ export type RunProgress = { phase?: string; step?: number; total?: number; perce
 /** A live frame from a run that is still rendering, with a `t` stamp so a poll can replace it. */
 type RunPreview = { url: string; mime?: string };
 
-type RunOutput = {
+export type RunOutput = {
     index: number;
     kind: string;
     mime: string;
@@ -134,17 +134,6 @@ export async function uploadMedia(config: AiConfig, file: Blob, filename: string
     }
 }
 
-/** Download every output of a finished run, in index order. */
-export async function downloadRunOutputs(config: AiConfig, run: Run, options: { signal?: AbortSignal } = {}): Promise<Array<{ index: number; blob: Blob; mime: string }>> {
-    const outputs = run.outputs || [];
-    if (!outputs.length) throw new Error(apiText("runDownloadFailed"));
-    const files: Array<{ index: number; blob: Blob; mime: string }> = [];
-    for (let index = 0; index < outputs.length; index += 1) {
-        files.push({ index, blob: await downloadRunOutput(config, run, index, options), mime: outputs[index].mime });
-    }
-    return files;
-}
-
 /** Read one run. */
 async function getRun(config: AiConfig, id: string): Promise<Run> {
     try {
@@ -194,16 +183,15 @@ export async function waitForRun(config: AiConfig, id: string, options: RunWaitO
     }
 }
 
-/** Download one output of a finished run. */
-export async function downloadRunOutput(config: AiConfig, run: Run, index = 0, options: { signal?: AbortSignal } = {}): Promise<Blob> {
-    const output = run.outputs?.[index];
-    if (!output) throw new Error(apiText("runDownloadFailed"));
-    const url = /^https?:/i.test(output.url) ? output.url : runUrl(config, output.url);
-    try {
-        return await httpBlob(url, { signal: options.signal });
-    } catch (error) {
-        throw new Error(apiErrorMessage(error, apiText("runDownloadFailed")));
-    }
+/**
+ * Where one output of a finished run is served from.
+ *
+ * The gateway answers with a path on itself; a run whose file lives elsewhere may answer with a URL, and
+ * either is accepted. Nothing downloads: the file is already in the canvas the run belongs to, so a node
+ * references it where it is (decisions #173).
+ */
+export function outputUrl(config: AiConfig, output: RunOutput): string {
+    return /^https?:/i.test(output.url) ? output.url : runUrl(config, output.url);
 }
 
 function runErrorMessage(run: Run) {

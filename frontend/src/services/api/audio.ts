@@ -1,8 +1,9 @@
 import i18n from "@/i18n";
-import { audioMimeType, normalizeAudioFormatValue } from "@/lib/audio-generation";
-import { uploadMediaFile, type UploadedFile } from "@/services/file-storage";
+import { normalizeAudioFormatValue } from "@/lib/audio-generation";
+import type { UploadedFile } from "@/services/file-storage";
 import { apiErrorMessage } from "@/services/api/http";
-import { createRun, downloadRunOutput, waitForRun, type Run } from "@/services/api/runs";
+import { createRun, waitForRun, type Run } from "@/services/api/runs";
+import { generatedAudio } from "@/lib/canvas/generated-media";
 import { resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 
 type RequestOptions = { signal?: AbortSignal };
@@ -25,7 +26,7 @@ const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiE
  * it writes, and an unsupported one comes back as a message naming the accepted set — a silent
  * substitution would leave the node labelled with a format it does not hold.
  */
-export async function requestAudioGeneration(config: AiConfig, prompt: string, options?: RequestOptions & AudioRunHooks): Promise<Blob> {
+export async function requestAudioGeneration(config: AiConfig, prompt: string, options?: RequestOptions & AudioRunHooks): Promise<UploadedFile> {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.audioModel);
     const model = requestConfig.model.trim();
     const format = normalizeAudioFormatValue(config.audioFormat);
@@ -43,16 +44,11 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
             // The user asked for this: stopping it should free the GPU, not leave it rendering.
             cancelOnAbort: true,
         });
-        const blob = await downloadRunOutput(requestConfig, finished, 0, { signal: options?.signal });
-        return blob.type.startsWith("audio/") ? blob : new Blob([blob], { type: audioMimeType(format) });
+        // The run wrote the clip into the canvas; the node references it there (#173).
+        return await generatedAudio(requestConfig, finished);
     } catch (error) {
         throw new Error(apiErrorMessage(error, apiText("audioGenerationFailed")));
     }
-}
-
-export async function storeGeneratedAudio(blob: Blob, format = "mp3"): Promise<UploadedFile> {
-    const audio = blob.type.startsWith("audio/") ? blob : new Blob([blob], { type: audioMimeType(format) });
-    return uploadMediaFile(audio, "audio");
 }
 
 function assertAudioConfig(config: AiConfig, model: string) {

@@ -3,9 +3,10 @@ import { apiErrorMessage, isCancelled } from "@/services/api/http";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio } from "@/lib/media-size";
 import { VIDEO_INTERPOLATE_WORKFLOW } from "@/lib/canvas/tool-workflows";
-import { getMediaBlob, resolveMediaUrl, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
+import { getMediaBlob, resolveMediaUrl, type UploadedFile } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
-import { cancelRun, createRun, downloadRunOutput, uploadMedia, waitForRun, RunFailedError, type Run } from "@/services/api/runs";
+import { cancelRun, createRun, uploadMedia, waitForRun, RunFailedError, type Run } from "@/services/api/runs";
+import { generatedVideo } from "@/lib/canvas/generated-media";
 import { resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
@@ -14,7 +15,6 @@ type RequestOptions = { signal?: AbortSignal; params?: Record<string, unknown> }
 type VideoMediaOptions = RequestOptions & { videos?: ReferenceVideo[]; audios?: ReferenceAudio[] };
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
-type VideoGenerationResult = { blob?: Blob; url?: string; mimeType?: string };
 /** A video task is a run: the id is the run id, and the file is read off the run. */
 type VideoGenerationTask = { id: string; model: string };
 type VideoUpscaleSource = { name: string; type?: string; url?: string; storageKey?: string };
@@ -28,7 +28,7 @@ type WaitOptions = RequestOptions & { onPreview?: (preview: VideoPreview | null)
  */
 const VIDEO_RUN_INTERVAL_MS = 1500;
 
-export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: WaitOptions): Promise<VideoGenerationResult> {
+export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: WaitOptions): Promise<UploadedFile> {
     return waitForVideoRun(config, task, options);
 }
 
@@ -69,18 +69,6 @@ export async function createVideoInterpolateTask(config: AiConfig, source: Video
     } catch (error) {
         throw new Error(apiErrorMessage(error, apiText("videoTaskCreateFailed")));
     }
-}
-
-export async function storeGeneratedVideo(result: VideoGenerationResult): Promise<UploadedFile> {
-    if (result.blob) return uploadMediaFile(result.blob, "video");
-    if (result.url) {
-        try {
-            return await uploadMediaFile(result.url, "video");
-        } catch {
-            return { url: result.url, storageKey: "", bytes: 0, mimeType: result.mimeType || "video/mp4" };
-        }
-    }
-    throw new Error(apiText("noPlayableVideo"));
 }
 
 type GatewayVideoPlan = {
@@ -169,7 +157,7 @@ async function gatewayVideoMedia(config: AiConfig, plan: GatewayVideoPlan, optio
  * the step count and preview frames come from the run itself. Starting the request and watching it
  * are separate calls for exactly this reason.
  */
-async function waitForVideoRun(config: AiConfig, task: VideoGenerationTask, options?: WaitOptions): Promise<VideoGenerationResult> {
+async function waitForVideoRun(config: AiConfig, task: VideoGenerationTask, options?: WaitOptions): Promise<UploadedFile> {
     const requestConfig = resolveModelRequestConfig(config, task.model);
     try {
         const run: Run = await waitForRun(requestConfig, task.id, {
@@ -189,8 +177,8 @@ async function waitForVideoRun(config: AiConfig, task: VideoGenerationTask, opti
             onSteps: options?.onSteps,
         });
         options?.onPreview?.(null);
-        const blob = await downloadRunOutput(requestConfig, run, 0, { signal: options?.signal });
-        return { blob };
+        // The run wrote the clip into the canvas; the node references it where it is (#173).
+        return await generatedVideo(requestConfig, run);
     } catch (error) {
         // Only an explicit stop cancels the run; a reload or a node switch leaves it rendering so
         // the node can reattach to it later.

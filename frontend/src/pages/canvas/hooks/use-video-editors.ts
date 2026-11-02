@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { nanoid } from "nanoid";
 
 import { toast } from "@/components/kit/toast";
-import { createVideoInterpolateTask, storeGeneratedVideo, waitForVideoGenerationTask } from "@/services/api/video";
+import { createVideoInterpolateTask, waitForVideoGenerationTask } from "@/services/api/video";
 import { useEffectiveConfig } from "@/stores/use-config-store";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
 import { isGenerationCanceled } from "@/lib/canvas/canvas-generation-helpers";
@@ -63,7 +63,7 @@ export function useVideoEditors(deps: NodeEditorDeps) {
                     { signal: controller.signal },
                 );
                 setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, videoTaskId: task.id, model: "video-rife", params: { multiplier: 2 } } } : item)));
-                const video = await storeGeneratedVideo(await waitForVideoGenerationTask(effectiveConfig, task, { signal: controller.signal }));
+                const video = await waitForVideoGenerationTask(effectiveConfig, task, { signal: controller.signal });
                 setNodes((prev) =>
                     prev.map((item) =>
                         item.id === childId

@@ -4,15 +4,15 @@ import { useTranslation } from "react-i18next";
 import { nanoid } from "nanoid";
 
 import { toast } from "@/components/kit/toast";
-import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
-import { isGatewayImageModel, requestEdit, requestGeneration } from "@/services/api/image";
+import { requestAudioGeneration } from "@/services/api/audio";
+import { requestEdit, requestGeneration } from "@/services/api/image";
 import { nodeAgent } from "@/services/api/agent";
 import { requestPromptChat } from "@/services/api/prompts";
-import { downloadRunOutput, downloadRunOutputs, waitForRun, type Run, type RunProgress } from "@/services/api/runs";
+import { waitForRun, type Run, type RunProgress } from "@/services/api/runs";
+import { generatedAudio, generatedImages } from "@/lib/canvas/generated-media";
 import { isVideoTaskFailed } from "@/services/api/video";
 import { resolveModelRequestConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
-import { readFileAsDataUrl } from "@/lib/image-utils";
-import { uploadImage, imageToDataUrl } from "@/services/image-storage";
+import { imageToDataUrl, type UploadedImage } from "@/services/image-storage";
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { fitNodeSize, nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { audioMetadata, buildAudioGenerationMetadata, buildImageGenerationMetadata, imageMetadata } from "@/lib/canvas/canvas-node-factory";
@@ -143,12 +143,11 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
      * Turn one artifact of a run into a canvas image slot.
      *
      * Called by a live batch and by the resume path alike, which is what makes a reloaded batch
-     * indistinguishable from one that never stopped: same upload, same node resize, same primary
-     * image choice.
+     * indistinguishable from one that never stopped: same reference, same node resize, same primary
+     * image choice. The picture is the file the run wrote into the canvas — nothing is copied (#173).
      */
     const fillImageSlot = useCallback(
-        async (rootId: string, imageId: string, dataUrl: string, signal: AbortSignal) => {
-            const uploaded = await uploadImage(dataUrl, { signal });
+        async (rootId: string, imageId: string, uploaded: UploadedImage) => {
             const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
             const imageSize = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
             const item: CanvasNodeImage = {
@@ -276,76 +275,47 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             let hasSuccess = false;
             let hasFailure = false;
             let firstError = "";
-            const fillSlot = (imageId: string, dataUrl: string) => fillImageSlot(rootId, imageId, dataUrl, controller.signal);
+            const fillSlot = (imageId: string, image: UploadedImage) => fillImageSlot(rootId, imageId, image);
             const failImageSlot = (imageId: string, errorDetails: string) => failImageSlotOn(rootId, imageId, errorDetails);
             const markConfigSuccess = () => {
                 if (!isConfigNode) return;
                 setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)));
             };
 
-            if (isGatewayImageModel(generationConfig)) {
-                // One run for the whole batch: the gateway returns every artifact of a run, so asking
-                // for `count` once avoids loading the model once per image.
-                try {
-                    const requestOptions = {
-                        signal: controller.signal,
-                        onProgress: (state: Run) => setRunStepProgress(rootId, state.progress),
-                        // The id arrives at submission, before a single artifact exists: it is what a
-                        // reload reattaches to.
-                        onRun: (runId: string) => setNodes((prev) => prev.map((node) => (node.id === rootId ? { ...node, metadata: { ...node.metadata, imageRunId: runId } } : node))),
-                    };
-                    const batchConfig = { ...generationConfig, count: String(count) };
-                    const results = referenceImages.length ? await requestEdit(batchConfig, effectivePrompt, referenceImages, requestOptions) : await requestGeneration(batchConfig, effectivePrompt, requestOptions);
-                    for (let index = 0; index < imageIds.length; index += 1) {
-                        const result = results[index];
-                        if (!result) {
-                            const errorDetails = t("canvas.runtime.generationFailed");
-                            if (!firstError) firstError = errorDetails;
-                            hasFailure = true;
-                            failImageSlot(imageIds[index], errorDetails);
-                            continue;
-                        }
-                        try {
-                            await fillSlot(imageIds[index], result.dataUrl);
-                            hasSuccess = true;
-                        } catch (error) {
-                            const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
-                            if (!firstError) firstError = errorDetails;
-                            hasFailure = true;
-                            failImageSlot(imageIds[index], errorDetails);
-                        }
+            // One run for the whole batch: the gateway returns every artifact of a run, so asking for `count`
+            // once avoids loading the model once per image. The artifacts are files the run wrote into the
+            // canvas, and each becomes a slot by reference (#173).
+            try {
+                const requestOptions = {
+                    signal: controller.signal,
+                    onProgress: (state: Run) => setRunStepProgress(rootId, state.progress),
+                    // The id arrives at submission, before a single artifact exists: it is what a
+                    // reload reattaches to.
+                    onRun: (runId: string) => setNodes((prev) => prev.map((node) => (node.id === rootId ? { ...node, metadata: { ...node.metadata, imageRunId: runId } } : node))),
+                };
+                const batchConfig = { ...generationConfig, count: String(count) };
+                const results = referenceImages.length ? await requestEdit(batchConfig, effectivePrompt, referenceImages, requestOptions) : await requestGeneration(batchConfig, effectivePrompt, requestOptions);
+                for (let index = 0; index < imageIds.length; index += 1) {
+                    const result = results[index];
+                    if (!result) {
+                        const errorDetails = t("canvas.runtime.generationFailed");
+                        if (!firstError) firstError = errorDetails;
+                        hasFailure = true;
+                        failImageSlot(imageIds[index], errorDetails);
+                        continue;
                     }
-                    if (hasSuccess) markConfigSuccess();
-                } catch (error) {
-                    if (isGenerationCanceled(error)) return;
-                    const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
-                    if (!firstError) firstError = errorDetails;
-                    hasFailure = true;
-                    imageIds.forEach((imageId) => failImageSlot(imageId, errorDetails));
-                } finally {
-                    setRunStepProgress(rootId, undefined);
+                    await fillSlot(imageIds[index], result);
+                    hasSuccess = true;
                 }
-            } else {
-                await Promise.all(
-                    imageIds.map(async (imageId) => {
-                        try {
-                            const image = referenceImages.length
-                                ? await requestEdit({ ...generationConfig, count: "1" }, effectivePrompt, referenceImages, { signal: controller.signal }).then((items) => items[0])
-                                : await requestGeneration({ ...generationConfig, count: "1" }, effectivePrompt, { signal: controller.signal }).then((items) => items[0]);
-                            await fillSlot(imageId, image.dataUrl);
-                            hasSuccess = true;
-                            markConfigSuccess();
-                            return true;
-                        } catch (error) {
-                            if (isGenerationCanceled(error)) return false;
-                            const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
-                            if (!firstError) firstError = errorDetails;
-                            hasFailure = true;
-                            failImageSlot(imageId, errorDetails);
-                        }
-                        return false;
-                    }),
-                );
+                if (hasSuccess) markConfigSuccess();
+            } catch (error) {
+                if (isGenerationCanceled(error)) return;
+                const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
+                if (!firstError) firstError = errorDetails;
+                hasFailure = true;
+                imageIds.forEach((imageId) => failImageSlot(imageId, errorDetails));
+            } finally {
+                setRunStepProgress(rootId, undefined);
             }
             if (rootId !== nodeId) finishGenerationRequest(rootId, controller);
             if (controller.signal.aborted) {
@@ -459,15 +429,12 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             if (!reuseAudioNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: audioId }]);
             const controller = startGenerationRequest(audioId, nodeId, nodeId, runController);
             try {
-                const audio = await storeGeneratedAudio(
-                    await requestAudioGeneration(generationConfig, effectivePrompt, {
-                        signal: controller.signal,
-                        // The id lands on the node before the first poll, so a reload can resume it.
-                        onRun: (runId) => setNodes((prev) => prev.map((node) => (node.id === audioId ? { ...node, metadata: { ...node.metadata, audioRunId: runId } } : node))),
-                        onProgress: (run) => setRunStepProgress(audioId, run.progress),
-                    }),
-                    generationConfig.audioFormat,
-                );
+                const audio = await requestAudioGeneration(generationConfig, effectivePrompt, {
+                    signal: controller.signal,
+                    // The id lands on the node before the first poll, so a reload can resume it.
+                    onRun: (runId) => setNodes((prev) => prev.map((node) => (node.id === audioId ? { ...node, metadata: { ...node.metadata, audioRunId: runId } } : node))),
+                    onProgress: (run) => setRunStepProgress(audioId, run.progress),
+                });
                 setNodes((prev) =>
                     prev.map((node) =>
                         node.id === audioId ? { ...node, metadata: { ...node.metadata, ...audioMetadata(audio), prompt: effectivePrompt, ...buildAudioGenerationMetadata(generationConfig), audioRunId: undefined, stepProgress: undefined } } : node,
@@ -730,14 +697,11 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                     return;
                 }
                 if (node.type === CanvasNodeType.Audio) {
-                    const audio = await storeGeneratedAudio(
-                        await requestAudioGeneration(generationConfig, prompt, {
-                            signal: controller.signal,
-                            onRun: (runId) => setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, audioRunId: runId } } : item))),
-                            onProgress: (run) => setRunStepProgress(node.id, run.progress),
-                        }),
-                        generationConfig.audioFormat,
-                    );
+                    const audio = await requestAudioGeneration(generationConfig, prompt, {
+                        signal: controller.signal,
+                        onRun: (runId) => setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, audioRunId: runId } } : item))),
+                        onProgress: (run) => setRunStepProgress(node.id, run.progress),
+                    });
                     setNodes((prev) =>
                         prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, ...audioMetadata(audio), prompt, ...buildAudioGenerationMetadata(generationConfig), audioRunId: undefined, stepProgress: undefined } } : item)),
                     );
@@ -753,7 +717,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                           signal: controller.signal,
                           onPrompt: (sent) => setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, sentPrompt: sent } } : item))),
                       }).then((items) => items[0]);
-                const uploadedImage = await uploadImage(image.dataUrl, { signal: controller.signal });
+                const uploadedImage = image;
                 const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                 const retryImage: CanvasNodeImage = {
                     id: imageId || node.metadata?.primaryImageId || nanoid(),
@@ -847,6 +811,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             let controller: AbortController | undefined;
             try {
                 const generationConfig = buildGenerationConfig(effectiveConfig, node, "audio");
+                const requestConfig = resolveModelRequestConfig(generationConfig, generationConfig.model);
                 if (!isAiConfigReady(generationConfig, generationConfig.model)) {
                     if (silent) {
                         setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails: t("workbench.configFirst") } } : item)));
@@ -864,7 +829,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                     // Watching a run must not kill it: the page leaving is exactly the case this exists for.
                     cancelOnAbort: false,
                 });
-                const audio = await storeGeneratedAudio(await downloadRunOutput(generationConfig, finished, 0, { signal: controller.signal }), generationConfig.audioFormat);
+                const audio = await generatedAudio(requestConfig, finished);
                 setNodes((prev) =>
                     prev.map((item) =>
                         item.id === node.id ? { ...item, metadata: { ...item.metadata, ...audioMetadata(audio), prompt: item.metadata?.prompt, ...buildAudioGenerationMetadata(generationConfig), audioRunId: undefined, stepProgress: undefined } } : item,
@@ -917,13 +882,12 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                     // Watching a run must not kill it: the page leaving is exactly the case this exists for.
                     cancelOnAbort: false,
                 });
-                const files = await downloadRunOutputs(requestConfig, finished, { signal: controller.signal });
+                const images = await generatedImages(requestConfig, finished, { signal: controller.signal });
                 let filled = 0;
                 for (const [index, slotId] of slotIds.entries()) {
-                    const file = files[index];
-                    if (!file) break;
-                    const dataUrl = await readFileAsDataUrl(new File([file.blob], `image-${index + 1}.png`, { type: file.mime || file.blob.type || "image/png" }));
-                    await fillImageSlot(node.id, slotId, dataUrl, controller.signal);
+                    const image = images[index];
+                    if (!image) break;
+                    await fillImageSlot(node.id, slotId, image);
                     filled += 1;
                 }
                 for (const slotId of slotIds.slice(filled)) failImageSlotOn(node.id, slotId, t("canvas.runtime.generationFailed"));

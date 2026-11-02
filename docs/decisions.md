@@ -6013,3 +6013,50 @@ node and title, the file kept its name and its bytes, and `canvas.json` on disk 
 `frontend/src/services/api/canvases.ts`, `frontend/src/stores/canvas/use-canvas-store.ts`,
 `frontend/src/components/canvas/canvas-manager-dialog.tsx`, `frontend/src/types/canvas-export.ts`,
 `frontend/src/lib/canvas/canvas-document.ts`.
+
+## 173. A generated file is the file the run wrote
+
+**Decision** When a run finishes, the node references the artifacts where the run put them: `files/<name>`
+inside the canvas, which is exactly the name `canvas.json` stores. Nothing is downloaded and nothing is
+uploaded; the only thing read back is the media's own shape (a picture's size, a clip's duration), and a
+browser reads that from the URL.
+
+**What it replaced** Every generation ended with a round trip that made a second copy: the gateway wrote
+`files/task_<id>.png`, the browser fetched it, turned it into a data URL, and posted it to
+`/api/canvases/{id}/uploads` — which named it `up-<8 hex>.png` — and the node referenced *that*. Two files per
+artifact (measured: three 1.0 MB images, three `task_*` and three `up-*` with identical sizes, document
+pointing at the last three), one wasted transfer per artifact, and a document whose names depended on a second
+write succeeding.
+
+**Why it was there** `uploadImage` / `uploadMediaFile` is the canvas's one primitive for "put these bytes in
+the canvas and give me a reference", written when the browser owned the media (IndexedDB) and every picture
+had to be stored by the page. Generation was built on it before #156 moved media into the canvas directory;
+after #156 the run was already writing the file, so the upload had become a copy of a copy. It stayed because
+it worked — the same reason the import did (#172).
+
+**What it changes for the user** One file per artifact instead of two, and a generation that finishes when its
+last file is written rather than after a second upload. The names in the document are the run's
+(`task_<id>[-n].<ext>`), so a canvas and its runs agree on what a file is called. The collector is unaffected:
+a run record and the document are both roots, and once the document names the file it is the document that
+keeps it alive.
+
+**What it does not touch** Bytes the browser itself produces still go through the upload route, because they
+have no name yet: a dropped or pasted file, a crop, a split piece, a painted mask, a captured video frame.
+Reference media for a run is uploaded the same way — it is the user's file, not a run's output.
+
+**Cost** A node's `content` is the run's own name, so an artifact keeps the run's spelling (`task_<uuid>.png`)
+rather than a short one. Nothing renames files, which is the point.
+
+**Tested** `tests/api-runs.test.ts` (a run's outputs become the document's names and the gateway's URLs),
+`tests/api-image-upscale.test.ts` (an upscale run's artifact is referenced, not fetched — the call list stops
+at the run's status), `tests/api-video-runs.test.ts` (a clip's reference carries its size and duration, and the
+artifact is never fetched). Gates: `npm run check`, `npx vitest run` (147).
+
+**In the browser** Generated three 1024×1024 images from the canvas: `canvases/<id>/files/` held exactly three
+`task_*.png` files and no `up-*`; the document referenced `files/task_*.png` in order with real dimensions and
+byte counts; the images rendered; a reload rendered them again from the same names. The canvas was deleted
+afterwards.
+
+**Where** `frontend/src/lib/canvas/generated-media.ts` (new), `frontend/src/services/api/{runs,image,video,audio}.ts`,
+`frontend/src/pages/canvas/hooks/{use-generation-runs,use-image-editors,use-video-editors}.ts`,
+`frontend/src/pages/canvas/project.tsx`, `frontend/src/services/{image-storage,file-storage}.ts`.

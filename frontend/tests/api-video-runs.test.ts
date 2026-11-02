@@ -17,12 +17,13 @@ vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: () => undefi
 vi.mock("@/services/image-storage", () => ({ imageToDataUrl: async () => "data:image/png;base64,AAAA" }));
 vi.mock("@/lib/image-utils", () => ({
     dataUrlToFile: (image: { name?: string }) => new File([new Uint8Array([1, 2, 3])], image.name || "reference.png", { type: "image/png" }),
-    readFileAsDataUrl: async () => "data:image/png;base64,AAAA",
 }));
 vi.mock("@/services/file-storage", () => ({
     getMediaBlob: async () => new Blob([new Uint8Array([4, 5, 6])], { type: "video/mp4" }),
     resolveMediaUrl: async () => "",
     uploadMediaFile: async () => ({ url: "", storageKey: "", bytes: 0, mimeType: "video/mp4" }),
+    // A generated clip is measured where it is served, not downloaded and re-uploaded (#173).
+    readVideoMeta: async () => ({ width: 1280, height: 720, durationMs: 5000 }),
 }));
 
 const { createVideoGenerationTask, createVideoInterpolateTask, waitForVideoGenerationTask } = await import("@/services/api/video");
@@ -199,7 +200,7 @@ describe("waitForVideoGenerationTask", () => {
                         status: "succeeded",
                         progress: { step: 8, total: 8 },
                         preview: { url: "/api/runs/task_video_1/preview?t=42", mime: "image/jpeg" },
-                        outputs: [{ index: 0, kind: "video", mime: "video/mp4", bytes: 3, filename: "v.mp4", url: `/api/canvases/${CANVAS_ID}/files/task_video_1.mp4` }],
+                        outputs: [{ index: 0, kind: "video", mime: "video/mp4", bytes: 3, filename: "task_video_1.mp4", url: `/api/canvases/${CANVAS_ID}/files/task_video_1.mp4` }],
                     }),
                 ),
         });
@@ -215,11 +216,21 @@ describe("waitForVideoGenerationTask", () => {
             },
         );
 
-        expect(await result.blob?.text()).toBe("MP4");
+        // The result is the file the run wrote, by reference: name, URL, size and duration, no copy.
+        expect(result).toMatchObject({
+            storageKey: "files/task_video_1.mp4",
+            url: `${ROOT}/api/canvases/${CANVAS_ID}/files/task_video_1.mp4`,
+            mimeType: "video/mp4",
+            bytes: 3,
+            width: 1280,
+            height: 720,
+            durationMs: 5000,
+        });
         expect(steps).toEqual([{ step: 8, total: 8 }]);
         expect(previews[0]).toMatchObject({ url: "http://127.0.0.1:8190/api/runs/task_video_1/preview?t=42" });
         expect(previews[previews.length - 1]).toBeNull();
-        expect(calls.map((call) => call.url)).toContain(`${ROOT}/api/canvases/${CANVAS_ID}/files/task_video_1.mp4`);
+        // The artifact is never fetched: it is already a file of the canvas.
+        expect(calls.map((call) => call.url)).not.toContain(`${ROOT}/api/canvases/${CANVAS_ID}/files/task_video_1.mp4`);
     });
 
     it("turns a failed run into a video task failure so the node stops polling it", async () => {

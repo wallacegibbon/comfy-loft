@@ -1,4 +1,3 @@
-import i18n from "@/i18n";
 import type { ReferenceImage } from "@/types/image";
 
 export function formatBytes(bytes: number) {
@@ -22,15 +21,6 @@ export function getDataUrlByteSize(dataUrl: string) {
     }
     const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
     return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
-}
-
-export function readFileAsDataUrl(file: File) {
-    return new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(new Error(i18n.t("common.imageReadFailed")));
-        reader.readAsDataURL(file);
-    });
 }
 
 export function readImageMeta(dataUrl: string) {

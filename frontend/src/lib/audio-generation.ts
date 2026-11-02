@@ -50,12 +50,3 @@ export function audioFormatLabel(value: string) {
 export function audioSpeedLabel(value: string) {
     return `${normalizeAudioSpeedValue(value)}x`;
 }
-
-export function audioMimeType(format: string) {
-    if (format === "wav") return "audio/wav";
-    if (format === "opus") return "audio/opus";
-    if (format === "aac") return "audio/aac";
-    if (format === "flac") return "audio/flac";
-    if (format === "pcm") return "audio/pcm";
-    return "audio/mpeg";
-}

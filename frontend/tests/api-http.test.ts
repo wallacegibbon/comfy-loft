@@ -15,7 +15,7 @@ vi.mock("@/i18n", () => ({ default: { t: (key: string) => t(key) } }));
 const noteGatewayError = vi.fn();
 vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: (...args: unknown[]) => noteGatewayError(...args), noteGatewayResponse: () => undefined }));
 
-const { ApiError, apiErrorMessage, httpBlob, httpJson, isCancelled, readApiErrorMessage } = await import("@/services/api/http");
+const { ApiError, apiErrorMessage, httpJson, isCancelled, readApiErrorMessage } = await import("@/services/api/http");
 
 const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
@@ -56,22 +56,6 @@ describe("httpJson", () => {
         expect(noteGatewayError).toHaveBeenCalledTimes(1);
         expect(noteGatewayError.mock.calls[0][1]).toBe("http://127.0.0.1:8190/v1/images/generations");
         expect(apiErrorMessage(error, "fallback")).toBe("apiErrors.requestFailed");
-    });
-});
-
-describe("httpBlob", () => {
-    it("returns the blob", async () => {
-        vi.stubGlobal("fetch", async () => new Response(new Blob(["x"], { type: "video/mp4" }), { status: 200 }));
-        const blob = await httpBlob("http://example.test/v.mp4");
-        expect(blob).toBeInstanceOf(Blob);
-    });
-
-    it("still reads an error body as text when the caller expected a blob", async () => {
-        // axios handed back an unreadable Blob here, which is why this is pinned.
-        vi.stubGlobal("fetch", async () => json({ detail: "task expired" }, 410));
-        const error = await httpBlob("http://example.test/v.mp4").catch((caught) => caught);
-        expect(error).toBeInstanceOf(ApiError);
-        expect(apiErrorMessage(error, "fallback")).toBe("task expired");
     });
 });
 

@@ -11,11 +11,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
 vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: () => undefined, noteGatewayResponse: () => undefined }));
 
-// Media conversion is a browser concern; these tests are about the request the canvas builds.
-vi.mock("@/services/image-storage", () => ({ imageToDataUrl: async () => "data:image/png;base64,AAAA" }));
+// Media conversion is a browser concern; these tests are about the request the canvas builds. A generated
+// image is measured where it is served, not downloaded and re-uploaded (#173).
+vi.mock("@/services/image-storage", () => ({
+    imageToDataUrl: async () => "data:image/png;base64,AAAA",
+    readImageSize: async () => ({ width: 512, height: 512 }),
+}));
 vi.mock("@/lib/image-utils", () => ({
     dataUrlToFile: (image: { name?: string }) => new File([new Uint8Array([1, 2, 3])], image.name || "source.png", { type: "image/png" }),
-    readFileAsDataUrl: async () => "data:image/png;base64,BBBB",
 }));
 
 const { requestUpscale } = await import("@/services/api/image");
@@ -91,8 +94,6 @@ function stubGateway(handlers: { status?: () => Response } = {}) {
         if (url === `${ROOT}/api/canvases/${CANVAS_ID}/uploads`) return json({ upload: { id: UPLOAD_ID, kind: "image", mime: "image/png", bytes: 3, filename: "source.png" } });
         if (url === `${ROOT}/api/canvases/${CANVAS_ID}/runs`) return json(run({ status: "queued" }), 202);
         if (url === `${ROOT}/api/runs/task_upscale_1`) return handlers.status?.() ?? succeeded();
-        // The artifact is a file of the canvas, and the bytes are the image the node ends up showing.
-        if (url === `${ROOT}/api/canvases/${CANVAS_ID}/files/task_upscale_1.png`) return new Response(new Blob(["PNG"], { type: "image/png" }), { status: 200 });
         return json({ error: { code: "not_found", message: `no such route: ${init.method || "GET"} ${url}` } }, 404);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -120,9 +121,18 @@ describe("requestUpscale", () => {
         });
 
         expect(images).toHaveLength(1);
-        expect(images[0].dataUrl).toBe("data:image/png;base64,BBBB");
-        // The three addresses this action uses, in full: into the canvas, into its runs, and out of its files.
-        expect(calls.map((call) => call.url)).toEqual([`${ROOT}/api/canvases/${CANVAS_ID}/uploads`, `${ROOT}/api/canvases/${CANVAS_ID}/runs`, `${ROOT}/api/runs/task_upscale_1`, `${ROOT}/api/canvases/${CANVAS_ID}/files/task_upscale_1.png`]);
+        // The result is a reference to the file the run wrote, not a copy of it.
+        expect(images[0]).toMatchObject({
+            storageKey: "files/task_upscale_1.png",
+            url: `${ROOT}/api/canvases/${CANVAS_ID}/files/task_upscale_1.png`,
+            width: 512,
+            height: 512,
+            bytes: 3,
+            mimeType: "image/png",
+        });
+        // Three addresses, in full: the source into the canvas, the run into it, and the run's status. The
+        // artifact is *not* fetched — it is already there, and the node points at it.
+        expect(calls.map((call) => call.url)).toEqual([`${ROOT}/api/canvases/${CANVAS_ID}/uploads`, `${ROOT}/api/canvases/${CANVAS_ID}/runs`, `${ROOT}/api/runs/task_upscale_1`]);
         // Nothing reaches the OpenAI-shaped surface any more: the id in hand is a run id.
         expect(calls.some((call) => call.url.includes("/v1/"))).toBe(false);
 

@@ -65,6 +65,16 @@ async function storeImage(blob: Blob, options?: ImageReadOptions): Promise<Uploa
     return { url: uploaded.url, storageKey: uploaded.key, width: meta.width, height: meta.height, bytes: uploaded.bytes, mimeType: uploaded.mimeType.startsWith("image/") ? uploaded.mimeType : "" };
 }
 
+/**
+ * A picture's size, read from where it is served.
+ *
+ * This is what a generated image needs before it becomes a node: the run already wrote the file into the
+ * canvas, so there is nothing to upload — only something to measure (decisions #173).
+ */
+export async function readImageSize(url: string, options?: ImageReadOptions): Promise<{ width: number; height: number } | null> {
+    return loadImageMeta(url, options);
+}
+
 /** Where an image reference is shown from. Empty for a reference this build cannot resolve. */
 export async function resolveImageUrl(storageKey?: string, fallback = "") {
     return activeFileUrl(storageKey) || fallback;

@@ -15,8 +15,10 @@ vi.mock("@/i18n", () => ({ default: { t: (key: string) => t(key) } }));
 
 const noteGatewayError = vi.fn();
 vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: (...args: unknown[]) => noteGatewayError(...args), noteGatewayResponse: () => undefined }));
+vi.mock("@/services/image-storage", () => ({ readImageSize: async () => ({ width: 512, height: 512 }) }));
 
-const { RunFailedError, createRun, downloadRunOutput, gatewayProtocolRoot, waitForRun } = await import("@/services/api/runs");
+const { RunFailedError, createRun, gatewayProtocolRoot, outputUrl, waitForRun } = await import("@/services/api/runs");
+const { generatedImages } = await import("@/lib/canvas/generated-media");
 const { setActiveCanvas } = await import("@/services/canvas-files");
 
 // A run and an upload belong to the canvas on screen (#156), so every case here opens one.
@@ -132,19 +134,27 @@ describe("waitForRun", () => {
     });
 });
 
-describe("downloadRunOutput", () => {
-    it("resolves a relative output URL against the gateway root", async () => {
-        const fetchMock = vi.fn(async () => new Response(new Blob(["MP3"], { type: "audio/mpeg" }), { status: 200 }));
-        vi.stubGlobal("fetch", fetchMock);
+describe("a run's files", () => {
+    // The run wrote them into the canvas, so a node references the file where it is: the name the document
+    // uses (`files/<name>`) and the URL a browser reads it from. Nothing is downloaded or copied (#173).
+    const finished = () =>
+        run({
+            status: "succeeded",
+            outputs: [
+                { index: 0, kind: "image", mime: "image/png", bytes: 12, filename: "task_1.png", url: `/api/canvases/${CANVAS}/files/task_1.png` },
+                { index: 1, kind: "image", mime: "image/png", bytes: 34, filename: "task_1-2.png", url: `/api/canvases/${CANVAS}/files/task_1-2.png` },
+            ],
+        });
 
-        const blob = await downloadRunOutput(config, run({ status: "succeeded", outputs: [{ index: 0, kind: "audio", mime: "audio/mpeg", bytes: 3, filename: "t.mp3", url: `/api/canvases/${CANVAS}/files/task_1.mp3` }] }));
-
-        expect(await blob.text()).toBe("MP3");
-        const [url] = fetchMock.mock.calls[0] as unknown as [string];
-        expect(url).toBe(`http://gateway.test:8190/api/canvases/${CANVAS}/files/task_1.mp3`);
+    it("resolves a relative output URL against the gateway root", () => {
+        const output = finished().outputs![0];
+        expect(outputUrl(config, output)).toBe(`http://gateway.test:8190/api/canvases/${CANVAS}/files/task_1.png`);
     });
 
-    it("fails when the run has no such output", async () => {
-        await expect(downloadRunOutput(config, run({ status: "succeeded", outputs: [] }))).rejects.toThrow();
+    it("names every file the way the document does, in order", async () => {
+        const images = await generatedImages(config, finished());
+        expect(images.map((image) => image.storageKey)).toEqual(["files/task_1.png", "files/task_1-2.png"]);
+        expect(images.map((image) => image.url)).toEqual([`http://gateway.test:8190/api/canvases/${CANVAS}/files/task_1.png`, `http://gateway.test:8190/api/canvases/${CANVAS}/files/task_1-2.png`]);
+        expect(images[0]).toMatchObject({ bytes: 12, mimeType: "image/png", width: 512, height: 512 });
     });
 });

@@ -107,12 +107,6 @@ export async function httpJson<T>(url: string, init: HttpInit = {}): Promise<T> 
     }
 }
 
-export async function httpBlob(url: string, init: HttpInit = {}): Promise<Blob> {
-    const response = await send(url, init);
-    if (!response.ok) throw new ApiError(response.status, await parseBody(response));
-    return response.blob();
-}
-
 /** A request whose body is not read, where only success matters. */
 export async function httpVoid(url: string, init: HttpInit = {}): Promise<void> {
     const response = await send(url, init);

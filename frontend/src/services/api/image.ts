@@ -1,14 +1,14 @@
 import i18n from "@/i18n";
 import { LOCAL_GATEWAY_BASE_URL, isLocalGatewayUrl } from "@/constant/app-mode";
 import { channelModelOf, modelImageInputs, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
-import { nanoid } from "nanoid";
-import { dataUrlToFile, readFileAsDataUrl } from "@/lib/image-utils";
+import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { IMAGE_ANGLE_WORKFLOW } from "@/lib/canvas/tool-workflows";
-import { imageToDataUrl } from "@/services/image-storage";
+import { imageToDataUrl, type UploadedImage } from "@/services/image-storage";
 import { imageSizePresets } from "@/lib/media-size";
 import { apiErrorMessage } from "@/services/api/http";
-import { createRun, downloadRunOutputs, uploadMedia, waitForRun, type Run } from "@/services/api/runs";
+import { createRun, uploadMedia, waitForRun, type Run } from "@/services/api/runs";
+import { generatedImages } from "@/lib/canvas/generated-media";
 import type { ReferenceImage } from "@/types/image";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
@@ -22,17 +22,6 @@ type RequestOptions = {
     onRun?: (runId: string) => void;
     onProgress?: (run: Run) => void;
 };
-
-/**
- * Whether this channel is the local gateway, and therefore uses runs.
- *
- * It used to also require an `image-` prefix, on the theory that workflow ids follow the registry's
- * naming rule. They do not all: a base-model variant is `img-zit-int8`, and a run's id is the workflow
- * whatever it is called. The channel is the only thing that decides which contract a request speaks.
- */
-export function isGatewayImageModel(config: Pick<AiConfig, "baseUrl">) {
-    return isLocalGatewayUrl(config.baseUrl);
-}
 
 const DEFAULT_IMAGE_SHORT_SIDE = 1024;
 const IMAGE_SIZE_STEP = 16;
@@ -139,7 +128,7 @@ async function requestGatewayImages(input: {
     imageMode?: string;
     params: Record<string, unknown>;
     options?: RequestOptions;
-}): Promise<Array<{ id: string; dataUrl: string }>> {
+}): Promise<UploadedImage[]> {
     const { config, prompt, references, count, size, background, imageMode, params, options } = input;
     const inputs: Record<string, unknown> = { prompt, count };
     if (size) inputs.size = size;
@@ -164,13 +153,8 @@ async function requestGatewayImages(input: {
         const run = await createRun(config, { workflow: config.model, inputs, ...(Object.keys(media).length ? { media } : {}) });
         options?.onRun?.(run.id);
         const finished = await waitForRun(config, run.id, { signal: options?.signal, onProgress: options?.onProgress, cancelOnAbort: true });
-        const files = await downloadRunOutputs(config, finished, { signal: options?.signal });
-        return await Promise.all(
-            files.map(async (file, index) => ({
-                id: nanoid(),
-                dataUrl: await readFileAsDataUrl(new File([file.blob], `image-${index + 1}.png`, { type: file.mime || file.blob.type || "image/png" })),
-            })),
-        );
+        // The run wrote these files into the canvas; the node references them where they are (#173).
+        return await generatedImages(config, finished, { signal: options?.signal });
     } catch (error) {
         throw new Error(apiErrorMessage(error, apiText("requestFailed"), "imageTimeout"));
     }
@@ -251,7 +235,7 @@ type ImageAngleParams = {
  * rejects inputs a workflow does not declare, and a binding that reaches nothing would be worse than
  * leaving the knob out until the model can honour it.
  */
-export async function requestImageAngle(config: AiConfig, prompt: string, params: ImageAngleParams, references: ReferenceImage[], options?: RequestOptions): Promise<Array<{ id: string; dataUrl: string }>> {
+export async function requestImageAngle(config: AiConfig, prompt: string, params: ImageAngleParams, references: ReferenceImage[], options?: RequestOptions): Promise<UploadedImage[]> {
     const requestConfig = { ...resolveModelRequestConfig(config, config.imageModel || config.model), baseUrl: LOCAL_GATEWAY_BASE_URL, model: IMAGE_ANGLE_WORKFLOW };
     return requestGatewayImages({
         config: requestConfig,
@@ -288,13 +272,7 @@ export async function requestUpscale(config: AiConfig, image: ReferenceImage, op
             media: { image: [uploaded.id] },
         });
         const finished = await waitForRun(requestConfig, run.id, { signal: options.signal, cancelOnAbort: true });
-        const files = await downloadRunOutputs(requestConfig, finished, { signal: options.signal });
-        return await Promise.all(
-            files.map(async (file, index) => ({
-                id: nanoid(),
-                dataUrl: await readFileAsDataUrl(new File([file.blob], `upscaled-${index + 1}.png`, { type: file.mime || file.blob.type || "image/png" })),
-            })),
-        );
+        return await generatedImages(requestConfig, finished, { signal: options.signal });
     } catch (error) {
         throw new Error(apiErrorMessage(error, apiText("requestFailed"), "imageTimeout"));
     }
