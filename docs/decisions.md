@@ -5732,7 +5732,14 @@ to that name.
 **Tested** `tests/agent-references.test.ts`: `citationLabel` numbering, two citations that read the same
 resolving to two ids, a legacy transcript with identical tokens, a citation beating a node of the same name,
 the longest label winning (`图片 10` before `图片 1`), and an `@` that names nothing staying text. Gates:
-`npx vitest run` (136), `npm run check`, `make check`, `make frontend`.
+`npx vitest run` (137), `npm run check`, `make check`, `make frontend`.
+
+**In the browser** A canvas with two text nodes, both called `文本`. `@` → pick the first → draft reads
+`@文本`; `@` → pick the second → the draft reads `@文本 @文本 2`, and the block sent with it has two lines with
+two different ids. The answer came back with two links — `@文本` and `@文本 2` — and clicking the first
+selected `text-aaaa-1`, clicking the second selected `text-bbbb-2`. The agent also read them apart by itself:
+it made two `canvas_read_node` calls and wrote its answer as a table of `text-aaaa-1 (文本)` against
+`text-bbbb-2 (文本 2)`, which is the label doing its second job.
 
 **Where** `frontend/src/lib/canvas/agent-references.ts`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/tests/agent-references.test.ts`.
