@@ -150,7 +150,6 @@ describe("createVideoGenerationTask", () => {
     });
 });
 
-
 describe("createVideoInterpolateTask", () => {
     it("is one run of the RIFE workflow with the clip and the multiplier", async () => {
         const { calls, fetchMock } = stubGateway({});

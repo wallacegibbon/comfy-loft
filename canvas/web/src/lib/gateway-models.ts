@@ -47,7 +47,20 @@ export function gatewayModels(workflows: GatewayWorkflow[]) {
  * the picker.
  */
 export function modelSignature(models: ChannelModel[]) {
-    return JSON.stringify(models.map((model) => [model.name, model.capability, model.label || "", model.workflowId || "", model.baseModel || "", model.baseModelLabel || "", model.imageInputs ?? -1, model.variantModes || [], model.variantLabels || {}, model.blockedModes || []]));
+    return JSON.stringify(
+        models.map((model) => [
+            model.name,
+            model.capability,
+            model.label || "",
+            model.workflowId || "",
+            model.baseModel || "",
+            model.baseModelLabel || "",
+            model.imageInputs ?? -1,
+            model.variantModes || [],
+            model.variantLabels || {},
+            model.blockedModes || [],
+        ]),
+    );
 }
 
 /**

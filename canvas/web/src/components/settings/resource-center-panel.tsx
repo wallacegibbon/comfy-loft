@@ -74,7 +74,12 @@ function packState(pack: ResourcePack, copy: Copy) {
     if (!pack.missing) return <Tag color="green">{copy.ready}</Tag>;
     // Everything left is files already on disk that ComfyUI has not imported yet: the pack is
     // installed, and "missing 5" would send the user to download what they already have.
-    if (pack.missing === pack.needsRestart) return <Tag color="blue">{copy.needsRestart} {pack.missing}</Tag>;
+    if (pack.missing === pack.needsRestart)
+        return (
+            <Tag color="blue">
+                {copy.needsRestart} {pack.missing}
+            </Tag>
+        );
     return (
         <Tag color="orange">
             {copy.missing} {pack.missing}
