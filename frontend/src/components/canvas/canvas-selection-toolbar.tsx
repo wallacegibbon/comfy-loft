@@ -44,7 +44,9 @@ export function CanvasSelectionToolbar({
 
     return (
         <>
-            <svg className="pointer-events-none absolute z-[65] overflow-visible" style={{ left, top, width, height }}>
+            {/* The lasso and the group/sync bar belong to the nodes they box in, so they sit under the chrome
+                with them (#192) — above the canvas, below the bars, the dock and the side panel. */}
+            <svg className="pointer-events-none absolute z-[40] overflow-visible" style={{ left, top, width, height }}>
                 <rect
                     x={1}
                     y={1}
@@ -62,7 +64,7 @@ export function CanvasSelectionToolbar({
             </svg>
             {showActions ? (
                 <div
-                    className="absolute z-[70] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
+                    className="absolute z-[45] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
                     style={{ left: left + width / 2, top: top - 8 }}
                     onMouseDown={(event) => event.stopPropagation()}
                     onPointerDown={(event) => event.stopPropagation()}

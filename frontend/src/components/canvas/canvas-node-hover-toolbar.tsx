@@ -212,8 +212,12 @@ export function CanvasNodeHoverToolbar({
 
     return (
         <>
+            {/* Under the canvas chrome, with the node it belongs to: the bars, the dock and the side panel are
+                the board's frame, and a node that slides under them takes its toolbar along (#192). At 70 it
+                was drawn *over* the panel while the node itself was under it, which reads as a floating tool
+                attached to nothing. */}
             <div
-                className="absolute z-[70] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
+                className="absolute z-[45] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
                 data-node-toolbar={node.id}
                 style={{ left, top }}
                 onMouseEnter={() => onKeep(node.id)}

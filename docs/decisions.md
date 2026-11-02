@@ -6651,3 +6651,42 @@ and shut.
 `frontend/src/components/canvas/canvas-zoom-controls.tsx`,
 `frontend/src/components/canvas/canvas-mini-map.tsx`,
 `frontend/src/components/canvas/canvas-refresh-shell.tsx`.
+
+## 192. Canvas content goes under the chrome, and only popovers go over it
+
+**Decision** The board has one layering order, and it is about what a thing *is*, not what it is attached
+to:
+
+| z | what |
+| --- | --- |
+| 0 | the stage (nodes, node-internal chrome: its own `z` values are local to the transformed layer) |
+| 40 | the selection lasso |
+| 45 | the node hover toolbar and the selection's group/sync bar |
+| 50 | the top bar, the zoom dock |
+| 60 | the side panel |
+| 70 | the minimap — a popover on the dock button, and the one thing above the panel |
+| 80–120 | context menus, create menus, the hover preview |
+| 1300+ | dialogs (`kit/dialog.tsx`) |
+
+The two node toolbars were at 70 and the lasso at 65, so a node slid under the side panel while its white
+toolbar stayed on top of it: a tool floating in the middle of the panel, attached to nothing.
+
+**Why** A node's toolbar is part of the node — it is the node's own affordances, drawn one gap above it. The
+panel is a board laid *over* the canvas, so anything that belongs to the canvas is under it, and a toolbar
+that outranks it is the layering telling the user something untrue. The same rule puts the toolbars under the
+top bar and the dock: chrome is the frame, and the frame wins.
+
+**Why the minimap is the exception** It is not part of the canvas and not part of the column either — it is a
+popover opened by the compass button, and it sits exactly where the panel is when the panel is open. Under
+the panel it would look like a button that does nothing.
+
+**Cost** A node parked under the panel loses its toolbar with it: to use the toolbar you bring the node back
+into view. Nothing else changes hands.
+
+**Tested** In the browser (`/tmp/verify`, 8191/3001), a text node created at the panel's edge and left
+selected: `getComputedStyle` says panel 60, toolbar 45, and at a point inside both `elementFromPoint` returns
+the panel, while a point on the toolbar's free half still returns the toolbar. The selection bar and the
+lasso share that parent and those two numbers.
+
+**Where** `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`,
+`frontend/src/components/canvas/canvas-selection-toolbar.tsx`.
