@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -384,7 +385,7 @@ func (s *Store) pump(run RunFunc) {
 	s.mu.Unlock()
 	s.schedulePersist()
 
-	result, err := run(task, func(update Update) {
+	result, err := s.runGuarded(run, task, func(update Update) {
 		s.mu.Lock()
 		if update.Progress > task.Progress {
 			task.Progress = update.Progress
@@ -462,6 +463,22 @@ func (s *Store) pump(run RunFunc) {
 
 	s.persistNow()
 	s.startPump(run)
+}
+
+// runGuarded runs one job and turns a panic in it into that job's failure.
+//
+// A panic in a worker goroutine is not one failed job: Go has no per-goroutine recovery, so it takes the
+// process — every canvas, every other run, and the queue with it. The run is the one place here that
+// executes code shaped by data (a graph, its parameters, ComfyUI's answers), so it is the one place worth
+// guarding: the failure is recorded against the task and the pump moves on to the next one.
+func (s *Store) runGuarded(run RunFunc, task *Task, progress func(Update), ctx context.Context) (result *Result, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			s.logger.Warn("task %s panicked: %v", task.ID, recovered)
+			result, err = nil, fmt.Errorf("the run panicked: %v", recovered)
+		}
+	}()
+	return run(task, progress, ctx)
 }
 
 // snapshot copies a task so callers can read it without racing the worker.
@@ -544,9 +561,11 @@ func (s *Store) Cancel(id string) *Task {
 // missing or outside the output directory.
 func (s *Store) OutputPath(canvasID, id string, index int) string {
 	s.mu.RLock()
-	stored, ok := s.tasks[id]
+	// A snapshot, not the live record: the worker replaces Outputs when the run finishes, and reading the
+	// slice header from outside the lock raced exactly that assignment.
+	stored := s.tasks[id].snapshot()
 	s.mu.RUnlock()
-	if !ok {
+	if stored == nil {
 		return ""
 	}
 	files := stored.Outputs

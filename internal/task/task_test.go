@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,6 +48,33 @@ func waitFor(t *testing.T, what string, condition func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %s", what)
+}
+
+// A panic inside a run is that run's failure, not the gateway's.
+//
+// Go has no per-goroutine recovery: an unrecovered panic in the worker kills the process, taking every
+// canvas and every other run with it. The run executes graph- and request-shaped data, so it is the place
+// this can happen, and the queue has to survive it and go on to the next task.
+func TestAPanickingRunFailsItsTaskAndTheQueueCarriesOn(t *testing.T) {
+	store := newStore(t)
+
+	first := store.Create(testCanvas, ObjectImage, "image-boom", map[string]any{"prompt": "x"})
+	store.Enqueue(first, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
+		panic("a workflow the code did not expect")
+	})
+	waitFor(t, "the panicking run to fail", func() bool { return store.Get(first.ID).Status == "failed" })
+
+	failed := store.Get(first.ID)
+	if failed.Error == nil || !strings.Contains(*failed.Error, "panicked") {
+		t.Errorf("error = %v, want it to say the run panicked", failed.Error)
+	}
+
+	// The queue is still alive: the next task runs to completion.
+	second := store.Create(testCanvas, ObjectImage, "image-after", map[string]any{"prompt": "y"})
+	store.Enqueue(second, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
+		return &Result{Outputs: []ResultFile{{Buffer: []byte("PNG"), Ext: "png", MimeType: "image/png"}}}, nil
+	})
+	waitFor(t, "the next run to complete", func() bool { return store.Get(second.ID).Status == "completed" })
 }
 
 func TestTaskCompletesAndPersists(t *testing.T) {
