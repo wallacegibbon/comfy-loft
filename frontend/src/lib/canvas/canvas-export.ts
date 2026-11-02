@@ -15,7 +15,7 @@ import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
  * format and the title) and `files/<name>`. Importing it is that directory unpacked into a new canvas, so
  * nothing in here has to be renamed or rewritten later (decisions #172).
  */
-export async function exportCanvas(project: CanvasProject, fileName = i18n.t("canvas.export.defaultProjectName")) {
+export async function exportCanvas(project: CanvasProject, fileName = i18n.t("canvas.export.defaultCanvasName")) {
     const document = documentOf(project);
     const manifest: CanvasExportManifest = { app: "comfyloft", version: 1, title: project.title, exportedAt: new Date().toISOString() };
     const entries: { name: string; data: BlobPart }[] = [

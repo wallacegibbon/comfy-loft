@@ -403,7 +403,7 @@ export default {
             deleteTitle: "Delete canvases?",
             deleteDescription: "This will delete {{count}} canvases along with their nodes and connections.",
         },
-        export: { defaultProjectName: "Canvas", defaultNodesName: "Canvas elements", item: "Element" },
+        export: { defaultCanvasName: "Canvas", defaultNodesName: "Canvas elements", item: "Element" },
         createMenu: {
             fromNode: "Generate from this node",
             close: "Close",

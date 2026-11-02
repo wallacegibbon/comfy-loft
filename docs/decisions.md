@@ -1095,8 +1095,9 @@ the dead-key pass in #38, and worth running whenever keys move.
 
 **Follow-up: the list itself became a panel** `pages/canvas/index.tsx` (116 lines) is gone and
 `/canvas` no longer renders a page. The list floats over the canvas you are already in, opened
-from the switcher or the canvas menu. It is the same body — multi-select, batch export, import,
-delete — because that part was always right; only the container changed.
+from the switcher or the canvas menu. It is the same body — multi-select for delete, import, and a
+card per canvas that exports itself — because that part was always right; only the container
+changed. (The batch export it once carried is gone: one archive is one canvas, #172.)
 
 The test that settled it: is this worth a URL? A canvas is — it can be shared, bookmarked, and
 reloaded into the same state. A list of canvases cannot: nobody shares "my canvases", refreshing

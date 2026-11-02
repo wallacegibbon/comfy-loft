@@ -417,7 +417,7 @@ export default {
             deleteTitle: "删除画布？",
             deleteDescription: "将删除 {{count}} 个画布，里面的节点和连线也会一起移除。",
         },
-        export: { defaultProjectName: "画布", defaultNodesName: "画布元素", item: "元素" },
+        export: { defaultCanvasName: "画布", defaultNodesName: "画布元素", item: "元素" },
         createMenu: {
             upstream: "接在前面",
             fromNode: "引用该节点生成",
