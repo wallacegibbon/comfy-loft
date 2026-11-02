@@ -15,6 +15,37 @@ Both halves have been rewritten since: the gateway is a Go service where the for
 canvas has been reworked rather than patched. Nothing from upstream is compatible in either direction —
 treat `frontend/` as this project's own code.
 
+## Not an OpenAI-compatible gateway
+
+This is the largest departure from the fork, and it is deliberate. The upstream project presented ComfyUI
+as an **OpenAI-compatible provider**: `/v1/models` listed the workflows, and generation went through
+`/v1/images/generations`, `/v1/videos` and `/v1/audio/speech` — the shape a cloud-model client already
+speaks. All of them are deleted here — `/v1/models` in #68, the nine generation routes in #69 — not
+deprecated.
+
+What this gateway speaks instead is a small protocol of its own, laid directly over ComfyUI's vocabulary:
+
+| Idea | Where it lives |
+| --- | --- |
+| a **workflow** | `workflows/registry.json` + `workflows/<type>-<slug>.json`; `GET /api/workflows` reports them, and `GET /api/workflows/{id}/schema` publishes the inputs each accepts |
+| a **run** | one submission of one workflow, `POST /api/canvases/{id}/runs`: an id, typed `inputs`, `progress`, `outputs`, `error` |
+| a **canvas** | the workspace that owns the uploads a run is given and the media it produces |
+
+There is no `/v1/...` route, no chat-completions envelope, no OpenAI `object` field. `/v1/...` appears in
+this repository only as the address that AlayaCore's own model provider answers on.
+
+**Why** A ComfyUI graph does not fit one text prompt plus a handful of vendor fields. Which reference
+images, first or last frame, which LoRA at which strength, which base model, which seed, how many outputs
+— an OpenAI-shaped endpoint can only carry those by smuggling them through the prompt string or a
+proprietary `extra_body`, and an API that needs that has stopped being compatible. The canvas is the only
+client, so imitating someone else's API buys nothing: the protocol describes the domain instead, every
+input is checked at submission against the same schema it publishes, and there is no compatibility branch
+to maintain ([`docs/protocol.md`](docs/protocol.md)).
+
+**What it costs** A client that only speaks OpenAI cannot drive this gateway. There is no drop-in for a
+generic image or chat tool, and a new integration has to read `docs/protocol.md` and speak this protocol.
+That is the trade: one client shaped like the domain rather than many shaped like none of it.
+
 ## What it does
 
 - **Infinite canvas**: text / image / video / group nodes; wiring, box selection, export, autosave.
@@ -161,7 +192,8 @@ gateway process and one canvas process.
 
 **The gateway serves no `/v1/...` at all.** It has its own protocol — `POST /api/canvases/{id}/runs`
 produces every kind of media, `GET /api/workflows` describes what can run — and OpenAI's paths are not
-among its endpoints. `/v1/...` in this repository belongs to the model provider AlayaCore talks to.
+among its endpoints; [Not an OpenAI-compatible gateway](#not-an-openai-compatible-gateway) says why.
+`/v1/...` in this repository belongs to the model provider AlayaCore talks to.
 
 **Gateway `:8190` endpoints:**
 
