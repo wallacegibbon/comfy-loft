@@ -26,25 +26,21 @@ export type UploadedImage = {
 type ImageReadOptions = { signal?: AbortSignal };
 
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
-const IMAGE_REMOTE_LOAD_TIMEOUT_MS = 10 * 60_000;
 const IMAGE_DECODE_TIMEOUT_MS = 10_000;
 const IMAGE_RESPONSE_ERROR = "ImageResponseError";
 const IMAGE_TIMEOUT_ERROR = "ImageTimeoutError";
 
+/**
+ * A picture as a canvas file: the bytes are downloaded first when all there is to start with is a URL.
+ *
+ * There is no path that keeps the URL itself. A reference the canvas cannot serve is not a reference this
+ * build can draw after a reload, and storing the address would put an absolute `http://…` into the document
+ * — the thing #152 is about. Nothing reaches here with a URL it cannot fetch either: every caller hands over
+ * a `File`, a paste, or a data URL.
+ */
 export async function uploadImage(input: string | Blob, options?: ImageReadOptions): Promise<UploadedImage> {
     if (typeof input !== "string") return storeImage(input, options);
-
-    let blob: Blob;
-    try {
-        blob = await fetchImageBlob(input, options);
-    } catch (error) {
-        // A remote URL that cannot be downloaded but can be displayed is still usable as a reference.
-        if (options?.signal?.aborted || isNamedError(error, IMAGE_RESPONSE_ERROR) || isNamedError(error, IMAGE_TIMEOUT_ERROR) || !/^https?:\/\//i.test(input)) throw error;
-        const meta = await loadImageMeta(input, options, IMAGE_REMOTE_LOAD_TIMEOUT_MS);
-        if (!meta) throw error;
-        return { url: input, width: meta.width, height: meta.height, bytes: 0, mimeType: "" };
-    }
-    return storeImage(blob, options);
+    return storeImage(await fetchImageBlob(input, options), options);
 }
 
 async function storeImage(blob: Blob, options?: ImageReadOptions): Promise<UploadedImage> {
@@ -171,10 +167,6 @@ function namedError(name: string) {
     const error = new Error(i18n.t("common.imageReadFailed"));
     error.name = name;
     return error;
-}
-
-function isNamedError(error: unknown, name: string) {
-    return error instanceof Error && error.name === name;
 }
 
 function abortReason(signal: AbortSignal) {

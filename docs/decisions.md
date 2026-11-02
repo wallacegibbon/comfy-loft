@@ -6193,3 +6193,24 @@ it on the next connection.
 **Where** `internal/canvas/canvas.go` (`AgentSessionName`, `SessionPath`, `ValidID`),
 `internal/server/agent_conversations.go`, `internal/server/{agent_config,routes_agent}.go`,
 `frontend/src/services/api/agent.ts`, `docs/gateway.md`.
+
+## 179. An image is stored, or it fails — never kept as an address
+
+**Decision** `uploadImage` has one path: a `File`/`Blob` is stored as a canvas file, and a string is downloaded
+first and then stored. The branch that returned `{url: input, bytes: 0}` when a remote URL could not be
+downloaded but could be displayed is gone, and so is `IMAGE_REMOTE_LOAD_TIMEOUT_MS`.
+
+**Why** That branch wrote an absolute `http://…` into the document, which is exactly what #152 removed and what
+#174 replaced with a name the canvas serves. It was also unreachable in practice — every caller hands over a
+`File`, a paste, a crop or a data URL — so it was a second way to produce a reference, kept alive by nothing but
+the possibility of it. What it claimed to support cannot work: a URL this build cannot download is a node that
+draws nothing after a reload, and a picture only the current browser can show is the blob era coming back.
+
+**Cost** A URL behind an address this machine cannot reach fails loudly at the point of the node that wanted it.
+That is the honest answer, and it is the same answer #174 gives for a canvas file that is no longer there.
+
+**Tested** `tests/image-storage.test.ts`: a URL whose download fails rejects, with an `Image` stub that *would*
+load, so the old branch would have resolved — the test fails against the previous code (`promise resolved instead
+of rejecting`) and passes now.
+
+**Where** `frontend/src/services/image-storage.ts`, `frontend/tests/image-storage.test.ts`.
