@@ -5102,3 +5102,21 @@ console is clean.
 
 **Where** `canvas/**` (moved), `Makefile`, `start.sh`, `.gitignore`, `canvas/vite.config.ts`,
 `canvas/tests/resource-copy-zh.test.ts`, `README.md`, `docs/gateway.md`.
+
+## 150. The two upstream leftovers go too
+
+**Decision** `canvas/vercel.json` and `canvas/components.json` are deleted. #149 left them alone because
+removing them is a decision about the credits rather than the layout; this is that decision.
+
+**Why they were dead** `vercel.json` described deploying the bundle to Vercel with `bun install` — this is a
+local workbench whose canvas is served by `start.sh` and whose gateway is a static binary. `components.json`
+was a shadcn CLI config pointing at `src/app/globals.css`, a path that has not existed since the kit
+components replaced antd; the real stylesheet is `src/styles/globals.css`, which the app imports directly.
+
+**What stays** The `shadcn` package itself, and it is not a leftover: `src/styles/globals.css` imports
+`shadcn/tailwind.css`. Deleting the config does not make the dependency unused — the check that found the
+two files dead also found this one alive, which is the reason it was checked at all.
+
+**Tested** `npm run check` (i18n, exports, prettier, `tsc`), 143 canvas tests, `make web`.
+
+**Where** `canvas/vercel.json`, `canvas/components.json` (deleted).
