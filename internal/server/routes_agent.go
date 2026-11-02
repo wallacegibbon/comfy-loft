@@ -226,6 +226,18 @@ func (s *Server) readSocket(conn *ws.Conn, session *agent.Session, send func(age
 			}
 		default:
 			request := agent.Request{Prompt: message.Prompt, Images: message.Images, Command: message.Command, Args: message.Args}
+			// A model list is the one argument the canvas cannot make complete on its own (see
+			// `agent.Sessions.ModelSync`): it may edit the four fields it can see, and the gateway puts back
+			// the key and the reasoning blocks it cannot — for the whole list, since `model_sync` replaces
+			// every model in the file.
+			if request.Command == "model_sync" {
+				completed, err := s.agentSessions.ModelSync(session, request.Args)
+				if err != nil {
+					_ = send(agent.Event{Type: "error", Message: err.Error()})
+					continue
+				}
+				request.Args = completed
+			}
 			if s.logger != nil {
 				s.logger.Info("agent: socket in session=%s command=%q prompt=%q images=%d", session.ID, request.Command, truncateText(request.Prompt, 120), len(request.Images))
 			}

@@ -128,6 +128,12 @@ func turnStep(state *startup, frame *Frame, hasPrompt bool, emit func(Event)) (e
 			// The agent announcing its own state: this is what the canvas displays.
 			state.collect(kind, data)
 			emit(Event{Type: kind, Active: state.active, Level: state.level})
+		case "model_list":
+			// The whole list, restated: `model_sync` writes `model.conf` and then says what the file now
+			// holds, with the ids it has just assigned. A picker built from the startup broadcast alone
+			// went on offering the old list — including models that had just been deleted.
+			state.collect(kind, data)
+			emit(state.event())
 		case "task":
 			if over, known := taskInProgress(data); known && over && hasPrompt {
 				return true

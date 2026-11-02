@@ -59,13 +59,73 @@ type HistoryEntry struct {
 	Text string `json:"text"`
 }
 
-// Model is what `SM model_list` and `SM model` say, minus the two fields that must not travel: the
-// frame carries `api_key` and `base_url` in cleartext.
+// Model is what a canvas is told about one of the agent's models: enough to show it in a picker and to
+// name it in a URL, and nothing else.
+//
+// `SM model_list` carries the whole `model.conf` entry in cleartext — the `api_key` above all, then the
+// `reasoning_N` blocks and the token caps. None of that travels: `HasKey` says a key is stored without
+// saying what it is, and the entry itself stays in the gateway (`modelObject`), which is where the list a
+// canvas edits is completed from (#75: the surface edits models, the key never leaves the adapter).
 type Model struct {
 	ID           int    `json:"id"`
 	Name         string `json:"name"`
 	ProtocolType string `json:"protocolType,omitempty"`
+	BaseURL      string `json:"baseUrl,omitempty"`
+	ModelName    string `json:"modelName,omitempty"`
 	ContextLimit int    `json:"contextLimit,omitempty"`
+	HasKey       bool   `json:"hasKey,omitempty"`
+}
+
+// modelObject is one entry of `SM model_list`, exactly as the agent sent it.
+//
+// Kept whole, because `model_sync` takes the *whole list back* and AlayaCore writes `model.conf` from it:
+// any field the gateway did not keep is a field one edit silently deletes — the `api_key` first of all,
+// then every `reasoning_N` block and token cap that no control in the canvas reaches. Holding the object
+// as it arrived means the gateway does not know those fields by name, so a field AlayaCore adds tomorrow
+// survives a round trip through a page that never heard of it.
+//
+// Values stay `json.RawMessage`: the ones that travel back must travel untouched. The gateway reads the
+// few a canvas is shown (`info`) and replaces the four an editor owns (`mergeModelSync`).
+type modelObject map[string]json.RawMessage
+
+// info is the part of an entry a canvas is shown.
+func (o modelObject) info() Model {
+	return Model{
+		ID:           o.number("id"),
+		Name:         o.text("name"),
+		ProtocolType: o.text("protocol_type"),
+		BaseURL:      o.text("base_url"),
+		ModelName:    o.text("model_name"),
+		ContextLimit: o.number("context_limit"),
+		HasKey:       o.text("api_key") != "",
+	}
+}
+
+// text is one string field, or "" for a field that is absent or not a string.
+func (o modelObject) text(field string) string {
+	var value string
+	if raw, ok := o[field]; ok {
+		_ = json.Unmarshal(raw, &value)
+	}
+	return value
+}
+
+// number is one numeric field, or 0 for a field that is absent or not a number.
+func (o modelObject) number(field string) int {
+	var value int
+	if raw, ok := o[field]; ok {
+		_ = json.Unmarshal(raw, &value)
+	}
+	return value
+}
+
+// clone is this entry as something that may be changed without touching the copy the session keeps.
+func (o modelObject) clone() modelObject {
+	copied := make(modelObject, len(o))
+	for field, raw := range o {
+		copied[field] = raw
+	}
+	return copied
 }
 
 // Startup is the model information the agent broadcasts before it accepts input.
@@ -73,7 +133,7 @@ type Startup = startup
 
 // startup is the model information the agent broadcasts before it accepts input.
 type startup struct {
-	models         []Model
+	models         []modelObject
 	active         *Model
 	level          *int
 	coreVersion    string
@@ -84,20 +144,12 @@ func (s *startup) collect(kind string, data json.RawMessage) {
 	switch kind {
 	case "model_list":
 		var payload struct {
-			Models []struct {
-				ID           int    `json:"id"`
-				Name         string `json:"name"`
-				ProtocolType string `json:"protocol_type"`
-				ContextLimit int    `json:"context_limit"`
-			} `json:"models"`
+			Models []modelObject `json:"models"`
 		}
 		if json.Unmarshal(data, &payload) != nil {
 			return
 		}
-		s.models = make([]Model, 0, len(payload.Models))
-		for _, model := range payload.Models {
-			s.models = append(s.models, Model{ID: model.ID, Name: model.Name, ProtocolType: model.ProtocolType, ContextLimit: model.ContextLimit})
-		}
+		s.models = payload.Models
 	case "model":
 		var payload struct {
 			ActiveID     int    `json:"active_id"`
@@ -128,7 +180,22 @@ func (s *startup) collect(kind string, data json.RawMessage) {
 }
 
 func (s *startup) event() Event {
-	return Event{Type: "models", Models: s.models, Active: s.active, Level: s.level, CoreVersion: s.coreVersion, MessageVersion: s.messageVersion}
+	models := make([]Model, 0, len(s.models))
+	for _, object := range s.models {
+		models = append(models, object.info())
+	}
+	return Event{Type: "models", Models: models, Active: s.active, Level: s.level, CoreVersion: s.coreVersion, MessageVersion: s.messageVersion}
+}
+
+// modelByID is the entry with this id, or nil. Ids are positions (`model.conf` order, restated by every
+// `SM model_list`), which is what makes them the handle a canvas may send back.
+func (s *startup) modelByID(id int) modelObject {
+	for _, object := range s.models {
+		if object.number("id") == id {
+			return object
+		}
+	}
+	return nil
 }
 
 // systemMessage is the SM envelope: {"type":...,"data":{...}}.

@@ -42,6 +42,10 @@ fi
 printf 'SM{"type":"session","data":{"state":"ready"}}\n'
 while IFS= read -r line; do
   case "$line" in
+    CI*'"name":"model_sync"'*)
+      if [ -n "$FAKE_SYNC_LOG" ]; then printf '%s\n' "$line" >> "$FAKE_SYNC_LOG"; fi
+      printf 'SM{"type":"model_list","data":{"models":[{"id":1,"name":"Fake / renamed","protocol_type":"openai","base_url":"http://127.0.0.1:1/v1","api_key":"secret-key-2","model_name":"m2","context_limit":2000}]}}\n'
+      printf 'CO{"command_id":"1","result":{"models":[{"id":1,"name":"Fake / renamed"}]}}\n' ;;
     CI*'"name":"model_set"'*)
       case "$line" in
         *'"args":"2"'*)
@@ -232,10 +236,20 @@ func TestSocketStartsWithTheModelList(t *testing.T) {
 	if active, _ := event["active"].(map[string]any); active["name"] != "Fake / one" {
 		t.Errorf("active = %v, want the agent's own choice", event["active"])
 	}
-	// The agent's keys travel in SM model_list and must not reach the canvas.
+	// The agent's keys travel in SM model_list and must not reach the canvas. Where a model points does,
+	// because two models called the same thing are told apart by it.
 	encoded, _ := json.Marshal(event)
-	if strings.Contains(string(encoded), "secret-key") || strings.Contains(string(encoded), "127.0.0.1:1") {
+	if strings.Contains(string(encoded), "secret-key") || strings.Contains(string(encoded), "api_key") {
 		t.Errorf("credentials reached the client: %s", encoded)
+	}
+	for _, model := range models {
+		entry, _ := model.(map[string]any)
+		if entry["hasKey"] != true {
+			t.Errorf("%v: hasKey is not reported", entry)
+		}
+		if entry["baseUrl"] == nil || entry["modelName"] == nil {
+			t.Errorf("%v: the canvas is not told where the model points", entry)
+		}
 	}
 }
 
@@ -435,6 +449,67 @@ func TestSocketRelaysASettingChange(t *testing.T) {
 	message, _ := seen[len(seen)-1]["message"].(string)
 	if !strings.Contains(message, "model not found: 99") {
 		t.Fatalf("messages = %v, want the agent's rejection", seen)
+	}
+}
+
+// TestModelSyncPutsBackWhatTheCanvasCannotSee is the one command whose argument the canvas cannot complete:
+// `model_sync` replaces every model in model.conf, and the list the canvas was shown has no key in it. What
+// reaches the agent has to be the entry the agent announced, with the fields the canvas edited replaced —
+// and the list the command writes is one every other session is told about, since they read the same file.
+func TestModelSyncPutsBackWhatTheCanvasCannotSee(t *testing.T) {
+	gateway, _ := startAgentGateway(t)
+	syncLog := filepath.Join(t.TempDir(), "sync")
+	t.Setenv("FAKE_SYNC_LOG", syncLog)
+
+	editor := openSocket(t, gateway, canvasSession(t, gateway))
+	watcher := openSocket(t, gateway, canvasSession(t, gateway))
+
+	send(t, editor, map[string]any{
+		"command": "model_sync",
+		"args":    `[{"id":2,"name":"Fake / renamed","protocol_type":"openai","base_url":"http://127.0.0.1:1/v1","model_name":"m2"}]`,
+	})
+	seen := until(t, editor, "command")
+
+	// What the agent was handed: its own entry, key and all, with the name the canvas changed.
+	raw, err := os.ReadFile(syncLog)
+	if err != nil {
+		t.Fatalf("the agent received no model_sync: %v", err)
+	}
+	synced := string(raw)
+	if !strings.Contains(synced, `\"api_key\":\"secret-key-2\"`) {
+		t.Errorf("the key was not put back: %s", synced)
+	}
+	if !strings.Contains(synced, "Fake / renamed") {
+		t.Errorf("the canvas's own edit did not travel: %s", synced)
+	}
+	if strings.Contains(synced, "Fake / one") {
+		t.Errorf("a model the canvas deleted survived: %s", synced)
+	}
+
+	// The agent's restated list comes back to the canvas that edited it, without the key.
+	var restated []any
+	for _, event := range seen {
+		if event["type"] == "models" {
+			restated, _ = event["models"].([]any)
+		}
+	}
+	if len(restated) != 1 {
+		t.Fatalf("models = %v, want the list the agent restated after the sync", restated)
+	}
+	if entry, _ := restated[0].(map[string]any); entry["name"] != "Fake / renamed" || entry["hasKey"] != true {
+		t.Errorf("restated model = %v, want the renamed one with a key", entry)
+	}
+	if encoded, _ := json.Marshal(seen); strings.Contains(string(encoded), "secret-key-2") {
+		t.Errorf("the restated list carried the key: %s", encoded)
+	}
+
+	// And the other surface, whose agent read model.conf at startup, is told rather than left stale.
+	event := nextEvent(t, watcher)
+	if event["type"] != "models" {
+		t.Fatalf("the other session received %v, want the new model list", event)
+	}
+	if models, _ := event["models"].([]any); len(models) != 1 {
+		t.Errorf("the other session holds %v, want the one model that was written", event["models"])
 	}
 }
 
