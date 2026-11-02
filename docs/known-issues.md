@@ -101,6 +101,34 @@ not exhaustive.
 
 ---
 
+## 6. The agent panel's size is the session's, not the canvas's
+
+**Symptom** Drag the agent panel's corner to a size that suits the canvas, reload, and it opens at the
+default share of the window again. Export the canvas, open it on another machine, and the size is not there
+either — which is the part that matters: a canvas is worked on away from the machine that made it, and how
+much of the screen the panel takes is a property of *that canvas's* work.
+
+**State** Deliberate, and documented as such: `frontend/src/stores/canvas/use-canvas-agent-store.ts` keeps
+`size` and `position` in memory, and its doc comment argues that "where a panel sits is the window's
+business, not the canvas's … no place in the project blob, in an export, or in the undo history". That
+argument holds for `position` and not for `size`, which is the split this entry is about.
+
+**Fix to decide** Persist the size, in the canvas:
+
+- `size` goes into `CanvasDocument` (`frontend/src/services/api/canvases.ts`), which is what `canvas.json`
+  holds and what an export's zip carries (#152, #172), so it arrives with the canvas on any machine.
+  `viewport` is the precedent: view state that belongs to the document rather than to the window.
+- `position` stays out. A pixel position is about the screen the canvas is on; a width and a height are about
+  the canvas.
+- `null` keeps meaning "the default share" (`Math.min(520, roomWidth - 24)`), and the read path keeps the
+  existing clamp (`320 … host - 16`), or a canvas sized on a 2560px screen opens wider than a 1280px window.
+- Write on pointer-up, not on every pointer-move, and keep it out of the undo history: resizing a panel is
+  not a document edit, the same way moving the view is not.
+- Amend that store's doc comment when this lands. It argues the opposite today, and a comment that
+  contradicts the code is worse than no comment.
+
+---
+
 ---
 
 ## Fixed, and where the reason is
