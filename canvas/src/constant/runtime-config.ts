@@ -10,6 +10,15 @@ type RuntimeConfig = {
     LOCAL_GATEWAY_URL?: string; // e.g. http://127.0.0.1:8190 (a trailing /v1 is tolerated)
     LOCAL_GATEWAY_HOST?: string; // host when URL is not given
     LOCAL_GATEWAY_PORT?: string; // port when URL is not given
+    /**
+     * The workspace preferences, as the gateway last wrote them (docs/decisions.md #155).
+     *
+     * This is the same document `/api/settings` serves, copied into the script the page loads before
+     * its own bundle. It is here so the theme and the language can be applied to the first frame: a
+     * preferences document that only arrives over HTTP opens every dark workspace white for a moment,
+     * and every English workspace in Chinese.
+     */
+    SETTINGS?: Record<string, unknown>;
 };
 
 declare global {
@@ -30,3 +39,6 @@ function read(key: keyof RuntimeConfig, buildTime: string | undefined, fallback 
 export const RUNTIME_LOCAL_GATEWAY_URL = read("LOCAL_GATEWAY_URL", undefined, "");
 export const RUNTIME_LOCAL_GATEWAY_HOST = read("LOCAL_GATEWAY_HOST", undefined, "");
 export const RUNTIME_LOCAL_GATEWAY_PORT = read("LOCAL_GATEWAY_PORT", undefined, "");
+
+/** The bootstrapped preferences document, or `{}` when the operator serves no first-paint file. */
+export const RUNTIME_SETTINGS: Record<string, unknown> = runtime.SETTINGS && typeof runtime.SETTINGS === "object" ? runtime.SETTINGS : {};

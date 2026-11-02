@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
 
@@ -30,7 +30,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
     const dark = theme === "dark";
     const locale = i18n.resolvedLanguage as AppLocale;
 
-    useEffect(() => {
+    // Before the paint, not after: the theme came from the first-paint file, so applying it in an
+    // effect would still flash the default for one frame.
+    useLayoutEffect(() => {
         document.documentElement.classList.toggle("dark", dark);
         document.documentElement.style.colorScheme = theme;
     }, [dark, theme]);

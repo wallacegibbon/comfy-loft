@@ -3,25 +3,22 @@ import { initReactI18next } from "react-i18next";
 
 import enUS from "@/i18n/locales/en-US";
 import zhCN from "@/i18n/locales/zh-CN";
+import { RUNTIME_SETTINGS } from "@/constant/runtime-config";
 
 export type AppLocale = "zh-CN" | "en-US";
 
-const LOCALE_STORAGE_KEY = "comfyloft:locale";
+const LOCALE_SETTING_KEY = "locale";
 
 /**
- * The stored language, when there is a place to store it.
+ * The workspace's language, read from the first-paint file.
  *
- * The app only runs in a browser, but the dictionary is also read by code that runs outside one (a
- * storage migration under test), and `localStorage` does not exist there. Reading it defensively keeps
- * that import from becoming a crash.
+ * It comes from `window.__RUNTIME_CONFIG__.SETTINGS` rather than a store, because i18next is
+ * initialised at import time — before any React tree exists. The gateway puts the document in the
+ * script the page loads first (#155), so this is a synchronous read with nothing to wait for.
  */
-function storedLocale(): AppLocale | null {
-    try {
-        const value = globalThis.localStorage?.getItem(LOCALE_STORAGE_KEY);
-        return value === "zh-CN" || value === "en-US" ? value : null;
-    } catch {
-        return null;
-    }
+function bootLocale(): AppLocale | null {
+    const value = RUNTIME_SETTINGS[LOCALE_SETTING_KEY];
+    return value === "zh-CN" || value === "en-US" ? value : null;
 }
 
 i18n.use(initReactI18next).init({
@@ -29,7 +26,7 @@ i18n.use(initReactI18next).init({
         "zh-CN": { translation: zhCN },
         "en-US": { translation: enUS },
     },
-    lng: storedLocale() || "zh-CN",
+    lng: bootLocale() || "zh-CN",
     fallbackLng: "zh-CN",
     supportedLngs: ["zh-CN", "en-US"],
     initAsync: false,
@@ -37,8 +34,14 @@ i18n.use(initReactI18next).init({
     react: { useSuspense: false },
 });
 
+/**
+ * Switch language.
+ *
+ * Storing it is not this module's job: `use-settings-store` listens for `languageChanged` and writes
+ * the preference. Importing the store here would close a cycle — the store reaches the HTTP layer,
+ * which reports its errors through this very dictionary.
+ */
 export function changeAppLocale(locale: AppLocale) {
-    localStorage.setItem(LOCALE_STORAGE_KEY, locale);
     return i18n.changeLanguage(locale);
 }
 

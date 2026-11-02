@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useLocalGatewaySync } from "@/hooks/use-local-gateway-sync";
 import { useSkinUnlockPersistence } from "@/hooks/use-skin-unlock-persistence";
 import { flushCanvasSaves, useCanvasStore } from "@/stores/canvas/use-canvas-store";
+import { useSettingsStore } from "@/stores/use-settings-store";
 
 /**
  * What has to run once, before the canvas is usable.
@@ -22,9 +23,16 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         void useCanvasStore.getState().refresh();
+        // Normally a no-op: the preferences arrive in `config.js`, before the bundle. This asks over
+        // HTTP only when an operator serves no first-paint file, and the store refuses to save until
+        // one of the two has produced a document.
+        void useSettingsStore.getState().load();
         // `pagehide` rather than `beforeunload`: it also fires on the mobile cases where `beforeunload`
         // does not, and a queued save is the only thing here that cannot be reconstructed.
-        const flush = () => flushCanvasSaves();
+        const flush = () => {
+            flushCanvasSaves();
+            useSettingsStore.getState().flush();
+        };
         window.addEventListener("pagehide", flush);
         return () => window.removeEventListener("pagehide", flush);
     }, []);

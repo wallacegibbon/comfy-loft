@@ -1,36 +1,26 @@
+import { readSetting, writeSetting } from "@/stores/use-settings-store";
+
 /**
- * The canvas the browser was last inside.
+ * The canvas you were last inside.
  *
- * This is a preference, not workspace state: it says where *you* were, and two people opening the same
- * workspace from two machines should land where each of them left off. It lives in `localStorage` for
- * one more entry — the preferences endpoint (`/api/settings`) is the next step, and every other
- * browser-stored preference moves with it (#155). Keeping it here until then is cheaper than two
- * rewrites of the same three call sites.
+ * This is the one preference that is genuinely about a person rather than a workspace, and it lives in
+ * the workspace's settings anyway (#155): the alternative was a `localStorage` key that made the
+ * workspace unresolved from a second browser, and "open where I left off" was the most obviously wrong
+ * thing to lose there. Two people sharing a gateway share this, which is a cost worth naming and not
+ * worth a second storage mechanism.
  */
 
-const KEY = "comfyloft:last_canvas";
+const KEY = "lastCanvas";
 
 export function lastCanvasId(): string {
-    try {
-        return window.localStorage.getItem(KEY) || "";
-    } catch {
-        // Storage can be denied (private mode, an embedding policy). Not remembering is survivable.
-        return "";
-    }
+    const id = readSetting<string>(KEY, "");
+    return typeof id === "string" ? id : "";
 }
 
 export function rememberLastCanvas(id: string) {
-    try {
-        window.localStorage.setItem(KEY, id);
-    } catch {
-        // See above: the cost is landing on the newest canvas instead of the last one.
-    }
+    if (lastCanvasId() !== id) writeSetting(KEY, id);
 }
 
 export function forgetLastCanvas(id: string) {
-    try {
-        if (window.localStorage.getItem(KEY) === id) window.localStorage.removeItem(KEY);
-    } catch {
-        // Nothing to do: a stale id is caught by the lookup in entry.tsx.
-    }
+    if (lastCanvasId() === id) writeSetting(KEY, "");
 }

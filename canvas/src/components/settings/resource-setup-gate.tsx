@@ -1,11 +1,12 @@
-import { Button } from "@/components/kit/button";
-import { Dialog } from "@/components/kit/dialog";
 import { Download, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/kit/button";
+import { Dialog } from "@/components/kit/dialog";
 import { ResourceCenterPanel } from "@/components/settings/resource-center-panel";
 import { fetchResourceStatus, type ResourceStatus } from "@/services/api/resources";
+import { readSetting, writeSetting } from "@/stores/use-settings-store";
 
 const SKIP_KEY = "resource-setup-skipped";
 
@@ -25,7 +26,7 @@ export function ResourceSetupGate() {
                 // Decide on the missing-resource count, not the old recommendedMissing: that one relies on a
                 // GPU assessment, only applies to autoRecommend packs, and measured as always 0, so this
                 // dialog never showed up at all.
-                if ((next.summary.missing || 0) > 0 && window.localStorage.getItem(SKIP_KEY) !== "1") setOpen(true);
+                if ((next.summary.missing || 0) > 0 && readSetting<boolean>(SKIP_KEY, false) !== true) setOpen(true);
             } catch {
                 // Stay out of the way while the gateway or ComfyUI is not ready; Add workflows can still be opened by hand.
             } finally {
@@ -41,7 +42,7 @@ export function ResourceSetupGate() {
     if (!checked || !status || status.summary.missing <= 0) return null;
 
     const skip = () => {
-        window.localStorage.setItem(SKIP_KEY, "1");
+        writeSetting(SKIP_KEY, true);
         setOpen(false);
     };
 

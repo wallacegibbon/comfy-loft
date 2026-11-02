@@ -5314,3 +5314,75 @@ a tab left on a canvas that no longer existed got `404`, went to `/`, and create
 (new/rewritten), `pages/canvas/{entry.tsx,project.tsx}`, `components/{canvas/{canvas-manager-dialog,canvas-project-card,canvas-top-bar,canvas-delete-projects-dialog}.tsx,layout/{user-layout,client-root-init}.tsx}`,
 `services/{file-storage,image-storage}.ts`, `lib/canvas/node-title.ts`, `i18n/locales/*`,
 `tests/{canvas-save-queue,node-title}.test.ts`, `scripts/check-exports.cjs`, `internal/httpx/middleware.go`.
+
+## 155. Preferences live with the workspace, and the browser stores nothing
+
+**Decision** The last thing the canvas kept in the browser — its preferences — moves to
+`data/settings.json`, served as one document:
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| `GET` | `/api/settings` | The whole document. `{}` until something is saved. |
+| `PUT` | `/api/settings` | Replace it. `{settings: {...}}`. |
+
+The gateway checks two things — that the bytes are a JSON object under 1 MiB — and never reads a key.
+The shape belongs to the canvas, the same division #152 drew for a canvas document. There are no
+per-key endpoints: a partial update would need a merge, and a merge is where preferences quietly lose
+keys.
+
+Every `localStorage` key and the last IndexedDB database are gone:
+
+| Was | Now |
+| --- | --- |
+| `comfyloft:theme_store` (zustand `persist`) | `settings.theme`, published by one subscription |
+| `comfyloft:ai_config_store` (+ its `…:pre-local-only-backup` blob) | `settings.config` |
+| `comfyloft:locale` | `settings.locale` |
+| `canvas-side-panel-{width,open,node-view}` | the same names inside `settings` |
+| `comfyloft:last_canvas` | `settings.lastCanvas` |
+| `resource-setup-skipped`, the image quick-tools key | the same names inside `settings` |
+
+**Why** #154 made the canvas a directory and left the preferences behind, which produced the oddest
+state this app had: the same workspace, on the phone in the next room, opened English and light with the
+right canvases in it. Preferences are the workspace's, not the browser's.
+
+**Why a first-paint file, and why the gateway writes it** A document that only arrives over HTTP cannot
+be applied before the first frame, so every dark workspace opened white for a moment and every English
+one opened in Chinese. The bundle is static, so the one thing a page can read synchronously is a script
+tag: `start.sh` used to write `dist/config.js` with the gateway address, and the gateway now writes it —
+on every start and after every settings save — with the address *and* the settings document. That also
+fixed something nobody had noticed: `canvas/index.html` had an inline script reading
+`localStorage["infinite-canvas:theme_store"]`, a key nothing has written since #143 renamed them, so the
+first paint had been guessing for several releases. The script is deleted; `AppProviders` applies the
+theme in a `useLayoutEffect`, before the paint rather than after it.
+
+**Why there is no request at startup** The document is already in `config.js`, so `load()` is the
+fallback for an operator who serves no first-paint file, and the store **refuses to save until it has a
+document from one of the two**. Without that guard, a gateway run without `RUNTIME_CONFIG_PATH` would
+replace the workspace's preferences with this build's defaults on the first keystroke.
+
+**Cost, named** Two people sharing one gateway share the theme, the language and "the canvas I was in".
+For a local workbench whose whole premise is one workspace, that is the intended reading; a per-device
+scent would need a second storage mechanism, and this entry's point is that there is only one.
+
+**Deleted** `services/local-storage-usage.ts`, `components/settings/config-local-storage.tsx`, the
+settings dialog's `本地存储` tab and its `ConfigTabKey`, the kit's `Alert` (that panel was its only
+caller), and `RETIRED_CONFIG_KEYS` with `withoutRetiredKeys` — a filter that existed to drop keys out of
+persisted blobs that no longer exist (#151).
+
+**Tested** `internal/settings` (8 tests: empty-until-saved, byte round-trip, replace-not-merge, only an
+object, the size cap, an unreadable file reported rather than treated as empty, no temporary files, the
+directory created), four route tests including the first-paint file's content and its rewrite on save,
+`npm run check` (895/881 keys, 168 modules, prettier, `tsc`), 127 canvas tests, `make check`,
+`make verify-static`, `make web`.
+
+**In the browser, with `localStorage` cleared** The theme and the language came back light and English on
+reload from `config.js` alone, with `Object.keys(localStorage)` empty before and after; switching the
+theme and the language wrote `settings.json` (`theme`, `locale`, `lastCanvas`, `config`) and rewrote
+`config.js`; the console stayed empty.
+
+**Where** `internal/settings/{settings.go,settings_test.go}` (new),
+`internal/server/{routes_settings.go,runtime_config.go,settings_e2e_test.go}` (new),
+`internal/{server/{server.go,routes_admin.go,e2e_test.go},config/config.go}`,
+`canvas/src/{services/api/settings.ts,stores/use-settings-store.ts}` (new),
+`canvas/src/{stores/{use-config-store.ts,use-theme-store.ts,canvas/use-canvas-side-panel-store.ts},lib/canvas/last-canvas.ts,i18n/index.ts,constant/runtime-config.ts,components/{layout/{app-providers,client-root-init,user-status-actions}.tsx,settings/{app-config-modal,resource-setup-gate}.tsx,canvas/canvas-node-hover-toolbar.tsx,kit/feedback.tsx}}`,
+`canvas/index.html`, `canvas/src/i18n/locales/*`, `start.sh`, `docs/gateway.md`.

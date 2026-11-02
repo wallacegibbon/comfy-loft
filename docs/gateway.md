@@ -80,6 +80,7 @@ Every variable is optional; the defaults match the previous implementation.
 | `DATA_DIR`           | `<root>/data`                      | Tasks, locks, preferences.                                                                                                                                         |
 | `OUTPUT_DIR`         | `<data>/outputs`                   | Generated files served under `/files/`.                                                                                                                            |
 | `CANVAS_ROOT`        | `<root>/canvases`                  | The canvases, one directory each. This is the workspace: back it up and you have the work.                                                                          |
+| `RUNTIME_CONFIG_PATH` | *(unset)*                        | A file the gateway keeps current for the canvas's first paint (address + settings). `start.sh` points it at `canvas/dist/config.js`; unset means "the operator serves it". |
 | `PUBLIC_BASE_URL`    | `http://GATEWAY_HOST:GATEWAY_PORT` | Absolute prefix for the URLs the gateway returns (run outputs, previews). Set it when a proxy publishes the gateway under another address. |
 | `CORS_ORIGINS`       | canvas + ComfyUI origins           | Extra allow list for canvases on another host. A canvas on the gateway's own host is allowed by rule. `*` is refused.                                              |
 
@@ -312,6 +313,8 @@ Workspace:
 | `GET` | `/api/canvases/{id}` | One canvas and its document. |
 | `PUT` | `/api/canvases/{id}` | Save the document. `{document, title?}`; `If-Match: <rev>` refuses a stale write with `409`. |
 | `DELETE` | `/api/canvases/{id}` | Delete it, and everything under it. |
+| `GET` | `/api/settings` | The workspace preferences: one document, opaque to the gateway. |
+| `PUT` | `/api/settings` | Replace them. `{settings: {...}}`; rewrites the first-paint file. |
 
 A canvas is a directory, not a row:
 
@@ -325,6 +328,18 @@ The id is the directory name and is never derived from the title, so renaming a 
 directory. The gateway does **not** parse `canvas.json`: it checks that it is a JSON object under
 16 MiB and otherwise stores the bytes. What a node is, is the canvas's business — a gateway that
 understood nodes would have to be rebuilt every time one was added.
+
+### Preferences live with the workspace
+
+`data/settings.json` holds one document — theme, language, panel widths, the channel names and the
+model selections — that the canvas itself defines. The gateway checks only that it is a JSON object
+and stores it whole: a settings document with per-key endpoints would need a merge, and a merge is
+where preferences quietly lose keys.
+
+It is written to `RUNTIME_CONFIG_PATH` (when set) on every start and after every save, because the
+theme and the language have to be applied before the first frame. A preferences document that only
+arrives over HTTP opens every dark workspace white for a moment and every English workspace in
+Chinese; the file is the only thing a page can read synchronously.
 
 Two rules make the directory safe to write on every keystroke. Every write goes through a temporary
 file in the same directory and is renamed into place, so a reader never sees half a document. Every

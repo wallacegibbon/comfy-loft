@@ -6,14 +6,12 @@
         <meta name="description" content="Comfy Loft —— 本地 AI 创作工作台" />
         <link rel="icon" href="/logo.svg" />
         <title>Comfy Loft</title>
-        <script>
-            try {
-                var s = JSON.parse(localStorage.getItem("infinite-canvas:theme_store") || "{}");
-                var t = s.state && s.state.theme === "light" ? "light" : "dark";
-                document.documentElement.classList.toggle("dark", t === "dark");
-                document.documentElement.style.colorScheme = t;
-            } catch (e) {}
-        </script>
+        <!--
+            The theme is applied by the app, not here: the gateway writes the workspace preferences into
+            /config.js (docs/decisions.md #155), so any script in this file would either duplicate that
+            document or read a key nothing writes. `AppProviders` reads the store, which was initialised
+            from that document before the first render.
+        -->
     </head>
     <body class="bg-background text-foreground antialiased">
         <div id="root"></div>

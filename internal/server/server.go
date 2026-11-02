@@ -21,6 +21,7 @@ import (
 	"comfyloft/internal/httpx"
 	"comfyloft/internal/logx"
 	"comfyloft/internal/resource"
+	"comfyloft/internal/settings"
 	"comfyloft/internal/setup"
 	"comfyloft/internal/store"
 	"comfyloft/internal/task"
@@ -45,6 +46,9 @@ type Server struct {
 	// canvases is the workspace: one directory per canvas, owned by the gateway and backed up by
 	// copying it. Nothing else in the gateway knows what a node is, and this is the reason.
 	canvases *canvas.Store
+	// settings is the preferences document: opaque here, owned by the canvas, kept beside the data so
+	// it survives a cleared browser and travels with the workspace.
+	settings *settings.Store
 	// agentSessions holds the agents a socket started, one per client-chosen name.
 	agentSessions *agent.Sessions
 	setup         *setup.Manager
@@ -119,6 +123,11 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 		return nil, err
 	}
 
+	preferences, err := settings.New(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
+
 	skins := store.NewSkins(cfg.DataDir, logger)
 	skins.Load()
 	visibility := store.NewVisibility(cfg.DataDir, logger)
@@ -157,6 +166,7 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 		tasks:         tasks,
 		uploads:       uploads,
 		canvases:      canvases,
+		settings:      preferences,
 		setup:         setupManager,
 		resources:     resources,
 		agentSessions: agent.NewSessions(logger),
@@ -164,6 +174,7 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 	}
 
 	server.writeMCPConf()
+	server.writeRuntimeConfig()
 	if err := server.startMCPListener(); err != nil {
 		return nil, err
 	}

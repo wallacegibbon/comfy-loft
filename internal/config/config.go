@@ -34,6 +34,10 @@ type Config struct {
 	WorkflowDir string
 	DataDir     string
 	OutputDir   string
+	// RuntimeConfigPath, when set, is a file the gateway keeps current for the canvas's first paint:
+	// the gateway address and a copy of the settings document, so the page can apply the theme and the
+	// language before it draws. Empty means the operator serves that file themselves.
+	RuntimeConfigPath string
 	// CanvasRoot is where the canvases live, one directory each. It is the workspace itself, so it
 	// is named by its own variable rather than nested under DATA_DIR: data/ is the gateway's
 	// bookkeeping (tasks, uploads), and a user who backs up their work backs up this.
@@ -118,6 +122,9 @@ func WithOutputDir(dir string) Option { return func(c *Config) { c.OutputDir = d
 // WithCanvasRoot overrides the canvas root.
 func WithCanvasRoot(dir string) Option { return func(c *Config) { c.CanvasRoot = dir } }
 
+// WithRuntimeConfigPath points the first-paint file at a path (tests), or turns it off with "".
+func WithRuntimeConfigPath(path string) Option { return func(c *Config) { c.RuntimeConfigPath = path } }
+
 // WithoutScanOnStart disables the startup scan (tests).
 func WithoutScanOnStart() Option {
 	return func(c *Config) { c.ScanOnStart = false }
@@ -184,6 +191,9 @@ func Load(opts ...Option) (*Config, error) {
 	cfg.DataDir = absOrJoin(root, os.Getenv("DATA_DIR"), "data")
 	cfg.OutputDir = absOrJoin(root, os.Getenv("OUTPUT_DIR"), filepath.Join("data", "outputs"))
 	cfg.CanvasRoot = absOrJoin(root, os.Getenv("CANVAS_ROOT"), "canvases")
+	// No default: an empty value means "no file to write", and a gateway run outside a served bundle
+	// should not invent one.
+	cfg.RuntimeConfigPath = strings.TrimSpace(os.Getenv("RUNTIME_CONFIG_PATH"))
 
 	for _, opt := range opts {
 		opt(cfg)
@@ -194,6 +204,9 @@ func Load(opts ...Option) (*Config, error) {
 	cfg.DataDir = absPath(cfg.DataDir)
 	cfg.OutputDir = absPath(cfg.OutputDir)
 	cfg.CanvasRoot = absPath(cfg.CanvasRoot)
+	if cfg.RuntimeConfigPath != "" {
+		cfg.RuntimeConfigPath = absPath(cfg.RuntimeConfigPath)
+	}
 	cfg.ComfyURL = strings.TrimRight(cfg.ComfyURL, "/")
 
 	if cfg.PublicBaseURL == "" {

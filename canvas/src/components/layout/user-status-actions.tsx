@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { Tooltip } from "@/components/kit/tooltip";
 import { AnimatedThemeToggler } from "@/components/kit/animated-theme-toggler";
 import { changeAppLocale, type AppLocale } from "@/i18n";
+import { writeSetting } from "@/stores/use-settings-store";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -37,7 +38,16 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
                 </button>
             ) : null}
             <Tooltip title={languageLabel} mouseEnterDelay={0.2}>
-                <button type="button" className={`${naturalIconClass} text-[11px] font-semibold tracking-tight`} style={iconStyle} onClick={() => void changeAppLocale(nextLocale)} aria-label={languageLabel}>
+                <button
+                    type="button"
+                    className={`${naturalIconClass} text-[11px] font-semibold tracking-tight`}
+                    style={iconStyle}
+                    onClick={() => {
+                        writeSetting("locale", nextLocale);
+                        void changeAppLocale(nextLocale);
+                    }}
+                    aria-label={languageLabel}
+                >
                     {/* Shows the language a click switches to: EN while Chinese is active, and the Chinese
                         label while English is active, so someone who cannot read the current UI still
                         finds the toggle. */}

@@ -11,6 +11,7 @@ import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
 import { useCopyText } from "@/hooks/use-copy-text";
+import { readSetting, writeSetting } from "@/stores/use-settings-store";
 import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 import type { CanvasNodeToolbarItem } from "@/types/canvas-node";
 import { ImageToolSettingsModal, type ImageToolbarSettingsTool } from "./canvas-image-toolbar-settings-modal";
@@ -90,16 +91,11 @@ export function CanvasNodeHoverToolbar({
     const copyText = useCopyText();
 
     useEffect(() => {
-        try {
-            const stored = window.localStorage.getItem(IMAGE_QUICK_TOOLS_STORAGE_KEY);
-            if (!stored) return;
-            const parsed = JSON.parse(stored) as unknown;
-            const config = readImageQuickToolsConfig(parsed);
-            setQuickImageToolIds(config.ids);
-            setShowImageToolLabels(config.showLabels);
-        } catch {
-            window.localStorage.removeItem(IMAGE_QUICK_TOOLS_STORAGE_KEY);
-        }
+        // Whatever was saved is untrusted: it may predate a tool, or name one that is gone.
+        const config = readImageQuickToolsConfig(readSetting(IMAGE_QUICK_TOOLS_STORAGE_KEY, null));
+        if (!config.ids.length && !config.showLabels) return;
+        setQuickImageToolIds(config.ids);
+        setShowImageToolLabels(config.showLabels);
     }, []);
 
     useEffect(() => {
@@ -210,7 +206,7 @@ export function CanvasNodeHoverToolbar({
         const config = { ids: draftImageToolIds, showLabels: draftShowImageToolLabels };
         setQuickImageToolIds(config.ids);
         setShowImageToolLabels(config.showLabels);
-        window.localStorage.setItem(IMAGE_QUICK_TOOLS_STORAGE_KEY, JSON.stringify(config));
+        writeSetting(IMAGE_QUICK_TOOLS_STORAGE_KEY, config);
         closeImageToolSettings();
     };
 

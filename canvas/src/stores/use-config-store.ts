@@ -1,10 +1,10 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
 import { gatewayModelLabel } from "@/lib/gateway-labels";
 import { gatewayRoot, LOCAL_GATEWAY_BASE_URL, LOCAL_GATEWAY_CHANNEL_ID } from "@/constant/app-mode";
+import { mirrorToSettings, readSetting } from "@/stores/use-settings-store";
 import { normalizeProgressRingSkin, type ProgressRingSkinId } from "@/lib/canvas/progress-ring-skins";
 
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -73,9 +73,8 @@ export type AiConfig = {
     params?: Record<string, unknown>;
 };
 
-export type ConfigTabKey = "channels" | "preferences" | "local-storage" | "resources";
+export type ConfigTabKey = "channels" | "preferences" | "resources";
 
-const CONFIG_STORE_KEY = "comfyloft:ai_config_store";
 const CHANNEL_MODEL_SEPARATOR = "::";
 const localDefaultChannel: ModelChannel = {
     id: LOCAL_GATEWAY_CHANNEL_ID,
@@ -121,34 +120,6 @@ export const defaultConfig: AiConfig = {
     autoFocusOnSelect: false,
     progressRingSkin: "cyan",
 };
-
-/**
- * Settings that used to live in this config and do not any more.
- *
- * A persisted blob keeps whatever it was written with, and the merge below spreads it over the
- * defaults — so a name deleted from `AiConfig` would ride along in state and be written out again on
- * the next change, forever. Dropping them at the merge is the whole cleanup: nothing reads them, and
- * the values themselves need no migration. (docs/decisions.md #76, #77)
- */
-const RETIRED_CONFIG_KEYS = new Set([
-    "apiFormat",
-    "channelMode",
-    "nodeRegenerateBehavior",
-    "promptApiKey",
-    "promptBaseUrl",
-    "promptCloudApiId",
-    "promptCloudApiKey",
-    "promptCloudApis",
-    "promptCloudBaseUrl",
-    "promptCloudModel",
-    "promptEndpointId",
-    "promptEndpoints",
-    "promptModel",
-    "reasoningEffort",
-    "videoInterpolation",
-]);
-
-const withoutRetiredKeys = (config: Partial<AiConfig>): Partial<AiConfig> => Object.fromEntries(Object.entries(config).filter(([key]) => !RETIRED_CONFIG_KEYS.has(key))) as Partial<AiConfig>;
 
 type ConfigStore = {
     config: AiConfig;
@@ -269,72 +240,69 @@ function isAiConfigReady(config: AiConfig, model: string) {
     return Boolean(match && match.channel.baseUrl.trim());
 }
 
-export const useConfigStore = create<ConfigStore>()(
-    persist(
-        (set) => ({
-            config: defaultConfig,
-            isConfigOpen: false,
-            configTab: "channels",
-            shouldPromptContinue: false,
-            updateConfig: (key, value) =>
-                set((state) => ({
-                    config: {
-                        ...state.config,
-                        [key]: value,
-                    },
-                })),
-            isAiConfigReady: (config, model) => isAiConfigReady(config, model),
-            openConfigDialog: (shouldPromptContinue = false, configTab = "channels") => set({ isConfigOpen: true, shouldPromptContinue, configTab }),
-            setConfigDialogOpen: (isConfigOpen) => set({ isConfigOpen }),
-            clearPromptContinue: () => set({ shouldPromptContinue: false }),
-        }),
-        {
-            name: CONFIG_STORE_KEY,
-            partialize: (state) => ({ config: state.config }),
-            merge: (persisted, current) => {
-                const persistedState = (persisted || {}) as Partial<ConfigStore>;
-                const persistedConfig = (persistedState.config || {}) as Partial<AiConfig>;
-                const config = { ...defaultConfig, ...withoutRetiredKeys(persistedConfig) };
-                if (!Array.isArray(persistedConfig.channels)) config.channels = [];
-                const channels = normalizeChannels(config);
-                const models = modelOptionsFromChannels(channels);
-                const imageOptions = channels.flatMap((channel) => channel.models.filter((model) => model.capability === "image").map((model) => encodeChannelModel(channel.id, model.name)));
-                const videoOptions = channels.flatMap((channel) => channel.models.filter((model) => model.capability === "video").map((model) => encodeChannelModel(channel.id, model.name)));
-                const audioOptions = channels.flatMap((channel) => channel.models.filter((model) => model.capability === "audio").map((model) => encodeChannelModel(channel.id, model.name)));
-                const pickModel = (current: string, options: string[]) => (options.includes(current) ? current : options[0] || "");
-                const imageModel = pickModel(config.imageModel || config.model, imageOptions);
-                const videoModel = pickModel(config.videoModel, videoOptions);
-                const audioModel = pickModel(config.audioModel, audioOptions);
-                return {
-                    ...current,
-                    config: {
-                        ...config,
-                        model: pickModel(config.model || config.imageModel, imageOptions),
-                        channels,
-                        models,
-                        imageModel,
-                        videoModel,
-                        textModel: "",
-                        audioModel,
-                        audioVoice: config.audioVoice || defaultConfig.audioVoice,
-                        audioFormat: config.audioFormat || defaultConfig.audioFormat,
-                        audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
-                        audioInstructions: config.audioInstructions || "",
-                        videoSeconds: config.videoSeconds || "6",
-                        vquality: config.vquality || "720",
-                        videoGenerateAudio: config.videoGenerateAudio || "true",
-                        videoWatermark: config.videoWatermark || "false",
-                        videoMode: config.videoMode === "reference" || config.videoMode === "text" ? config.videoMode : "frames",
-                        videoSelfLiftMode: config.videoSelfLiftMode === "quality" ? "quality" : "fast",
-                        canvasImageCount: config.canvasImageCount || "3",
-                        autoFocusOnSelect: Boolean(config.autoFocusOnSelect),
-                        progressRingSkin: normalizeProgressRingSkin(config.progressRingSkin),
-                    },
-                };
+/**
+ * Bring a stored config up to the shape this build expects.
+ *
+ * The stored document is whatever the last build wrote, so every field is re-derived rather than
+ * trusted: channels are rebuilt from their ids and models, the model selections are re-picked from
+ * what those channels actually offer, and the enums fall back to their defaults. The alternative is a
+ * canvas pointing at a model that the gateway stopped reporting, which looks like a broken button.
+ */
+function hydrateConfig(stored: Partial<AiConfig>): AiConfig {
+    const config = { ...defaultConfig, ...stored };
+    if (!Array.isArray(stored.channels)) config.channels = [];
+    const channels = normalizeChannels(config);
+    const models = modelOptionsFromChannels(channels);
+    const imageOptions = channels.flatMap((channel) => channel.models.filter((model) => model.capability === "image").map((model) => encodeChannelModel(channel.id, model.name)));
+    const videoOptions = channels.flatMap((channel) => channel.models.filter((model) => model.capability === "video").map((model) => encodeChannelModel(channel.id, model.name)));
+    const audioOptions = channels.flatMap((channel) => channel.models.filter((model) => model.capability === "audio").map((model) => encodeChannelModel(channel.id, model.name)));
+    const pickModel = (current: string, options: string[]) => (options.includes(current) ? current : options[0] || "");
+    return {
+        ...config,
+        model: pickModel(config.model || config.imageModel, imageOptions),
+        channels,
+        models,
+        imageModel: pickModel(config.imageModel || config.model, imageOptions),
+        videoModel: pickModel(config.videoModel, videoOptions),
+        textModel: "",
+        audioModel: pickModel(config.audioModel, audioOptions),
+        audioVoice: config.audioVoice || defaultConfig.audioVoice,
+        audioFormat: config.audioFormat || defaultConfig.audioFormat,
+        audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
+        audioInstructions: config.audioInstructions || "",
+        videoSeconds: config.videoSeconds || "6",
+        vquality: config.vquality || "720",
+        videoGenerateAudio: config.videoGenerateAudio || "true",
+        videoWatermark: config.videoWatermark || "false",
+        videoMode: config.videoMode === "reference" || config.videoMode === "text" ? config.videoMode : "frames",
+        videoSelfLiftMode: config.videoSelfLiftMode === "quality" ? "quality" : "fast",
+        canvasImageCount: config.canvasImageCount || "3",
+        autoFocusOnSelect: Boolean(config.autoFocusOnSelect),
+        progressRingSkin: normalizeProgressRingSkin(config.progressRingSkin),
+    };
+}
+
+export const useConfigStore = create<ConfigStore>()((set) => ({
+    config: hydrateConfig(readSetting<Partial<AiConfig>>("config", {})),
+    isConfigOpen: false,
+    configTab: "channels",
+    shouldPromptContinue: false,
+    updateConfig: (key, value) =>
+        set((state) => ({
+            config: {
+                ...state.config,
+                [key]: value,
             },
-        },
-    ),
-);
+        })),
+    isAiConfigReady: (config, model) => isAiConfigReady(config, model),
+    openConfigDialog: (shouldPromptContinue = false, configTab = "channels") => set({ isConfigOpen: true, shouldPromptContinue, configTab }),
+    setConfigDialogOpen: (isConfigOpen) => set({ isConfigOpen }),
+    clearPromptContinue: () => set({ shouldPromptContinue: false }),
+}));
+
+// The channel names, the capability overrides and the model selections are a preference: they are the
+// same on the phone in the next room, and they survive a cleared browser.
+mirrorToSettings(useConfigStore, "config", (state) => state.config);
 
 /**
  * The config every caller should read.

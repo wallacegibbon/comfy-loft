@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import { readSetting, writeSetting } from "@/stores/use-settings-store";
+
 export const CANVAS_SIDE_PANEL_MOTION_MS = 500;
 export const CANVAS_SIDE_PANEL_MIN_WIDTH = 220;
 export const CANVAS_SIDE_PANEL_MAX_WIDTH = 480;
@@ -12,21 +14,18 @@ const NODE_VIEW_KEY = "canvas-side-panel-node-view";
 type CanvasNodeViewMode = "list" | "grid";
 
 function initialWidth() {
-    if (typeof window === "undefined") return CANVAS_SIDE_PANEL_DEFAULT_WIDTH;
-    const stored = Number(localStorage.getItem(WIDTH_KEY));
+    const stored = Number(readSetting(WIDTH_KEY, 0));
     if (!stored) return CANVAS_SIDE_PANEL_DEFAULT_WIDTH;
     return Math.min(CANVAS_SIDE_PANEL_MAX_WIDTH, Math.max(CANVAS_SIDE_PANEL_MIN_WIDTH, stored));
 }
 
 /** Shut until asked for: the board floats over the canvas, so nothing is missing while it is away. */
 function initialOpen() {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(OPEN_KEY) === "1";
+    return readSetting<boolean>(OPEN_KEY, false);
 }
 
 function initialNodeView(): CanvasNodeViewMode {
-    if (typeof window === "undefined") return "list";
-    return localStorage.getItem(NODE_VIEW_KEY) === "grid" ? "grid" : "list";
+    return readSetting<CanvasNodeViewMode>(NODE_VIEW_KEY, "list") === "grid" ? "grid" : "list";
 }
 
 type CanvasSidePanelStore = {
@@ -45,16 +44,14 @@ export const useCanvasSidePanelStore = create<CanvasSidePanelStore>((set, get) =
     panelOpen: initialOpen(),
     nodeViewMode: initialNodeView(),
     setWidth: (width) => set({ width }),
-    commitWidth: () => {
-        if (typeof window !== "undefined") localStorage.setItem(WIDTH_KEY, String(get().width));
-    },
+    commitWidth: () => writeSetting(WIDTH_KEY, get().width),
     setNodeViewMode: (mode) => {
-        if (typeof window !== "undefined") localStorage.setItem(NODE_VIEW_KEY, mode);
+        writeSetting(NODE_VIEW_KEY, mode);
         set({ nodeViewMode: mode });
     },
     togglePanel: () => {
         const open = !get().panelOpen;
-        if (typeof window !== "undefined") localStorage.setItem(OPEN_KEY, open ? "1" : "0");
+        writeSetting(OPEN_KEY, open);
         set({ panelOpen: open });
     },
 }));

@@ -14,7 +14,6 @@ import { ModelPicker, WorkflowModelPicker } from "@/components/model-picker";
 import { imageAspectOptions } from "@/components/image-settings-panel";
 import { videoResolutionOptions } from "@/components/video-settings-panel";
 import { ChannelEditorDrawer } from "@/components/settings/channel-editor-drawer";
-import { ConfigLocalStorage } from "@/components/settings/config-local-storage";
 import { ResourceCenterPanel } from "@/components/settings/resource-center-panel";
 import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaScaleOptions, parseVideoResolution } from "@/lib/media-size";
 import { progressRingSkins } from "@/lib/canvas/progress-ring-skins";
@@ -135,7 +134,7 @@ function AppConfigPanel({ showDoneButton = false, initialTab = "channels" }: { s
 
     return (
         <>
-            <div className="border-b border-stone-200 pb-3 text-xs text-stone-500 dark:border-stone-800">{t("config.localStorageNote")}</div>
+            <div className="border-b border-stone-200 pb-3 text-xs text-stone-500 dark:border-stone-800">{t("config.settingsNote")}</div>
             <Tabs
                 activeKey={activeTab}
                 onChange={(key) => setActiveTab(key as ConfigTabKey)}
@@ -320,11 +319,6 @@ function AppConfigPanel({ showDoneButton = false, initialTab = "channels" }: { s
                         key: "resources",
                         label: t("config.tabs.resources"),
                         children: <ResourceCenterPanel />,
-                    },
-                    {
-                        key: "local-storage",
-                        label: t("config.tabs.localStorage"),
-                        children: <ConfigLocalStorage active={activeTab === "local-storage"} />,
                     },
                 ]}
             />
