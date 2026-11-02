@@ -1,18 +1,21 @@
 #!/usr/bin/env node
-// 导出即承诺：每个 `export` 都意味着"外面有人依赖这个名字"。
+// An export is a promise: every `export` says "something outside relies on this name".
 //
-// 这个检查用 TypeScript 的 language service（`findReferences`），不是 grep —— 后者分不清
-// "导出后本文件自己在用"和"外面在 import"，也跟不上 barrel 重导出。
+// This check uses TypeScript's language service (`findReferences`), not grep — grep cannot tell "the
+// declaring file uses it itself" from "something else imports it", and it does not follow barrel
+// re-exports.
 //
-// 三类问题：
-//   A. 完全没人引用      → 应该删掉
-//   B. 只有本文件在用    → 应该去掉 `export`
-//   C. 只有测试在用      → 要么去掉 export（测试改用公开入口），要么在 TEST_ONLY 里写明理由
+// Three problems:
+//   A. referenced by nobody        → delete it
+//   B. used only in its own file   → drop the `export`
+//   C. used only by tests          → drop the export (and let the test use a public entry), or state the
+//                                    reason in TEST_ONLY
 //
-// C 是刻意算作问题的：测试不是产品代码，一个只有测试 import 的导出说明这个函数/类型
-// 没有真正的调用者，`agent.Run` 就是这么活了一个版本的（Go 那边，同样的盲点）。
+// C counts as a problem on purpose: a test is not product code, and an export only a test imports means the
+// function or type has no real caller — `agent.Run` lived a whole release that way (on the Go side, the
+// same blind spot).
 //
-// 豁免：`src/vite-env.d.ts` 是 Vite 的类型声明，里面没有运行时导出。
+// Exempt: `src/vite-env.d.ts` is Vite's type declaration and has no runtime exports.
 
 const fs = require("fs");
 const path = require("path");
@@ -22,12 +25,16 @@ const WEB = path.resolve(__dirname, "..");
 
 const EXEMPT = new Set([path.join(WEB, "src/vite-env.d.ts")]);
 
-// 只被测试引用的导出，逐条写明理由。这里每多一行，就说明产品代码少一个调用者。
+// Exports only a test references, each with its reason. Every line added here is one caller missing from
+// the product code.
 const TEST_ONLY = new Map([
-    ["src/lib/canvas/save-queue.ts:SaveSnapshot", "保存队列的输入快照类型：队列自己的 `snapshot` 回调返回它、`save` 回调接收它，但产品代码里没人按名字写这个类型（都是推导出来的），所以只有测试需要指名构造一份"],
-    ["src/lib/gateway-models.ts:modelsOf", "一个 workflow → 若干候选条目的映射，本身就是被测单元；gatewayModels 只是它的 fold"],
-    ["src/services/api/http.ts:ApiError", "http.ts 抛出的错误类型，测试用它断言 status/body 的形状"],
-    ["src/services/api/http.ts:readApiErrorMessage", "解析器本身是被测单元：表格用例覆盖 msg/message/error/detail/序列化 JSON/HTML 六种形状；从 apiErrorMessage 走会混进状态码兜底"],
+    [
+        "src/lib/canvas/save-queue.ts:SaveSnapshot",
+        "the save queue's input snapshot: the queue's own `snapshot` callback returns it and its `save` callback takes it, but no product code names the type (it is always inferred), so only a test has to construct one by name",
+    ],
+    ["src/lib/gateway-models.ts:modelsOf", "the mapping from one workflow to its candidate entries — the unit under test itself; gatewayModels is only its fold"],
+    ["src/services/api/http.ts:ApiError", "the error type http.ts throws; the tests use it to assert the shape of status and body"],
+    ["src/services/api/http.ts:readApiErrorMessage", "the parser is the unit under test: the table covers msg / message / error / detail / serialised JSON / HTML; going through apiErrorMessage would mix in the status-code fallback"],
 ]);
 
 function walk(dir, out = []) {
@@ -114,7 +121,7 @@ for (const file of srcFiles) {
         if (!nameNode || !ts.isIdentifier(nameNode)) continue;
 
         const declaringFile = declaration.getSourceFile().fileName;
-        // 只报告 src/ 下自己的东西：重导出的第三方类型不归这里管。
+        // Only report what lives under src/: a re-exported third-party type is not ours to police.
         if (!declaringFile.startsWith(path.join(WEB, "src"))) continue;
         if (EXEMPT.has(declaringFile)) continue;
 
@@ -148,18 +155,18 @@ for (const file of srcFiles) {
 
 if (unused.length || localOnly.length || testOnly.length) {
     if (unused.length) {
-        console.error(`没人引用的导出（应当删除）共 ${unused.length} 个:`);
+        console.error(`${unused.length} export(s) nothing references (delete them):`);
         for (const item of unused) console.error(`    ${item.where}  ${item.name}`);
     }
     if (localOnly.length) {
-        console.error(`只在声明文件内部使用的导出（应当去掉 export）共 ${localOnly.length} 个:`);
+        console.error(`${localOnly.length} export(s) used only inside their own file (drop the export):`);
         for (const item of localOnly) console.error(`    ${item.where}  ${item.name}`);
     }
     if (testOnly.length) {
-        console.error(`只被测试引用的导出（去掉 export，或在 TEST_ONLY 里写明理由）共 ${testOnly.length} 个:`);
+        console.error(`${testOnly.length} export(s) only a test references (drop the export, or state the reason in TEST_ONLY):`);
         for (const item of testOnly) console.error(`    ${item.where}  ${item.name}`);
     }
     process.exit(1);
 }
 
-console.log(`导出检查通过：src 下 ${srcFiles.length} 个模块，没有无效导出。`);
+console.log(`export check passed: ${srcFiles.length} modules under src, no exports without a caller.`);
