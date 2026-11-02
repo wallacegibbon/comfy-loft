@@ -7055,3 +7055,72 @@ change). `npm run check` (zh 825 / en 811 keys), `npx vitest run` (156), `npm ru
 
 **Where** `frontend/src/components/canvas/canvas-side-panel-canvases.tsx`,
 `frontend/src/i18n/locales/zh-CN.ts`, `frontend/src/i18n/locales/en-US.ts`.
+
+## 201. The agent's models are edited through the agent, and the key stays on the gateway
+
+**Decision** The preferences window grows an **Agent models** section: the list AlayaCore announces, one row per
+model (name, protocol, what it points at, and its key as six dots), a pencil and a cross on each row, and one
+**Add model** button that opens a small form — name, model id, URL, protocol (`openai` / `anthropic`), API key.
+Every change, add, edit or delete, is sent to the agent as its own `:model_sync` with the whole list. The gateway
+completes that list before the agent sees it: a model it already knows is rebuilt from the entry the agent
+announced, and only the fields the canvas can see are replaced. A `SM model_list` the agent restates after the
+write is forwarded as a `models` event, and so is the same list to every other live session.
+
+**Why through the agent** Because `model.conf` is AlayaCore's file, and #75 recorded the rule: the format
+(`protocol_type`, `reasoning_0/1/2`, `serial_tool_calls`, …) belongs to the agent, so the editor writes through
+the command plane rather than parsing and re-emitting the file from Go. The gateway therefore knows the
+*protocol's* JSON and nothing about the file's key-value syntax.
+
+**Why the gateway completes the list, and why that is not a detail** `:model_sync` replaces *every* model and
+rewrites the file from what it was given. The list a canvas is shown is `agent.Model`: id, name, protocol, base
+URL, model id, context limit and `hasKey` — no `api_key`, because `SM model_list` carries every key from
+`model.conf` in cleartext and the gateway strips them (#75, "the event surface is a whitelist"). Forwarded
+as-is, removing one model would delete every key on the machine, and every `reasoning_N` block and token cap
+beside them. So the gateway keeps each announced entry **whole** (`modelObject`, the raw JSON), the canvas says
+which ids stay and what changed, and `Session.mergeModelSync` rebuilds the rest. Whole is the point: a field
+AlayaCore adds tomorrow survives a round trip through a page that has never heard of it. Ids are rewritten to
+the models' positions, which is what `:model_sync` assigns them — the ids the canvas's `model_set` will have to
+use once the file is written. An empty key field means "keep the stored one": the page cannot see the key, so
+it is in no position to mean it away, while a key that is typed is how one is rotated.
+
+**Why the other sessions are told** `model.conf` is one file for the whole host, and every agent process reads
+it into its own memory at startup. A list written through the preferences window would otherwise leave the
+canvas panel's picker offering a model that no longer exists and missing the one that was just added, until
+that process was replaced. The gateway is the only layer that knows there is one file behind several processes,
+so `Sessions.ModelSync` hands the list it is about to write to every other session (`tellModels`). Their `active`
+model is their own and is left alone.
+
+**Why the write is atomic** It is AlayaCore's, on purpose: `modelManager.writeConfigFile` goes through
+`internal/atomicfile`, which writes a sibling temp file, fsyncs it and renames it over the target — so a reader
+sees the old list or the new one, never half of either, and an interrupted write cannot leave the only copy of a
+key truncated. The gateway never writes that file. The one config file it does write, `mcp.conf`, is installed
+the same way (`agent_config.go`: temp file in the same directory, then a rename).
+
+**Why a dialog rather than five inputs under the list** The first shape put them inline, and the verdict was
+immediate and correct: a model is a small document, and five labelled fields wrapped into a row of inputs nobody
+read. The list stays a list; the form appears when there is a form to fill.
+
+**Cost** A session per open preferences window — the list is the agent's, so it has to be asked — and the list is
+as fresh as that session's start: a `model.conf` edited outside the app is invisible until the window is
+reopened. A rejection on the agent's side (an entry it will not accept) leaves the other sessions holding a list
+slightly ahead of the file until their next start; the rejection itself is shown in the agent's own words under
+the list. Six dots say a key exists, never that it is the right one.
+
+**Tested** Go: `internal/agent/models_test.go` (the merge keeps what the canvas cannot see, replaces only the
+edited fields, rotates a key only when one is sent, numbers the list positionally, refuses a non-array, never
+puts a key in the event, tells the other sessions) and `TestModelSyncPutsBackWhatTheCanvasCannotSee` in the
+server's e2e, which reads the frame the fake agent received: the stored key is in it, the canvas's edit is in it,
+the deleted model is not, and the other socket got the new list. `make check`, `go test -race ./cmd/...
+./internal/...`, `make verify-static`. Frontend: `npm run check` (zh 845 / en 831 keys, no dead ones, exports
+clean), `npx vitest run` (165), `npm run build`. In the browser (`/tmp/verify`, 8191/3011, its own data
+directory and its own `AGENT_CONFIG_PATH` holding a two-model fixture), dark and light: adding wrote a third
+entry with its key; editing renamed the first and left its `api_key`, `max_tokens` and `reasoning_1` in place;
+retyping only the second model's key changed only that key; deleting the middle model left the other two, keys
+and reasoning intact. The canvas agent panel's picker offered the model added a moment earlier without a reload.
+Atomicity measured, not assumed: `stat -c %i` reported a different inode after an edit (38282622 → 38283412) —
+a rename rather than a truncate — and no `.tmp-*` file was left in the config directory.
+
+**Where** `internal/agent/{events.go,models.go,run.go,models_test.go}`, `internal/server/routes_agent.go`,
+`internal/server/agent_e2e_test.go`, `frontend/src/components/settings/{agent-models-section.tsx,agent-model-dialog.tsx,preferences-dialog.tsx}`,
+`frontend/src/lib/agent-models.ts`, `frontend/src/services/api/agent.ts`,
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `frontend/tests/agent-models.test.ts`.

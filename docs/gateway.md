@@ -240,6 +240,14 @@ tool the agent asked for, and `{"close":true}`.
 `done` marks the end of a turn and carries the elapsed time only: the answer is what the deltas built,
 and a second copy of it would be a second truth.
 
+`{"command":"model_sync","args":…}` is the one command the gateway rewrites on the way in. It carries the
+whole model list, and AlayaCore replaces every model in `model.conf` from it — while the list a canvas is
+shown is `agent.Model`, which has no `api_key` in it (`hasKey` says there is one). Sent as it stands, one
+deleted model would take every key on the machine with it. So the gateway rebuilds each model it knows from
+the entry the agent announced, replaces only the four fields a canvas can see, and takes a key only when the
+canvas had one to send; it then hands the list it is about to write to every other live session, because
+they all read the one file at startup (decisions #201).
+
 A second connection to the same name takes the session over: the newcomer gets the model list and every
 frame, and the connection it replaced is told `closed`. One session still has one set of eyes — two
 readers would take half the frames each — but the eyes belong to the newest tab, because that is the
@@ -377,6 +385,10 @@ and every question about models — which exist, which is active, how hard it sh
 by the agent's own `model.conf` and its `reasoning_0/1/2` blocks. Nothing here configures a provider,
 negotiates a thinking parameter or retries a rejected field: AlayaCore does, and the gateway relays
 what it says.
+
+That list is also edited from the canvas, and still by the agent: the preferences window lists the models,
+and adding, changing or removing one sends `model_sync` — the same command, with the gateway completing the
+entries the page was not shown (decisions #201). Nothing here parses `model.conf`.
 
 ## Architecture
 
