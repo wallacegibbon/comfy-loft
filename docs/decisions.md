@@ -5951,8 +5951,8 @@ nodes without metadata untouched, and only the five document fields in the resul
 
 **In the browser** Exported a canvas holding an image, deleted it, imported the zip: the canvas came back with
 the same node, the file in `files/` kept the name the document names (`files/import-test.png`, no `up-` copy),
-the bytes were identical, and `canvas.json` on disk contains no `http` at all. The zip itself is the check that
-matters: `projects.json` carries five document fields plus the title — no id, no rev, no URL.
+the bytes were identical, and `canvas.json` on disk contains no `http` at all. (The archive itself has since
+become one canvas per zip — `manifest.json`, `canvas.json`, `files/` — see #172.)
 
 **Superseded in part by #172** The route this entry introduced (`PUT /api/canvases/{id}/files/{name}`) is gone:
 the gateway unpacks the archive itself now, so no client ever writes a file at a chosen name. What stays is the
