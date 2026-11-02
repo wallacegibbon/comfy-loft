@@ -9,16 +9,16 @@ This project is a fork of
 [1314521gjy/ComfyUI-Local-Infinite-Canvas](https://github.com/1314521gjy/ComfyUI-Local-Infinite-Canvas),
 itself a modified copy of [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas).
 Both are MIT; their copyright notices and licence texts are kept verbatim at
-[`canvas/LICENSE`](canvas/LICENSE), and this project is MIT too ([`LICENSE`](LICENSE)).
+[`frontend/LICENSE`](frontend/LICENSE), and this project is MIT too ([`LICENSE`](LICENSE)).
 
 Both halves have been rewritten since: the gateway is a Go service where the fork shipped Node, and the
 canvas has been reworked rather than patched. Nothing from upstream is compatible in either direction —
-treat `canvas/` as this project's own code.
+treat `frontend/` as this project's own code.
 
 ## What it does
 
 - **Infinite canvas**: text / image / video / group nodes; wiring, box selection, export, autosave.
-- **Workflows are the unit**: the gateway runs ComfyUI workflows (`GET /api/workflows`, `POST /api/runs`) and reports what each accepts; the canvas decides which of them the picker offers.
+- **Workflows are the unit**: the gateway runs ComfyUI workflows (`GET /api/workflows`, `POST /api/canvases/{id}/runs`) and reports what each accepts; the canvas decides which of them the picker offers.
 - **Images**: Z-Image Turbo, MOSS SFT (8-step, regional layout), Qwen Image 2.1 (multi-image edit, masked inpaint, outpaint).
 - **Video**: MiniMax-H3 text-to-video, first/last-frame and multi-reference, with sampling preview and LoRA cards.
 - **Upscaling**: ESRGAN for images.
@@ -106,7 +106,7 @@ Canvas `http://127.0.0.1:3000` · gateway `http://127.0.0.1:8190`
 ComfyUI `http://127.0.0.1:8188` must already be running; the workbench only connects, never starts it.
 
 > The canvas bundle `frontend/dist/` is build output and is not tracked. After changing
-> `canvas/src/` run `make frontend` again (`make frontend-check` typechecks without emitting); `./start.sh`
+> `frontend/src/` run `make frontend` again (`make frontend-check` typechecks without emitting); `./start.sh`
 > refuses to start without a bundle and says so.
 
 ### Reaching the workbench from another device
@@ -158,20 +158,23 @@ gateway process and one canvas process.
 
 ### Where each endpoint lives
 
-**The gateway serves no `/v1/...` at all.** It has its own protocol — `POST /api/runs` produces every
-kind of media, `GET /api/workflows` describes what can run — and OpenAI's paths are not among its
-endpoints. `/v1/...` in this repository belongs to the model provider AlayaCore talks to.
+**The gateway serves no `/v1/...` at all.** It has its own protocol — `POST /api/canvases/{id}/runs`
+produces every kind of media, `GET /api/workflows` describes what can run — and OpenAI's paths are not
+among its endpoints. `/v1/...` in this repository belongs to the model provider AlayaCore talks to.
 
 **Gateway `:8190` endpoints:**
 
 | Endpoint | Purpose |
 |---|---|
-| `/api/runs`, `/api/uploads` | Produce media (submit, poll, download, cancel) and stage its inputs |
-| `/api/workflows/*`, `/api/setup/*` | Workflow metadata, schemas, ComfyUI scanning |
-| `/api/agent/socket/{session}` | The agent: one WebSocket per session, named by the surface that owns it |
-| `/mcp/{workspace}` | The agent's hands: the MCP server a session's tool calls arrive at |
+| `/api/canvases*` | The workspace: list, create, read, save and delete a canvas, and serve its files |
+| `/api/canvases/{id}/runs`, `/api/runs*` | Produce media into a canvas (submit, poll, download, cancel) |
+| `/api/canvases/{id}/uploads` | Stage one media file inside that canvas |
+| `/api/settings` | The workspace preferences: one document the canvas defines |
+| `/api/workflows/*` | Workflow metadata, schemas, and the ComfyUI availability scan |
+| `/api/agent/socket/{session}`, `/api/agent/session/{session}` | The agent: one WebSocket per session, named by the surface that owns it |
+| `/mcp` (its own listener) | The agent's hands: the MCP server a session's tool calls arrive at. Loopback only |
 | `/api/resources/*` | Download models, install custom nodes |
-| `/api/system/*`, `/api/loras`, `/files/:name`, `/health` | System status and artifacts |
+| `/api/system/*`, `/api/loras`, `/api/skin-unlocks`, `/health` | System status, LoRA files, canvas skins, liveness |
 
 **ComfyUI `:8188` endpoints** — only the gateway's ComfyUI client (`internal/comfy`) calls
 these, the canvas never sees them:
@@ -191,6 +194,7 @@ own frame protocol on stdin/stdout. Its model list, model choice and skills are 
 ## Documentation
 
 - [`docs/gateway.md`](docs/gateway.md): gateway endpoints, environment variables, architecture and language policy.
+- [`docs/protocol.md`](docs/protocol.md): the run protocol — submit, poll, outputs, media and errors.
 - [`docs/decisions.md`](docs/decisions.md): why the code looks the way it does — one entry per decision, with its cost.
 - [`docs/known-issues.md`](docs/known-issues.md): verified open problems and the command that fixes each.
 - [`docs/runtime-deps.md`](docs/runtime-deps.md): SageAttention and other runtimes must be installed with `pip` by hand (the workbench no longer does it).

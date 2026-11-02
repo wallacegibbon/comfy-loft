@@ -98,10 +98,10 @@ driving the gateway through the user's browser.
 
 That rule does not apply to anything that is not a browser, and it was never the whole surface: a
 client that can reach the port can submit runs (burning GPU time on the machine behind `COMFY_URL`),
-read and delete artifacts under `data/outputs`, and open `/api/agent/socket/{name}` — which spawns
-AlayaCore with `read_file` enabled, so it can also read files on the gateway's host. `POST
-/api/resources/install` is the one dangerous route with its own lock (it refuses to write into
-ComfyUI's folders unless `INSTALL_INTO_COMFY=1`).
+read and delete everything under `CANVAS_ROOT` — the documents and their media — and open
+`/api/agent/socket/{name}`, which spawns AlayaCore with `read_file` enabled, so it can also read files
+on the gateway's host. `POST /api/resources/install` is the one dangerous route with its own lock (it
+refuses to write into ComfyUI's folders unless `INSTALL_INTO_COMFY=1`).
 
 So the honest statement is: **bind it to loopback, or put it on a network whose devices you trust.**
 Reaching it from elsewhere is a job for an SSH tunnel or a reverse proxy that terminates
@@ -109,14 +109,14 @@ authentication; there is no configuration in this gateway that makes an untruste
 | `REQUEST_TIMEOUT_MS` | `600000` | Image generation timeout. |
 | `COMFY_RETRY_ATTEMPTS` | `3` | How many times a **GET** to ComfyUI is retried. A POST is never retried: it can enqueue the same job twice. |
 | `COMFY_RETRY_DELAY_MS` | `500` | Base delay between those retries; it grows linearly with the attempt number. |
-| `CLEANUP_INTERVAL_MS` | `3600000` | How often finished runs (and expired uploads) are pruned. Only runs when `TASK_RETENTION_DAYS` or `MAX_STORED_TASKS` is set. |
+| `CLEANUP_INTERVAL_MS` | `3600000` | How often finished **run records** are pruned. Only runs when `TASK_RETENTION_DAYS` or `MAX_STORED_TASKS` is set. Deleting a record never deletes an artifact: the files belong to the canvas, and its own sweep collects the ones no document refers to. |
 | `MAX_IMAGE_COUNT` | `15` | Cap on `count` for an image run — more than this is refused at submission. |
 | `MAX_WORKFLOW_BYTES` | `5242880` | How large one file under `workflows/` may be; a bigger graph is refused at scan time. |
 | `VIDEO_TIMEOUT_MS` | `0` | Video timeout; `0` means no limit. |
 | `AUDIO_TIMEOUT_MS` | `0` | Audio/music timeout; `0` means no limit. A song is the same order of work as a short video, so it gets the same default. |
 | `POLL_INTERVAL_MS` | `750` | ComfyUI history poll interval. |
 | `SCAN_ON_START` | `1` | Scan ComfyUI for nodes and models at boot. |
-| `TASK_RETENTION_DAYS` | `0` | Prune finished runs (and uploads) older than this; `0` keeps everything. |
+| `TASK_RETENTION_DAYS` | `0` | Prune finished run records older than this; `0` keeps everything. Artifacts are not yours to prune here — they belong to a canvas. |
 | `MAX_STORED_TASKS` | `0` | Cap on stored tasks; `0` is unlimited. |
 | `MAX_UPLOAD_BYTES` | `52428800` | Per-file upload limit. |
 | `RESOURCE_CONCURRENCY` | `2` | Parallel downloads during a resource install. |
@@ -234,8 +234,10 @@ tool the agent asked for, and `{"close":true}`.
 `done` marks the end of a turn and carries the elapsed time only: the answer is what the deltas built,
 and a second copy of it would be a second truth.
 
-A second connection to the same name is refused with an `error` message: one session has one set of
-eyes, and two readers would take half the frames each.
+A second connection to the same name takes the session over: the newcomer gets the model list and every
+frame, and the connection it replaced is told `closed`. One session still has one set of eyes — two
+readers would take half the frames each — but the eyes belong to the newest tab, because that is the
+one in front of the person (#160).
 
 A built-in tool (`read_file`, enabled for the skills the agent loads) runs inside AlayaCore, so the call
 and its result arrive as frames and the gateway relays both without answering either.
@@ -407,7 +409,7 @@ it: a caller names a **workflow** and its inputs and never sees a node graph.
 | `POST /upload/image` → file name                         | `POST /api/canvases/{id}/uploads` → file name, referenced by role                                |
 | `GET /queue` (running/pending)                           | `GET /api/runs?status=`                                                                          |
 | `GET /history/{prompt_id}`                               | `GET /api/runs/{id}`                                                                             |
-| `GET /view?filename=&subfolder=&type=`                   | `GET /api/runs/{id}/outputs/{index}`                                                             |
+| `GET /view?filename=&subfolder=&type=`                   | `GET /api/canvases/{id}/files/{name}` (one file route for uploads and artifacts)                   |
 | `POST /interrupt` + queue deletion                       | `DELETE /api/runs/{id}` (idempotent, reports `cancelled` at once)                                |
 | WebSocket `executing` / `progress` / binary preview      | `GET /api/runs/{id}` progress + `GET /api/runs/{id}/preview` (polled; the socket stays internal) |
 | `GET /object_info` (node classes and their file options) | `GET /api/workflows[/{id}/schema]` (runnable capabilities, availability, typed inputs)           |
@@ -424,15 +426,18 @@ Where the two differ, and why:
   (`internal/workflow/inputs.go`, `media.go`). A `400` now instead of a failed run later.
 - **How media is referenced.** In ComfyUI an upload returns a filename that the graph has to place in
   the right socket, which means the client must understand the wiring. Here an upload returns an id
-  and the run references it by **role** (`source`, `mask`, `first_frame`, `last_frame`, `reference`,
-  `video`, `audio`); the workflow's bindings decide which socket it lands on.
+  (its name in the canvas's `files/`) and the run references it by **role** (`source`, `mask`,
+  `first_frame`, `last_frame`, `reference`, `video`, `audio`); the workflow's bindings decide which
+  socket it lands on.
 - **Where artifacts live.** `/view` needs the filename and subfolder from ComfyUI's own history and
-  serves from its output directory. The gateway copies results into `data/outputs` and addresses them
-  by index with their MIME type and size, so a finished run stays fetchable after ComfyUI cleans up or
-  restarts.
+  serves from its output directory. The gateway copies results into `CANVAS_ROOT/<id>/files/` — the
+  canvas that asked for them — and serves them from there by name with their MIME type and size, so a
+  finished run stays fetchable after ComfyUI cleans up or restarts, and deleting a canvas takes its
+  artifacts with it.
 - **State.** ComfyUI's queue and history are in memory. Runs are persisted to `data/tasks.json` and
-  reconciled on boot (file present → completed, in flight → failed with an explanation); uploads have
-  their own index and retention.
+  reconciled on boot (file still in the canvas → completed, in flight → failed with an explanation).
+  Uploads have no index at all: an upload is a file, its id is its name, and "does it exist" is asked
+  of the directory.
 - **Progress.** ComfyUI pushes it over the WebSocket. The gateway consumes that socket and exposes
   polling, so a browser needs no long-lived connection and a reload loses nothing.
 - **Cancellation.** ComfyUI has a global interrupt plus queue deletion. A run has its own idempotent
@@ -455,7 +460,7 @@ The same request, both ways — one image:
   "9": {"class_type": "SaveImage", "inputs": {"images": ["7", 0], "filename_prefix": "out"}}
 }, "client_id": "..."}
 
-// Gateway POST /api/runs
+// Gateway POST /api/canvases/{id}/runs
 {"workflow": "image-z-image-turbo",
  "inputs": {"prompt": "a cat", "size": "1024x1024", "count": 1, "quality": "medium"}}
 ```

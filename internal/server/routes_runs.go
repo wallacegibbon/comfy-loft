@@ -112,7 +112,7 @@ func uploadPayload(canvasID string, file *upload.File) map[string]any {
 	}
 }
 
-// handleRunCreate implements POST /api/runs.
+// handleRunCreate implements POST /api/canvases/{id}/runs.
 func (s *Server) handleRunCreate(ctx *httpx.Ctx) error {
 	canvasID := ctx.R.PathValue("id")
 	if !s.canvasExists(canvasID) {

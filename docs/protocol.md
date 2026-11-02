@@ -4,6 +4,10 @@ Status: **landed.** Every media type, every canvas node and every tool action is
 `/v1/*` is gone from the gateway. What is left of the migration notes below is the record of why the
 shape looks like this.
 
+> Since #156 a run belongs to a canvas and the canvas owns the media: submission is
+> `POST /api/canvases/{id}/runs`, an upload lands in that canvas, and an artifact is served out of it.
+> The routes in this document are the canvas-scoped ones; the shape of a run is unchanged.
+
 - Done: one execution core (`internal/server/runs.go`) over the task store. Video and audio both
   submit through it; an audio request is now a queued run that the `/v1/audio/speech` adapter waits
   on, so the song survives a dead connection, is listed in `GET /api/runs`, and keeps its ComfyUI
@@ -13,9 +17,9 @@ shape looks like this.
   `workflow.PlanMedia`; no handler mentions a workflow id any more. `outputs.formats` declares the
   containers a workflow's encoder can write (mp3/V0, flac, opus/128k), so the audio adapter no longer
   hardcodes them.
-- Done: `/api/runs` and `/api/uploads` exist with the shape below — submit, status, outputs, preview
-  and cancel, media referenced by upload id and role, one row per artifact (a batch image request
-  returns several). Audio is already an adapter on the same execution path.
+- Done: submit, status, outputs, preview and cancel exist with the shape below — media referenced by
+  id and role, one row per artifact (a batch image request returns several). Audio is already an
+  adapter on the same execution path.
 - Done: `inputs` is typed and checked at submission (closed key set, types, ranges, `required`,
   output container), with `GET /api/workflows/{id}/schema` publishing the same contract.
 - Done: the gateway no longer decides what belongs in a model list. A workflow is a workflow; the
@@ -38,16 +42,16 @@ shape looks like this.
   is a spelling the gateway builds and resolves. The canvas builds its picker from that list and
   filters it itself (buttons vs models, enabled, available).
 - Done: **`/v1/*` is empty — the adapters are deleted**, with their request shapes, their helpers and
-  their tests. `POST /api/runs` is the only way to produce media; the prompt services and the two
-  in-flight helpers (`previews`, `progress`) are what remains beside it.
+  their tests. `POST /api/canvases/{id}/runs` is the only way to produce media; the prompt services and
+  the two in-flight helpers (`previews`, `progress`) are what remains beside it.
 
 **One user action may be several runs.** Raising a clip's frame rate is two GPU jobs (generate, then
 interpolate), so it is two runs — the canvas chains them, exactly as its "interpolate" button always
 did. A run stays "one workflow, one job", which is what keeps `status`, `progress`, `error` and
 `outputs` honest; chaining is the client's business.
 
-The routes below are the contract to build against; where a route already exists with the same
-name (`/api/workflows`, `/api/runs`), it is the real thing.
+The routes below are the contract to build against, and they are the real thing, not a target: every
+one of them is served today.
 
 The canvas is the only client. A protocol aimed at one known caller can describe *our* domain
 instead of imitating someone else's API, and every compatibility branch we do not need is code
@@ -62,32 +66,39 @@ the comparison, endpoint by endpoint, is in [`gateway.md`](gateway.md#relationsh
 
 ```
 workflow   what can run        read-only catalog, from workflows/registry.json
-upload     what goes in        a media file with an id, uploaded once, referenced by id
+canvas     what owns the work  a directory: the document, and files/ for its media
+upload     what goes in        a file written into that canvas's files/, referenced by its name
 run        one execution       created by POST, owned by an id, terminal once
-output     what comes out      part of a run; bytes hang off the run
+output     what comes out      one more file in the same canvas's files/
 ```
 
 That is the whole model. Media type is **data**, not routing: an image, a video and a song are
-three runs of three workflows, not three families of endpoints.
+three runs of three workflows, not three families of endpoints. A run is never free-floating: it was
+submitted into a canvas, its bytes land in that canvas, and deleting the canvas deletes them.
 
 ## Endpoints
+
+Every write names its canvas, and the two read paths for bytes are files of that canvas.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/workflows` | Catalog, including availability. |
 | `GET` | `/api/workflows/{id}/schema` | Machine-readable inputs, media roles, outputs. |
-| `POST` | `/api/uploads` | Multipart upload of one media file. Returns an upload id. |
-| `POST` | `/api/runs` | Submit a run. Always returns `202` with the run. |
+| `POST` | `/api/canvases/{id}/uploads` | Multipart upload of one media file into that canvas. Returns its id, which is its file name in `files/`. |
+| `POST` | `/api/canvases/{id}/runs` | Submit a run into that canvas. Always returns `202` with the run. |
 | `GET` | `/api/runs/{id}` | Status, progress, outputs, error. |
-| `GET` | `/api/runs/{id}/outputs/{index}` | Output bytes. |
 | `GET` | `/api/runs/{id}/preview` | Best-effort in-flight preview frame (may be absent). |
 | `DELETE` | `/api/runs/{id}` | Cancel. Idempotent; also interrupts ComfyUI. |
 | `GET` | `/api/runs` | List/filter runs (`status`, `workflow`), newest first. |
+| `GET` | `/api/canvases/{id}/files/{name}` | The bytes of one file: an upload, or a finished run's artifact. Cacheable for good — a name is written once. |
 
-`/health`, `/api/resources/*`, `/api/system/*` are unchanged:
-they manage the gateway, they do not run workflows.
+`/health`, `/api/canvases*`, `/api/settings`, `/api/resources/*`, `/api/system/*` are the rest of the
+surface; they manage the gateway and the workspace, they do not run workflows
+([`gateway.md`](gateway.md) lists them all).
 
 ## Submitting a run
+
+`POST /api/canvases/<id>/runs`, one JSON body:
 
 ```json
 {
@@ -99,9 +110,9 @@ they manage the gateway, they do not run workflows.
     "duration": 60
   },
   "media": {
-    "reference": ["upl_9f01"],
-    "first_frame": ["upl_2b77"],
-    "mask": ["upl_7c31"]
+    "reference": ["up-9f01ab2c.png"],
+    "first_frame": ["up-2b7788de.png"],
+    "mask": ["up-7c31e5aa.png"]
   }
 }
 ```
@@ -111,7 +122,7 @@ they manage the gateway, they do not run workflows.
   generic checker. There is no `params` escape hatch and no per-workflow branch in the handler.
 - **`media` keys are roles, not file names.** The workflow declares which roles it accepts and how
   many (`accepts`), so `mask` and `first_frame` are expressible and a wrong role is a `400`, not a
-  silently ignored file.
+  silently ignored file. A value is an upload's id, which is its name inside that canvas's `files/`.
 - When a workflow has modes (`image-qwen21` has edit/inpaint/outpaint/t2i), `mode` selects one and
   the **first mode is the default**. The variant carries its own graph, bindings and media contract,
   so an inpaint request means "source + mask" without the handler knowing the workflow.
@@ -122,7 +133,7 @@ the moment the response is written, so a queue that picks the run up immediately
 
 ```json
 {
-  "id": "run_6f2c",
+  "id": "task_6f2c1d4e-8a3b-4c2d-9e7f-0a1b2c3d4e5f",
   "workflow": "audio-minimax-music-3",
   "status": "queued",
   "progress": { "phase": "queued", "step": 0, "total": 30 },
@@ -135,6 +146,9 @@ the moment the response is written, so a queue that picks the run up immediately
 }
 ```
 
+A `404` here means the canvas does not exist (`canvas_not_found`), not that the workflow is unknown —
+an unknown workflow is a `404` with its own code, and there is no default canvas to fall back to.
+
 ## Reading a run
 
 `status` is one of `queued`, `running`, `succeeded`, `failed`, `cancelled`. Terminal statuses never
@@ -142,10 +156,10 @@ change again. `GET /api/runs/{id}`:
 
 ```json
 {
-  "id": "run_6f2c",
+  "id": "task_6f2c1d4e-8a3b-4c2d-9e7f-0a1b2c3d4e5f",
   "status": "running",
   "progress": { "phase": "executing", "step": 12, "total": 30 },
-  "preview": { "url": "/api/runs/run_6f2c/preview?t=1761889200123", "mime": "image/jpeg" },
+  "preview": { "url": "/api/runs/task_6f2c1d4e-8a3b-4c2d-9e7f-0a1b2c3d4e5f/preview?t=1761889200123", "mime": "image/jpeg" },
   "outputs": [],
   "error": null
 }
@@ -159,7 +173,7 @@ And once it is done:
 
 ```json
 {
-  "id": "run_6f2c",
+  "id": "task_6f2c1d4e-8a3b-4c2d-9e7f-0a1b2c3d4e5f",
   "status": "succeeded",
   "progress": { "phase": "done", "step": 30, "total": 30 },
   "outputs": [
@@ -168,18 +182,17 @@ And once it is done:
       "kind": "audio",
       "mime": "audio/mpeg",
       "bytes": 118811,
-      "filename": "run_6f2c.mp3",
-      "duration_ms": 4000,
-      "url": "/api/runs/run_6f2c/outputs/0"
+      "filename": "task_6f2c1d4e-8a3b-4c2d-9e7f-0a1b2c3d4e5f.mp3",
+      "url": "/api/canvases/40e8afb47f10/files/task_6f2c1d4e-8a3b-4c2d-9e7f-0a1b2c3d4e5f.mp3"
     }
   ],
   "error": null
 }
 ```
 
-One download route for every kind of artifact. There is no base64 mode and no per-media content
-endpoint. (`GET /files/{name}` exists, but it is the export path — a file from `data/outputs` by name —
-not a way to fetch an artifact.)
+One download route for every kind of artifact, and it is the canvas's file route: an artifact is a
+file in the canvas the run was submitted into, named once and served like an upload. There is no
+base64 mode, no per-media content endpoint, and no per-run output route to keep in step with it.
 
 ## Errors
 
@@ -188,7 +201,7 @@ not a way to fetch an artifact.)
 ```
 
 `code` is the contract (stable, documented, mapped to localized text by the canvas). HTTP status
-carries the class: `400` bad request, `404` unknown workflow/run/upload, `409` wrong state,
+carries the class: `400` bad request, `404` unknown workflow/run/canvas, `409` wrong state,
 `422` invalid workflow file, `502` ComfyUI failure, `504` timeout. No `type` field: it would only
 repeat the status code.
 
@@ -231,9 +244,10 @@ Rules worth knowing:
   pretend such a step is a model a client picks from a list.
 - Values reach the bindings unchanged, which is why a new workflow becomes runnable without a new
   route or a new struct.
-- **A request is validated once.** `POST /api/runs` rejects an unknown key, a wrong type, a media mix
-  the workflow does not accept, and an output container the encoder cannot write — all before the run
-  is queued. The adapters it replaced each had their own idea of leniency; there is only one idea now.
+- **A request is validated once.** `POST /api/canvases/{id}/runs` rejects an unknown key, a wrong
+  type, a media mix the workflow does not accept, and an output container the encoder cannot write —
+  all before the run is queued. The adapters it replaced each had their own idea of leniency; there
+  is only one idea now.
 
 ## The id is the contract
 
@@ -257,8 +271,8 @@ id exists to remove.
 
 - Runs are queued and executed **one at a time**. ComfyUI owns a single GPU; parallel gateway
   submissions would only queue inside ComfyUI anyway, with worse diagnostics.
-- Every run is persisted (`data/tasks.json`, soon `runs.json`) and reconciled on boot: a run whose
-  output file exists becomes `succeeded`, a run that was in flight becomes `failed` with an
+- Every run is persisted (`data/tasks.json`) and reconciled on boot: a run whose output file is
+  still in its canvas becomes `succeeded`, a run that was in flight becomes `failed` with an
   explanation.
 - Cancelling interrupts the ComfyUI prompt, so the GPU is actually freed.
 - A missing model or node is caught by the availability scan before submission; a run that still
@@ -268,7 +282,7 @@ id exists to remove.
 
 | Today | Target |
 | --- | --- |
-| `/v1/images/generations`, `/v1/images/edits`, `/v1/images/upscale` (gone) | one `POST /api/runs` with `inputs` + `media` |
+| `/v1/images/generations`, `/v1/images/edits`, `/v1/images/upscale` (gone) | one `POST /api/canvases/{id}/runs` with `inputs` + `media` |
 | `/v1/models` (gone) | `GET /api/workflows`, then the client decides what to offer |
 | `/v1/videos`, `/v1/videos/{id}`, `/{id}/content`, `/{id}/cancel` (gone) | the same `run` endpoints |
 | `/v1/audio/speech` (gone) | the same `run` endpoints |
@@ -276,7 +290,7 @@ id exists to remove.
 | `mode`, `vquality`, `resolution_name`, `params` (JSON string) | declared `inputs` in the schema |
 | field names that must contain `image`/`frame` | explicit media roles |
 | `entry.ID == "video-h3-…"`, `image-qwen21`, `image-moss-*` branches in handlers | `accepts` / `inputs` / `outputs` in `registry.json` |
-| base64 bodies, `/files/{name}`, `/{id}/content` | one output download route |
+| base64 bodies, `/{id}/content`, a gateway-wide `/files/{name}` | one file route per canvas: `GET /api/canvases/{id}/files/{name}` |
 
 The adapters were deleted one node type at a time, so no step left the canvas without a working path.
 What is worth keeping from them is the shape of the request they accepted: a caller who knew
@@ -290,11 +304,15 @@ What is worth keeping from them is the shape of the request they accepted: a cal
    adapters.
 2. **Registry as data**: `accepts` / `inputs` / `outputs` + one validator; delete every hardcoded
    workflow-id branch from the handlers.
-3. **`/api/runs` + `/api/uploads`**: the target routes land next to the adapters; the canvas moves
-   node type by node type — audio, then image, then video, then the tool actions (upscale, angle,
-   interpolate). All of them are on runs now.
+3. **Runs and uploads**: the run routes land next to the adapters; the canvas moves node type by
+   node type — audio, then image, then video, then the tool actions (upscale, angle, interpolate).
+   All of them are on runs now.
 4. **Deletion**: adapters, `/v1/*`, dead fields, dead tests, and the docs that described them. Done —
    see decisions #69.
+
+A later move is not in this list because it is not part of the /v1 migration: #156 put the runs and
+uploads under a canvas. `POST /api/runs` and `POST /api/uploads` were that phase's routes and are
+gone; every request above now names its canvas, and an artifact is a file in it.
 
 Every phase leaves the repository runnable and `make check` green. Nothing in a later phase
 depends on a half-finished earlier one.

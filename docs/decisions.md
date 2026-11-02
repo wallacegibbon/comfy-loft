@@ -5602,3 +5602,62 @@ prompt that had produced nothing.
 `internal/server/agent_e2e_test.go`, `internal/agent/session_test.go`,
 `frontend/src/services/api/prompts.ts`, `frontend/src/i18n/locales/*`,
 `frontend/tests/api-prompts.test.ts`.
+
+## 161. A run goes into the canvas, and one function is the only place that says where
+
+**Decision** Every URL the canvas submits a run or an upload to is built by one function,
+`canvasApiUrl()` in `frontend/src/services/api/runs.ts`, which cannot be called without an open canvas.
+And the tests that pin those URLs now name the canvas, instead of pinning a path that nothing external
+checked.
+
+**The report** The generate button answered `Not found: POST /api/runs`.
+
+**What was actually happening** #156 deleted `POST /api/runs` and `POST /api/uploads` and gave every run a
+canvas. The gateway was right; the browser was calling a route that no longer existed, because
+`createRun` and `uploadMedia` still posted to the old two paths and nothing on either side compared its
+address with the other's router.
+
+**Why both test suites were green** They answer different questions and neither one is "do these two
+agree?". The gateway tests post to the routes the gateway serves, so they track the router by
+construction. The canvas tests stub `fetch`, so they agree with whatever the client sends, and a perfectly
+exact assertion of the wrong string is still green: `api-runs.test.ts` did assert its URLs in full, which
+pins the client but cannot know the gateway. The other two routed their stubs by suffix
+(`url.endsWith("/api/runs")`, `endsWith("/api/uploads")`), so even a client-side change of the path's
+prefix would have slipped past them. Only a real browser click crossed the seam, and that is where it
+broke.
+
+**The fix** `canvasApiUrl()` reads the canvas being edited and refuses to build a URL without one — the
+`apiErrors.noCanvas` message, not a request built from an empty id. Both calls go through it, so the
+canvas-scoping is stated once. A run that does not belong to a canvas is not a thing the protocol has
+(#156), so the helper is also where that rule is enforced on the client side.
+
+**Two smaller misses from the same sweep**
+
+- `frontend/src/lib/canvas/canvas-export.ts` built the zip path with an **escaped** interpolation:
+  `` `projects/\${project.id}/files/\${name}` ``. The archive therefore had one literal directory named
+  `${project.id}` holding every file of every canvas — export "worked", and an import could not put a name
+  back where a document's reference expects it. Fixed to a real template literal.
+- The three tests that answer a run now open a canvas first (`setActiveCanvas`) and name the canvas in
+  every URL they assert or stub; `api-runs.test.ts` still asserts them in full.
+
+**Still weak, and left alone** Suffix matching survives in the video and upscale stubs, because the calls
+they exercise are the ones whose shape did not change. Worse, `api-image-upscale.test.ts` keeps a stub
+branch for `url.includes("/outputs/0")` — a route that no longer exists — so its artifact download falls
+through to the run-status fallback. The test passes because it asserts the data-URL prefix, not the bytes:
+it would not notice a download that returned the run's JSON. Nothing in this sweep touched it; it is
+recorded here rather than left to be rediscovered.
+
+**The guard that was written and thrown away** A `routes_contract_test.go` scanned the frontend sources for
+`/api/...` strings and checked each against the gateway's route table. It was deleted: with
+`httpRequest(url, { method: "POST" })` it can read the path but not reliably the method, and it did not
+catch the bug it was written for. What would work is the client consuming a machine-readable route list —
+a route table the gateway publishes, or a module generated at build time — because then the two sides read
+the same data instead of one guessing about the other. That is not built.
+
+**Tested** `make check`, `make verify-static`, `npm run check`, the canvas suite, `make frontend`, and the
+two routes over `curl` (a `202` from `POST /api/canvases/{id}/runs`, a `200` from the artifact's file URL).
+Not clicked in a browser yet: the generate path from the node itself.
+
+**Where** `frontend/src/services/api/runs.ts`, `frontend/src/lib/canvas/canvas-export.ts`,
+`frontend/tests/api-runs.test.ts`, `frontend/tests/api-video-runs.test.ts`,
+`frontend/tests/api-image-upscale.test.ts`.
