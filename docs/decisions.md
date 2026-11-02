@@ -7171,3 +7171,91 @@ card is the only frame: the collapsed list of seven packs, the expanded pack, th
 resource rows and a hidden workflow beside two enabled ones were screenshotted before and after and compared.
 
 **Where** `frontend/src/components/settings/resource-center-panel.tsx`, `frontend/src/styles/globals.css`.
+
+## 203. A prompt is said once: the box or the text node, never both
+
+**Decision** The always-on canvas prompt gains a fourth rule — *a node's own prompt is the user's words; a
+text node connected to it is an input, and its words are added to that prompt when the node generates; so
+when a text node already holds what a node needs, leave that node's own prompt empty and connect it* — and
+`connect`'s description gains the mechanism rather than the policy: "a text node's words are added to the
+target's own prompt when it generates, so a target that already says them in its own prompt would say them
+twice". The agent's own `connect` and `set_prompt` answers then name the state, in the same reply that made
+it: `… already says text-…'s words in its own prompt, so generating it would send them twice — clear it with
+set_prompt ""`. One helper computes that (`repeatedConnectedText` in `canvas-node-generation.ts`, which is
+the module that already knows what feeds a node), and two call sites ask it.
+
+**Why** Because the agent re-made the bug #185 removed from the UI. The canvas `3df8b7a65088` still holds the
+evidence: `canvas_read_node` + `canvas_list_nodes` (one text node), then three `canvas_create_node` calls
+carrying `"prompt": "宫崎骏吉卜力风格插画：一片纯净茂密的森林全景"` — the text node's words, copied in at
+creation — then three `canvas_connect` from the text node, then three `canvas_generate`. The saved nodes keep
+both halves: `prompt` is those words and `sentPrompt` is `宫崎…\n\n【Text 1】\n宫崎…`, so every picture was
+asked for the same thing twice. It was not doubt that made it copy: its reasoning says "That's fine—since the
+text node is connected to the image node, the content will flow through the connection", so it believed the
+copy was harmless. #185 decided this exact rule ("the box is the node's own content, the connection is an
+input") and its Where list named only frontend files: the UI stopped copying, and the half of the system that
+*writes* through tools was never told.
+
+**Why not a skill** A skill is activated by reading it, and this agent read nothing: its first move was a tool
+call. The rule has to be true from the first token, which is what `canvasInstructions` is for (#183, #184);
+`h3-prompt-writing` is the opposite case — deep reference material that one task needs and no other.
+
+**Why a note and not a refusal, and why not a silent rewrite** The canvas allows this state: a user can drag a
+text node into a node whose box already says the same words, and #185's test deliberately keeps that
+composition "still appended when the box repeats the words". A tool that refused would be a second policy
+dressed as a tool (the tools do what the buttons do), and one that cleared the box would be the canvas
+guessing intent — #185 already refused the first half of that. The note is the honest third option: the
+connection is made, and the agent is told what it built while it can still undo it. `create_node` and
+`generate` were left alone on purpose — a new node has no connections, so the mistake cannot be created there,
+and a third copy of the same sentence is sediment.
+
+**Cost** The duplication is discouraged, not impossible: a model that ignores the note still sends the doubled
+request, and the user sees it in the box. The check is exact after trimming — an input whose words merely
+appear inside a longer prompt is not flagged — so a copy that reworded the words as it copied is missed; the
+other way round would fire on correct work. Two answers are longer by one clause.
+
+**Tested** Go: `TestAgentSpawnCarriesTheCanvasRule` now requires the fourth rule in the system prompt and the
+mechanism clause in `connect`'s description. Frontend: four cases in
+`tests/canvas-generation-context.test.ts` — the repeated text is named, only the exactly-repeated one of two
+is named, a mention inside a longer sentence is not, and nothing when nothing is connected or the prompt is
+empty. `npm run check` (zh 845 / en 831, exports 168, prettier, `tsc --noEmit`), `npx vitest run` (22 files,
+169 tests), `npm run build`, `make check`. In the browser, with the real agent: a `/tmp/verify` copy on
+8191/3011, its own data directory and its own `AGENT_CONFIG_PATH`, and a canvas seeded with one text node
+holding those words. **Turn one** ("根据画布上的 Text 节点生成一张图片"): `canvas_list_nodes`, then
+`canvas_create_node` with `{"position":{…},"type":"image"}` — **no `prompt` at all** — then `canvas_connect`,
+then `canvas_generate`; the saved node is `prompt: ""` with `sentPrompt: "【Text 1】\n宫崎骏吉卜力风格插画：一片
+纯净茂密的森林全景"`, so the words travelled once, as the connection, and the picture came out. **Turn two**,
+asking for the mistake on purpose ("把 Text 节点里的文字也写进这张图的提示词里"): the tool answered
+`the prompt of image-… is now: 宫崎…; note: image-… already says text-…'s words in its own prompt, so
+generating it would send them twice — clear it with set_prompt ""`, and the agent's reply repeated that in its
+own words with the two ways out (drop the connection, or clear the box). Nothing refused, nothing rewritten.
+
+**Where** `internal/server/agent_instructions.go`, `internal/server/routes_mcp.go`,
+`internal/server/mcp_test.go`, `frontend/src/components/canvas/canvas-node-generation.ts`,
+`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
+`frontend/tests/canvas-generation-context.test.ts`, `docs/gateway.md`.
+
+## 204. The viewport follows what the answer is about
+
+**Decision** The viewport rule in `canvasInstructions` now names three triggers — *the node that changed, the
+node the user asked about, the one they could not find* — and one limit: "One node per answer is enough."
+
+**Why** The old sentence said "something that changed or is out of sight", which is the agent's own edits only.
+A question about a node is neither: asked what the second picture looks like, an agent that answers in words
+leaves the user hunting for it on a board bigger than the window, and `focus_node`'s own description ("use it
+to show them something that changed or is out of sight") repeated the same gap, so neither place could teach
+it. Brought up by the user, and it is the mirror of #203: the prompt said what the agent may not do and not
+what it should.
+
+**Cost** The viewport is the one thing a tool moves that the user did not ask to move, so an agent that focuses
+on every mention takes the user's place away mid-work: the one-node-per-answer limit is that price, and it is
+in the rule rather than in the tool because the tool cannot see an answer's shape. A node already in view is
+still focused — the agent has no way to know where the user is looking, and selecting it is the other half of
+the gesture.
+
+**Tested** In the browser with the real agent (the run above): turn one ended with `canvas_focus_node` on the
+node being reported — "selected image-… and moved the view to it" — and the screenshot shows the board centred
+on it. In turn two the same agent declined to focus again ("The node is already visible (I focused on it
+earlier). I'll just reply."), so the limit held without a second sentence. `make check`,
+`TestAgentSpawnCarriesTheCanvasRule` (which pins the new trigger's wording), `npm run check`, `npx vitest run`.
+
+**Where** `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`, `docs/gateway.md`.
