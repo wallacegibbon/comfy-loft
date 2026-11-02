@@ -2052,7 +2052,16 @@ function InfiniteCanvasPage() {
     );
 
     // The agent's hands are the same functions the buttons press.
-    useCanvasAgentTools({ nodesRef, connectionsRef, createNode, generateNode: handleGenerateNode, setNodePrompt, connectNodes: addConnection });
+    useCanvasAgentTools({
+        nodesRef,
+        connectionsRef,
+        createNode,
+        generateNode: handleGenerateNode,
+        setNodePrompt,
+        connectNodes: addConnection,
+        deleteNodes: (nodeIds) => deleteNodes(new Set(nodeIds)),
+        focusNode,
+    });
 
     const generateImageFromTextNode = useCallback(
         (node: CanvasNodeData) => {

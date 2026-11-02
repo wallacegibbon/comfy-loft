@@ -6274,3 +6274,32 @@ canvas bundle (missing, or older than its sources)", built, and served; a second
 served the same bundle.
 
 **Where** `start.sh`, `README.md`.
+
+## 182. The agent can delete a node, and point at one
+
+**Decision** Two more MCP tools, both run by the page with the functions the user's own controls call:
+`delete_node` is the Delete key (the node, and every connection that touched it), `focus_node` is a click
+on a row of the side panel (the node is selected, and the view animates to it). Focus selects; there is no
+select-without-moving.
+
+**Why** The agent could build and never clean up. A wrong turn left nodes the user had to find and remove
+by hand, and `create_node` puts a node in the middle of the view, so a canvas the agent filled up is a
+canvas the user can no longer see. Naming a node in words — "the third image" — is exactly what the ids
+`list_nodes` reports exist to avoid.
+
+**Cost** `focus_node` moves the viewport the user is working in; the description says so, and it is the
+only way an agent can point at something. Deleting takes an id, so a wrong id removes the wrong node — it
+is one history step, the same Ctrl+Z as a deletion by hand, and like the Delete key it does not cancel a
+generation already running in that node.
+
+**Tested** `make check`, `go test -race`, `make verify-static`, `npm run check`, `npx vitest run`.
+`TestMCPHandshakeIsEnoughToDiscoverTheTools` pins the nine names in order. In the browser (a `/tmp/verify`
+copy on 8191/3001, the canvas agent connected, the real `comfyloft-mcp` bridge fed one call at a time into
+`tools/call`): `create_node` twice, `connect`, `focus_node` — the view moved from the reset position
+`translate(1131.6px, 738.8px)` to `translate(1261.6px, 718.8px)` and the node carried the selected class —
+then `delete_node` on an unknown id (an `isError` answer naming it), `delete_node` on the image node
+("deleted … and 1 connection that touched it"), `list_nodes` agreeing (1 node, 0 connections), the saved
+`canvas.json` agreeing, and Undo bringing the node back / Redo removing it again.
+
+**Where** `internal/server/routes_mcp.go`, `internal/server/mcp_test.go`,
+`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`, `frontend/src/pages/canvas/project.tsx`.

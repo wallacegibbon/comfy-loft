@@ -24,6 +24,8 @@ export function useCanvasAgentTools({
     generateNode,
     setNodePrompt,
     connectNodes,
+    deleteNodes,
+    focusNode,
 }: {
     nodesRef: RefObject<CanvasNodeData[]>;
     connectionsRef: RefObject<CanvasConnection[]>;
@@ -31,6 +33,8 @@ export function useCanvasAgentTools({
     generateNode: CanvasHands["generateNode"];
     setNodePrompt: CanvasHands["setNodePrompt"];
     connectNodes: CanvasHands["connectNodes"];
+    deleteNodes: CanvasHands["deleteNodes"];
+    focusNode: CanvasHands["focusNode"];
 }) {
     // The refs and callbacks outlive a render, and a tool call can arrive between two of them.
     const hands = useRef<CanvasHands>({
@@ -40,6 +44,8 @@ export function useCanvasAgentTools({
         generateNode,
         setNodePrompt,
         connectNodes,
+        deleteNodes,
+        focusNode,
     });
     hands.current = {
         nodes: () => nodesRef.current || [],
@@ -48,6 +54,8 @@ export function useCanvasAgentTools({
         generateNode,
         setNodePrompt,
         connectNodes,
+        deleteNodes,
+        focusNode,
     };
 
     useEffect(
@@ -73,6 +81,8 @@ type CanvasHands = {
     generateNode: (nodeId: string, mode: CanvasGenerationMode, prompt: string) => Promise<void>;
     setNodePrompt: (nodeId: string, prompt: string) => void;
     connectNodes: (firstNodeId: string, secondNodeId: string, firstHandleType: "source" | "target") => boolean;
+    deleteNodes: (nodeIds: string[]) => void;
+    focusNode: (nodeId: string) => void;
 };
 
 /** One tool's result: the content blocks the agent reads, and whether it failed rather than did something. */
@@ -99,10 +109,40 @@ async function runTool(name: string, args: unknown, hands: CanvasHands): Promise
             return setPrompt(hands, args);
         case "generate":
             return pressGenerate(hands, args);
+        case "delete_node":
+            return deleteNode(hands, args);
+        case "focus_node":
+            return focusNode(hands, args);
         default:
             return { content: [textBlock(`this canvas has no tool called ${name}`)], isError: true };
     }
 }
+
+/** A tool's arguments as an object, whatever the agent sent instead. */
+function argsOf(args: unknown): Record<string, unknown> {
+    return (typeof args === "object" && args ? args : {}) as Record<string, unknown>;
+}
+
+/** The id a tool names, as the agent wrote it. */
+function nodeIdOf(args: unknown): string {
+    const nodeId = argsOf(args).nodeId;
+    return typeof nodeId === "string" ? nodeId.trim() : "";
+}
+
+/** The words a tool asks a node to hold, or nothing when it asked with something else. */
+function promptOf(args: unknown): string | undefined {
+    const prompt = argsOf(args).prompt;
+    return typeof prompt === "string" ? prompt : undefined;
+}
+
+/** The node a tool names. Every tool that takes a `nodeId` asks this, so they all answer a miss alike. */
+function namedNode(hands: CanvasHands, args: unknown): CanvasNodeData | undefined {
+    const nodeId = nodeIdOf(args);
+    return hands.nodes().find((candidate) => candidate.id === nodeId);
+}
+
+/** The answer for a tool that names a node the canvas does not hold. */
+const noSuchNode = (args: unknown): ToolAnswer => ({ content: [textBlock(`no node with id "${nodeIdOf(args)}" on this canvas`)], isError: true });
 
 /**
  * Make one node, the way the user's own button makes one — placed where the view is looking, selected, and
@@ -156,14 +196,13 @@ function connect(hands: CanvasHands, args: unknown): ToolAnswer {
  * which is what `create_node` plus a connection is — so both intents keep their own tool.
  */
 function setPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
-    const input = (typeof args === "object" && args ? args : {}) as { nodeId?: unknown; prompt?: unknown };
-    const nodeId = typeof input.nodeId === "string" ? input.nodeId.trim() : "";
-    if (typeof input.prompt !== "string") return { content: [textBlock("set_prompt needs a prompt")], isError: true };
-    const node = hands.nodes().find((candidate) => candidate.id === nodeId);
-    if (!node) return { content: [textBlock(`no node with id "${nodeId}" on this canvas`)], isError: true };
+    const prompt = promptOf(args);
+    if (prompt === undefined) return { content: [textBlock("set_prompt needs a prompt")], isError: true };
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
 
-    hands.setNodePrompt(node.id, input.prompt);
-    return { content: [textBlock(`the prompt of ${node.id} is now: ${input.prompt.slice(0, 200)}`)], isError: false };
+    hands.setNodePrompt(node.id, prompt);
+    return { content: [textBlock(`the prompt of ${node.id} is now: ${prompt.slice(0, 200)}`)], isError: false };
 }
 
 /**
@@ -176,10 +215,8 @@ function setPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
  * generates the kind its composer is set to (that is what pressing its button does).
  */
 function pressGenerate(hands: CanvasHands, args: unknown): ToolAnswer {
-    const input = (typeof args === "object" && args ? args : {}) as { nodeId?: unknown };
-    const nodeId = typeof input.nodeId === "string" ? input.nodeId.trim() : "";
-    const node = hands.nodes().find((candidate) => candidate.id === nodeId);
-    if (!node) return { content: [textBlock(`no node with id "${nodeId}" on this canvas`)], isError: true };
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
 
     // A content node generates what it is; a config node generates the kind its composer is set to.
     const mode: string = node.type === CanvasNodeType.Config ? node.metadata?.generationMode || "image" : node.type;
@@ -200,10 +237,8 @@ const GENERATE_MODES: string[] = [CanvasNodeType.Text, CanvasNodeType.Image, Can
  * sound is a sound, and a film travels as a `resource` blob because the protocol has no video block.
  */
 async function readNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> {
-    const input = (typeof args === "object" && args ? args : {}) as { nodeId?: unknown };
-    const nodeId = typeof input.nodeId === "string" ? input.nodeId.trim() : "";
-    const node = hands.nodes().find((candidate) => candidate.id === nodeId);
-    if (!node) return { content: [textBlock(`no node with id "${nodeId}" on this canvas`)], isError: true };
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
 
     const content: ToolContent[] = [];
     const words = wordsOf(node);
@@ -218,6 +253,37 @@ async function readNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> 
 /** The words a node holds: a text node's body, or the prompt its own panel shows. */
 function wordsOf(node: CanvasNodeData): string {
     return (node.metadata?.composerContent ?? node.metadata?.prompt ?? node.metadata?.content ?? node.metadata?.texts?.[0]?.content ?? "").trim();
+}
+
+/**
+ * Delete one node, the way the Delete key does: the node, and every connection that touched it.
+ *
+ * It is the page's own delete, so everything a removal means happens with it — the node's panel closes, a
+ * group forgets the member — and it becomes one history entry, which is what makes it removable by the same
+ * Ctrl+Z as a deletion the user made.
+ */
+function deleteNode(hands: CanvasHands, args: unknown): ToolAnswer {
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
+
+    const edges = hands.connections().filter((connection) => connection.fromNodeId === node.id || connection.toNodeId === node.id).length;
+    hands.deleteNodes([node.id]);
+    const connected = edges ? `, and ${edges} connection${edges === 1 ? "" : "s"} that touched it` : "";
+    return { content: [textBlock(`deleted ${node.id} (${node.type})${connected}`)], isError: false };
+}
+
+/**
+ * Select one node and bring it into view, the way clicking its row in the side panel does.
+ *
+ * The viewport belongs to the user, so this tool is a deliberate act: it is how the agent points at what
+ * it changed, or at something the user could not otherwise find on a canvas the agent has grown.
+ */
+function focusNode(hands: CanvasHands, args: unknown): ToolAnswer {
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
+
+    hands.focusNode(node.id);
+    return { content: [textBlock(`selected ${node.id} (${node.type}) and moved the view to it`)], isError: false };
 }
 
 /**

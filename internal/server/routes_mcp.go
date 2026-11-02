@@ -180,6 +180,28 @@ func (s *Server) mcpTools() []mcpTool {
 			"required": ["nodeId"],
 			"additionalProperties": false
 		}`),
+	}, {
+		Name:        "delete_node",
+		Description: "Delete one node, the way the Delete key does: the node goes, and so does every connection that touched it. Answers with what disappeared. The user can undo it.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
+			},
+			"required": ["nodeId"],
+			"additionalProperties": false
+		}`),
+	}, {
+		Name:        "focus_node",
+		Description: "Select one node and move the user's view to it, the way clicking its row in the side panel does. This moves what the user is looking at: use it to show them something that changed or is out of sight.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
+			},
+			"required": ["nodeId"],
+			"additionalProperties": false
+		}`),
 	}}
 }
 
