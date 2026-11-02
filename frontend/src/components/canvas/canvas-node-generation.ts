@@ -149,6 +149,24 @@ function flattenGenerationInputs(inputs: NodeGenerationInput[]) {
     return [...new Map(resources.map((input) => [input.nodeId, input])).values()];
 }
 
+/**
+ * The connected inputs whose words a prompt repeats — the ids of the text nodes a node would say twice.
+ *
+ * A text node connected to a node is an input, and its words are appended to that node's own prompt when
+ * it generates. The same words in both places are therefore said twice, which is what a model does when it
+ * believes the connection is decoration: the panel never copies a connected text into the box (#185), but
+ * `create_node` lets an agent write it, and this is how the agent's own tools can say so (#203). Identical
+ * after trimming is the test, on purpose — an input whose words happen to appear inside a longer prompt is
+ * not this mistake, and warning about it would fire on correct work.
+ */
+export function repeatedConnectedText(nodeId: string, prompt: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): string[] {
+    const words = prompt.trim();
+    if (!words) return [];
+    return flattenGenerationInputs(buildNodeGenerationInputs(nodeId, nodes, connections))
+        .filter((input) => input.type === "text" && (input.text || "").trim() === words)
+        .map((input) => input.nodeId);
+}
+
 function readNodeGenerationResource(node: CanvasNodeData): NodeGenerationResourceInput[] {
     const image = readReferenceImage(node);
     if (image) return [{ nodeId: node.id, type: "image", title: node.title, image }];

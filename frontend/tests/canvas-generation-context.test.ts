@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildNodeGenerationContext } from "@/components/canvas/canvas-node-generation";
+import { buildNodeGenerationContext, repeatedConnectedText } from "@/components/canvas/canvas-node-generation";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
 
 /**
@@ -65,5 +65,31 @@ describe("a connected text node", () => {
 
         expect(context.prompt).toBe("a red ceramic teapot");
         expect(context.textCount).toBe(0);
+    });
+});
+
+/**
+ * The same words in both places are said twice, and the agent's tools are the one writer that can still do
+ * it: the panel stopped copying a connected text into the box (#185), `create_node` did not (#203). This is
+ * what those tools name in their answer — the check, not a refusal and not a rewrite.
+ */
+describe("repeatedConnectedText", () => {
+    it("names the text node whose words the node's own prompt repeats", () => {
+        expect(repeatedConnectedText("i1", "  a red ceramic teapot\n", [text("t1", "a red ceramic teapot"), image("i1")], [connect("t1", "i1")])).toEqual(["t1"]);
+    });
+
+    it("names only the text that is repeated word for word", () => {
+        const nodes = [text("t1", "a red ceramic teapot"), text("t2", "on a wooden shelf", 200), image("i1")];
+
+        expect(repeatedConnectedText("i1", "on a wooden shelf", nodes, [connect("t1", "i1"), connect("t2", "i1")])).toEqual(["t2"]);
+    });
+
+    it("says nothing when the prompt only mentions those words inside a longer sentence", () => {
+        expect(repeatedConnectedText("i1", "a red ceramic teapot on a shelf", [text("t1", "a red ceramic teapot"), image("i1")], [connect("t1", "i1")])).toEqual([]);
+    });
+
+    it("says nothing when nothing is connected, or when the prompt is empty", () => {
+        expect(repeatedConnectedText("i1", "a red ceramic teapot", [image("i1")], [])).toEqual([]);
+        expect(repeatedConnectedText("i1", "", [text("t1", "a red ceramic teapot"), image("i1")], [connect("t1", "i1")])).toEqual([]);
     });
 });

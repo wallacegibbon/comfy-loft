@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 
 import { getNodeSpec } from "@/constant/canvas";
+import { repeatedConnectedText } from "@/components/canvas/canvas-node-generation";
 import { resolveMediaUrl } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
 import { onAnyAgentEvent, sendAgentMessage, type ToolContent } from "@/services/api/agent";
@@ -192,7 +193,22 @@ function connect(hands: CanvasHands, args: unknown): ToolAnswer {
     if (!hands.connectNodes(from.id, to.id, "source")) {
         return { content: [textBlock(`this canvas will not connect ${from.id} (${from.type}) to ${to.id} (${to.type})`)], isError: true };
     }
-    return { content: [textBlock(`connected ${from.id} -> ${to.id}`)], isError: false };
+    return { content: [textBlock(`connected ${from.id} -> ${to.id}${saidTwice(to.id, wordsOf(to), nodes, [...hands.connections(), { id: `${from.id}->${to.id}`, fromNodeId: from.id, toNodeId: to.id }])}`)], isError: false };
+}
+
+/**
+ * What a node would say twice once this connection exists, in one clause — or nothing to add.
+ *
+ * The canvas composes a request from the node's own prompt and every text connected to it, so the same
+ * words in both places travel twice. Nothing here refuses or edits: the connection is made either way, and
+ * the agent is told what it built, in the answer to the call that built it (#203). The words are passed in
+ * rather than read back from the node, because a tool that has just written them is answering before the
+ * canvas has re-rendered.
+ */
+function saidTwice(nodeId: string, words: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): string {
+    const repeated = repeatedConnectedText(nodeId, words, nodes, connections);
+    if (!repeated.length) return "";
+    return `; note: ${nodeId} already says ${repeated.join(", ")}'s words in its own prompt, so generating it would send them twice — clear it with set_prompt ""`;
 }
 
 /**
@@ -209,7 +225,7 @@ function setPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
     if (!node) return noSuchNode(args);
 
     hands.setNodePrompt(node.id, prompt);
-    return { content: [textBlock(`the prompt of ${node.id} is now: ${prompt.slice(0, 200)}`)], isError: false };
+    return { content: [textBlock(`the prompt of ${node.id} is now: ${prompt.slice(0, 200)}${saidTwice(node.id, prompt, hands.nodes(), hands.connections())}`)], isError: false };
 }
 
 /**
