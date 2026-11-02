@@ -695,7 +695,10 @@ function InfiniteCanvasPage() {
         if (!connection) return false;
         const { fromNodeId, toNodeId } = connection;
         const exists = connectionsRef.current.some((conn) => conn.fromNodeId === fromNodeId && conn.toNodeId === toNodeId);
-        if (!exists) setConnections((prev) => [...prev, { id: `conn-${Date.now()}`, fromNodeId, toNodeId }]);
+        // `nanoid()`, not a timestamp: the agent wires several nodes in one batch, so three connections can
+        // be made inside one millisecond — and a shared id is not a cosmetic problem, since selecting or
+        // deleting a connection goes by id (#205).
+        if (!exists) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId, toNodeId }]);
         return true;
     }, []);
 
