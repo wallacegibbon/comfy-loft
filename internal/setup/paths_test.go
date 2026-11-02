@@ -3,6 +3,8 @@ package setup
 import (
 	"bytes"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -98,5 +100,45 @@ func TestFolderPathsUnavailableLeavesTheRootUnknown(t *testing.T) {
 	manager := New(Options{Config: &config.Config{}, Logger: logx.NewWithWriter("test", io.Discard)})
 	if got := manager.comfyRootLocked(); got != "" {
 		t.Errorf("comfyRootLocked = %q, want empty", got)
+	}
+}
+
+// extra_model_paths.yaml is the only way a mapped drive becomes visible to ComfyUI, so the three
+// spellings a hand-written file uses — a plain path, a block scalar and a YAML list — all have to be
+// read, and `base_path` has to apply to each of them.
+func TestParseExtraModelPathsReadsEverySpelling(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "extra_model_paths.yaml")
+	document := strings.Join([]string{
+		"# a comment",
+		"mapped:",
+		"    base_path: /mnt/models",
+		"    checkpoints: |",
+		"        sdxl",
+		"        flux",
+		"    loras: extra/loras",
+		"    vae:",
+		"        - vae-a",
+		"        - vae-b",
+		"    is_default: true",
+		"",
+	}, "\n")
+	if err := os.WriteFile(file, []byte(document), 0o644); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+
+	paths := ParseExtraModelPaths(file)
+	want := map[string][]string{
+		"checkpoints": {"/mnt/models/sdxl", "/mnt/models/flux"},
+		"loras":       {"/mnt/models/extra/loras"},
+		"vae":         {"/mnt/models/vae-a", "/mnt/models/vae-b"},
+	}
+	for key, values := range want {
+		if got := paths[key]; strings.Join(got, ",") != strings.Join(values, ",") {
+			t.Errorf("%s = %v, want %v", key, got, values)
+		}
+	}
+	if _, ok := paths["is_default"]; ok {
+		t.Error("is_default became a path list")
 	}
 }

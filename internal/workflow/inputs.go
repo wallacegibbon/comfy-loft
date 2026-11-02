@@ -64,12 +64,9 @@ func (e *Entry) InputSpecs(limits InputLimits) []InputSpec {
 	promptRequired := false
 	bindings := e.Bindings()
 	if binding, ok := bindings["prompt"]; ok {
+		// A prompt binding is required unless it names a default: without one the node input would keep
+		// whatever the export happened to contain.
 		promptRequired = !binding.Has("default") || binding.Bool("required")
-		if !binding.Bool("required") && !binding.Has("default") {
-			// A prompt binding without a default is required in practice: the node input would
-			// otherwise keep whatever the export happened to contain.
-			promptRequired = true
-		}
 	}
 
 	add(InputSpec{Key: "prompt", Type: "string", Required: promptRequired, Label: "Prompt"})

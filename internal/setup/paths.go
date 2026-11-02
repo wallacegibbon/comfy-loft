@@ -42,6 +42,9 @@ func ParseExtraModelPaths(file string) map[string][]string {
 	section := ""
 	basePath := ""
 	multilineKey := ""
+	// lastKey is the key the next `- path` line belongs to, so a YAML list is read as well as the plain
+	// and block-scalar spellings.
+	lastKey := ""
 	resolve := func(value string) string {
 		raw := strings.Trim(strings.TrimSpace(value), `"`)
 		if raw == "" {
@@ -67,6 +70,7 @@ func ParseExtraModelPaths(file string) map[string][]string {
 			section = strings.TrimSuffix(trimmed, ":")
 			basePath = ""
 			multilineKey = ""
+			lastKey = ""
 			continue
 		}
 		if section == "" {
@@ -79,19 +83,29 @@ func ParseExtraModelPaths(file string) map[string][]string {
 			switch key {
 			case "base_path":
 				basePath = resolve(value)
+				lastKey = ""
 				continue
 			case "is_default":
+				lastKey = ""
 				continue
 			}
 			if _, ok := result[key]; !ok {
 				result[key] = nil
 			}
+			lastKey = key
 			if value == "|" || value == ">" {
 				multilineKey = key
 				continue
 			}
 			if value != "" {
 				result[key] = append(result[key], resolve(value))
+			}
+			continue
+		}
+		if strings.HasPrefix(trimmed, "- ") && lastKey != "" && indent > 0 {
+			// A YAML list under the key above it: the other spelling of the same list.
+			if resolved := resolve(strings.TrimPrefix(trimmed, "- ")); resolved != "" {
+				result[lastKey] = append(result[lastKey], resolved)
 			}
 			continue
 		}
