@@ -145,8 +145,24 @@ func (h *Hub) readLoop(ctx context.Context, clientID string, entry *socketEntry)
 			delete(h.sockets, clientID)
 		}
 		h.mu.Unlock()
+		// Stop the watcher below, then close: whichever of the two got here first, the connection is
+		// closed exactly once and the goroutine does not outlive the socket it watches.
+		if entry.cancel != nil {
+			entry.cancel()
+		}
 		_ = entry.conn.Close()
 	}()
+
+	// A read blocks in the kernel until ComfyUI says something, and a busy GPU can leave a socket quiet
+	// for minutes. Cancelling the context has to interrupt it, so ending the context closes the
+	// connection: a read deadline is the other way, and it would make an idle socket look like a dead one
+	// (and leave a goroutine and a descriptor behind on every reaped one).
+	if entry.cancel != nil {
+		go func() {
+			<-ctx.Done()
+			_ = entry.conn.Close()
+		}()
+	}
 
 	// Ask ComfyUI to include step metadata in preview frames.
 	_ = entry.conn.WriteText([]byte(`{"type":"feature_flags","data":{"supports_preview_metadata":true}}`))
@@ -212,7 +228,7 @@ func (h *Hub) handleMessage(clientID string, entry *socketEntry, raw []byte) {
 			if nodeID == "" {
 				nodeID = key
 			}
-			planned, tracked := record.PlanNodes[nodeID]
+			_, tracked := record.PlanNodes[nodeID]
 			if !tracked {
 				continue
 			}
@@ -229,7 +245,6 @@ func (h *Hub) handleMessage(clientID string, entry *socketEntry, raw []byte) {
 			if ratio > record.NodeRatios[nodeID] {
 				record.NodeRatios[nodeID] = ratio
 			}
-			_ = planned
 		}
 		record.State = "running"
 		record.UpdatedAt = time.Now()
@@ -390,6 +405,10 @@ func (h *Hub) BindPrompt(clientID, promptID, requestID string, plan StepPlan) {
 }
 
 // Get returns the newest preview for a prompt, honoring the TTL.
+//
+// The answer is a copy. The socket's reader keeps writing previews under the hub's lock while a request
+// handler serialises the one it was handed, so a pointer into the map would be a data race on every field
+// of it — the race the -race gate would find the first time a preview and a status request overlapped.
 func (h *Hub) Get(promptID string) *Preview {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -401,10 +420,16 @@ func (h *Hub) Get(promptID string) *Preview {
 		delete(h.previews, promptID)
 		return nil
 	}
-	return preview
+	copied := *preview
+	copied.Step = copyInt(preview.Step)
+	copied.Total = copyInt(preview.Total)
+	return &copied
 }
 
 // GetProgress returns the progress record for a prompt, honoring the TTL.
+//
+// A copy, for the same reason as Get: the reader mutates ratios and steps under the lock, and the
+// handler that renders a run's progress reads them after the lock is gone.
 func (h *Hub) GetProgress(promptID string) *Progress {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -416,7 +441,58 @@ func (h *Hub) GetProgress(promptID string) *Progress {
 		delete(h.progressByPrompt, promptID)
 		return nil
 	}
-	return record
+	return record.clone()
+}
+
+// clone copies a progress record, maps included: they are what the reader writes to.
+func (p *Progress) clone() *Progress {
+	copied := *p
+	copied.PlanNodes = copyIntMap(p.PlanNodes)
+	copied.AbsoluteNodes = copyBoolMap(p.AbsoluteNodes)
+	copied.NodeRatios = copyFloatMap(p.NodeRatios)
+	copied.NodeValues = copyFloatMap(p.NodeValues)
+	return &copied
+}
+
+func copyInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
+}
+
+func copyIntMap(source map[string]int) map[string]int {
+	if source == nil {
+		return nil
+	}
+	copied := make(map[string]int, len(source))
+	for key, value := range source {
+		copied[key] = value
+	}
+	return copied
+}
+
+func copyBoolMap(source map[string]bool) map[string]bool {
+	if source == nil {
+		return nil
+	}
+	copied := make(map[string]bool, len(source))
+	for key, value := range source {
+		copied[key] = value
+	}
+	return copied
+}
+
+func copyFloatMap(source map[string]float64) map[string]float64 {
+	if source == nil {
+		return nil
+	}
+	copied := make(map[string]float64, len(source))
+	for key, value := range source {
+		copied[key] = value
+	}
+	return copied
 }
 
 // reapLoop closes idle sockets and drops expired records.
