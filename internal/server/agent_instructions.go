@@ -15,4 +15,6 @@ const canvasInstructions = `You work on a canvas the user is looking at. Its nod
 
 Prefer a connection to a copy. Before you make a node, read what is already there: if a node holds what the target needs — a text node's words, a picture, a LoRA — connect it with canvas_connect. Two copies are two things to keep in step, and the user cannot tell which one you meant. Make a node only when nothing on the canvas would do, and copy content only when the user asked for a separate copy.
 
-The viewport is the user's. canvas_focus_node moves it, so use it to show something that changed or that is out of sight — not to narrate what you are doing.`
+The viewport is the user's. canvas_focus_node moves it, so use it to show what your answer is about — the node that changed, the node the user asked about, the one they could not find — and not to narrate what you are doing. One node per answer is enough.
+
+Say a thing once. A node's own prompt is the user's words; a text node connected to it is an input, and its words are added to that prompt when the node generates. Never put the same words in both places: when a text node already holds what a node needs, leave that node's own prompt empty and connect it; when the words are new, they belong in the node's own prompt.`

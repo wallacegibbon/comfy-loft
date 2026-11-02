@@ -166,14 +166,24 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 
 // TestAgentSpawnCarriesTheCanvasRule: the rule that chooses between the tools travels in the agent's
 // system prompt, because a tool description explains one tool and a skill has to be read before it can
-// help. It is set on every spawn, canvas panel and node panel alike.
+// help. It is set on every spawn, canvas panel and node panel alike. The last rule is #203: a prompt is
+// said once, in the box or in a connected text node, and the agent may not write both — the panel stopped
+// copying the connected text into the box in #185, and `create_node` still let the agent do it.
 func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 	server := newTestGateway(t, newFakeComfy(t))
 
 	system := strings.Join(server.agentOptions().System, "\n")
-	for _, want := range []string{"canvas_connect", "copy", "canvas_focus_node"} {
+	for _, want := range []string{"canvas_connect", "copy", "canvas_focus_node", "leave that node's own prompt empty", "the node the user asked about"} {
 		if !strings.Contains(system, want) {
 			t.Fatalf("the agent's system prompt does not mention %q: %q", want, system)
+		}
+	}
+
+	// The mechanism, not just the policy: `connect` says what a text connection does, because that is the
+	// fact the agent got wrong — it took the connection as a reason the box did not matter.
+	for _, tool := range server.mcpTools() {
+		if tool.Name == "connect" && !strings.Contains(tool.Description, "say them twice") {
+			t.Fatalf("connect does not say what a text connection does: %q", tool.Description)
 		}
 	}
 }
