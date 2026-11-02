@@ -236,6 +236,13 @@ func WriteFileAtomic(file string, data []byte) error {
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
+	// The mode os.WriteFile asked for is filtered by the umask; a task index or a preference file that only
+	// its owner can read is a workspace somebody cannot copy. Written explicitly, for the same reason the
+	// canvas files are.
+	if err := os.Chmod(tmp, 0o644); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
 	if err := os.Rename(tmp, file); err != nil {
 		_ = os.Remove(tmp)
 		return err

@@ -105,6 +105,12 @@ func writeFile(path string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("settings: cannot open a temporary file for %s: %w", path, err)
 	}
+	// CreateTemp makes the file owner-only; the document is meant to be 0644 like every other write here.
+	if err := temp.Chmod(0o644); err != nil {
+		_ = temp.Close()
+		_ = os.Remove(temp.Name())
+		return fmt.Errorf("settings: cannot set the mode of %s: %w", path, err)
+	}
 	name := temp.Name()
 	defer func() { _ = os.Remove(name) }()
 	if _, err := temp.Write(append(data, '\n')); err != nil {

@@ -327,6 +327,13 @@ func writeFile(path string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("canvas: cannot open a temporary file for %s: %w", path, err)
 	}
+	// CreateTemp makes the file owner-only; everything written here is meant to be 0644, which is what the
+	// direct writes use. A temporary file nobody can see yet is the one place that is safe to correct.
+	if err := temp.Chmod(0o644); err != nil {
+		_ = temp.Close()
+		_ = os.Remove(temp.Name())
+		return fmt.Errorf("canvas: cannot set the mode of %s: %w", path, err)
+	}
 	name := temp.Name()
 	defer func() { _ = os.Remove(name) }()
 	if _, err := temp.Write(data); err != nil {

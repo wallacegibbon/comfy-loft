@@ -85,6 +85,12 @@ func writeRuntimeFile(path string, content []byte) error {
 	if err != nil {
 		return err
 	}
+	// CreateTemp makes the file owner-only; the canvas's browser reads it, so it is 0644 like the rest.
+	if err := temp.Chmod(0o644); err != nil {
+		_ = temp.Close()
+		_ = os.Remove(temp.Name())
+		return err
+	}
 	name := temp.Name()
 	defer func() { _ = os.Remove(name) }()
 	if _, err := temp.Write(content); err != nil {

@@ -129,6 +129,13 @@ func TestWriteFileKeepsTheNameAndRefusesATakenOne(t *testing.T) {
 	if got, err := os.ReadFile(path); err != nil || string(got) != "PNG" {
 		t.Errorf("read back = %q, %v", got, err)
 	}
+	// Media is 0644 like an upload, not 0600 like the temporary file it was written through: the workspace
+	// is meant to be copied, and a file only its owner can read is a directory somebody cannot back up.
+	if info, err := os.Stat(path); err != nil {
+		t.Fatalf("stat: %v", err)
+	} else if mode := info.Mode().Perm(); mode&0o044 != 0o044 {
+		t.Errorf("mode = %o, want it readable like every other file in files/", mode)
+	}
 
 	if err := store.WriteFile(created.ID, "task_abc-2.png", []byte("other")); !errors.Is(err, ErrFileExists) {
 		t.Errorf("second write = %v, want ErrFileExists", err)
