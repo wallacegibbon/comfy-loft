@@ -343,7 +343,6 @@ func (s *Server) resolveRunMedia(ctx *httpx.Ctx, canvasID string, entry *workflo
 	return resolved, nil
 }
 
-// comfyMedia returns the ComfyUI reference for an upload, pushing the bytes once if needed.
 // comfyMedia makes sure an upload exists in ComfyUI's input directory, and answers with its name there.
 //
 // The name is derived from the canvas and the upload (`upload.ComfyNameFor`), and the push asks ComfyUI
@@ -352,7 +351,7 @@ func (s *Server) resolveRunMedia(ctx *httpx.Ctx, canvasID string, entry *workflo
 // ever collected them.
 func (s *Server) comfyMedia(ctx context.Context, canvasID string, file *upload.File) (workflow.Media, error) {
 	name := upload.ComfyNameFor(canvasID, file.ID)
-	if cached, ok := s.uploads.ComfyRef(file.ID); ok {
+	if cached, ok := s.uploads.ComfyRef(canvasID, file.ID); ok {
 		return workflow.Media{Name: cached}, nil
 	}
 	data, err := os.ReadFile(file.Path)
@@ -364,7 +363,7 @@ func (s *Server) comfyMedia(ctx context.Context, canvasID string, file *upload.F
 	if err != nil {
 		return workflow.Media{}, err
 	}
-	s.uploads.SetComfyRef(file.ID, pushed.Name)
+	s.uploads.SetComfyRef(canvasID, file.ID, pushed.Name)
 	return workflow.Media{Name: pushed.Name, Subfolder: pushed.Subfolder}, nil
 }
 

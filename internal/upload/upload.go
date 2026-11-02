@@ -130,20 +130,26 @@ func (s *Store) Get(canvasID, id string) *File {
 }
 
 // ComfyRef is the ComfyUI name this upload was pushed as, once it has been.
-func (s *Store) ComfyRef(id string) (string, bool) {
+//
+// Keyed by canvas and upload, not by the upload alone: an id is unique inside its canvas, and two canvases
+// may hold a file with the same name — the name it is pushed under is derived from both (ComfyNameFor), so
+// remembering only the file would hand one canvas the other's ComfyUI file.
+func (s *Store) ComfyRef(canvasID, id string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	name, ok := s.comfy[id]
+	name, ok := s.comfy[comfyKey(canvasID, id)]
 	return name, ok
 }
 
 // SetComfyRef records the push. Dropped on restart, deliberately: the name is derived, so the next
 // push overwrites the same file in ComfyUI instead of adding one.
-func (s *Store) SetComfyRef(id, name string) {
+func (s *Store) SetComfyRef(canvasID, id, name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.comfy[id] = name
+	s.comfy[comfyKey(canvasID, id)] = name
 }
+
+func comfyKey(canvasID, id string) string { return canvasID + "/" + id }
 
 /**
  * ComfyNameFor is the name this upload is pushed into ComfyUI under.

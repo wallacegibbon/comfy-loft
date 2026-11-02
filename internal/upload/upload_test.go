@@ -115,11 +115,15 @@ func TestComfyNameIsTheSameEveryTime(t *testing.T) {
 
 func TestComfyRefCache(t *testing.T) {
 	store, _ := newTestStore(t)
-	if _, ok := store.ComfyRef("up-a1b2c3d4.png"); ok {
+	if _, ok := store.ComfyRef("40e8afb47f10", "up-a1b2c3d4.png"); ok {
 		t.Error("an unpushed upload has a reference")
 	}
-	store.SetComfyRef("up-a1b2c3d4.png", "cl-x.png")
-	if name, ok := store.ComfyRef("up-a1b2c3d4.png"); !ok || name != "cl-x.png" {
+	store.SetComfyRef("40e8afb47f10", "up-a1b2c3d4.png", "cl-x.png")
+	if name, ok := store.ComfyRef("40e8afb47f10", "up-a1b2c3d4.png"); !ok || name != "cl-x.png" {
 		t.Errorf("ref = %q, %v", name, ok)
+	}
+	// The same file name in another canvas is another file, pushed under another name.
+	if name, ok := store.ComfyRef("111111111111", "up-a1b2c3d4.png"); ok {
+		t.Errorf("another canvas inherited the reference %q", name)
 	}
 }
