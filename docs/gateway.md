@@ -215,7 +215,7 @@ the canvas agent panel calls its own `canvas:<canvasId>`, a node's panel calls i
 prefix is the only thing the gateway reads about a name — it never learns what a node is, and it does not
 care which canvas a name points at beyond where the file goes.
 
-A canvas's name also owns a **conversation file**: `<CANVAS_ROOT>/<id>/agent.session`, passed to AlayaCore
+A canvas's name also owns a **conversation file**: `<CANVAS_ROOT>/<id>/session.alaya`, passed to AlayaCore
 as `--session`. That file, not the process, is the conversation, and it is part of the canvas — deleting
 the canvas deletes it, copying the canvas's directory copies it (decisions #178). It is not part of the
 document, so an export carries the nodes and their media and not what was said about them. The process
@@ -333,7 +333,7 @@ A canvas is a directory, not a row:
 <CANVAS_ROOT>/<id>/canvas.meta.json   id, title, createdAt, updatedAt, rev — what the list needs
 <CANVAS_ROOT>/<id>/canvas.json        the document
 <CANVAS_ROOT>/<id>/files/             the media its nodes point at
-<CANVAS_ROOT>/<id>/agent.session      the agent's conversation, once there is one — the agent's file
+<CANVAS_ROOT>/<id>/session.alaya      the agent's conversation, once there is one — the agent's own file
 ```
 
 The id is the directory name and is never derived from the title, so renaming a canvas never moves a

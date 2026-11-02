@@ -6164,7 +6164,7 @@ request that usually still arrives.
 
 ## 178. A canvas's conversation is a file in the canvas
 
-**Decision** The agent's conversation for a canvas is `<CANVAS_ROOT>/<id>/agent.session`, handed to AlayaCore
+**Decision** The agent's conversation for a canvas is `<CANVAS_ROOT>/<id>/session.alaya`, handed to AlayaCore
 as `--session`. The gateway reads exactly one thing out of a session name — the `canvas:` prefix and the id
 after it (`frontend/src/services/api/agent.ts` is the other side of that contract) — and puts the file there.
 A name that is not a canvas keeps no file: a node panel's question is one question, and its answer belongs to
@@ -6187,7 +6187,7 @@ was a second copy of the id in the socket URL, free to disagree with the name.
 creates nothing, a missing canvas has none, deleting the canvas deletes the file). `internal/server`:
 `TestSessionFileIsTheCanvasesOwn`, `TestDeletingACanvasTakesItsConversationWithIt` (a real socket, a real
 conversation, one `DELETE /api/canvases/{id}`), `TestOneShotSessionKeepsNoFile`. By hand: the conversation of
-the one canvas in this workspace was moved into `canvases/349b70cf4764/agent.session` and the agent replayed
+the one canvas in this workspace was moved into `canvases/349b70cf4764/session.alaya` and the agent replayed
 it on the next connection.
 
 **Where** `internal/canvas/canvas.go` (`AgentSessionName`, `SessionPath`, `ValidID`),

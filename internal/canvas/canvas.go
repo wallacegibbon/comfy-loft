@@ -2,7 +2,7 @@
 //
 // A canvas is a directory, not a row: <root>/<id>/ holds canvas.meta.json (the facts the list needs),
 // canvas.json (the document itself), files/ (the media its nodes point at) and, once somebody has talked
-// to its agent, agent.session (the conversation). The gateway owns the
+// to its agent, session.alaya (the conversation). The gateway owns the
 // directory, the id and the timestamps; it does not read canvas.json — what a node is, is the
 // canvas's business, and a gateway that understood nodes would have to be redeployed every time one
 // was added.
@@ -34,10 +34,10 @@ const (
 	// are exported rather than repeated as strings.
 	DocumentName = "canvas.json"
 	FilesName    = "files"
-	// AgentSessionName is the canvas's agent conversation, written by the agent rather than here. It is not
-	// part of the document: an export carries the nodes and the files they point at, and what was said
-	// about them stays with the canvas it was said on.
-	AgentSessionName = "agent.session"
+	// AgentSessionName is the canvas's agent conversation, written by the agent rather than here. The suffix is
+	// the agent's own — a session file it can read — and it is not part of the document: an export carries the
+	// nodes and the files they point at, and what was said about them stays with the canvas it was said on.
+	AgentSessionName = "session.alaya"
 
 	// MaxDocumentBytes caps one canvas.json. Media lives in files/, so a document that needs more
 	// than this is a document that inlined something it should have referenced.
