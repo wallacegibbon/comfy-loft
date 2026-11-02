@@ -6856,11 +6856,13 @@ preview is how you tell four similar pictures apart before jumping to one. Keepi
 requirement; the column is what both lists needed.
 
 **Cost** The canvas list lost its 1000px frame: titles truncate where they used to wrap, and deleting everything
-is two clicks instead of one. Picking a canvas also switches the column to Elements (you just answered "which
-canvas?"), so managing several in a row means going back to the Canvases tab each time. `height` is a layout
-animation — the rows relayout on each frame for 240ms — which is the price of a reveal that does not distort
-anything; it is confined to this box because the panel floats. And the section is a stored preference: a second
-browser opening the same workspace starts on Elements.
+is two clicks instead of one. `height` is a layout animation — the rows relayout on each frame for 240ms — which
+is the price of a reveal that does not distort anything; it is confined to this box because the panel floats.
+And the section is a stored preference: a second browser opening the same workspace starts on Elements.
+
+**Amended by #198** Picking a canvas used to switch the column to Elements, on the theory that the question
+"which canvas?" had just been answered. It does not: the board behind changes, and watching it change is how
+you check you picked the right one — the first version hid exactly that.
 
 **Tested** `npm run check` (i18n 824/810, no dead or missing keys — `canvas.sidePanel.elements`,
 `canvas.deleteAll`, `canvas.project.saveName` and `canvas.project.cancelRename` went with the card, and
@@ -6892,3 +6894,94 @@ workspace's one canvas):
 `frontend/src/stores/canvas/use-canvas-side-panel-store.ts`,
 `frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/pages/canvas/project.tsx`,
 `frontend/src/lib/canvas/node-prompt-field.ts`, both locales, `frontend/scripts/check-i18n.cjs`.
+
+## 196. The canvas menu holds this canvas's commands
+
+**Decision** The menu on the canvas's name is about the canvas on screen and nothing else: the four sections it
+already had (New, Edit, View, then export current canvas and clear canvas), and no workspace commands. Its list
+of every canvas is gone, and so are **Rename**, **New canvas** and **Delete current canvas**. Switching happens
+by clicking a row in the left column; renaming and creating and deleting are the `⋯` menu on a row of that list,
+which is also where the count and the selection are (`canvas-side-panel-canvases.tsx`, #195).
+
+Two consequences moved with them:
+
+- **Deleting the canvas you are standing on** was the one workspace command with consequences the list could not
+  see: it forgot the canvas as "the last one opened" and told the gateway to drop its agent conversation. That
+  handling now lives in `canvas-delete-projects-dialog.tsx`, which is the only thing that deletes canvases and
+  already had half of it. Deleting the current canvas still navigates away — to `/canvas`, which the router
+  resolves to whatever the root route would open next.
+- **The title stopped being an editor.** The top bar's inline rename (a draft, an `autoFocus` input, a
+  pointerdown-outside listener) is gone; renaming is the row's input, which already existed and already saves
+  through `renameCanvas`.
+
+**Why** A menu labelled with one canvas's name that then offers to rename it, replace it or leave it is a menu
+whose scope you have to read item by item. The name identifies a canvas; the list of canvases is a different
+place, and since #195 it is a place rather than a popup — the one surface in the app meant for "which canvas?".
+This is the same split as the column's two sections: the workspace's commands live with the workspace's list, the
+canvas's commands live on the canvas. It also removes a second implementation of rename, which is the one that
+had drifted (the bar's editor had no failure path and saved on blur; the row's has Enter/Escape).
+
+**Cost** Reaching the canvas list from a shut column is two clicks through the column's switch instead of one
+through a top-bar button (that button is gone too, #197). Renaming a canvas now requires opening the column, and
+deleting one is two gestures (row menu → Delete, or select → Delete).
+
+**Tested** In the browser (`/tmp/verify`, 8191/3011, its own data directory): the menu opened from the title
+holds exactly the four sections and 18 items — Text, Image, Video, Group, LoRA card, Upload files, Undo, Redo,
+Center focus, Delete selected, Select, Move, Dots, Lines, Blank, Image info, Export current canvas, Clear canvas
+— with no canvas names, no Rename, no New canvas and no Delete. The title is no longer an input: clicking it opens
+that menu. `npm run check` (i18n 823/809; `canvas.switchProject`, `canvas.deleteCurrent`,
+`canvas.deleteCurrentTitle`, `canvas.deleteCurrentDescription` and `canvas.projects` are gone,
+`canvas.menu.title` is new), `npx vitest run`, `npm run build`.
+
+**Where** `frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/pages/canvas/project.tsx`,
+`frontend/src/components/canvas/canvas-delete-projects-dialog.tsx`, both locales.
+
+## 197. One button opens the column, and its icon is the geometry
+
+**Decision** The top bar's left column has one button. The grid button beside the panel toggle — "My Canvases",
+which opened the column on its canvas list — is deleted, and so is the store's `openSection`, which existed only
+for it. The toggle opens the column on whichever list it was left on, and the switch inside picks the other.
+
+The icon changed with it, from `PanelLeftClose`/`PanelLeftOpen` to `PanelTopClose`/`PanelTopOpen`. The old pair
+draws an arrow pointing left, which described the sideways slide the panel stopped doing in #195: its top edge is
+the hinge, so it folds *up* into the bar and unfolds *down* from it, and the icon should say so.
+
+**Why** Two buttons that open the same box on two different tabs is one control too many, and the wrong half of
+the pair wins depending on which mode you are in — with the column shut, both of them open it, so which one you
+press decides which list you get. The section is remembered, so the one button is enough: the list you use is the
+list you get back.
+
+**Cost** The canvas list is one click further when the column is shut on the elements section. This is the same
+cost #196 records, and it is the price of one column with one way in.
+
+**Tested** In the browser: the top bar's left bar holds the panel toggle and the title, nothing between them; the
+toggle's SVG class is `lucide-panel-top-close` open and `lucide-panel-top-open` shut, with the tooltips "Collapse
+panel" / "Expand panel". `npm run check` (i18n: `canvas.projects` removed, no dead keys), `npx vitest run`,
+`npm run build`.
+
+**Where** `frontend/src/components/canvas/canvas-top-bar.tsx`,
+`frontend/src/stores/canvas/use-canvas-side-panel-store.ts`, both locales.
+
+## 198. The canvas list does not move under the pointer
+
+**Decision** The rows of the canvases list are ordered by when each canvas was **created**, newest first, and
+picking one changes only which row is highlighted. The comparator is `byCreatedAtDesc`, which replaces
+`byUpdatedAtDesc` (the same instant-vs-text parse, reading `createdAt` instead).
+
+**Why** The list sorts itself by `updatedAt` from the gateway, and every edit — including the autosave of the
+canvas you are looking at — bumps that, so the row under the cursor kept jumping to the top: you go to click the
+second canvas in the list and it is now the first. A list that reorders itself while you use it is a list you can
+misclick, and "recently worked on" is a property of *your* session, not of the canvas — the ordering hint the rows
+already carry is the updated time printed under the title, which is enough.
+
+**Cost** A canvas you just edited does not move to the top, so "the one I was working on" is found by reading the
+times rather than by looking at the first row. Creating a canvas still inserts at the top, because creation is an
+explicit act and the new canvas is where you are taken.
+
+**Tested** `tests/last-canvas.test.ts` gained "the last write does not move a canvas", which sorts two canvases
+whose `updatedAt` contradicts their `createdAt` (156 tests). In the browser: with two canvases, clicking the
+second row changed the route and the highlighted row and left the row order `[Canvas 2, Canvas 1]` exactly as it
+was.
+
+**Where** `frontend/src/lib/canvas/last-canvas.ts`,
+`frontend/src/components/canvas/canvas-side-panel-canvases.tsx`, `frontend/tests/last-canvas.test.ts`.
