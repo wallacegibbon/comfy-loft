@@ -24,3 +24,25 @@ export function rememberLastCanvas(id: string) {
 export function forgetLastCanvas(id: string) {
     if (lastCanvasId() === id) writeSetting(KEY, "");
 }
+
+/**
+ * The canvas to open when there is nothing remembered: the one written most recently.
+ *
+ * Ordered by the parsed timestamp, not by the string. The gateway writes RFC3339 with Go's nanoseconds,
+ * which drops trailing zeros, so two canvases saved in the same second compare the wrong way round as text
+ * — `…34.9Z` sorts after `…34.916503133Z` byte-wise because `Z` > `1`. Ties keep the first entry, which is
+ * the order the gateway lists them in (newest first).
+ */
+export function newestCanvasId(canvases: Array<{ id: string; updatedAt: string }>): string {
+    let newest = "";
+    let newestAt = Number.NEGATIVE_INFINITY;
+    for (const canvas of canvases) {
+        const parsed = Date.parse(canvas.updatedAt);
+        const at = Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+        if (!newest || at > newestAt) {
+            newest = canvas.id;
+            newestAt = at;
+        }
+    }
+    return newest;
+}

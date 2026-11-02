@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
-import { lastCanvasId } from "@/lib/canvas/last-canvas";
+import { lastCanvasId, newestCanvasId } from "@/lib/canvas/last-canvas";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 
 /**
@@ -42,9 +42,11 @@ export function CanvasEntry() {
                 setTargetId(remembered);
                 return;
             }
-            const newest = store.canvases.reduce<{ id: string; updatedAt: string } | null>((best, canvas) => (!best || canvas.updatedAt > best.updatedAt ? canvas : best), null);
+            // The ordering is the module's, not a string comparison here: timestamps are instants, and
+            // "…34.9Z" > "…34.916Z" is true of the text and false of the times (see newestCanvasId).
+            const newest = newestCanvasId(store.canvases);
             if (newest) {
-                setTargetId(newest.id);
+                setTargetId(newest);
                 return;
             }
             try {
