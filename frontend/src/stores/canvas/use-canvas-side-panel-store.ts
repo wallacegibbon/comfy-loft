@@ -7,6 +7,28 @@ export const CANVAS_SIDE_PANEL_MIN_WIDTH = 220;
 export const CANVAS_SIDE_PANEL_MAX_WIDTH = 480;
 const CANVAS_SIDE_PANEL_DEFAULT_WIDTH = 280;
 
+/**
+ * The geometry of the board's left column.
+ *
+ * The bar at the top, the panel and the zoom dock are stacked, not scattered: one width, one left edge,
+ * and the same gap between the three boxes. They are declared here rather than as Tailwind classes at the
+ * three call sites because the panel's bottom edge *is* the dock's height plus two gaps — a panel that
+ * guessed would either overlap the dock or leave a hole that changes with the window (#191).
+ */
+export const CANVAS_CHROME_GUTTER = 12;
+export const CANVAS_CHROME_GAP = 8;
+export const CANVAS_ZOOM_DOCK_HEIGHT = 56;
+/** The bar's row: the top bar is this tall and the bar itself is centred in it. */
+export const CANVAS_TOP_BAR_ROW = 64;
+/** Where the panel stops, measured from the bottom of the board: the dock and the gaps around it. */
+export const CANVAS_SIDE_PANEL_BOTTOM = CANVAS_CHROME_GUTTER + CANVAS_ZOOM_DOCK_HEIGHT + CANVAS_CHROME_GAP;
+/**
+ * What the bar at the right end of the row needs, gutter and gap included, so the column can stop before
+ * it. Measured from the default contents (the system readout and five buttons); a little slack either way
+ * is harmless — the bar has no width of its own and gives way first.
+ */
+const CANVAS_RIGHT_BAR_RESERVE = 300;
+
 const WIDTH_KEY = "canvas-side-panel-width";
 const OPEN_KEY = "canvas-side-panel-open";
 const NODE_VIEW_KEY = "canvas-side-panel-node-view";
@@ -57,11 +79,33 @@ export const useCanvasSidePanelStore = create<CanvasSidePanelStore>((set, get) =
 }));
 
 /**
- * Where the canvas's own chrome should sit, measured from the left edge. The board floats there, so a
- * zoom dock or a minimap that used to be pushed aside by a column now has to step over it instead.
+ * Where a floating overlay that is *not* part of the column should sit, measured from the left edge.
+ *
+ * The minimap is the only user: it is a map the user toggles, not a piece of chrome, so it steps over the
+ * column — the gutter when the panel is shut, and the gutter, the panel and `gap` when it is open. The
+ * zoom dock does not use this any more: it is the foot of the column and stays where the column is, so
+ * opening the panel shortens the panel instead of pushing the dock into the middle of the board.
  */
 export function useSidePanelInset(gap: number) {
     const open = useCanvasSidePanelStore((state) => state.panelOpen);
     const width = useCanvasSidePanelStore((state) => state.width);
-    return open ? width + gap : gap;
+    return open ? CANVAS_CHROME_GUTTER + width + gap : CANVAS_CHROME_GUTTER;
+}
+
+/**
+ * The width the left-hand chrome shares, as a CSS length.
+ *
+ * The bar at the top, the panel and the zoom dock are one column: three boxes of the same width, aligned on
+ * the same left edge, which is what makes them read as a column rather than as three unrelated panels
+ * (#191). The panel is the only one that can be dragged, so it owns the number, and widening it widens the
+ * other two with it.
+ *
+ * The clamp is why this is a CSS length and not a number: in a window too narrow to hold the column *and*
+ * the bar on the right, the column stops at `CANVAS_RIGHT_BAR_RESERVE` from the edge. Being a `min()` in
+ * one place rather than a number frozen at render time, all three boxes follow a window resize together and
+ * none of them ends up a different width from its neighbours.
+ */
+export function useCanvasChromeWidth() {
+    const width = useCanvasSidePanelStore((state) => state.width);
+    return `min(${width}px, calc(100vw - ${CANVAS_RIGHT_BAR_RESERVE}px))`;
 }

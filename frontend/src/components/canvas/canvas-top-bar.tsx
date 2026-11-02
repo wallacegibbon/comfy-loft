@@ -10,6 +10,7 @@ import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { CanvasSystemStatus } from "@/components/canvas/canvas-system-status";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { byUpdatedAtDesc } from "@/lib/canvas/last-canvas";
+import { CANVAS_TOP_BAR_ROW, useCanvasChromeWidth } from "@/stores/canvas/use-canvas-side-panel-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasPanelStore } from "@/stores/canvas/use-canvas-panel-store";
 import { useCanvasSidePanelStore } from "@/stores/canvas/use-canvas-side-panel-store";
@@ -59,6 +60,12 @@ export function CanvasTopBar({
     const barClass = "pointer-events-auto flex h-12 min-w-0 items-center gap-1.5 rounded-xl border px-2 shadow-lg backdrop-blur";
     const titleRef = useRef<HTMLDivElement>(null);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
+    // The same width as the panel below it and the zoom dock at the foot of the column (#191).
+    const chromeWidth = useCanvasChromeWidth();
+    // The left bar *is* the top of the column, so it keeps the column's width instead of giving way to the
+    // right bar when the window is squeezed: two boxes of different widths on one edge is what #191 is
+    // about. The right bar has no width of its own and absorbs the shrink instead.
+    const columnBarStyle = { ...barStyle, width: chromeWidth, flexShrink: 0 };
     const sidePanelOpen = useCanvasSidePanelStore((state) => state.panelOpen);
     const toggleSidePanel = useCanvasSidePanelStore((state) => state.togglePanel);
     const canvases = useCanvasStore((state) => state.canvases);
@@ -83,8 +90,8 @@ export function CanvasTopBar({
 
     return (
         <>
-            <div className="pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-16 items-center justify-between gap-3 pl-3 pr-3">
-                <div className={barClass} style={barStyle}>
+            <div className="pointer-events-none absolute left-0 right-0 top-0 z-50 flex items-center justify-between gap-3 pl-3 pr-3" style={{ height: CANVAS_TOP_BAR_ROW }}>
+                <div className={barClass} style={columnBarStyle}>
                     <TopBarButton label={sidePanelOpen ? t("canvas.collapsePanel") : t("canvas.expandPanel")} onClick={toggleSidePanel}>
                         {sidePanelOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
                     </TopBarButton>
@@ -93,7 +100,7 @@ export function CanvasTopBar({
                     </TopBarButton>
                     <span className="mx-0.5 h-6 w-px shrink-0" style={{ background: theme.toolbar.border }} />
 
-                    <div ref={titleRef} className="flex min-w-0 items-center gap-2">
+                    <div ref={titleRef} className="flex min-w-0 flex-1 items-center gap-2">
                         {isTitleEditing ? (
                             <input
                                 autoFocus
@@ -104,7 +111,7 @@ export function CanvasTopBar({
                                     if (event.key === "Enter") onFinishTitleEditing();
                                     if (event.key === "Escape") onCancelTitleEditing();
                                 }}
-                                className="max-w-[280px] bg-transparent p-0 text-left text-lg font-semibold tracking-normal outline-none"
+                                className="min-w-0 w-full bg-transparent p-0 text-left text-lg font-semibold tracking-normal outline-none"
                                 style={{ color: theme.node.text }}
                             />
                         ) : (
@@ -129,7 +136,7 @@ export function CanvasTopBar({
                             >
                                 <button
                                     type="button"
-                                    className="flex max-w-[280px] items-center gap-1.5 rounded-md border-b border-dashed border-transparent text-left text-lg font-semibold tracking-normal transition hover:border-current"
+                                    className="flex min-w-0 items-center gap-1.5 rounded-md border-b border-dashed border-transparent text-left text-lg font-semibold tracking-normal transition hover:border-current"
                                     title={t("canvas.switchProject")}
                                     aria-label={t("canvas.switchProject")}
                                 >

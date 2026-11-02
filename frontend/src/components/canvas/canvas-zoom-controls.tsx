@@ -8,7 +8,7 @@ import { Button } from "@/components/kit/button";
 import { Dialog } from "@/components/kit/dialog";
 import { Tooltip } from "@/components/kit/tooltip";
 import { canvasThemes } from "@/lib/canvas-theme";
-import { useSidePanelInset } from "@/stores/canvas/use-canvas-side-panel-store";
+import { CANVAS_CHROME_GUTTER, CANVAS_ZOOM_DOCK_HEIGHT, useCanvasChromeWidth } from "@/stores/canvas/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 type CanvasZoomControlsProps = {
@@ -22,15 +22,17 @@ type CanvasZoomControlsProps = {
 export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpen, onToggleMiniMap }: CanvasZoomControlsProps) {
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     const { t } = useTranslation();
-    const left = useSidePanelInset(20);
+    // The foot of the left column: the same width as the bar at the top and the panel between them, and
+    // it stays put when the panel opens — the panel is the box that gets shorter (#191).
+    const width = useCanvasChromeWidth();
     const colorTheme = useThemeStore((state) => state.theme);
     const theme = canvasThemes[colorTheme];
     const dockStyle = { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 18px 45px rgba(0,0,0,.32)" : "0 16px 40px rgba(28,25,23,.12)" };
     const activeStyle = { background: theme.toolbar.activeBg, color: theme.toolbar.activeText };
 
     return (
-        <div className="absolute bottom-5 z-50" style={{ left }} onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-            <div className="flex h-14 items-center gap-1 rounded-xl border px-2 shadow-lg backdrop-blur" style={dockStyle}>
+        <div className="absolute z-50" style={{ left: CANVAS_CHROME_GUTTER, bottom: CANVAS_CHROME_GUTTER }} onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+            <div className="flex items-center gap-1 rounded-xl border px-2 shadow-lg backdrop-blur" style={{ ...dockStyle, width, height: CANVAS_ZOOM_DOCK_HEIGHT }}>
                 <Tooltip title={isMiniMapOpen ? t("canvas.miniMapClose") : t("canvas.miniMapOpen")}>
                     <Button
                         type="text"
@@ -51,7 +53,7 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpe
                         max="500"
                         step="1"
                         value={Math.round(scale * 100)}
-                        className="w-24"
+                        className="min-w-0 flex-1"
                         style={{ accentColor: theme.node.activeStroke }}
                         onChange={(event) => onScaleChange(Number(event.target.value) / 100)}
                         aria-label={t("canvas.zoom")}

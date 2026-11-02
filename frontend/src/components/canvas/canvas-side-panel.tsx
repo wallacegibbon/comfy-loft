@@ -10,7 +10,16 @@ import { exportCanvasNodes } from "@/lib/canvas/canvas-export";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { cn } from "@/lib/utils";
 import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision } from "@/services/image-storage";
-import { CANVAS_SIDE_PANEL_MAX_WIDTH, CANVAS_SIDE_PANEL_MIN_WIDTH, CANVAS_SIDE_PANEL_MOTION_MS, useCanvasSidePanelStore } from "@/stores/canvas/use-canvas-side-panel-store";
+import {
+    CANVAS_CHROME_GUTTER,
+    CANVAS_SIDE_PANEL_BOTTOM,
+    CANVAS_SIDE_PANEL_MAX_WIDTH,
+    CANVAS_SIDE_PANEL_MIN_WIDTH,
+    CANVAS_SIDE_PANEL_MOTION_MS,
+    CANVAS_TOP_BAR_ROW,
+    useCanvasChromeWidth,
+    useCanvasSidePanelStore,
+} from "@/stores/canvas/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
@@ -53,8 +62,11 @@ const STATUS_COLOR: Record<string, string> = {
 
 export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, onHoverNode }: Props) {
     const { t } = useTranslation();
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const colorTheme = useThemeStore((state) => state.theme);
+    const theme = canvasThemes[colorTheme];
     const width = useCanvasSidePanelStore((state) => state.width);
+    // The width it draws at: the stored one, clamped so the column never eats the whole window (#191).
+    const chromeWidth = useCanvasChromeWidth();
     const panelOpen = useCanvasSidePanelStore((state) => state.panelOpen);
     const setWidth = useCanvasSidePanelStore((state) => state.setWidth);
     const commitWidth = useCanvasSidePanelStore((state) => state.commitWidth);
@@ -63,7 +75,9 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
     const startResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
         event.preventDefault();
         const startX = event.clientX;
-        const startWidth = width;
+        // Start from the width on screen, not the stored one: in a window too narrow for the column the two
+        // differ, and dragging from the stored number would spend the first few centimetres doing nothing.
+        const startWidth = Math.round(event.currentTarget.parentElement?.getBoundingClientRect().width ?? width);
         let nextWidth = startWidth;
         const onMove = (moveEvent: PointerEvent) => {
             nextWidth = Math.min(CANVAS_SIDE_PANEL_MAX_WIDTH, Math.max(CANVAS_SIDE_PANEL_MIN_WIDTH, startWidth + moveEvent.clientX - startX));
@@ -81,17 +95,24 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
     };
 
     // A board over the canvas, not a column beside it: the canvas keeps its full width whether this is
-    // open or shut, and nothing reflows when it moves. Closing slides it out to the left and turns it
-    // off for hit-testing, so the gutter it leaves behind belongs to the canvas again.
+    // open or shut, and nothing reflows when it moves. It is the middle box of the board's left column
+    // (#191) — under the bar, above the zoom dock, so it stops short of the bottom instead of running to
+    // the edge and leaving the dock to be pushed out beside it. It keeps the column's gutter from the left,
+    // and while shut it slides out far enough that its shadow leaves too and is off for hit-testing, so the
+    // gutter belongs to the canvas again.
     return (
         <aside
-            className="absolute bottom-0 left-0 top-16 z-[60] flex flex-col overflow-hidden border-r"
+            className="absolute z-[60] flex flex-col overflow-hidden rounded-xl border"
             style={{
-                width,
+                width: chromeWidth,
+                left: CANVAS_CHROME_GUTTER,
+                top: CANVAS_TOP_BAR_ROW,
+                bottom: CANVAS_SIDE_PANEL_BOTTOM,
                 background: theme.toolbar.panel,
                 borderColor: theme.toolbar.border,
                 color: theme.node.text,
-                transform: panelOpen ? "translateX(0)" : `translateX(-${width + 1}px)`,
+                boxShadow: colorTheme === "dark" ? "0 18px 45px rgba(0,0,0,.32)" : "0 16px 40px rgba(28,25,23,.12)",
+                transform: panelOpen ? "translateX(0)" : `translateX(-${width + 32}px)`,
                 opacity: panelOpen ? 1 : 0,
                 pointerEvents: panelOpen ? undefined : "none",
                 transitionProperty: "transform, opacity",

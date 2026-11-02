@@ -1,4 +1,19 @@
+import { CANVAS_CHROME_GAP, CANVAS_CHROME_GUTTER, CANVAS_SIDE_PANEL_BOTTOM, CANVAS_TOP_BAR_ROW, CANVAS_ZOOM_DOCK_HEIGHT, useCanvasChromeWidth, useCanvasSidePanelStore } from "@/stores/canvas/use-canvas-side-panel-store";
+
+/**
+ * The board's frame, drawn while the canvas loads.
+ *
+ * It is the same three boxes the app stacks on the left — the bar at the top, the panel under it, the zoom
+ * dock at the foot — at the same width, on the same left edge and with the same gaps (#191), so the real
+ * chrome lands where the sketch was instead of jumping. Nothing else is sketched: this used to draw a
+ * centred bottom dock and a minimap too, and neither exists any more (#188), so the loading frame promised
+ * chrome that never came.
+ */
 export function CanvasRefreshShell() {
+    const width = useCanvasChromeWidth();
+    const panelOpen = useCanvasSidePanelStore((state) => state.panelOpen);
+    const frame = { background: "var(--background)", borderColor: "var(--border)", width, left: CANVAS_CHROME_GUTTER };
+
     return (
         <main className="relative h-full min-h-0 overflow-hidden bg-background text-foreground">
             <div
@@ -9,20 +24,21 @@ export function CanvasRefreshShell() {
                 }}
             />
 
-            <div className="absolute bottom-5 left-1/2 z-50 flex h-14 -translate-x-1/2 items-center gap-1 rounded-xl border px-2 shadow-lg backdrop-blur" style={{ background: "var(--background)", borderColor: "var(--border)" }} aria-hidden="true">
-                {Array.from({ length: 7 }).map((_, index) => (
-                    <div key={index} className="size-8 rounded-md bg-current opacity-10" />
-                ))}
+            {/* The bar is centred in the top row, so it sits one gap inside it either way. */}
+            <div className="absolute z-50 flex items-center gap-2 rounded-xl border px-2 shadow-lg backdrop-blur" style={{ ...frame, height: CANVAS_TOP_BAR_ROW - CANVAS_CHROME_GAP * 2, top: CANVAS_CHROME_GAP }} aria-hidden="true">
+                <div className="size-8 rounded-md bg-current opacity-10" />
+                <div className="size-8 rounded-md bg-current opacity-10" />
+                <div className="h-4 flex-1 rounded-sm bg-current opacity-10" />
             </div>
 
-            <div className="absolute bottom-24 left-6 z-50 h-40 w-[240px] rounded-lg border shadow-2xl backdrop-blur-sm" style={{ background: "var(--background)", borderColor: "var(--border)" }} aria-hidden="true">
-                <div className="absolute left-7 top-7 h-5 w-12 rounded-sm bg-current opacity-10" />
-                <div className="absolute left-28 top-16 h-6 w-16 rounded-sm bg-current opacity-10" />
-                <div className="absolute bottom-7 left-16 h-8 w-20 rounded-sm bg-current opacity-10" />
-                <div className="absolute inset-5 rounded border border-current opacity-15" />
-            </div>
+            {panelOpen ? (
+                <div className="absolute z-50 rounded-xl border shadow-2xl backdrop-blur-sm" style={{ ...frame, top: CANVAS_TOP_BAR_ROW, bottom: CANVAS_SIDE_PANEL_BOTTOM }} aria-hidden="true">
+                    <div className="absolute left-4 top-4 h-6 w-24 rounded-sm bg-current opacity-10" />
+                    <div className="absolute inset-x-4 top-14 h-8 rounded-md bg-current opacity-10" />
+                </div>
+            ) : null}
 
-            <div className="absolute bottom-5 left-5 z-50 flex h-14 w-[260px] items-center gap-2 rounded-xl border px-2 shadow-lg backdrop-blur" style={{ background: "var(--background)", borderColor: "var(--border)" }} aria-hidden="true">
+            <div className="absolute z-50 flex items-center gap-2 rounded-xl border px-2 shadow-lg backdrop-blur" style={{ ...frame, bottom: CANVAS_CHROME_GUTTER, height: CANVAS_ZOOM_DOCK_HEIGHT }} aria-hidden="true">
                 <div className="size-8 rounded-md bg-current opacity-10" />
                 <div className="size-8 rounded-md bg-current opacity-10" />
                 <div className="h-1 flex-1 rounded-full bg-current opacity-10" />

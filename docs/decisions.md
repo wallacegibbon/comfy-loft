@@ -6590,3 +6590,49 @@ the same frame, no close button, and the skip footer with the new hint.
 `frontend/src/stores/use-config-store.ts`, `frontend/src/hooks/use-local-gateway-sync.ts`,
 `frontend/src/pages/panel-entries.tsx`, `frontend/src/i18n/locales/*`, `frontend/scripts/check-*.cjs`,
 `frontend/tests/overlay-z-index.test.ts`, `docs/gateway.md`.
+
+## 191. The left column: one width, three stacked boxes
+
+**Decision** The bar at the top left, the side panel and the zoom dock are one column — same width, same
+left edge, same radius, same shadow — and they are *stacked*: the bar on top, the panel under it, the dock
+at its foot. The panel's bottom edge *is* the dock's height plus the two gaps (`CANVAS_SIDE_PANEL_BOTTOM`),
+so opening the panel shortens the panel and moves nothing else.
+
+The width is the panel's `width` in `use-canvas-side-panel-store` (280 to start, 220–480), so the drag
+handle on its right edge resizes the whole column. `useCanvasChromeWidth()` hands it over as a CSS length,
+`min(<width>px, calc(100vw - 300px))`: the same clamp for all three, so a window too narrow for the column
+and the bar on the right shrinks them together instead of squeezing one. The drag starts from the width on
+screen rather than the stored one, so the clamp cannot leave a dead zone under the cursor.
+
+`CANVAS_CHROME_GUTTER` (12), `CANVAS_CHROME_GAP` (8), `CANVAS_ZOOM_DOCK_HEIGHT` (56) and
+`CANVAS_TOP_BAR_ROW` (64) live in the same module as that hook, because the panel's bottom is the dock's
+height plus two gaps: a panel that guessed would overlap the dock or leave a hole that moves with the
+window.
+
+The minimap is the one thing that is *not* in the column — it is a map the user toggles, not chrome — so
+`useSidePanelInset` keeps the step-over rule for it alone.
+
+**Why** Three boxes on one edge at three widths read as three unrelated panels. And the first version of
+this got the stacking wrong: it kept the old rule that pushes the dock out of the panel's way (`left =
+width + gap`), which on a 740px-wide window left the bottom-left corner empty and put a full-width dock in
+the middle of the board. That is a staircase, not a column — the screenshot that came back showed it, and
+this entry is the second version.
+
+**Cost** The bar at the top and the dock now take the panel's width, so a wide panel makes them wide: at
+480 the bar has slack and the dock's slider stretches. Below `100vw - 300px` the column stops shrinking the
+way it was dragged: the three boxes stay equal, but they are narrower than the stored number until the
+window grows or the panel is dragged in.
+
+**Tested** `npm run check`, `npx vitest run` (155), `make check`. In the browser (`/tmp/verify`, 8191/3001),
+measured with `getBoundingClientRect`, three window sizes: 573px viewport with 348 stored — bar, panel and
+dock all 12 → 285 (273 wide, clamped), right bar 297 → 561 inside the window; 709px viewport with 480
+stored — all three 12 → 421 (409 wide, clamped), right bar intact; a 740px viewport at 348 — all three
+12 → 360 (348, unclamped), the panel ending at 574 with the dock at 582 → 638, so one 8px gap, and the dock
+sitting in the bottom-left corner. Dark and light, panel open and shut.
+
+**Where** `frontend/src/stores/canvas/use-canvas-side-panel-store.ts`,
+`frontend/src/components/canvas/canvas-side-panel.tsx`,
+`frontend/src/components/canvas/canvas-top-bar.tsx`,
+`frontend/src/components/canvas/canvas-zoom-controls.tsx`,
+`frontend/src/components/canvas/canvas-mini-map.tsx`,
+`frontend/src/components/canvas/canvas-refresh-shell.tsx`.
