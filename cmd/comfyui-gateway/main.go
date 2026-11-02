@@ -63,9 +63,13 @@ func run() error {
 	logger.Info("ComfyUI gateway %s listening on http://%s", config.Version, address)
 	logger.Info("ComfyUI: %s | workflows: %s", cfg.ComfyURL, cfg.WorkflowDir)
 
+	// The cleaner is stopped, then waited for. Two channels, because a loop that closes its own "done"
+	// on the way out can never be told to stop: with a retention window configured, waiting on it used to
+	// block shutdown until the next tick — an hour, by default.
+	cleanupStop := make(chan struct{})
 	cleanupDone := make(chan struct{})
 	if cfg.TaskRetentionDays > 0 || cfg.MaxStoredTasks > 0 {
-		go taskCleanupLoop(cfg, app, logger, cleanupDone)
+		go taskCleanupLoop(cfg, app, logger, cleanupStop, cleanupDone)
 	} else {
 		close(cleanupDone)
 	}
@@ -97,13 +101,18 @@ func run() error {
 	}
 	app.Close()
 	app.Tasks().Close()
+	close(cleanupStop)
 	<-cleanupDone
 	logger.Info("stopped")
 	return nil
 }
 
 // taskCleanupLoop periodically prunes finished tasks and their output files.
-func taskCleanupLoop(cfg *config.Config, app *server.Server, logger *logx.Logger, done chan struct{}) {
+//
+// stop is closed by the shutdown path and done is closed by this function: the two are different
+// questions, and answering "it is not stopping" with the channel that means "it has stopped" is how the
+// gateway used to wait for the next tick on its way out.
+func taskCleanupLoop(cfg *config.Config, app *server.Server, logger *logx.Logger, stop, done chan struct{}) {
 	defer close(done)
 	interval := time.Duration(cfg.CleanupIntervalMs) * time.Millisecond
 	if interval <= 0 {
@@ -116,7 +125,7 @@ func taskCleanupLoop(cfg *config.Config, app *server.Server, logger *logx.Logger
 		select {
 		case <-ticker.C:
 			app.Tasks().Cleanup(cfg.TaskRetentionDays, cfg.MaxStoredTasks)
-		case <-done:
+		case <-stop:
 			return
 		}
 	}
