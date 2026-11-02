@@ -40,22 +40,6 @@ export async function setMediaBlob(storageKey: string, blob: Blob) {
     return url;
 }
 
-export async function cleanupUnusedMedia(usedData: unknown) {
-    const usedKeys = collectMediaStorageKeys(usedData);
-    const unused: string[] = [];
-    await store.iterate((_value, key) => {
-        if (!usedKeys.has(key)) unused.push(key);
-    });
-    await Promise.all(unused.map((key) => store.removeItem(key)));
-}
-
-function collectMediaStorageKeys(value: unknown, keys = new Set<string>()) {
-    if (!value || typeof value !== "object") return keys;
-    if ("storageKey" in value && typeof value.storageKey === "string" && value.storageKey.includes(":")) keys.add(value.storageKey);
-    Object.values(value).forEach((item) => (Array.isArray(item) ? item.forEach((child) => collectMediaStorageKeys(child, keys)) : collectMediaStorageKeys(item, keys)));
-    return keys;
-}
-
 function readVideoMeta(url: string) {
     return new Promise<{ width: number; height: number; durationMs?: number }>((resolve) => {
         const video = document.createElement("video");

@@ -35,10 +35,11 @@ export function CanvasManagerDialog() {
     const inputRef = useRef<HTMLInputElement>(null);
     const open = useCanvasPanelStore((state) => state.canvasManagerOpen);
     const setOpen = useCanvasPanelStore((state) => state.setCanvasManagerOpen);
-    const hydrated = useCanvasStore((state) => state.hydrated);
-    const projects = useCanvasStore((state) => state.projects);
-    const createProject = useCanvasStore((state) => state.createProject);
-    const importProject = useCanvasStore((state) => state.importProject);
+    const ready = useCanvasStore((state) => state.ready);
+    const canvases = useCanvasStore((state) => state.canvases);
+    const createCanvas = useCanvasStore((state) => state.createCanvas);
+    const importCanvasProject = useCanvasStore((state) => state.importCanvas);
+    const loadCanvas = useCanvasStore((state) => state.loadCanvas);
     const selectedIds = useCanvasListStore((state) => state.selectedProjectIds);
     const setDeleteIds = useCanvasListStore((state) => state.setDeleteProjectIds);
 
@@ -46,7 +47,14 @@ export function CanvasManagerDialog() {
         setOpen(false);
         navigate(`/canvas/${id}`);
     };
-    const createAndEnter = () => enterProject(createProject(t("canvas.defaultTitle", { count: projects.length + 1 })));
+    const createAndEnter = async () => {
+        try {
+            enterProject(await createCanvas(t("canvas.defaultTitle", { count: canvases.length + 1 })));
+        } catch (error) {
+            console.error(error);
+            toast.error(t("canvas.createFailed"));
+        }
+    };
     const importCanvas = async (file?: File) => {
         if (!file) return;
         try {
@@ -64,7 +72,7 @@ export function CanvasManagerDialog() {
                     }),
                 ),
             );
-            data.projects.forEach((item) => importProject(item.project));
+            for (const item of data.projects) await importCanvasProject(item.project);
             toast.success(t("canvas.imported", { count: data.projects.length }));
         } catch {
             toast.error(t("canvas.importFailed"));
@@ -80,48 +88,51 @@ export function CanvasManagerDialog() {
                     {selectedIds.length ? (
                         <>
                             <Button
-                                disabled={!hydrated}
+                                disabled={!ready}
                                 icon={<Download className="size-4" />}
                                 onClick={() =>
-                                    void exportCanvasProjects(
-                                        projects.filter((project) => selectedIds.includes(project.id)),
-                                        `${t("canvas.title")}-${selectedIds.length}`,
-                                    )
+                                    void (async () => {
+                                        const loaded = await Promise.all(selectedIds.map((id) => loadCanvas(id)));
+                                        await exportCanvasProjects(
+                                            loaded.filter((project): project is NonNullable<typeof project> => Boolean(project)),
+                                            `${t("canvas.title")}-${selectedIds.length}`,
+                                        );
+                                    })()
                                 }
                             >
                                 {t("canvas.exportSelected")}
                             </Button>
-                            <Button disabled={!hydrated} onClick={() => setDeleteIds(selectedIds)}>
+                            <Button disabled={!ready} onClick={() => setDeleteIds(selectedIds)}>
                                 {t("canvas.deleteSelected")}
                             </Button>
                         </>
                     ) : null}
-                    {projects.length ? (
-                        <Button disabled={!hydrated} onClick={() => setDeleteIds(projects.map((project) => project.id))}>
+                    {canvases.length ? (
+                        <Button disabled={!ready} onClick={() => setDeleteIds(canvases.map((canvas) => canvas.id))}>
                             {t("canvas.deleteAll")}
                         </Button>
                     ) : null}
-                    <Button disabled={!hydrated} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
+                    <Button disabled={!ready} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
                         {t("canvas.import")}
                     </Button>
-                    <Button disabled={!hydrated} type="primary" icon={<Plus className="size-4" />} onClick={createAndEnter}>
+                    <Button disabled={!ready} type="primary" icon={<Plus className="size-4" />} onClick={() => void createAndEnter()}>
                         {t("canvas.create")}
                     </Button>
                 </div>
 
-                {!hydrated ? (
+                {!ready ? (
                     <div className="mt-4 flex min-h-[240px] items-center justify-center text-sm text-stone-500">{t("canvas.loading")}</div>
-                ) : projects.length ? (
+                ) : canvases.length ? (
                     <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        {projects.map((project) => (
-                            <CanvasProjectCard key={project.id} project={project} />
+                        {canvases.map((canvas) => (
+                            <CanvasProjectCard key={canvas.id} project={canvas} />
                         ))}
                     </div>
                 ) : (
                     <div className="mt-4 flex min-h-[240px] flex-col items-center justify-center text-center">
                         <h2 className="text-lg font-medium">{t("canvas.empty")}</h2>
                         <p className="mt-2 text-sm text-stone-500">{t("canvas.emptyDescription")}</p>
-                        <Button type="primary" className="mt-5" icon={<Plus className="size-4" />} onClick={createAndEnter}>
+                        <Button type="primary" className="mt-5" icon={<Plus className="size-4" />} onClick={() => void createAndEnter()}>
                             {t("canvas.create")}
                         </Button>
                     </div>

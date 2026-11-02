@@ -53,16 +53,16 @@ export function CanvasTopBar({
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     const sidePanelOpen = useCanvasSidePanelStore((state) => state.panelOpen);
     const toggleSidePanel = useCanvasSidePanelStore((state) => state.togglePanel);
-    const projects = useCanvasStore((state) => state.projects);
+    const canvases = useCanvasStore((state) => state.canvases);
     // The canvas list is a panel over the canvas, not a route.
     const openManager = useCanvasPanelStore((state) => state.setCanvasManagerOpen);
     // Current canvas first, the rest most-recent-first: switching is a "where am I" question,
     // so the answer you are most likely looking for should not be buried.
     const orderedProjects = useMemo(() => {
-        const current = projects.find((project) => project.title === title);
-        const rest = projects.filter((project) => project !== current).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+        const current = canvases.find((canvas) => canvas.title === title);
+        const rest = canvases.filter((canvas) => canvas !== current).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
         return current ? [current, ...rest] : rest;
-    }, [projects, title]);
+    }, [canvases, title]);
 
     useEffect(() => {
         if (!isTitleEditing) return;
@@ -107,12 +107,7 @@ export function CanvasTopBar({
                                         ...orderedProjects.map((project) => ({
                                             key: project.id,
                                             icon: project.title === title ? <Check className="size-4" /> : undefined,
-                                            label: (
-                                                <span className="flex min-w-0 items-center justify-between gap-4">
-                                                    <span className="max-w-[200px] truncate">{project.title}</span>
-                                                    <span className="shrink-0 text-xs opacity-45">{t("canvas.node.nodeCount", { count: project.nodes.length })}</span>
-                                                </span>
-                                            ),
+                                            label: <span className="max-w-[200px] truncate">{project.title}</span>,
                                             onClick: () => onSwitchProject(project.id),
                                         })),
                                         { type: "divider" as const },

@@ -5253,3 +5253,64 @@ gateway, and the run and upload request shapes are covered by `tests/api-runs.te
 `hooks/use-local-gateway-sync.ts`, `components/settings/{app-config-modal,channel-editor-drawer}.tsx`,
 `components/layout/client-root-init.tsx`, `i18n/locales/*`, `tests/model-selection.test.ts`,
 `internal/httpx/middleware.go`.
+
+## 154. The canvas store is a cache, and one queue writes it
+
+**Decision** `use-canvas-store` no longer stores a document anywhere. It holds two things: `canvases`
+— the list the gateway reports, metadata only — and `projects`, the documents this session has opened.
+Every write goes through `lib/canvas/save-queue.ts`:
+
+- **coalesced** — a 400 ms debounce, so dragging a node is one save rather than sixty, and the save
+  carries the state at flush time rather than the state that queued it;
+- **serialized per canvas** — a save that starts while another is in flight marks the canvas dirty and
+  runs when the first finishes, because two saves racing would hand the gateway a stale `If-Match`;
+- **versioned** — `If-Match: <rev>`, so a save made against a version that has moved on is refused
+  instead of overwriting whatever arrived in between;
+- **honest about failure** — a network error is retried on a backoff and keeps the canvas dirty; a 409
+  adopts the new rev, retries, and tells the user their edits replaced someone else's; a 404 stops,
+  drops the canvas from the list and says so, because retrying a deleted canvas is an infinite loop
+  (found in the browser, not in a test: an old tab sat there answering 404 every few seconds).
+
+**Deleted with it** `stores/canvas/canvas-persist.ts` (the format versions and every `backfill*`
+migration between 0 and 3), `lib/persist-recovery.ts`, `components/layout/storage-recovery-banner.tsx`,
+`stores/use-storage-recovery-store.ts`, `lib/localforage-storage.ts`, `canvas-file-cleanup.ts`,
+`cleanupUnusedImages` / `cleanupUnusedMedia`, the two `*_generation_logs` object stores nothing had
+written to for several releases, and `defaultTitleKeyFor` with the list of default title keys:
+recognising a stored title as a translated default was migration work, and the migration is gone.
+
+**Why the media sweep could not stay** It walked every project to decide which `storageKey`s were
+alive, and the store no longer holds every project — only the ones you opened. A sweep that sees one
+canvas would delete the media of the rest, which is the one failure this design cannot tolerate. It
+comes back when the gateway owns `files/` (#155): a string scan of `canvas.json` for `files/<name>`
+finds the references without understanding a single node.
+
+**What the UI lost, and why that is correct** The canvas card and the switcher showed a node count.
+A count lives inside the document, and the list deliberately carries no document — so the count is
+gone rather than fetched per card. `deletedProjects` (id + deletedAt tombstones) is gone too: a delete
+is a delete (#152). `hydrated` became `ready`, which is what it now means: the first list has arrived.
+
+**One browser preference left, for one entry** "Which canvas was I in" is device state, not workspace
+state, and `lib/canvas/last-canvas.ts` keeps it in `localStorage` under `comfyloft:last_canvas`. It
+moves to `/api/settings` in #155 with the theme, the language and the panel widths.
+
+**A CORS bug this found** `If-Match` was not in the gateway's `Access-Control-Allow-Headers`, so every
+save failed its preflight and surfaced as `TypeError: Failed to fetch` — the sweep in #153 had removed
+`Authorization` from that list and nothing had taken its place. The header is allowed now, for the
+reason the comment beside it gives.
+
+**Tested** `npm run check` (i18n 917/903, 168 modules, prettier, `tsc`), 127 canvas tests including
+13 for the queue (coalescing, flush-time snapshot, no overlapping saves, conflict retry and give-up,
+transient-failure backoff, a new edit overtaking a retry, `flushAll`, `forget`, and a deleted canvas
+reported once and never retried), `make check`, `make verify-static`, `make web`.
+
+**In the browser, against a real gateway and the real ComfyUI** `/` created a canvas and a directory
+appeared under `CANVAS_ROOT`; adding a text node produced `PUT 200` and the node was in `canvas.json`;
+a reload brought the node back from disk; the canvas list showed what the gateway has; renaming in the
+list wrote the title into `canvas.meta.json` and advanced the `rev`; deleting removed the directory and
+shrank the list; the console stayed empty. The stale-id path was exercised by accident and behaved:
+a tab left on a canvas that no longer existed got `404`, went to `/`, and created a new one.
+
+**Where** `canvas/src/{services/api/canvases.ts,lib/canvas/{save-queue.ts,last-canvas.ts},stores/canvas/use-canvas-store.ts}`
+(new/rewritten), `pages/canvas/{entry.tsx,project.tsx}`, `components/{canvas/{canvas-manager-dialog,canvas-project-card,canvas-top-bar,canvas-delete-projects-dialog}.tsx,layout/{user-layout,client-root-init}.tsx}`,
+`services/{file-storage,image-storage}.ts`, `lib/canvas/node-title.ts`, `i18n/locales/*`,
+`tests/{canvas-save-queue,node-title}.test.ts`, `scripts/check-exports.cjs`, `internal/httpx/middleware.go`.

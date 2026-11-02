@@ -5,15 +5,17 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/kit/button";
 import { Input } from "@/components/kit/input";
-import { useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
+import type { CanvasSummary } from "@/services/api/canvases";
+import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasListStore } from "@/stores/canvas/use-canvas-list-store";
 import { useCanvasPanelStore } from "@/stores/canvas/use-canvas-panel-store";
 import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
 
-export function CanvasProjectCard({ project }: { project: CanvasProject }) {
+export function CanvasProjectCard({ project }: { project: CanvasSummary }) {
     const { i18n, t } = useTranslation();
     const navigate = useNavigate();
-    const renameProject = useCanvasStore((state) => state.renameProject);
+    const renameProject = useCanvasStore((state) => state.renameCanvas);
+    const loadCanvas = useCanvasStore((state) => state.loadCanvas);
     const selectedIds = useCanvasListStore((state) => state.selectedProjectIds);
     const editingId = useCanvasListStore((state) => state.editingProjectId);
     const editingTitle = useCanvasListStore((state) => state.editingProjectTitle);
@@ -32,7 +34,7 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
         navigate(`/canvas/${project.id}`);
     };
     const saveTitle = () => {
-        renameProject(project.id, editingTitle);
+        void renameProject(project.id, editingTitle);
         stopEditing();
     };
 
@@ -59,7 +61,6 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
                         }}
                     >
                         <h2 className="truncate text-xl font-semibold">{project.title}</h2>
-                        <p className="mt-3 text-sm leading-6 text-stone-600 dark:text-stone-400">{t("canvas.project.stats", { nodes: project.nodes.length, connections: project.connections.length })}</p>
                     </button>
                 )}
             </div>
@@ -73,7 +74,19 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
                         </>
                     ) : (
                         <>
-                            <Button type="text" size="small" shape="circle" icon={<Download className="size-4" />} onClick={() => void exportCanvasProjects([project], project.title || t("canvas.title"))} aria-label={t("canvas.project.export")} />
+                            <Button
+                                type="text"
+                                size="small"
+                                shape="circle"
+                                icon={<Download className="size-4" />}
+                                onClick={() =>
+                                    void (async () => {
+                                        const loaded = await loadCanvas(project.id);
+                                        if (loaded) await exportCanvasProjects([loaded], loaded.title || t("canvas.title"));
+                                    })()
+                                }
+                                aria-label={t("canvas.project.export")}
+                            />
                             <Button type="text" size="small" shape="circle" icon={<Pencil className="size-4" />} onClick={() => startEditing(project.id, project.title)} aria-label={t("canvas.project.rename")} />
                             <Button type="text" size="small" shape="circle" icon={<Trash2 className="size-4" />} onClick={() => setDeleteIds([project.id])} aria-label={t("canvas.project.delete")} />
                         </>

@@ -1,0 +1,190 @@
+import { CanvasConflictError, CanvasMissingError, type CanvasDocument, type CanvasSummary } from "@/services/api/canvases";
+
+/**
+ * The queue that turns "the canvas changed" into saves.
+ *
+ * The browser used to be the truth: a change updated the store and a debounce wrote the whole thing
+ * into IndexedDB. Now the document lives on disk and this queue is the only writer, which makes three
+ * things its job:
+ *
+ *   - **Coalescing.** Dragging a node is sixty changes a second. A save per change would be sixty
+ *     requests and sixty versions; the debounce means one, carrying whatever the canvas looks like
+ *     when it fires. The snapshot is read at flush time, not at schedule time, for exactly that
+ *     reason — a queued save must send the newest state, never the one that queued it.
+ *   - **Ordering.** One save per canvas at a time. A second flush while one is in flight does not
+ *     start a second request: it marks the canvas dirty again, and the in-flight save schedules the
+ *     next one when it finishes. That is what keeps `rev` meaningful — two saves racing each other
+ *     would hand the gateway a stale `If-Match` on purpose.
+ *   - **Deciding what a failure means.** A network error is temporary: retry with backoff and keep the
+ *     canvas dirty. A 409 is not temporary and not a failure of the network: someone else wrote this
+ *     canvas, so the caller is told, adopts the new rev, and the save is retried — the content on
+ *     screen is still unsaved, and losing it silently is the one outcome worth avoiding.
+ *
+ * Timers and the save function are injected so the whole thing is testable without a browser, which is
+ * the only reason this is a module rather than twenty lines inside the store.
+ */
+
+export type SaveSnapshot = { document: CanvasDocument; rev: string; title?: string };
+
+type SaveQueueOptions = {
+    /** The canvas as it is now, or null if it is gone (deleted while a save was queued). */
+    snapshot: (id: string) => SaveSnapshot | null;
+    save: (id: string, snapshot: SaveSnapshot) => Promise<CanvasSummary>;
+    onSaved: (id: string, summary: CanvasSummary) => void;
+    onConflict: (id: string, current: CanvasSummary) => void;
+    /** The canvas is gone. Nothing to retry: what is on screen can only be exported now. */
+    onMissing: (id: string) => void;
+    onError: (id: string, error: unknown) => void;
+    /** How long the canvas must sit still before a save fires. */
+    debounceMs?: number;
+    /** Delays for retrying a failed save. Running out does not drop the change; the next edit retries. */
+    retryDelaysMs?: number[];
+    /** How many times one canvas may lose the version race before the queue stops trying. */
+    maxConflicts?: number;
+    timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
+};
+
+export type SaveQueue = {
+    /** Note that a canvas changed. Idempotent: a burst of changes is one save. */
+    schedule: (id: string) => void;
+    /** Save now, cancelling the pending debounce. */
+    flush: (id: string) => Promise<void>;
+    /** Save every canvas that has anything pending. Used when the page is going away. */
+    flushAll: () => Promise<void>;
+    isDirty: (id: string) => boolean;
+    /** Drop everything known about a canvas, after it was deleted. */
+    forget: (id: string) => void;
+};
+
+type Entry = {
+    timer: unknown;
+    retry: unknown;
+    running: boolean;
+    dirty: boolean;
+    conflicts: number;
+    attempt: number;
+};
+
+export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
+    const debounceMs = options.debounceMs ?? 400;
+    const retryDelaysMs = options.retryDelaysMs ?? [1000, 2000, 5000];
+    const maxConflicts = options.maxConflicts ?? 3;
+    const timers = options.timers ?? globalThis;
+    const entries = new Map<string, Entry>();
+
+    const entryOf = (id: string): Entry => {
+        let entry = entries.get(id);
+        if (!entry) {
+            entry = { timer: undefined, retry: undefined, running: false, dirty: false, conflicts: 0, attempt: 0 };
+            entries.set(id, entry);
+        }
+        return entry;
+    };
+
+    const cancel = (handle: unknown) => {
+        if (handle !== undefined) timers.clearTimeout(handle as never);
+    };
+
+    /** A settled save: either it worked, or the canvas is dirty again and the caller has been told. */
+    const settle = (id: string, entry: Entry) => {
+        entry.running = false;
+        if (!entry.dirty || entry.timer !== undefined || entry.retry !== undefined) return;
+        // A change arrived while this save was in flight. Wait out a fresh debounce rather than
+        // firing immediately: the next keystroke is usually already on its way.
+        schedule(id);
+    };
+
+    const schedule = (id: string) => {
+        const entry = entryOf(id);
+        entry.dirty = true;
+        if (entry.running || entry.timer !== undefined) return;
+        cancel(entry.retry);
+        entry.retry = undefined;
+        entry.timer = timers.setTimeout(() => {
+            entry.timer = undefined;
+            void flush(id);
+        }, debounceMs);
+    };
+
+    const flush = async (id: string): Promise<void> => {
+        const entry = entryOf(id);
+        if (entry.running) return;
+        cancel(entry.timer);
+        entry.timer = undefined;
+
+        const snapshot = options.snapshot(id);
+        // Nothing to send: the canvas was deleted, or its document never loaded.
+        if (!snapshot) {
+            entry.dirty = false;
+            return;
+        }
+        if (!entry.dirty) return;
+
+        entry.dirty = false;
+        entry.running = true;
+        try {
+            const summary = await options.save(id, snapshot);
+            entry.conflicts = 0;
+            entry.attempt = 0;
+            cancel(entry.retry);
+            entry.retry = undefined;
+            options.onSaved(id, summary);
+        } catch (error) {
+            if (error instanceof CanvasMissingError) {
+                // Deleted under us. Retrying would answer 404 forever, and the user's next edit would
+                // queue another one, so the canvas stops being dirty and stops being saved.
+                entry.dirty = false;
+                options.onMissing(id);
+            } else if (isConflict(error)) {
+                entry.conflicts += 1;
+                options.onConflict(id, error.current);
+                if (entry.conflicts >= maxConflicts) {
+                    // Stop: a loop of conflicting saves would hammer the gateway and still lose.
+                    entry.dirty = false;
+                    options.onError(id, error);
+                } else {
+                    entry.dirty = true;
+                }
+            } else {
+                options.onError(id, error);
+                entry.dirty = true;
+                const delay = retryDelaysMs[entry.attempt];
+                if (delay !== undefined) {
+                    entry.attempt += 1;
+                    cancel(entry.retry);
+                    entry.retry = timers.setTimeout(() => {
+                        entry.retry = undefined;
+                        void flush(id);
+                    }, delay);
+                }
+            }
+        } finally {
+            entry.running = false;
+            if (entry.dirty) settle(id, entry);
+        }
+    };
+
+    const flushAll = async () => {
+        const ids = [...entries.entries()].filter(([, entry]) => entry.dirty || entry.timer !== undefined).map(([id]) => id);
+        await Promise.all(ids.map((id) => flush(id)));
+    };
+
+    return {
+        schedule,
+        flush,
+        flushAll,
+        isDirty: (id) => Boolean(entries.get(id)?.dirty),
+        forget: (id) => {
+            const entry = entries.get(id);
+            if (entry) {
+                cancel(entry.timer);
+                cancel(entry.retry);
+            }
+            entries.delete(id);
+        },
+    };
+}
+
+function isConflict(error: unknown): error is CanvasConflictError {
+    return error instanceof CanvasConflictError;
+}

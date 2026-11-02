@@ -24,6 +24,7 @@ const EXEMPT = new Set([path.join(WEB, "src/vite-env.d.ts")]);
 
 // 只被测试引用的导出，逐条写明理由。这里每多一行，就说明产品代码少一个调用者。
 const TEST_ONLY = new Map([
+    ["src/lib/canvas/save-queue.ts:SaveSnapshot", "保存队列的输入快照类型：队列自己的 `snapshot` 回调返回它、`save` 回调接收它，但产品代码里没人按名字写这个类型（都是推导出来的），所以只有测试需要指名构造一份"],
     ["src/lib/gateway-models.ts:modelsOf", "一个 workflow → 若干候选条目的映射，本身就是被测单元；gatewayModels 只是它的 fold"],
     ["src/services/api/http.ts:ApiError", "http.ts 抛出的错误类型，测试用它断言 status/body 的形状"],
     ["src/services/api/http.ts:readApiErrorMessage", "解析器本身是被测单元：表格用例覆盖 msg/message/error/detail/序列化 JSON/HTML 六种形状；从 apiErrorMessage 走会混进状态码兜底"],

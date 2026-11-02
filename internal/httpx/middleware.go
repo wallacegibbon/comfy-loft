@@ -111,7 +111,9 @@ func CORS(cfg *config.Config) Middleware {
 				w.Header().Add("Vary", "Origin")
 			}
 			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Requested-With, X-Request-Id")
+			// If-Match carries the canvas revision (#152): a preflight that refuses it turns every save
+			// into a network error the browser reports as "Failed to fetch".
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, If-Match, X-Requested-With, X-Request-Id")
 			w.Header().Set("Access-Control-Expose-Headers", "X-Request-Id")
 			w.Header().Set("Access-Control-Max-Age", "86400")
 			if r.Method == http.MethodOptions {

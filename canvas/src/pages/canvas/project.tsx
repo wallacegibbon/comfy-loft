@@ -17,7 +17,6 @@ import { nanoid } from "nanoid";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
-import { sweepUnusedCanvasFiles } from "@/lib/canvas/canvas-file-cleanup";
 import { IMAGE_UPSCALE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 import { VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH, applyGeneratedVideo } from "@/lib/canvas/canvas-generated-video";
 import { NODE_STATUS_ERROR, NODE_STATUS_IDLE, NODE_STATUS_LOADING, NODE_STATUS_SUCCESS } from "@/lib/canvas/canvas-node-status";
@@ -60,6 +59,7 @@ import { CanvasAgentPanel } from "@/components/canvas/canvas-agent-panel";
 import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
+import { forgetLastCanvas, rememberLastCanvas } from "@/lib/canvas/last-canvas";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { holdsResult } from "@/lib/canvas/node-prompt-field";
 import { useCanvasAgentTools } from "@/pages/canvas/hooks/use-canvas-agent-tools";
@@ -199,14 +199,15 @@ function InfiniteCanvasPage() {
     const effectiveConfig = useEffectiveConfig();
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
-    const hydrated = useCanvasStore((state) => state.hydrated);
-    const createProject = useCanvasStore((state) => state.createProject);
-    const openProject = useCanvasStore((state) => state.openProject);
-    const setLastProjectId = useCanvasStore((state) => state.setLastProjectId);
+    const ready = useCanvasStore((state) => state.ready);
+    const createCanvas = useCanvasStore((state) => state.createCanvas);
+    const loadCanvas = useCanvasStore((state) => state.loadCanvas);
     const updateProject = useCanvasStore((state) => state.updateProject);
-    const renameProject = useCanvasStore((state) => state.renameProject);
-    const deleteProjects = useCanvasStore((state) => state.deleteProjects);
+    const renameCanvas = useCanvasStore((state) => state.renameCanvas);
+    const deleteCanvases = useCanvasStore((state) => state.deleteCanvases);
+    const clearSaveError = useCanvasStore((state) => state.clearSaveError);
     const currentProject = useCanvasStore((state) => state.projects.find((project) => project.id === projectId));
+    const saveError = useCanvasStore((state) => state.saveErrors[projectId]);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const agentOpen = useCanvasAgentStore((state) => state.open);
     const toggleAgent = useCanvasAgentStore((state) => state.toggle);
@@ -279,10 +280,6 @@ function InfiniteCanvasPage() {
         }),
         [backgroundMode, showImageInfo],
     );
-
-    const cleanupCanvasFiles = useCallback((extra?: unknown) => {
-        sweepUnusedCanvasFiles({ extra, history: historyRef.current, lastHistory: lastHistoryRef.current });
-    }, []);
 
     const startGenerationRequest = useCallback((targetNodeId: string, originNodeId: string, runningId = originNodeId, controller = new AbortController()) => {
         const previous = generationRequestsRef.current.get(targetNodeId);
@@ -511,17 +508,22 @@ function InfiniteCanvasPage() {
     );
 
     useEffect(() => {
-        if (!hydrated) return;
+        if (!ready) return;
         setProjectLoaded(false);
-        const project = openProject(projectId);
-        if (!project) {
-            navigate("/", { replace: true });
-            return;
-        }
-        // Remember where the browser was, so `/` can send it back here.
-        setLastProjectId(projectId);
+        let live = true;
 
         const restore = async () => {
+            // The document is on disk now, so opening one is a request. A canvas that is not there is
+            // not an error to report: the id in the address bar is stale, and `/` knows what to do.
+            const project = await loadCanvas(projectId).catch(() => null);
+            if (!live) return;
+            if (!project) {
+                navigate("/", { replace: true });
+                return;
+            }
+            // Remember where the browser was, so `/` can send it back here.
+            rememberLastCanvas(projectId);
+
             const restoredNodes = await hydrateCanvasImages(clearStaleNodeErrors(resetInterruptedGeneration(project.nodes)));
             setNodes(restoredNodes);
             setConnections(project.connections);
@@ -540,10 +542,13 @@ function InfiniteCanvasPage() {
                 showImageInfo: project.showImageInfo || false,
             };
             setHistoryState({ canUndo: false, canRedo: false });
-            setProjectLoaded(true);
+            if (live) setProjectLoaded(true);
         };
         void restore();
-    }, [hydrated, navigate, openProject, projectId, setLastProjectId]);
+        return () => {
+            live = false;
+        };
+    }, [ready, loadCanvas, navigate, projectId]);
 
     useEffect(() => {
         if (!projectLoaded) return;
@@ -598,6 +603,14 @@ function InfiniteCanvasPage() {
             if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
         };
     }, [projectId, projectLoaded, updateProject, viewport]);
+
+    // A save that failed, or lost the version race, is said out loud once. Silence here would mean
+    // edits disappearing while the canvas looks perfectly saved.
+    useEffect(() => {
+        if (!saveError) return;
+        toast.error(saveError);
+        clearSaveError(projectId);
+    }, [clearSaveError, projectId, saveError]);
 
     useLayoutEffect(() => {
         nodesRef.current = nodes;
@@ -957,9 +970,8 @@ function InfiniteCanvasPage() {
             setReferencePickerNodeId((current) => (current && allIds.has(current) ? null : current));
             setExpandedBatchNodeIds((current) => new Set([...current].filter((nodeId) => !allIds.has(nodeId))));
             setContextMenu((current) => (current?.type === "node" && allIds.has(current.nodeId) ? null : current));
-            cleanupCanvasFiles({ projectId, nodes: nodesRef.current.filter((node) => !allIds.has(node.id)) });
         },
-        [cleanupCanvasFiles, projectId],
+        [projectId],
     );
 
     const groupSelection = useCallback(() => {
@@ -1085,8 +1097,7 @@ function InfiniteCanvasPage() {
         setRunningNodeId(null);
         deselectCanvas();
         setClearConfirmOpen(false);
-        cleanupCanvasFiles({ projectId, nodes: [] });
-    }, [cleanupCanvasFiles, deselectCanvas, projectId]);
+    }, [deselectCanvas, projectId]);
 
     const duplicateNode = useCallback((nodeId: string) => {
         const source = nodesRef.current.find((node) => node.id === nodeId);
@@ -1281,30 +1292,41 @@ function InfiniteCanvasPage() {
         applyHistory(next);
     }, [applyHistory]);
 
-    const createAndOpenProject = useCallback(() => {
-        const id = createProject(t("canvas.defaultTitle", { count: useCanvasStore.getState().projects.length + 1 }));
-        navigate(`/canvas/${id}`);
-    }, [createProject, navigate, t]);
+    const createAndOpenProject = useCallback(async () => {
+        try {
+            const id = await createCanvas(t("canvas.defaultTitle", { count: useCanvasStore.getState().canvases.length + 1 }));
+            navigate(`/canvas/${id}`);
+        } catch (error) {
+            console.error(error);
+            toast.error(t("canvas.createFailed"));
+        }
+    }, [createCanvas, navigate, t]);
 
     // Deleting the canvas you are standing on throws away the view as well as the record, and nothing
     // brings it back. A red menu entry one click deep is not enough of a warning for that.
     const deleteCurrentProject = useCallback(() => {
-        const title = useCanvasStore.getState().projects.find((item) => item.id === projectId)?.title || t("canvas.runtime.untitledCanvas");
+        const title = useCanvasStore.getState().canvases.find((item) => item.id === projectId)?.title || t("canvas.runtime.untitledCanvas");
         confirm({
             title: t("canvas.deleteCurrentTitle"),
             content: t("canvas.deleteCurrentDescription", { name: title }),
             okText: t("canvas.project.delete"),
             cancelText: t("common.cancel"),
             danger: true,
-            onOk: () => {
-                deleteProjects([projectId]);
-                cleanupCanvasFiles();
+            onOk: async () => {
+                try {
+                    await deleteCanvases([projectId]);
+                } catch (error) {
+                    console.error(error);
+                    toast.error(t("canvas.deleteFailed"));
+                    return;
+                }
+                forgetLastCanvas(projectId);
                 // The canvas's agent conversation is a file on the gateway; deleting the canvas ends it.
                 void forgetCanvasConversation(effectiveConfig, projectId);
                 navigate("/canvas");
             },
         });
-    }, [cleanupCanvasFiles, deleteProjects, effectiveConfig, navigate, projectId, t]);
+    }, [deleteCanvases, effectiveConfig, navigate, projectId, t]);
 
     const exportCurrentProject = useCallback(async () => {
         const project = useCanvasStore.getState().projects.find((item) => item.id === projectId);
@@ -1917,9 +1939,9 @@ function InfiniteCanvasPage() {
 
     const finishTitleEditing = useCallback(() => {
         const nextTitle = titleDraft.trim();
-        if (nextTitle) renameProject(projectId, nextTitle);
+        if (nextTitle) void renameCanvas(projectId, nextTitle);
         setTitleEditing(false);
-    }, [projectId, renameProject, titleDraft]);
+    }, [projectId, renameCanvas, titleDraft]);
 
     const preventCanvasContextMenu = useCallback((event: ReactMouseEvent) => {
         if ((event.target as HTMLElement).closest("[data-node-id]")) return;

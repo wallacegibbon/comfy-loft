@@ -1,0 +1,151 @@
+import { LOCAL_GATEWAY_BASE_URL } from "@/constant/app-mode";
+import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
+import { ApiError, httpJson, httpVoid } from "@/services/api/http";
+import type { CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
+
+/**
+ * The canvas documents, as the gateway keeps them.
+ *
+ * A canvas is two halves on the wire and one object here. The server owns the summary — id, title,
+ * timestamps and `rev` — and never looks inside `document`, which is the canvas's own shape
+ * (`docs/decisions.md` #152). Keeping them apart in the types is what stops a caller from believing
+ * that editing a node changes anything on the server before a save says so.
+ */
+
+const BASE = `${LOCAL_GATEWAY_BASE_URL}/api/canvases`;
+
+export type CanvasSummary = {
+    id: string;
+    title: string;
+    createdAt: string;
+    updatedAt: string;
+    /** The version a save must name to be accepted. */
+    rev: string;
+    bytes: number;
+};
+
+/** Everything a canvas holds that is the canvas's business rather than the gateway's. */
+export type CanvasDocument = {
+    nodes: CanvasNodeData[];
+    connections: CanvasConnection[];
+    backgroundMode: CanvasBackgroundMode;
+    showImageInfo: boolean;
+    viewport: ViewportTransform;
+};
+
+type CanvasRecord = {
+    summary: CanvasSummary;
+    document: CanvasDocument;
+};
+
+/** A save that named a version older than the one on disk. `current` is what is there now. */
+export class CanvasConflictError extends Error {
+    constructor(readonly current: CanvasSummary) {
+        super("the canvas changed since it was read");
+        this.name = "CanvasConflictError";
+    }
+}
+
+/** A save for a canvas that is no longer there: deleted here, in another tab, or by hand. */
+export class CanvasMissingError extends Error {
+    constructor() {
+        super("this canvas no longer exists");
+        this.name = "CanvasMissingError";
+    }
+}
+
+/** The document as a new canvas starts: no nodes, a blank view, the default background. */
+export function emptyCanvasDocument(): CanvasDocument {
+    return { nodes: [], connections: [], backgroundMode: "lines", showImageInfo: false, viewport: { x: 0, y: 0, k: 1 } };
+}
+
+/** Fill in whatever a document is missing, so a canvas written by an older build still opens. */
+function readDocument(raw: unknown): CanvasDocument {
+    const source = (raw || {}) as Partial<CanvasDocument>;
+    const empty = emptyCanvasDocument();
+    return {
+        nodes: Array.isArray(source.nodes) ? source.nodes : empty.nodes,
+        connections: Array.isArray(source.connections) ? source.connections : empty.connections,
+        backgroundMode: source.backgroundMode || empty.backgroundMode,
+        showImageInfo: Boolean(source.showImageInfo),
+        viewport: source.viewport && typeof source.viewport.k === "number" ? source.viewport : empty.viewport,
+    };
+}
+
+/** The embedded summary in a `{canvas}` payload, with the document split back out. */
+function readRecord(payload: { canvas?: unknown }): CanvasRecord {
+    const canvas = (payload.canvas || {}) as CanvasSummary & { document?: unknown };
+    const { document, ...summary } = canvas;
+    return { summary: summary as CanvasSummary, document: readDocument(document) };
+}
+
+/** Every canvas, newest first. */
+export async function requestCanvases(): Promise<CanvasSummary[]> {
+    const payload = await httpJson<{ canvases?: CanvasSummary[] }>(BASE, { timeout: 8000 });
+    return Array.isArray(payload?.canvases) ? payload.canvases : [];
+}
+
+/** One canvas with its document, or null when there is no canvas with that id. */
+export async function requestCanvas(id: string): Promise<CanvasRecord | null> {
+    try {
+        return readRecord(await httpJson<{ canvas?: unknown }>(`${BASE}/${id}`, { timeout: 8000 }));
+    } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+    }
+}
+
+/** Create a canvas. The document travels with it, so there is no window where it exists but is empty. */
+export async function requestCanvasCreate(title: string, document: CanvasDocument): Promise<CanvasRecord> {
+    const payload = await httpJson<{ canvas?: unknown }>(BASE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, document }),
+        timeout: 8000,
+    });
+    return readRecord(payload);
+}
+
+/**
+ * Save the document.
+ *
+ * `rev` is the version this save was made against, sent as `If-Match`. A gateway that has moved on
+ * answers 409 with the current summary, which becomes a `CanvasConflictError` rather than a plain
+ * failure: the caller has to decide something different for it than it would for a network error.
+ */
+export async function requestCanvasSave(id: string, rev: string, document: CanvasDocument, title?: string): Promise<CanvasSummary> {
+    try {
+        const payload = await httpJson<{ summary?: CanvasSummary }>(`${BASE}/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", ...(rev ? { "If-Match": `"${rev}"` } : {}) },
+            body: JSON.stringify(title === undefined ? { document } : { document, title }),
+            timeout: 8000,
+        });
+        if (!payload?.summary?.rev) throw new ApiError(502, payload);
+        return payload.summary;
+    } catch (error) {
+        const current = conflictedSummary(error);
+        if (current) throw new CanvasConflictError(current);
+        // 404 is not a temporary failure: the directory is gone, and a retry would 404 forever.
+        if (error instanceof ApiError && error.status === 404) throw new CanvasMissingError();
+        throw error;
+    }
+}
+
+/** Delete a canvas and everything under it. A canvas that is already gone is not an error. */
+export async function requestCanvasDelete(id: string): Promise<void> {
+    try {
+        await httpVoid(`${BASE}/${id}`, { method: "DELETE", timeout: 8000 });
+    } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return;
+        throw error;
+    }
+}
+
+/** The current summary out of a 409, if that is what this is. */
+function conflictedSummary(error: unknown): CanvasSummary | null {
+    if (!(error instanceof ApiError) || error.status !== 409) return null;
+    const body = error.data as { error?: { details?: { current?: CanvasSummary } } };
+    const current = body?.error?.details?.current;
+    return current?.rev ? current : null;
+}

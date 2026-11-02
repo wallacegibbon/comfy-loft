@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import i18n from "@/i18n";
-import { defaultTitleKeyFor, nodeTitle } from "@/lib/canvas/node-title";
+import { nodeTitle } from "@/lib/canvas/node-title";
 import { channelName, normalizeChannelModels } from "@/stores/use-config-store";
 
 /**
@@ -31,25 +31,6 @@ describe("nodeTitle", () => {
 
     it("is empty when the node has neither, so the caller can substitute its own word", () => {
         expect(nodeTitle({}, en)).toBe("");
-    });
-});
-
-describe("defaultTitleKeyFor", () => {
-    it("recognises a stored title in either language", () => {
-        expect(defaultTitleKeyFor("音频")).toBe("canvas.nodeTypes.audio");
-        expect(defaultTitleKeyFor("Audio")).toBe("canvas.nodeTypes.audio");
-        expect(defaultTitleKeyFor("图片放大")).toBe("canvas.superResolve.fastTitle");
-        expect(defaultTitleKeyFor("Upscale image")).toBe("canvas.superResolve.fastTitle");
-    });
-
-    it("leaves a title the user typed alone", () => {
-        expect(defaultTitleKeyFor("My hero shot")).toBeNull();
-        expect(defaultTitleKeyFor("a.png 1-1")).toBeNull();
-        expect(defaultTitleKeyFor("")).toBeNull();
-    });
-
-    it("only matches whole titles, not a default that happens to be a prefix", () => {
-        expect(defaultTitleKeyFor("图片放大 v2")).toBeNull();
     });
 });
 

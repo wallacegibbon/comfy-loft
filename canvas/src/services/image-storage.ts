@@ -16,8 +16,6 @@ export type UploadedImage = {
 
 const store = localforage.createInstance({ name: APP_DATABASE, storeName: "image_files" });
 const previewStore = localforage.createInstance({ name: APP_DATABASE, storeName: "image_previews" });
-const imageLogStore = localforage.createInstance({ name: APP_DATABASE, storeName: "image_generation_logs" });
-const videoLogStore = localforage.createInstance({ name: APP_DATABASE, storeName: "video_generation_logs" });
 const objectUrls = new Map<string, string>();
 const previewUrls = new Map<string, string>();
 const previewListeners = new Set<() => void>();
@@ -226,46 +224,6 @@ export async function imageToDataUrl(image: { url?: string; dataUrl?: string; st
     const url = image.dataUrl || (await resolveImageUrl(image.storageKey, image.url || ""));
     if (!url || url.startsWith("data:")) return url;
     return blobToDataUrl(await fetchImageBlob(url, options));
-}
-
-async function deleteStoredImages(keys: Iterable<string>) {
-    await Promise.all(
-        Array.from(new Set(keys)).map(async (key) => {
-            const url = objectUrls.get(key);
-            if (url) URL.revokeObjectURL(url);
-            objectUrls.delete(key);
-            await deleteImagePreview(key);
-            await store.removeItem(key);
-        }),
-    );
-}
-
-export async function cleanupUnusedImages(usedData: unknown) {
-    const usedKeys = collectImageStorageKeys(usedData);
-    await Promise.all([
-        imageLogStore.iterate((value) => {
-            collectImageStorageKeys(value, usedKeys);
-        }),
-        videoLogStore.iterate((value) => {
-            collectImageStorageKeys(value, usedKeys);
-        }),
-    ]);
-    const unused: string[] = [];
-    await store.iterate((_value, key) => {
-        if (!usedKeys.has(key)) unused.push(key);
-    });
-    const orphanPreviews: string[] = [];
-    await previewStore.iterate((_value, key) => {
-        if (!usedKeys.has(key)) orphanPreviews.push(key);
-    });
-    await Promise.all([deleteStoredImages(unused), ...orphanPreviews.map(deleteImagePreview)]);
-}
-
-function collectImageStorageKeys(value: unknown, keys = new Set<string>()) {
-    if (!value || typeof value !== "object") return keys;
-    if ("storageKey" in value && typeof value.storageKey === "string" && value.storageKey.startsWith("image:")) keys.add(value.storageKey);
-    Object.values(value).forEach((item) => (Array.isArray(item) ? item.forEach((child) => collectImageStorageKeys(child, keys)) : collectImageStorageKeys(item, keys)));
-    return keys;
 }
 
 function blobToDataUrl(blob: Blob) {
