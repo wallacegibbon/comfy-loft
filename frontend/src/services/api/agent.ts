@@ -332,33 +332,38 @@ export function sendAgentMessage(name: string, message: AgentMessage): boolean {
 async function askAgentSession(name: string, request: { prompt: string; images?: ReferenceImage[] }, options?: { signal?: AbortSignal; onEvent?: (event: AgentEvent) => void }): Promise<string> {
     const live = sessions.get(name);
     if (!live || live.socket.readyState !== WebSocket.OPEN) throw new Error(apiText("requestFailed"));
+    // A signal that already fired never calls its listener, so the turn would wait for an answer nobody is
+    // going to stop asking for.
+    if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
     const images = await Promise.all((request.images || []).map((image) => imageToDataUrl(image)));
     const listener = options?.onEvent;
     const registry = listener ? listenersOf(name) : undefined;
     if (listener && registry) registry.add(listener);
 
+    let detach = () => {};
     try {
         return await new Promise<string>((resolve, reject) => {
             const turn: Turn = { answer: "", resolve: () => resolve(turn.answer), reject };
             live.waiting = turn;
-            options?.signal?.addEventListener(
-                "abort",
-                () => {
-                    if (live.waiting === turn) live.waiting = undefined;
-                    cancelAgentSession(name);
-                    // A stopped turn is not a failed one: the name is what the callers test, and a
-                    // translated sentence here read as an error and marked the node red.
-                    reject(new DOMException("Aborted", "AbortError"));
-                },
-                { once: true },
-            );
+            const onAbort = () => {
+                if (live.waiting === turn) live.waiting = undefined;
+                cancelAgentSession(name);
+                // A stopped turn is not a failed one: the name is what the callers test, and a
+                // translated sentence here read as an error and marked the node red.
+                reject(new DOMException("Aborted", "AbortError"));
+            };
+            // Detached when the turn ends, so the listener cannot outlive it: an abort that arrives after
+            // the answer would otherwise cancel whatever the agent is doing next.
+            detach = () => options?.signal?.removeEventListener("abort", onAbort);
+            options?.signal?.addEventListener("abort", onAbort, { once: true });
             if (!sendAgentMessage(name, { prompt: request.prompt, images })) {
                 live.waiting = undefined;
                 reject(new Error(apiText("requestFailed")));
             }
         });
     } finally {
+        detach();
         if (listener && registry) registry.delete(listener);
     }
 }
