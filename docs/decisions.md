@@ -5688,3 +5688,51 @@ the point, but it is friction, and it is why the stub lives next to the cases ra
 the artifact is fetched from anywhere but `GET /api/canvases/{id}/files/{name}`.
 
 **Where** `frontend/tests/api-image-upscale.test.ts`, `frontend/tests/api-video-runs.test.ts`.
+
+## 163. A citation is an id, and two nodes may share a name
+
+**Decision** A citation in the agent panel is a node id plus the label the message shows. When the label is a
+name another citation in the same draft already uses, it gets an ordinal (`图片`, `图片 2`), and the block the
+prompt carries records both: `- <id> (<kind>) <label>: <prompt>`. A mention in the transcript is read back as
+pairs and the click follows the id; the canvas's current titles are only a fallback for a sentence that cited
+nothing.
+
+**The report** Two `@` mentions that read the same, pointing at two different nodes, both jumped to the first
+one.
+
+**What was actually happening** `withMentions` collected `message.mentions` and then every node on the canvas,
+and deduped **by title**, keeping the first. With two citations of `图片` the second was dropped before the
+text was even scanned, so both occurrences matched the one survivor and focused its node. The dedupe was not
+the only problem, it was the visible one: the code treated a name as an identity, and names are not unique
+here. A node's title is the translation of its type by default (`canvas.nodeTypes.image`), so a canvas with
+five images has five nodes called `图片` — the case the panel was built for is the case that broke.
+
+**Why it read as working** #106 tested the block with two nodes that had different titles. Everything about
+the mapping was correct except the part nothing exercised: that the token is not the identity.
+
+**The fix** Three small pieces, in the module that already owned the format:
+
+- `citationLabel(base, taken)` hands out the name, or the name with the first free ordinal, so the token a
+  message shows is unique inside that message.
+- `mentionSegments(text, citations, nodes)` cuts a message into plain runs and links, taking each link's id
+  from the message's citations in order. A transcript written before labels were unique — two identical
+  tokens, two ids — is read one citation per occurrence, which is the most two identical words can support.
+- The panel keeps `{id, label}` for each citation, writes the label into the draft, and describes the node to
+  the agent with the same label. It also cites `nodeTitle(node, t)` rather than the stored `title` snapshot, so
+  a canvas created in Chinese and read in English cites the words on the screen.
+
+**What it buys beyond the click** The agent reads `图片 2` with an id beside it, so a tool call can name the
+second image instead of "the image" — the same ambiguity was in the prompt, not only in the link.
+
+**Cost** The block's third field is the token, not always the node's name; a node whose title contains the
+block's own `: ` still loses its tail when read back (#106's cost, unchanged). And the draft now reads
+`@图片 2` where the user might have expected their node's name — true, and unavoidable while two nodes answer
+to that name.
+
+**Tested** `tests/agent-references.test.ts`: `citationLabel` numbering, two citations that read the same
+resolving to two ids, a legacy transcript with identical tokens, a citation beating a node of the same name,
+the longest label winning (`图片 10` before `图片 1`), and an `@` that names nothing staying text. Gates:
+`npx vitest run` (136), `npm run check`, `make check`, `make frontend`.
+
+**Where** `frontend/src/lib/canvas/agent-references.ts`,
+`frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/tests/agent-references.test.ts`.

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useTranslation } from "react-i18next";
 import { ArrowUp, Bot, LoaderCircle, Square, Wrench, X } from "lucide-react";
 
-import { referenceBlock, referenceEntries, referenceLine, withoutReferences } from "@/lib/canvas/agent-references";
+import { citationLabel, mentionSegments, referenceBlock, referenceEntries, referenceLine, withoutReferences, type Citation } from "@/lib/canvas/agent-references";
+import { nodeTitle } from "@/lib/canvas/node-title";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { AgentSettingsControls } from "./agent-settings-controls";
 import { cancelAgentSession, canvasAgent, closeAgentSession, onAgentEvent, openAgentSession, sendAgentMessage, type AgentEvent } from "@/services/api/agent";
@@ -25,8 +26,8 @@ type Message = {
     id: string;
     role: "user" | "assistant" | "error";
     text: string;
-    /** The nodes this message cited, read back from the reference block: `@title` in the text is one. */
-    mentions: { id: string; title: string }[];
+    /** The nodes this message cited: their ids, and the label the message shows for each. */
+    mentions: Citation[];
     reasoning: string;
     tools: ToolStep[];
     /** An assistant message is still being written until the agent says the turn ended. */
@@ -78,8 +79,13 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
      * outright on delivery, not decremented: one delivery empties the queue.
      */
     const [steering, setSteering] = useState(0);
-    /** The nodes this draft mentions, by id. They travel with the message as context. */
-    const [cited, setCited] = useState<string[]>([]);
+    /**
+     * The nodes this draft cites, in the order they were cited, each with the label the text shows.
+     *
+     * The id is what the click follows and the label is what the reader sees; keeping both here is what
+     * makes two nodes with the same name two citations instead of one (#162).
+     */
+    const [citations, setCitations] = useState<Citation[]>([]);
 
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -206,11 +212,20 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         } catch {
             return;
         }
-        const context = referenceBlock(t("canvas.agent.contextMarker"), cited.map((id) => describeNode(nodes.find((node) => node.id === id))).filter(Boolean));
+        const context = referenceBlock(
+            t("canvas.agent.contextMarker"),
+            citations.flatMap((citation) => {
+                const line = describeNode(
+                    nodes.find((node) => node.id === citation.id),
+                    citation.label,
+                );
+                return line ? [line] : [];
+            }),
+        );
         // Nothing is drawn here. What the panel shows is the conversation the agent reports — its echo of
         // this message, then what it answers — so there is one copy of it and no second one to keep in step.
         setDraft("");
-        setCited([]);
+        setCitations([]);
         setBusy(true);
         sendAgentMessage(session, { prompt: context + text });
     };
@@ -308,11 +323,19 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         pickAtRef.current = -1;
         if (at < 0) return;
         const node = nodes.find((candidate) => candidate.id === nodeId);
-        const label = node?.title || nodeId;
+        // The label is what the node is called on the canvas — the same words the reader sees — with an
+        // ordinal when that name is already cited here: a second image node is also called `图片`.
+        const already = citations.find((citation) => citation.id === nodeId);
+        const label = already
+            ? already.label
+            : citationLabel(
+                  node ? nodeTitle(node, t) || nodeId : nodeId,
+                  citations.map((citation) => citation.label),
+              );
         // The `@` and the space around the label: the next thing typed belongs after it, not inside it.
         caretRef.current = at + label.length + 2;
         setDraft((current) => `${current.slice(0, at)}@${label} ${current.slice(at + 1)}`);
-        setCited((current) => (current.includes(nodeId) ? current : [...current, nodeId]));
+        setCitations((current) => (current.some((citation) => citation.id === nodeId) ? current : [...current, { id: nodeId, label }]));
     };
 
     // The click happened on the canvas, so the box has to take the focus and the caret back once the draft is
@@ -419,7 +442,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                                 ))}
                             </div>
                         ) : null}
-                        {message.text ? <p className="whitespace-pre-wrap leading-relaxed">{withMentions(message, nodes, onFocusNode, theme.node.activeStroke)}</p> : null}
+                        {message.text ? <p className="whitespace-pre-wrap leading-relaxed">{withMentions(message, nodes, t, onFocusNode, theme.node.activeStroke)}</p> : null}
                         {message.role === "assistant" && !message.text && message.streaming ? (
                             <p className="flex items-center gap-1.5 text-xs opacity-50">
                                 <LoaderCircle className="size-3 animate-spin" />
@@ -498,48 +521,37 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
     );
 }
 
-/** How one cited node is described to the agent. Ids are what a tool call could act on; the text is what
- * a model can read today. */
+/** How one cited node is described to the agent. Ids are what a tool call could act on; the label and
+ * the text are what a model can read today. */
 /**
- * A message's text with its `@title` mentions as links to the node, coloured like one.
+ * A message's text with each `@label` citation as a link to the node it cited.
  *
- * Which node a mention means comes from the message itself when it cited something — the block records the
- * ids — and otherwise from the canvas's current titles, so an answer that names a node is clickable too.
- * Clicking does what clicking a row in the side panel does: the canvas moves to that node and selects it.
+ * Which node a mention means comes from the message itself: the block it was sent with carries an id per
+ * citation, so two nodes that share a name are two links, not one (#162). A node the canvas still names is
+ * the fallback, so an answer that mentions something is clickable too. Clicking does what clicking a row in
+ * the side panel does: the canvas moves to that node and selects it.
  */
-function withMentions(message: Message, nodes: CanvasNodeData[], onFocusNode: (nodeId: string) => void, color: string): ReactNode {
-    const targets = [...message.mentions, ...nodes.map((node) => ({ id: node.id, title: node.title || "" }))].filter((target) => target.title);
-    const seen = new Set<string>();
-    const titles = targets.filter((target) => (seen.has(target.title) ? false : (seen.add(target.title), true))).sort((a, b) => b.title.length - a.title.length);
-    if (!titles.length) return message.text;
-
-    const parts: ReactNode[] = [];
-    let plain = "";
-    let index = 0;
-    while (index < message.text.length) {
-        const hit = message.text[index] === "@" ? titles.find((target) => message.text.startsWith(target.title, index + 1)) : undefined;
-        if (!hit) {
-            plain += message.text[index];
-            index += 1;
-            continue;
-        }
-        if (plain) parts.push(plain);
-        plain = "";
-        parts.push(
-            <button key={`${index}-${hit.id}`} type="button" className="cursor-pointer rounded px-0.5 font-medium hover:underline" style={{ color }} onClick={() => onFocusNode(hit.id)}>
-                {`@${hit.title}`}
-            </button>,
-        );
-        index += 1 + hit.title.length;
-    }
-    if (plain) parts.push(plain);
-    return parts;
+function withMentions(message: Message, nodes: CanvasNodeData[], translate: (key: string) => string, onFocusNode: (nodeId: string) => void, color: string): ReactNode {
+    const segments = mentionSegments(
+        message.text,
+        message.mentions,
+        nodes.map((node) => ({ id: node.id, label: nodeTitle(node, translate) })),
+    );
+    if (segments.every((segment) => segment.kind === "text")) return message.text;
+    return segments.map((segment, index) =>
+        segment.kind === "text" ? (
+            segment.text
+        ) : (
+            <button key={`${index}-${segment.id}`} type="button" className="cursor-pointer rounded px-0.5 font-medium hover:underline" style={{ color }} onClick={() => onFocusNode(segment.id)}>
+                {`@${segment.label}`}
+            </button>
+        ),
+    );
 }
 
-function describeNode(node?: CanvasNodeData): string {
+function describeNode(node: CanvasNodeData | undefined, label: string): string {
     if (!node) return "";
     const kind = NODE_LABEL[node.type] || node.type;
-    const title = node.title || "";
     const prompt = (node.metadata?.prompt || node.metadata?.texts?.[0]?.content || "").slice(0, 200);
-    return referenceLine(node.id, kind, title, prompt);
+    return referenceLine(node.id, kind, label, prompt);
 }
