@@ -1,9 +1,18 @@
-import localforage from "localforage";
-
-import { nanoid } from "nanoid";
 import i18n from "@/i18n";
-import { createImageThumbnail } from "@/lib/image-thumbnail";
-import { APP_DATABASE } from "@/services/localforage-databases";
+import { activeCanvasId, activeFileUrl, uploadCanvasFile } from "@/services/canvas-files";
+
+/**
+ * Images, as canvas files.
+ *
+ * Both the bytes and the thumbnails used to live in IndexedDB: `image_files` held every picture a node
+ * showed and `image_previews` held a WebP per picture, generated in this browser and valid only in this
+ * browser. The originals now live in the canvas directory (#156) and are addressed by `files/<name>`;
+ * the *browser* HTTP cache replaces the previews, because a canvas file's name never changes, so its URL
+ * is its ETag.
+ *
+ * The exported names are unchanged on purpose: `resolveImageUrl` still answers "what do I put in an
+ * `img src`", and every caller kept working when the answer stopped being a blob URL.
+ */
 
 export type UploadedImage = {
     url: string;
@@ -14,23 +23,13 @@ export type UploadedImage = {
     mimeType: string;
 };
 
-const store = localforage.createInstance({ name: APP_DATABASE, storeName: "image_files" });
-const previewStore = localforage.createInstance({ name: APP_DATABASE, storeName: "image_previews" });
-const objectUrls = new Map<string, string>();
-const previewUrls = new Map<string, string>();
-const previewListeners = new Set<() => void>();
-let previewRevision = 0;
-let previewQueue: Promise<unknown> = Promise.resolve();
-const IMAGE_PREVIEW_VERSION = 1;
+type ImageReadOptions = { signal?: AbortSignal };
+
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
 const IMAGE_REMOTE_LOAD_TIMEOUT_MS = 10 * 60_000;
 const IMAGE_DECODE_TIMEOUT_MS = 10_000;
 const IMAGE_RESPONSE_ERROR = "ImageResponseError";
 const IMAGE_TIMEOUT_ERROR = "ImageTimeoutError";
-
-type StoredImagePreview = { version: number; blob?: Blob };
-
-type ImageReadOptions = { signal?: AbortSignal };
 
 export async function uploadImage(input: string | Blob, options?: ImageReadOptions): Promise<UploadedImage> {
     if (typeof input !== "string") return storeImage(input, options);
@@ -39,6 +38,7 @@ export async function uploadImage(input: string | Blob, options?: ImageReadOptio
     try {
         blob = await fetchImageBlob(input, options);
     } catch (error) {
+        // A remote URL that cannot be downloaded but can be displayed is still usable as a reference.
         if (options?.signal?.aborted || isNamedError(error, IMAGE_RESPONSE_ERROR) || isNamedError(error, IMAGE_TIMEOUT_ERROR) || !/^https?:\/\//i.test(input)) throw error;
         const meta = await loadImageMeta(input, options, IMAGE_REMOTE_LOAD_TIMEOUT_MS);
         if (!meta) throw error;
@@ -48,22 +48,51 @@ export async function uploadImage(input: string | Blob, options?: ImageReadOptio
 }
 
 async function storeImage(blob: Blob, options?: ImageReadOptions): Promise<UploadedImage> {
-    const storageKey = `image:${nanoid()}`;
-    const url = URL.createObjectURL(blob);
-    try {
-        const meta = await loadImageMeta(url, options);
-        if (!meta) throw new Error(i18n.t("common.imageReadFailed"));
-        throwIfAborted(options?.signal);
-        await store.setItem(storageKey, blob);
-        throwIfAborted(options?.signal);
-        objectUrls.set(storageKey, url);
-        await storeImagePreview(storageKey, blob);
-        return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type.startsWith("image/") ? blob.type : "" };
-    } catch (error) {
-        URL.revokeObjectURL(url);
-        await store.removeItem(storageKey).catch(() => undefined);
-        throw error;
-    }
+    const canvasId = activeCanvasId();
+    if (!canvasId) throw new Error(i18n.t("apiErrors.noCanvas"));
+    const meta = await loadImageMeta(URL.createObjectURL(blob), options);
+    if (!meta) throw new Error(i18n.t("common.imageReadFailed"));
+    throwIfAborted(options?.signal);
+    const uploaded = await uploadCanvasFile(canvasId, blob, `image.${extensionOf(blob)}`, options?.signal);
+    return { url: uploaded.url, storageKey: uploaded.key, width: meta.width, height: meta.height, bytes: uploaded.bytes, mimeType: uploaded.mimeType.startsWith("image/") ? uploaded.mimeType : "" };
+}
+
+/** Where an image reference is shown from. Empty for a reference this build cannot resolve. */
+export async function resolveImageUrl(storageKey?: string, fallback = "") {
+    return activeFileUrl(storageKey) || fallback;
+}
+
+/** Thumbnails are the browser's job now: the same URL, cached by the HTTP layer. */
+export function previewUrlFor(storageKey?: string) {
+    const url = activeFileUrl(storageKey);
+    return url || undefined;
+}
+
+/** Kept for the components that re-render when a preview appears; nothing appears later now. */
+export function subscribeImagePreviews(_listener: () => void) {
+    return () => {};
+}
+
+export function getImagePreviewRevision() {
+    return 0;
+}
+
+export async function ensureImagePreview(storageKey?: string) {
+    return previewUrlFor(storageKey);
+}
+
+export async function imageToDataUrl(image: { url?: string; dataUrl?: string; storageKey?: string }, options?: ImageReadOptions) {
+    const url = image.dataUrl || activeFileUrl(image.storageKey) || image.url || "";
+    if (!url || url.startsWith("data:")) return url;
+    return blobToDataUrl(await fetchImageBlob(url, options));
+}
+
+function extensionOf(blob: Blob) {
+    if (blob.type.includes("png")) return "png";
+    if (blob.type.includes("jpeg")) return "jpg";
+    if (blob.type.includes("webp")) return "webp";
+    if (blob.type.includes("gif")) return "gif";
+    return "png";
 }
 
 async function fetchImageBlob(url: string, options?: ImageReadOptions) {
@@ -136,94 +165,6 @@ function abortReason(signal: AbortSignal) {
 
 function throwIfAborted(signal?: AbortSignal) {
     if (signal?.aborted) throw abortReason(signal);
-}
-
-export async function resolveImageUrl(storageKey?: string, fallback = "") {
-    if (!storageKey) return fallback;
-    const cached = objectUrls.get(storageKey);
-    if (cached) return cached;
-    const blob = await store.getItem<Blob>(storageKey);
-    if (!blob) return fallback;
-    const url = URL.createObjectURL(blob);
-    objectUrls.set(storageKey, url);
-    return url;
-}
-
-export async function getImageBlob(storageKey: string) {
-    return store.getItem<Blob>(storageKey);
-}
-
-// Thumbnails are stored as a separate WebP per image storageKey, kept only in the local IndexedDB: never written into node data and never exported.
-export function previewUrlFor(storageKey?: string) {
-    return storageKey ? previewUrls.get(storageKey) : undefined;
-}
-
-// Thumbnails are filled in the background; once ready, the UI that uses them re-renders once.
-export function subscribeImagePreviews(listener: () => void) {
-    previewListeners.add(listener);
-    return () => {
-        previewListeners.delete(listener);
-    };
-}
-
-export function getImagePreviewRevision() {
-    return previewRevision;
-}
-
-export async function ensureImagePreview(storageKey?: string) {
-    if (!storageKey) return undefined;
-    const cached = previewUrls.get(storageKey);
-    if (cached) return cached;
-    const stored = await previewStore.getItem<StoredImagePreview>(storageKey).catch(() => null);
-    if (stored?.version === IMAGE_PREVIEW_VERSION) return stored.blob ? cacheImagePreview(storageKey, stored.blob) : undefined;
-    queueImagePreview(storageKey);
-    return undefined;
-}
-
-// Thumbnail generation is queued so opening many images at once does not decode them all in parallel.
-function queueImagePreview(storageKey: string) {
-    previewQueue = previewQueue
-        .then(async () => {
-            const original = await getImageBlob(storageKey);
-            if (original) await storeImagePreview(storageKey, original);
-        })
-        .catch(() => undefined);
-}
-
-async function storeImagePreview(storageKey: string, original: Blob) {
-    const preview = await createImageThumbnail(original).catch(() => undefined);
-    await previewStore.setItem<StoredImagePreview>(storageKey, { version: IMAGE_PREVIEW_VERSION, blob: preview }).catch(() => undefined);
-    return preview ? cacheImagePreview(storageKey, preview) : undefined;
-}
-
-function cacheImagePreview(storageKey: string, preview: Blob) {
-    const url = URL.createObjectURL(preview);
-    previewUrls.set(storageKey, url);
-    previewRevision += 1;
-    previewListeners.forEach((listener) => listener());
-    return url;
-}
-
-async function deleteImagePreview(storageKey: string) {
-    const url = previewUrls.get(storageKey);
-    if (url) URL.revokeObjectURL(url);
-    previewUrls.delete(storageKey);
-    await previewStore.removeItem(storageKey).catch(() => undefined);
-}
-
-export async function setImageBlob(storageKey: string, blob: Blob) {
-    await store.setItem(storageKey, blob);
-    await deleteImagePreview(storageKey);
-    await storeImagePreview(storageKey, blob);
-    const url = URL.createObjectURL(blob);
-    objectUrls.set(storageKey, url);
-    return url;
-}
-
-export async function imageToDataUrl(image: { url?: string; dataUrl?: string; storageKey?: string }, options?: ImageReadOptions) {
-    const url = image.dataUrl || (await resolveImageUrl(image.storageKey, image.url || ""));
-    if (!url || url.startsWith("data:")) return url;
-    return blobToDataUrl(await fetchImageBlob(url, options));
 }
 
 function blobToDataUrl(blob: Blob) {

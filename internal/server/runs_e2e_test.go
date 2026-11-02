@@ -31,7 +31,7 @@ func postUpload(t *testing.T, url, filename, mimeType string, content []byte) (i
 // uploadID posts one file and returns the upload id.
 func uploadID(t *testing.T, gateway *httptest.Server, filename, mimeType string, content []byte) string {
 	t.Helper()
-	status, payload := postUpload(t, gateway.URL+"/api/uploads", filename, mimeType, content)
+	status, payload := postUpload(t, canvasBase(t, gateway.URL)+"/uploads", filename, mimeType, content)
 	if status != http.StatusOK {
 		t.Fatalf("upload status = %d", status)
 	}
@@ -99,7 +99,7 @@ func TestRunImageProducesEveryOutput(t *testing.T) {
 	gateway := httptest.NewServer(newTestGateway(t, fake).Handler())
 	defer gateway.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat", "count": 2},
 	})
@@ -134,7 +134,12 @@ func TestRunImageProducesEveryOutput(t *testing.T) {
 		if output["mime"] != "image/png" {
 			t.Errorf("output %d mime = %v", index, output["mime"])
 		}
-		wantURL := "/api/runs/" + id + "/outputs/" + strconv.Itoa(index)
+		// The artifact is a file in the canvas, named after the run.
+		wantURL := "/api/canvases/" + canvasID(t, gateway.URL) + "/files/" + id
+		if index > 0 {
+			wantURL += "-" + strconv.Itoa(index+1)
+		}
+		wantURL += ".png"
 		if output["url"] != wantURL {
 			t.Errorf("output %d url = %v, want %s", index, output["url"], wantURL)
 		}
@@ -173,7 +178,7 @@ func TestRunResolvesUploadedMediaByRole(t *testing.T) {
 
 	id := uploadID(t, gateway, "reference.png", "image/png", []byte("PNG"))
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 		"media":    map[string]any{"reference": []string{id}},
@@ -229,7 +234,7 @@ func TestRunImageUpscaleTakesOneImage(t *testing.T) {
 
 	imageID := uploadID(t, gateway, "source.png", "image/png", []byte("PNG"))
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-esrgan-upscale",
 		"inputs":   map[string]any{"upscale_model": "RealESRGAN_x4plus.pth"},
 		"media":    map[string]any{"image": []string{imageID}},
@@ -258,7 +263,7 @@ func TestRunImageUpscaleTakesOneImage(t *testing.T) {
 
 	// Without the image the same request is a 400 at submission, not a run that fails inside
 	// ComfyUI: the binding is required, and the contract is checked before queueing.
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-esrgan-upscale",
 		"inputs":   map[string]any{"upscale_model": "RealESRGAN_x4plus.pth"},
 	})
@@ -274,7 +279,7 @@ func TestRunRejectsBadMedia(t *testing.T) {
 
 	audio := uploadID(t, gateway, "clip.mp3", "audio/mpeg", []byte("ID3"))
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 		"media":    map[string]any{"plain": []string{audio}},
@@ -283,7 +288,7 @@ func TestRunRejectsBadMedia(t *testing.T) {
 		t.Errorf("unknown role: status = %d, body = %v", status, payload)
 	}
 
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 		"media":    map[string]any{"reference": []string{audio}},
@@ -292,7 +297,7 @@ func TestRunRejectsBadMedia(t *testing.T) {
 		t.Errorf("kind mismatch: status = %d, body = %v", status, payload)
 	}
 
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 		"media":    map[string]any{"reference": []string{"upl_missing"}},
@@ -301,7 +306,7 @@ func TestRunRejectsBadMedia(t *testing.T) {
 		t.Errorf("missing upload: status = %d, body = %v", status, payload)
 	}
 
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "nope",
 	})
 	if status != http.StatusNotFound {
@@ -326,7 +331,7 @@ func TestRunUsesFirstVariantByDefault(t *testing.T) {
 
 	imageID := uploadID(t, gateway, "reference.png", "image/png", []byte("PNG"))
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 		"media":    map[string]any{"reference": []string{imageID}},
@@ -335,7 +340,7 @@ func TestRunUsesFirstVariantByDefault(t *testing.T) {
 		t.Fatalf("the default variant's contract was not applied: status = %d, body = %v", status, payload)
 	}
 
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat", "mode": "nope"},
 	})
@@ -367,7 +372,7 @@ func TestRunValidatesTypedInputs(t *testing.T) {
 		{"declared range", map[string]any{"prompt": "x", "steps": 0}, "invalid_input"},
 	}
 	for _, testCase := range cases {
-		status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+		status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 			"workflow": "image-test",
 			"inputs":   testCase.inputs,
 		})
@@ -382,7 +387,7 @@ func TestRunValidatesTypedInputs(t *testing.T) {
 	}
 
 	// The same request with valid values is accepted.
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "x", "size": "1024x1024", "count": 1, "steps": 4},
 	})
@@ -439,7 +444,7 @@ func TestRunRejectsUndeclaredOutputContainer(t *testing.T) {
 	gateway := httptest.NewServer(newTestGatewayWith(t, fake, file, graph, entry).Handler())
 	defer gateway.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "x", "format": "jpg"},
 	})
@@ -454,7 +459,7 @@ func TestRunRejectsUndeclaredOutputContainer(t *testing.T) {
 		t.Errorf("message = %v", problem["message"])
 	}
 
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "x", "format": "png"},
 	})
@@ -482,7 +487,7 @@ func TestRunAppliesBackgroundPrompt(t *testing.T) {
 	gateway := httptest.NewServer(newTestGatewayWith(t, fake, file, graph, entry).Handler())
 	defer gateway.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a glass", "background": "transparent"},
 	})
@@ -510,7 +515,7 @@ func TestRunAppliesMossLayoutPrompt(t *testing.T) {
 	gateway := httptest.NewServer(newTestGatewayWith(t, fake, file, graph, entry).Handler())
 	defer gateway.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs": map[string]any{
 			"prompt":        "a quiet room",

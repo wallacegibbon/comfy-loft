@@ -14,7 +14,7 @@ func isolateEnv(t *testing.T) {
 		"GATEWAY_PORT", "GATEWAY_HOST", "COMFY_URL",
 		"INSTALL_INTO_COMFY",
 		"SCAN_ON_START",
-		"WORKFLOW_DIR", "DATA_DIR", "OUTPUT_DIR", "CANVAS_ROOT", "PUBLIC_BASE_URL", "CORS_ORIGINS",
+		"WORKFLOW_DIR", "DATA_DIR", "CANVAS_ROOT", "PUBLIC_BASE_URL", "CORS_ORIGINS",
 		"REQUEST_TIMEOUT_MS", "VIDEO_TIMEOUT_MS", "POLL_INTERVAL_MS",
 		"COMFY_RETRY_ATTEMPTS", "COMFY_RETRY_DELAY_MS", "TASK_RETENTION_DAYS",
 		"MAX_STORED_TASKS", "CLEANUP_INTERVAL_MS",
@@ -30,7 +30,6 @@ func TestDefaults(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("GATEWAY_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
-	t.Setenv("OUTPUT_DIR", filepath.Join(root, "data", "outputs"))
 
 	cfg, err := Load()
 	if err != nil {
@@ -53,7 +52,7 @@ func TestDefaults(t *testing.T) {
 	if cfg.VideoTimeoutMs != 0 {
 		t.Errorf("VideoTimeoutMs = %d, want 0", cfg.VideoTimeoutMs)
 	}
-	for _, dir := range []string{cfg.WorkflowDir, cfg.DataDir, cfg.OutputDir, cfg.CanvasRoot} {
+	for _, dir := range []string{cfg.WorkflowDir, cfg.DataDir, cfg.CanvasRoot} {
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			t.Errorf("directory %q was not created", dir)
 		}
@@ -68,7 +67,6 @@ func TestNonLoopbackHostIsAccepted(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("GATEWAY_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
-	t.Setenv("OUTPUT_DIR", filepath.Join(root, "out"))
 	t.Setenv("GATEWAY_HOST", "192.168.3.232")
 
 	cfg, err := Load()
@@ -88,7 +86,6 @@ func TestCorsWildcardIsRejected(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("GATEWAY_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
-	t.Setenv("OUTPUT_DIR", filepath.Join(root, "out"))
 	t.Setenv("CORS_ORIGINS", "*")
 
 	if _, err := Load(); err == nil {
@@ -101,7 +98,6 @@ func TestInvalidNumbersFallBack(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("GATEWAY_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
-	t.Setenv("OUTPUT_DIR", filepath.Join(root, "out"))
 	t.Setenv("GATEWAY_PORT", "not-a-number")
 	t.Setenv("POLL_INTERVAL_MS", "-5")
 	t.Setenv("MAX_IMAGE_COUNT", "abc")
@@ -128,7 +124,6 @@ func TestInstallIntoComfyIsOptIn(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("GATEWAY_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
-	t.Setenv("OUTPUT_DIR", filepath.Join(root, "out"))
 
 	cfg, err := Load()
 	if err != nil {
@@ -166,7 +161,6 @@ func TestCorsListParsing(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("GATEWAY_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
-	t.Setenv("OUTPUT_DIR", filepath.Join(root, "out"))
 	t.Setenv("CORS_ORIGINS", " http://a , , http://b ")
 
 	cfg, err := Load()
@@ -230,7 +224,6 @@ func TestCanvasRootHasItsOwnDefaultAndItsOwnVariable(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("GATEWAY_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
-	t.Setenv("OUTPUT_DIR", filepath.Join(root, "data", "outputs"))
 
 	cfg, err := Load()
 	if err != nil {

@@ -44,12 +44,30 @@ type CanvasStore = {
 /** The document half of a project: what belongs in `canvas.json`, without the gateway's own fields. */
 function documentOf(project: CanvasProject): CanvasDocument {
     return {
-        nodes: project.nodes,
+        nodes: project.nodes.map(withoutResolvedUrls),
         connections: project.connections,
         backgroundMode: project.backgroundMode,
         showImageInfo: project.showImageInfo,
         viewport: project.viewport,
     };
+}
+
+/**
+ * A node as it belongs on disk: media named by reference, never by the URL it was rendered from.
+ *
+ * The editor holds absolute URLs in `metadata.content` because that is what an `<img>` needs. Writing them
+ * back would put this gateway's host and port into the workspace — a document that breaks on another
+ * machine, and the exact thing #152 said a canvas may not contain.
+ */
+function withoutResolvedUrls(node: CanvasProject["nodes"][number]) {
+    const metadata = node.metadata;
+    if (!metadata) return node;
+    const next = { ...metadata };
+    if (metadata.storageKey) next.content = metadata.storageKey;
+    if (Array.isArray(metadata.images)) {
+        next.images = metadata.images.map((image) => (image.storageKey ? { ...image, content: image.storageKey } : image));
+    }
+    return { ...node, metadata: next };
 }
 
 function projectOf(summary: CanvasSummary, document: CanvasDocument): CanvasProject {

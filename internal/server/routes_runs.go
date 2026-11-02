@@ -2,22 +2,23 @@ package server
 
 // The run protocol from docs/protocol.md: one resource for every generation.
 //
-//   POST   /api/runs                      submit, always 202 with the run
+//   POST   /api/canvases/{id}/runs        submit into that canvas, always 202 with the run
 //   GET    /api/runs                      list (status/workflow filters)
 //   GET    /api/runs/{id}                 status, progress, outputs, error
-//   GET    /api/runs/{id}/outputs/{index} artifact bytes
 //   GET    /api/runs/{id}/preview         in-flight preview frame, when one exists
 //   DELETE /api/runs/{id}                 cancel (also interrupts ComfyUI)
 //
-// Media goes in as upload ids (POST /api/uploads), so a role is explicit and the same file can be
-// reused by the run route. There are no other routes that produce media.
+// Media goes in as upload ids (POST /api/canvases/{id}/uploads) and comes out as files in the same
+// canvas (GET /api/canvases/{id}/files/{name}), so a role is explicit and an artifact belongs to the
+// canvas that asked for it rather than to the gateway's scratch space (#156).
 
 import (
 	"context"
 	"encoding/base64"
 	"net/http"
+	"net/url"
+	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"comfyloft/internal/generate"
@@ -29,11 +30,10 @@ import (
 )
 
 func (s *Server) routesRuns(mux *http.ServeMux) {
-	s.route(mux, "POST /api/uploads", s.handleUploadCreate)
-	s.route(mux, "POST /api/runs", s.handleRunCreate)
+	s.route(mux, "POST /api/canvases/{id}/uploads", s.handleUploadCreate)
+	s.route(mux, "POST /api/canvases/{id}/runs", s.handleRunCreate)
 	s.route(mux, "GET /api/runs", s.handleRunList)
 	s.route(mux, "GET /api/runs/{id}", s.handleRunGet)
-	s.route(mux, "GET /api/runs/{id}/outputs/{index}", s.handleRunOutput)
 	s.route(mux, "GET /api/runs/{id}/preview", s.handleRunPreview)
 	s.route(mux, "DELETE /api/runs/{id}", s.handleRunCancel)
 }
@@ -60,8 +60,12 @@ var mediaRoles = []struct {
 	{"reference_audio", upload.KindAudio},
 }
 
-// handleUploadCreate implements POST /api/uploads: one media file in, an id out.
+// handleUploadCreate implements POST /api/canvases/{id}/uploads: one media file in, an id out.
 func (s *Server) handleUploadCreate(ctx *httpx.Ctx) error {
+	canvasID := ctx.R.PathValue("id")
+	if !s.canvasExists(canvasID) {
+		return httpx.NotFound("canvas_not_found", "there is no canvas with that id")
+	}
 	files := ctx.Files()
 	if len(files) != 1 {
 		return httpx.NewError(http.StatusBadRequest, "single_file_required", "an upload carries exactly one file")
@@ -73,7 +77,7 @@ func (s *Server) handleUploadCreate(ctx *httpx.Ctx) error {
 			"cannot use %q (%s); uploads are images, videos or audio clips",
 			defaultStringOf(file.Filename, "the uploaded file"), defaultStringOf(file.Mimetype, "unknown type"))
 	}
-	stored, err := s.uploads.Save(kind, file.Filename, file.Mimetype, file.Bytes)
+	stored, err := s.uploads.Save(canvasID, kind, file.Filename, file.Mimetype, file.Bytes)
 	if err != nil {
 		if err == upload.ErrTooLarge {
 			return httpx.Errorf(http.StatusRequestEntityTooLarge, "upload_too_large",
@@ -84,14 +88,16 @@ func (s *Server) handleUploadCreate(ctx *httpx.Ctx) error {
 
 	// Copy it into ComfyUI now so the run does not pay for it; if that fails the bytes are on disk
 	// and the run retries, which is why the upload still succeeds.
-	if _, err := s.comfyMedia(ctx.R.Context(), stored); err != nil {
+	if _, err := s.comfyMedia(ctx.R.Context(), canvasID, stored); err != nil {
 		s.logger.Warn("upload %s stored but not copied to ComfyUI yet: %s", stored.ID, err)
 	}
-	okJSON(ctx.W, map[string]any{"upload": uploadPayload(s.uploads.Get(stored.ID))})
+	okJSON(ctx.W, map[string]any{"upload": uploadPayload(canvasID, stored)})
 	return nil
 }
 
-func uploadPayload(file *upload.File) map[string]any {
+// uploadPayload renders an upload. `id` is the file name inside the canvas, so a run references the
+// file the browser is already able to display.
+func uploadPayload(canvasID string, file *upload.File) map[string]any {
 	if file == nil {
 		return nil
 	}
@@ -102,11 +108,16 @@ func uploadPayload(file *upload.File) map[string]any {
 		"mime":       file.MimeType,
 		"bytes":      file.Bytes,
 		"created_at": file.CreatedAt,
+		"url":        "/api/canvases/" + url.PathEscape(canvasID) + "/files/" + url.PathEscape(file.ID),
 	}
 }
 
 // handleRunCreate implements POST /api/runs.
 func (s *Server) handleRunCreate(ctx *httpx.Ctx) error {
+	canvasID := ctx.R.PathValue("id")
+	if !s.canvasExists(canvasID) {
+		return httpx.NotFound("canvas_not_found", "there is no canvas with that id")
+	}
 	s.registry.ReloadIfChanged()
 	body, err := bodyOrEmpty(ctx)
 	if err != nil {
@@ -129,7 +140,7 @@ func (s *Server) handleRunCreate(ctx *httpx.Ctx) error {
 		inputs = map[string]any{}
 	}
 
-	media, err := s.resolveRunMedia(ctx, entry, httpx.Object(body, "media"))
+	media, err := s.resolveRunMedia(ctx, canvasID, entry, httpx.Object(body, "media"))
 	if err != nil {
 		return err
 	}
@@ -210,6 +221,7 @@ func (s *Server) handleRunCreate(ctx *httpx.Ctx) error {
 	}
 
 	stored := s.submitRun(runSpec{
+		Canvas:    canvasID,
 		Object:    object,
 		Entry:     entry,
 		Context:   runCtx,
@@ -264,7 +276,7 @@ type resolvedMedia struct {
 }
 
 // resolveRunMedia turns upload ids into ComfyUI references, checking each role's kind.
-func (s *Server) resolveRunMedia(ctx *httpx.Ctx, entry *workflow.Entry, media map[string]any) (*resolvedMedia, error) {
+func (s *Server) resolveRunMedia(ctx *httpx.Ctx, canvasID string, entry *workflow.Entry, media map[string]any) (*resolvedMedia, error) {
 	resolved := &resolvedMedia{summary: map[string]any{}}
 	if len(media) == 0 {
 		return resolved, nil
@@ -288,7 +300,7 @@ func (s *Server) resolveRunMedia(ctx *httpx.Ctx, entry *workflow.Entry, media ma
 			continue
 		}
 		for _, id := range ids {
-			file := s.uploads.Get(id)
+			file := s.uploads.Get(canvasID, id)
 			if file == nil {
 				return nil, httpx.Errorf(http.StatusNotFound, "upload_not_found", "upload not found: %s", id)
 			}
@@ -296,7 +308,7 @@ func (s *Server) resolveRunMedia(ctx *httpx.Ctx, entry *workflow.Entry, media ma
 				return nil, httpx.Errorf(http.StatusBadRequest, "media_kind_mismatch",
 					"role %q needs %s, but upload %s is %s", role.role, role.kind, id, file.Kind)
 			}
-			reference, err := s.comfyMedia(ctx.R.Context(), file)
+			reference, err := s.comfyMedia(ctx.R.Context(), canvasID, file)
 			if err != nil {
 				return nil, err
 			}
@@ -332,20 +344,27 @@ func (s *Server) resolveRunMedia(ctx *httpx.Ctx, entry *workflow.Entry, media ma
 }
 
 // comfyMedia returns the ComfyUI reference for an upload, pushing the bytes once if needed.
-func (s *Server) comfyMedia(ctx context.Context, file *upload.File) (workflow.Media, error) {
-	if file.ComfyName != "" {
-		return workflow.Media{Name: file.ComfyName, Subfolder: file.ComfySubfolder}, nil
+// comfyMedia makes sure an upload exists in ComfyUI's input directory, and answers with its name there.
+//
+// The name is derived from the canvas and the upload (`upload.ComfyNameFor`), and the push asks ComfyUI
+// to overwrite. That pair is what keeps the directory bounded: with a name generated per call, every
+// gateway restart that touched a reference image left another copy behind, and nothing on either side
+// ever collected them.
+func (s *Server) comfyMedia(ctx context.Context, canvasID string, file *upload.File) (workflow.Media, error) {
+	name := upload.ComfyNameFor(canvasID, file.ID)
+	if cached, ok := s.uploads.ComfyRef(file.ID); ok {
+		return workflow.Media{Name: cached}, nil
 	}
-	data, err := file.Read()
+	data, err := os.ReadFile(file.Path)
 	if err != nil {
 		return workflow.Media{}, httpx.NewError(http.StatusInternalServerError, "upload_read_failed",
 			"cannot read upload "+file.ID+": "+err.Error())
 	}
-	pushed, err := s.comfy.UploadImage(ctx, data, util.UniqueFileName(file.Filename, ""), defaultMime(file.MimeType))
+	pushed, err := s.comfy.UploadImage(ctx, data, name, defaultMime(file.MimeType))
 	if err != nil {
 		return workflow.Media{}, err
 	}
-	s.uploads.SetComfyReference(file.ID, pushed.Name, pushed.Subfolder)
+	s.uploads.SetComfyRef(file.ID, pushed.Name)
 	return workflow.Media{Name: pushed.Name, Subfolder: pushed.Subfolder}, nil
 }
 
@@ -375,36 +394,6 @@ func (s *Server) handleRunGet(ctx *httpx.Ctx) error {
 		return err
 	}
 	httpx.OK(ctx.W, s.runPayload(stored))
-	return nil
-}
-
-// handleRunOutput implements GET /api/runs/{id}/outputs/{index}.
-func (s *Server) handleRunOutput(ctx *httpx.Ctx) error {
-	stored, err := s.requireRun(ctx.R.PathValue("id"))
-	if err != nil {
-		return err
-	}
-	index, convErr := strconv.Atoi(ctx.R.PathValue("index"))
-	if convErr != nil || index < 0 {
-		return httpx.NewError(http.StatusBadRequest, "invalid_output_index", "the output index must be a number")
-	}
-	outputs := stored.Outputs
-	if len(outputs) == 0 && stored.File != nil && *stored.File != "" {
-		outputs = []task.TaskOutput{{Index: 0, File: *stored.File, MimeType: deref(stored.MimeType), Bytes: stored.Bytes}}
-	}
-	if index >= len(outputs) {
-		return httpx.Errorf(http.StatusNotFound, "output_not_found",
-			"run %s has %d output(s); index %d does not exist", stored.ID, len(outputs), index)
-	}
-	path := s.tasks.OutputPath(stored.ID, index)
-	if path == "" {
-		return httpx.NewError(http.StatusNotFound, "output_not_found", "the output file is gone")
-	}
-	if outputs[index].MimeType != "" {
-		ctx.W.Header().Set("Content-Type", outputs[index].MimeType)
-	}
-	ctx.W.Header().Set("Content-Disposition", "inline; filename=\""+filepath.Base(path)+"\"")
-	http.ServeFile(ctx.W, ctx.R, path)
 	return nil
 }
 
@@ -552,7 +541,7 @@ func (s *Server) runOutputs(stored *task.Task) []map[string]any {
 			"mime":     output.MimeType,
 			"bytes":    output.Bytes,
 			"filename": filepath.Base(output.File),
-			"url":      "/api/runs/" + stored.ID + "/outputs/" + strconv.Itoa(index),
+			"url":      "/api/canvases/" + url.PathEscape(stored.Canvas) + "/files/" + url.PathEscape(filepath.Base(output.File)),
 		})
 	}
 	return rows

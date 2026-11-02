@@ -78,7 +78,6 @@ Every variable is optional; the defaults match the previous implementation.
 | `INSTALL_INTO_COMFY` | _(empty)_                          | `1` = this gateway can write into ComfyUI's folders (`models/`, `custom_nodes/`) because it runs there or sees them through a mount. Installs stay off without it. |
 | `WORKFLOW_DIR`       | `<root>/workflows`                 | Registry directory.                                                                                                                                                |
 | `DATA_DIR`           | `<root>/data`                      | Tasks, locks, preferences.                                                                                                                                         |
-| `OUTPUT_DIR`         | `<data>/outputs`                   | Generated files served under `/files/`.                                                                                                                            |
 | `CANVAS_ROOT`        | `<root>/canvases`                  | The canvases, one directory each. This is the workspace: back it up and you have the work.                                                                          |
 | `RUNTIME_CONFIG_PATH` | *(unset)*                        | A file the gateway keeps current for the canvas's first paint (address + settings). `start.sh` points it at `canvas/dist/config.js`; unset means "the operator serves it". |
 | `PUBLIC_BASE_URL`    | `http://GATEWAY_HOST:GATEWAY_PORT` | Absolute prefix for the URLs the gateway returns (run outputs, previews). Set it when a proxy publishes the gateway under another address. |
@@ -196,7 +195,7 @@ is left for you to add in `registry.json`; the scan warns when a registered grap
 binding or no output node. Media acceptance (`accepts`, `frameMode`, `mode`, `promptInject`,
 `promptReorder`, `sourceVideoFrames`) is validated by one function, so a new workflow declares its
 contract instead of adding a branch to a handler. `GET /api/workflows/{id}/schema` publishes the
-same contract as typed `inputs`, which is what `POST /api/runs` validates a request against.
+same contract as typed `inputs`, which is what `POST /api/canvases/{id}/runs` validates a request against.
 
 ## Endpoints
 
@@ -275,13 +274,13 @@ nodes and starts generations has no business being reachable from the network, a
 header means a browser cannot reach it cross-site without a preflight this server never answers.
 
 -------- | -------------------------------- | ----------------------------------------------------------------- |
-| `POST`   | `/api/uploads`                   | Upload one media file. Returns an id a run can reference by role. |
-| `POST`   | `/api/runs`                      | Submit a run. Always `202` with the run, never blocks.            |
+| `POST`   | `/api/canvases/{id}/uploads`     | Upload one media file into that canvas. Returns its file name and URL. |
+| `POST`   | `/api/canvases/{id}/runs`        | Submit a run into that canvas. Always `202` with the run, never blocks. |
 | `GET`    | `/api/runs`                      | Runs, newest first; `?status=` and `?workflow=` filter.           |
 | `GET`    | `/api/runs/{id}`                 | Status, progress, preview frame, outputs, error.                  |
-| `GET`    | `/api/runs/{id}/outputs/{index}` | One artifact.                                                     |
 | `GET`    | `/api/runs/{id}/preview`         | In-flight preview frame, when one exists.                         |
 | `DELETE` | `/api/runs/{id}`                 | Cancel (idempotent; also interrupts ComfyUI).                     |
+| `GET`    | `/api/canvases/{id}/files/{name}` | One file of a canvas: an upload or a finished run's artifact. Cacheable for good — a name is written once. |
 
 Metadata and management:
 
@@ -293,7 +292,7 @@ Metadata and management:
 | `POST` | `/api/resources/install` | Start an install job.                                                                                                                                                                                                                                                       |
 | `POST` | `/api/resources/refresh` | The only rescan: reloads the resource index, re-scans ComfyUI (nodes, models, availability, new workflow graphs) and returns the resource status. This is the panel's refresh button.                                                                                       |
 | `GET`  | `/api/system/stats`      | VRAM and RAM **of the machine running ComfyUI** (read from ComfyUI's own `/system_stats`), plus the last OOM. `available: false` when ComfyUI does not report its devices — the panel then shows nothing, because the gateway host's own memory is somebody else's machine. |
-| `GET`  | `/api/workflows/{id}/schema` | The typed inputs, media roles and outputs of one workflow — the contract `POST /api/runs` validates against. |
+| `GET`  | `/api/workflows/{id}/schema` | The typed inputs, media roles and outputs of one workflow — the contract a run is validated against. |
 | `POST` | `/api/workflows/{id}/visibility` | Show or hide a workflow in the canvas's model picker. |
 | `GET`  | `/api/resources/jobs/{id}` | One install job: what it is downloading and how far it has got. |
 | `POST` | `/api/resources/jobs/{id}/cancel` | Stop that job. Files already written stay. |
@@ -302,7 +301,6 @@ Metadata and management:
 | `GET` / `POST` | `/api/skin-unlocks` | Which canvas skins this install has unlocked. |
 | `GET`  | `/api/loras`             | The LoRA files ComfyUI reports, filtered by `?q=`. |
 | `POST` | `/api/system/free-memory` | Ask ComfyUI to free VRAM, then report what that freed. `503` when ComfyUI is unreachable. |
-| `GET`  | `/files/{name}`          | A file from `data/outputs` by name — the export path, not a generation one. |
 
 Workspace:
 
@@ -404,9 +402,9 @@ it: a caller names a **workflow** and its inputs and never sees a node graph.
 
 | ComfyUI                                                  | Gateway                                                                                          |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `POST /prompt` with a full API-format graph              | `POST /api/runs` with `{workflow, inputs, media}`                                                |
+| `POST /prompt` with a full API-format graph              | `POST /api/canvases/{id}/runs` with `{workflow, inputs, media}`                                   |
 | `prompt_id`                                              | `run.id`                                                                                         |
-| `POST /upload/image` → file name                         | `POST /api/uploads` → upload id, referenced by role                                              |
+| `POST /upload/image` → file name                         | `POST /api/canvases/{id}/uploads` → file name, referenced by role                                |
 | `GET /queue` (running/pending)                           | `GET /api/runs?status=`                                                                          |
 | `GET /history/{prompt_id}`                               | `GET /api/runs/{id}`                                                                             |
 | `GET /view?filename=&subfolder=&type=`                   | `GET /api/runs/{id}/outputs/{index}`                                                             |

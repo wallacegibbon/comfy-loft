@@ -54,7 +54,7 @@ func TestRunVideoTakesFramesByRole(t *testing.T) {
 	fake, gateway, _ := videoRunGateway(t)
 	last := uploadID(t, gateway, "last.png", "image/png", []byte("PNG"))
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "video-test",
 		"inputs": map[string]any{
 			"prompt": "a cat", "mode": "frames", "frameMode": "last",
@@ -90,8 +90,8 @@ func TestRunVideoTakesFramesByRole(t *testing.T) {
 	if output["mime"] != "video/mp4" {
 		t.Errorf("output mime = %v", output["mime"])
 	}
-	if output["url"] != "/api/runs/"+payload["id"].(string)+"/outputs/0" {
-		t.Errorf("output url = %v", output["url"])
+	if url, _ := output["url"].(string); !strings.HasPrefix(url, "/api/canvases/") || !strings.HasSuffix(url, ".mp4") {
+		t.Errorf("output url = %v, want a file in the canvas", output["url"])
 	}
 }
 
@@ -100,7 +100,7 @@ func TestRunVideoRejectsBadMediaMix(t *testing.T) {
 	frame := uploadID(t, gateway, "frame.png", "image/png", []byte("PNG"))
 
 	// `both` is two frames, and the workflow says so.
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "video-test",
 		"inputs":   map[string]any{"prompt": "a cat", "frameMode": "both"},
 		"media":    map[string]any{"first_frame": frame},
@@ -109,7 +109,7 @@ func TestRunVideoRejectsBadMediaMix(t *testing.T) {
 		t.Fatalf("both frames with one image: %d %v", status, payload)
 	}
 
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "video-test",
 		"inputs":   map[string]any{"prompt": "a cat", "frameMode": "middle"},
 		"media":    map[string]any{"first_frame": frame},
@@ -122,7 +122,7 @@ func TestRunVideoRejectsBadMediaMix(t *testing.T) {
 func TestRunVideoRejectsUndeclaredInputs(t *testing.T) {
 	_, gateway, _ := videoRunGateway(t)
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "video-test",
 		"inputs":   map[string]any{"prompt": "a cat", "interpolation": "2x"},
 	})
@@ -167,7 +167,7 @@ func TestRunRifeInterpolationWorkflow(t *testing.T) {
 	gateway := httptest.NewServer(srv.Handler())
 	defer gateway.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "video-rife-test",
 		"inputs":   map[string]any{"multiplier": 3},
 		"media":    map[string]any{"video": uploadID(t, gateway, "clip.mp4", "video/mp4", []byte("ftyp"))},
@@ -202,7 +202,7 @@ func TestRunRejectsFrameModeOnImageWorkflow(t *testing.T) {
 	gateway := httptest.NewServer(srv.Handler())
 	defer gateway.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat", "frameMode": "first"},
 	})

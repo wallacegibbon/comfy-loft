@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"comfyloft/internal/canvas"
 	"comfyloft/internal/httpx"
@@ -21,6 +23,7 @@ func (s *Server) routesCanvas(mux *http.ServeMux) {
 	s.route(mux, "GET /api/canvases/{id}", s.handleCanvasGet)
 	s.route(mux, "PUT /api/canvases/{id}", s.handleCanvasSave)
 	s.route(mux, "DELETE /api/canvases/{id}", s.handleCanvasDelete)
+	s.route(mux, "GET /api/canvases/{id}/files/{name}", s.handleCanvasFile)
 }
 
 // handleCanvasList implements GET /api/canvases.
@@ -89,6 +92,9 @@ func (s *Server) handleCanvasSave(ctx *httpx.Ctx) error {
 		return canvasError(err)
 	}
 	okJSON(ctx.W, map[string]any{"summary": summary})
+	// The document just said what it still shows, which is one of the two answers the file collector
+	// needs. Off the request path: a save must not wait for a directory scan.
+	go s.sweepCanvas(summary.ID)
 	return nil
 }
 
@@ -99,6 +105,64 @@ func (s *Server) handleCanvasDelete(ctx *httpx.Ctx) error {
 	}
 	okJSON(ctx.W, nil)
 	return nil
+}
+
+// canvasExists answers whether a run or an upload may be written into this canvas.
+//
+// It reads the metadata rather than the document: the question is "is there a canvas", and a run that
+// started while the document was being replaced is not an error.
+func (s *Server) canvasExists(id string) bool {
+	_, err := s.canvases.Read(id)
+	return err == nil
+}
+
+// handleCanvasFile implements GET /api/canvases/{id}/files/{name}.
+//
+// The bytes are the canvas's own, so the response is cacheable for as long as the name lives: a run's
+// output and an upload are both named once and never rewritten, which makes the URL its own ETag. That
+// is what lets the browser's HTTP cache replace the IndexedDB thumbnails this app used to keep.
+func (s *Server) handleCanvasFile(ctx *httpx.Ctx) error {
+	id := ctx.R.PathValue("id")
+	name := ctx.R.PathValue("name")
+	path, err := s.canvases.FilePath(id, name)
+	if err != nil {
+		return canvasError(err)
+	}
+	if info, err := os.Stat(path); err != nil || info.IsDir() {
+		return httpx.NotFound("file_not_found", "there is no such file in this canvas")
+	}
+	ctx.W.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	http.ServeFile(ctx.W, ctx.R, path)
+	return nil
+}
+
+// canvasFileGrace is how long an unreferenced file survives.
+//
+// It covers the gap between a file appearing and the document naming it: a run writes its output, the
+// client fetches it, the client saves the node. Deleting anything inside this window would be a data
+// loss that cannot be explained to the person who just generated it.
+const canvasFileGrace = 24 * time.Hour
+
+// sweepCanvas deletes the files of one canvas that neither its document nor its runs still name.
+func (s *Server) sweepCanvas(id string) {
+	result, err := s.canvases.Sweep(id, s.tasks.FileNames(id), canvasFileGrace)
+	if err != nil {
+		return
+	}
+	if len(result.Removed) > 0 {
+		s.logger.Info("canvas %s: collected %d unused file(s)", id, len(result.Removed))
+	}
+}
+
+// sweepAllCanvasFiles runs the collector over every canvas, once at startup.
+func (s *Server) sweepAllCanvasFiles() {
+	summaries, err := s.canvases.List()
+	if err != nil {
+		return
+	}
+	for _, summary := range summaries {
+		s.sweepCanvas(summary.ID)
+	}
 }
 
 // documentOf grabs the document out of a body.

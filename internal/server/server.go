@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -68,7 +67,6 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 	// A gateway that was killed mid-write leaves its temporary file next to the target; nothing reads it
 	// again, so startup is the one moment it can be swept safely.
 	util.SweepTempFiles(cfg.DataDir)
-	util.SweepTempFiles(cfg.OutputDir)
 	util.SweepTempFiles(cfg.CanvasRoot)
 
 	comfyClient, err := comfy.New(comfy.Options{
@@ -95,8 +93,14 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 		return nil, err
 	}
 
+	canvases, err := canvas.New(cfg.CanvasRoot)
+	if err != nil {
+		return nil, err
+	}
+
 	tasks, err := task.New(task.Options{
 		DataDir:       cfg.DataDir,
+		FilesDirFor:   canvases.FilesPath,
 		PublicBaseURL: cfg.PublicBaseURL,
 		Logger:        logger,
 		RetentionDays: cfg.TaskRetentionDays,
@@ -107,21 +111,7 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 	}
 	tasks.Load()
 
-	uploads, err := upload.New(upload.Options{
-		DataDir:       cfg.DataDir,
-		RetentionDays: cfg.TaskRetentionDays,
-		MaxBytes:      cfg.MaxUploadBytes,
-		Logger:        logger,
-	})
-	if err != nil {
-		return nil, err
-	}
-	uploads.Load()
-
-	canvases, err := canvas.New(cfg.CanvasRoot)
-	if err != nil {
-		return nil, err
-	}
+	uploads := upload.New(canvases, cfg.MaxUploadBytes, logger)
 
 	preferences, err := settings.New(cfg.DataDir)
 	if err != nil {
@@ -175,6 +165,7 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 
 	server.writeMCPConf()
 	server.writeRuntimeConfig()
+	go server.sweepAllCanvasFiles()
 	if err := server.startMCPListener(); err != nil {
 		return nil, err
 	}
@@ -393,18 +384,4 @@ func (s *Server) probeVideoFile(temporary string) int {
 		return 1
 	}
 	return frames
-}
-
-// serveFile writes a local file from the output directory.
-func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, name string) error {
-	safe := util.SafeFileName(name)
-	if safe == "" || safe == "file" {
-		return httpx.NotFound("file_not_found", "file not found")
-	}
-	target := filepath.Join(s.cfg.OutputDir, safe)
-	if !util.Exists(target) {
-		return httpx.NotFound("file_not_found", "file not found")
-	}
-	http.ServeFile(w, r, target)
-	return nil
 }

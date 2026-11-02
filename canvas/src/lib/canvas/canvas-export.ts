@@ -2,8 +2,7 @@ import { saveAs } from "file-saver";
 
 import i18n from "@/i18n";
 import { createZip } from "@/lib/zip";
-import { getMediaBlob } from "@/services/file-storage";
-import { getImageBlob } from "@/services/image-storage";
+import { activeFileUrl, canvasFileUrl, fileNameOf } from "@/services/canvas-files";
 import type { CanvasExportProjectFile, CanvasExportFile } from "@/types/canvas-export";
 import type { CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
@@ -15,9 +14,14 @@ export async function exportCanvasProjects(projects: CanvasProject[], fileName =
             const files: CanvasExportProjectFile[] = [];
             await Promise.all(
                 collectStorageKeys(project).map(async (storageKey) => {
-                    const blob = storageKey.startsWith("image:") ? await getImageBlob(storageKey) : await getMediaBlob(storageKey);
+                    const name = fileNameOf(storageKey);
+                    const url = canvasFileUrl(project.id, storageKey);
+                    if (!name || !url) return;
+                    // The file already has a name on disk; the zip keeps it, so an import can put the same
+                    // name back and the document's references still resolve.
+                    const blob = await (await fetch(url)).blob().catch(() => null);
                     if (!blob) return;
-                    const path = `projects/${project.id}/files/${safeFileName(storageKey)}.${fileExtension(blob.type, storageKey)}`;
+                    const path = `projects/\${project.id}/files/\${name}`;
                     files.push({ storageKey, path, mimeType: blob.type || "application/octet-stream", bytes: blob.size });
                     zipFiles.push({ name: path, data: blob });
                 }),
@@ -47,7 +51,9 @@ export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n
             const title = node.title || node.type;
             const storageKey = node.metadata?.storageKey || "";
             if (storageKey) {
-                const blob = storageKey.startsWith("image:") ? await getImageBlob(storageKey) : await getMediaBlob(storageKey);
+                const url = canvasFileUrl("", storageKey);
+                void url;
+                const blob = await (await fetch(activeFileUrl(storageKey))).blob().catch(() => null);
                 if (blob) return void zipFiles.push({ name: uniqueName(title, fileExtension(blob.type, storageKey)), data: blob });
             }
             if (node.type === CanvasNodeType.Text) return void zipFiles.push({ name: uniqueName(title, "txt"), data: node.metadata?.content || node.metadata?.prompt || "" });
@@ -66,7 +72,9 @@ export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n
 
 function collectStorageKeys(value: unknown, keys = new Set<string>()) {
     if (!value || typeof value !== "object") return [...keys];
-    if ("storageKey" in value && typeof value.storageKey === "string" && value.storageKey.includes(":")) keys.add(value.storageKey);
+    // A reference is `files/<name>` (#156). The `image:`/`video:` keys this used to look for died with the
+    // browser store, so a document written by this build has no other form.
+    if ("storageKey" in value && typeof value.storageKey === "string" && value.storageKey.startsWith("files/")) keys.add(value.storageKey);
     Object.values(value).forEach((item) => (Array.isArray(item) ? item.forEach((child) => collectStorageKeys(child, keys)) : collectStorageKeys(item, keys)));
     return [...keys];
 }

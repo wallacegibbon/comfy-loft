@@ -2,21 +2,14 @@ package server
 
 import (
 	"net/http"
-
-	"comfyloft/internal/httpx"
 )
 
-// routesGeneration registers the file route.
+// routesGeneration registers the generation side of the surface.
 //
-// Media is produced by `POST /api/runs` (docs/protocol.md); prompts are the agent's, on
-// `/api/agent/socket/{session}` (routes_agent.go). A run carries its own preview frame and step count,
-// so there is no second endpoint to ask for either — there is nothing else here to route.
+// There is no file route here any more: media is produced by `POST /api/canvases/{id}/runs` and served
+// from the canvas that owns it (`GET /api/canvases/{id}/files/{name}`), so the gateway has no scratch
+// directory to serve out of (#156). Prompts are the agent's, on `/api/agent/socket/{session}`, and a run
+// carries its own preview frame and step count — there is nothing else here to route.
 func (s *Server) routesGeneration(mux *http.ServeMux) {
 	s.routesAgent(mux)
-	s.route(mux, "GET /files/{name}", s.handleFile)
-}
-
-// handleFile implements GET /files/{name}.
-func (s *Server) handleFile(ctx *httpx.Ctx) error {
-	return s.serveFile(ctx.W, ctx.R, ctx.R.PathValue("name"))
 }

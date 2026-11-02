@@ -60,6 +60,7 @@ import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
 import { forgetLastCanvas, rememberLastCanvas } from "@/lib/canvas/last-canvas";
+import { setActiveCanvas } from "@/services/canvas-files";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { holdsResult } from "@/lib/canvas/node-prompt-field";
 import { useCanvasAgentTools } from "@/pages/canvas/hooks/use-canvas-agent-tools";
@@ -521,8 +522,10 @@ function InfiniteCanvasPage() {
                 navigate("/", { replace: true });
                 return;
             }
-            // Remember where the browser was, so `/` can send it back here.
+            // Remember where the browser was, so `/` can send it back here, and tell the media layer
+            // which canvas its `files/<name>` references belong to.
             rememberLastCanvas(projectId);
+            setActiveCanvas(projectId);
 
             const restoredNodes = await hydrateCanvasImages(clearStaleNodeErrors(resetInterruptedGeneration(project.nodes)));
             setNodes(restoredNodes);

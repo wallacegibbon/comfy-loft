@@ -11,10 +11,19 @@ import (
 	"comfyloft/internal/logx"
 )
 
+// testCanvas is the canvas every task in these tests writes into.
+const testCanvas = "40e8afb47f10"
+
 func newStore(t *testing.T) *Store {
 	t.Helper()
+	dir := t.TempDir()
+	files := filepath.Join(dir, "files")
+	if err := os.MkdirAll(files, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
 	store, err := New(Options{
-		DataDir:       t.TempDir(),
+		DataDir:       dir,
+		FilesDirFor:   func(string) (string, error) { return files, nil },
 		PublicBaseURL: "http://127.0.0.1:8190",
 		Logger:        logx.NewWithWriter("test", os.Stderr),
 	})
@@ -42,7 +51,7 @@ func waitFor(t *testing.T, what string, condition func() bool) {
 
 func TestTaskCompletesAndPersists(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(ObjectVideo, "video-test", map[string]any{"prompt": "x"})
+	created := store.Create(testCanvas, ObjectVideo, "video-test", map[string]any{"prompt": "x"})
 	if created.Status != "queued" {
 		t.Fatalf("initial status = %q, want queued", created.Status)
 	}
@@ -65,7 +74,7 @@ func TestTaskCompletesAndPersists(t *testing.T) {
 		t.Errorf("bytes = %d, want %d", done.Bytes, len("VIDEO"))
 	}
 
-	path := store.ContentPath(created.ID)
+	path := store.OutputPath(testCanvas, created.ID, 0)
 	if path == "" {
 		t.Fatal("ContentPath returned empty for a completed task")
 	}
@@ -77,6 +86,7 @@ func TestTaskCompletesAndPersists(t *testing.T) {
 	// A fresh store must reconcile the persisted record rather than mark it failed.
 	reloaded, err := New(Options{
 		DataDir:       filepath.Dir(filepath.Dir(*done.File)),
+		FilesDirFor:   func(string) (string, error) { return filepath.Dir(*done.File), nil },
 		PublicBaseURL: "http://127.0.0.1:8190",
 		Logger:        logx.NewWithWriter("test", os.Stderr),
 	})
@@ -92,7 +102,7 @@ func TestTaskCompletesAndPersists(t *testing.T) {
 
 func TestTaskFailureIsRecorded(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(ObjectVideo, "video-test", nil)
+	created := store.Create(testCanvas, ObjectVideo, "video-test", nil)
 	store.Enqueue(created, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return nil, errors.New("boom")
 	})
@@ -113,14 +123,14 @@ func TestCancelQueuedTask(t *testing.T) {
 
 	// Occupy the single worker so the second task stays queued.
 	blocker := make(chan struct{})
-	first := store.Create(ObjectVideo, "video-test", nil)
+	first := store.Create(testCanvas, ObjectVideo, "video-test", nil)
 	store.Enqueue(first, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		<-blocker
 		return &Result{Outputs: []ResultFile{{Buffer: []byte("A"), Ext: "mp4"}}}, nil
 	})
 	waitFor(t, "first task running", func() bool { return store.Get(first.ID).Status == "running" })
 
-	second := store.Create(ObjectVideo, "video-test", nil)
+	second := store.Create(testCanvas, ObjectVideo, "video-test", nil)
 	store.Enqueue(second, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return &Result{Outputs: []ResultFile{{Buffer: []byte("B"), Ext: "mp4"}}}, nil
 	})
@@ -139,7 +149,7 @@ func TestCancelQueuedTask(t *testing.T) {
 
 func TestCancelRunningTaskAbortsContext(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(ObjectVideo, "video-test", nil)
+	created := store.Create(testCanvas, ObjectVideo, "video-test", nil)
 	aborted := make(chan struct{})
 
 	store.Enqueue(created, func(_ *Task, _ func(Update), ctx context.Context) (*Result, error) {
@@ -167,7 +177,7 @@ func TestCleanupRespectsLimits(t *testing.T) {
 
 	// Both limits at zero means "keep everything": that is the documented default,
 	// so cleanup must be a no-op rather than wiping the history.
-	keep := store.Create(ObjectVideo, "video-test", nil)
+	keep := store.Create(testCanvas, ObjectVideo, "video-test", nil)
 	store.Enqueue(keep, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return &Result{Outputs: []ResultFile{{Buffer: []byte("KEEP"), Ext: "mp4"}}}, nil
 	})
@@ -177,8 +187,9 @@ func TestCleanupRespectsLimits(t *testing.T) {
 		t.Fatalf("cleanup(0,0) = %d/%d, want 0/0", removed, files)
 	}
 
-	// With maxTasks=1, the oldest terminal task is pruned along with its file.
-	extra := store.Create(ObjectVideo, "video-test", nil)
+	// With maxTasks=1, the oldest terminal task record is pruned. Its file stays: it belongs to the
+	// canvas, and whether anything still shows it is the canvas's answer to give (#156).
+	extra := store.Create(testCanvas, ObjectVideo, "video-test", nil)
 	store.Enqueue(extra, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return &Result{Outputs: []ResultFile{{Buffer: []byte("EXTRA"), Ext: "mp4"}}}, nil
 	})
@@ -187,8 +198,11 @@ func TestCleanupRespectsLimits(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	removed, filesDeleted := store.Cleanup(0, 1)
-	if removed != 1 || filesDeleted != 1 {
-		t.Fatalf("cleanup(0,1) = removed %d, files %d; want 1/1", removed, filesDeleted)
+	if removed != 1 || filesDeleted != 0 {
+		t.Fatalf("cleanup(0,1) = removed %d, files %d; want 1/0", removed, filesDeleted)
+	}
+	if _, err := os.Stat(*keep.File); err != nil {
+		t.Errorf("pruning a task deleted a file its canvas still owns: %v", err)
 	}
 	// Retention keeps the newest task, so the first one is the one that goes.
 	if store.Get(keep.ID) != nil {
@@ -204,7 +218,7 @@ func TestCleanupRespectsLimits(t *testing.T) {
 
 func TestContentPathRejectsEscapingFile(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(ObjectVideo, "video-test", nil)
+	created := store.Create(testCanvas, ObjectVideo, "video-test", nil)
 
 	// Simulate a corrupted record pointing outside the output directory.
 	outside := filepath.Join(t.TempDir(), "secret.mp4")
@@ -213,7 +227,7 @@ func TestContentPathRejectsEscapingFile(t *testing.T) {
 	}
 	created.File = &outside
 
-	if got := store.ContentPath(created.ID); got != "" {
+	if got := store.OutputPath(testCanvas, created.ID, 0); got != "" {
 		t.Errorf("ContentPath = %q, want empty for a path outside the output dir", got)
 	}
 }
@@ -227,7 +241,7 @@ func fileExists(path string) bool {
 // extension reconciliation looks for. An audio run has to persist the same way.
 func TestAudioTaskStoresMp3AndReconciles(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(ObjectAudio, "audio-test", nil)
+	created := store.Create(testCanvas, ObjectAudio, "audio-test", nil)
 	store.Enqueue(created, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return &Result{Outputs: []ResultFile{{Buffer: []byte("MP3"), Ext: "mp3", MimeType: "audio/mpeg"}}}, nil
 	})
@@ -244,9 +258,13 @@ func TestAudioTaskStoresMp3AndReconciles(t *testing.T) {
 		t.Errorf("object = %v, want audio", done.Object)
 	}
 
-	// A record that never stored its path (older format) must be found by extension.
-	orphan := &Task{ID: "task_orphan", Object: ObjectAudio, Status: "queued"}
-	if err := os.WriteFile(filepath.Join(store.outputDir, "task_orphan.flac"), []byte("FLAC"), 0o644); err != nil {
+	// A record that never stored its path (older format) must be found by extension, in its canvas.
+	orphan := &Task{ID: "task_orphan", Canvas: testCanvas, Object: ObjectAudio, Status: "queued"}
+	dir, err := store.filesDirFor(testCanvas)
+	if err != nil {
+		t.Fatalf("filesDirFor: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "task_orphan.flac"), []byte("FLAC"), 0o644); err != nil {
 		t.Fatalf("write orphan: %v", err)
 	}
 	store.reconcileLocked(orphan)
@@ -262,7 +280,7 @@ func TestAudioTaskStoresMp3AndReconciles(t *testing.T) {
 // later a run reader) needs the code, and callers must not have to parse English.
 func TestTaskFailureKeepsCodeAndDetails(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(ObjectAudio, "audio-test", nil)
+	created := store.Create(testCanvas, ObjectAudio, "audio-test", nil)
 	store.Enqueue(created, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return nil, &codedTestError{code: "comfy_execution_failed", message: "boom", details: map[string]any{"node": "35"}}
 	})
@@ -298,7 +316,7 @@ func (e *codedTestError) StatusCode() int     { return 400 }
 // single-file fields so an older client still finds it.
 func TestTaskStoresEveryOutput(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(ObjectImage, "image-test", nil)
+	created := store.Create(testCanvas, ObjectImage, "image-test", nil)
 	store.Enqueue(created, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return &Result{Outputs: []ResultFile{
 			{Buffer: []byte("ONE"), Ext: "png", MimeType: "image/png"},
@@ -312,7 +330,7 @@ func TestTaskStoresEveryOutput(t *testing.T) {
 		t.Fatalf("outputs = %d, want 2", len(done.Outputs))
 	}
 	for index, want := range []string{"ONE", "TWO"} {
-		path := store.OutputPath(created.ID, index)
+		path := store.OutputPath(testCanvas, created.ID, index)
 		if path == "" {
 			t.Fatalf("output %d has no path", index)
 		}
@@ -324,7 +342,7 @@ func TestTaskStoresEveryOutput(t *testing.T) {
 	if done.File == nil || *done.File != done.Outputs[0].File {
 		t.Errorf("legacy File does not mirror the first output")
 	}
-	if store.OutputPath(created.ID, 5) != "" {
+	if store.OutputPath(testCanvas, created.ID, 5) != "" {
 		t.Error("an out-of-range index returned a path")
 	}
 	if len(done.Outputs) != 2 {

@@ -1,20 +1,22 @@
 // Package upload stores the media a run references.
 //
-// An upload is written once and referenced by id, which is the input half of the run protocol
-// (docs/protocol.md): the bytes live under <data>/uploads, the index (uploads.json) remembers the
-// ComfyUI file they were copied to, so a run does not upload the same clip twice. The bytes stay on
-// disk because a run may outlive the ComfyUI input directory (a restart, a cleaned temp folder) and
-// because a failed push to ComfyUI has to be retryable.
+// An upload is a file in the canvas it belongs to, and its id is its file name — there is no index any
+// more. The index (`uploads.json`) existed to remember which ComfyUI file each upload had become; that
+// is now derived instead of remembered, which is why it could go.
 package upload
 
 import (
-	"encoding/json"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"comfyloft/internal/canvas"
 	"comfyloft/internal/logx"
 	"comfyloft/internal/util"
 )
@@ -25,6 +27,9 @@ const (
 	KindVideo = "video"
 	KindAudio = "audio"
 )
+
+// ErrTooLarge is an upload past the configured limit.
+var ErrTooLarge = errors.New("upload: file exceeds the size limit")
 
 // extensionsByKind is the accepted container list per kind. It is a filter, not a converter: the
 // gateway never transcodes, so a file whose type it cannot place is refused at upload time instead
@@ -37,209 +42,190 @@ var extensionsByKind = map[string][]string{
 
 // File is one uploaded media file.
 type File struct {
+	// ID is the file name inside the canvas's `files/` directory, and what a run references.
 	ID        string `json:"id"`
 	Kind      string `json:"kind"`
 	Filename  string `json:"filename"`
 	MimeType  string `json:"mimeType"`
 	Bytes     int64  `json:"bytes"`
-	Path      string `json:"path"`
 	CreatedAt string `json:"createdAt"`
-
-	// ComfyName/ComfySubfolder is where the file was copied to in ComfyUI. Empty means the push
-	// has not happened or failed; a run retries it from Path.
-	ComfyName      string `json:"comfyName,omitempty"`
-	ComfySubfolder string `json:"comfySubfolder,omitempty"`
+	// Path is where the bytes are, for the push into ComfyUI.
+	Path string `json:"-"`
 }
 
-// Options configures a Store.
-type Options struct {
-	DataDir       string
-	RetentionDays int
-	MaxBytes      int64
-	Logger        *logx.Logger
-}
-
-// Store owns the upload directory and its index.
+// Store writes uploads into their canvas, and remembers what ComfyUI called them.
 type Store struct {
-	dir           string
-	indexPath     string
-	retentionDays int
-	maxBytes      int64
-	logger        *logx.Logger
+	canvases *canvas.Store
+	maxBytes int64
+	logger   *logx.Logger
 
-	mu    sync.RWMutex
-	files map[string]*File
+	mu sync.RWMutex
+	// comfy is a cache of "already pushed": losing it to a restart costs one overwrite, never a
+	// duplicate, because the name it would push to is derived (see ComfyNameFor).
+	comfy map[string]string
 }
 
-// New builds a store and ensures its directory exists.
-func New(opts Options) (*Store, error) {
-	dir := filepath.Join(opts.DataDir, "uploads")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
-	}
-	return &Store{
-		dir:           dir,
-		indexPath:     filepath.Join(opts.DataDir, "uploads.json"),
-		retentionDays: opts.RetentionDays,
-		maxBytes:      opts.MaxBytes,
-		logger:        opts.Logger,
-		files:         map[string]*File{},
-	}, nil
+// New builds a store over the canvas roots.
+func New(canvases *canvas.Store, maxBytes int64, logger *logx.Logger) *Store {
+	return &Store{canvases: canvases, maxBytes: maxBytes, logger: logger, comfy: map[string]string{}}
 }
 
-// Load restores the index and drops entries older than the retention window together with their
-// bytes, so an abandoned upload cannot sit on the disk forever.
-func (s *Store) Load() {
-	data, err := os.ReadFile(s.indexPath)
-	if err != nil {
-		return
-	}
-	var document struct {
-		Uploads []*File `json:"uploads"`
-	}
-	if err := json.Unmarshal(data, &document); err != nil {
-		s.warn("failed to read the upload index: %s", err)
-		return
-	}
-	now := time.Now()
-	s.mu.Lock()
-	for _, file := range document.Uploads {
-		if file == nil || file.ID == "" {
-			continue
-		}
-		if s.retentionDays > 0 && expired(file.CreatedAt, now, s.retentionDays) {
-			_ = os.Remove(file.Path)
-			continue
-		}
-		s.files[file.ID] = file
-	}
-	s.mu.Unlock()
-	s.persist()
-}
-
-// Save writes one upload and returns its record.
-func (s *Store) Save(kind, filename, mimeType string, data []byte) (*File, error) {
-	if s.maxBytes > 0 && int64(len(data)) > s.maxBytes {
+// Save writes one upload into a canvas and returns it.
+func (s *Store) Save(canvasID, kind, filename, mimeType string, data []byte) (*File, error) {
+	if int64(len(data)) > s.maxBytes {
 		return nil, ErrTooLarge
 	}
-	id := util.RandomID("upl_")
-	path := filepath.Join(s.dir, id+safeExtension(filename))
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	dir, err := s.canvases.FilesPath(canvasID)
+	if err != nil {
 		return nil, err
 	}
-	file := &File{
+	ext := extensionFor(kind, filename)
+	if ext == "" {
+		return nil, fmt.Errorf("upload: cannot place %q", filename)
+	}
+	name, err := newName("up", ext)
+	if err != nil {
+		return nil, err
+	}
+	target := filepath.Join(dir, name)
+	if err := os.WriteFile(target, data, 0o644); err != nil {
+		return nil, fmt.Errorf("upload: cannot write %s: %w", target, err)
+	}
+	stored := &File{
+		ID:        name,
+		Kind:      kind,
+		Filename:  defaultString(filename, name),
+		MimeType:  defaultString(mimeType, mimeOf(kind)),
+		Bytes:     int64(len(data)),
+		CreatedAt: util.NowIso(),
+		Path:      target,
+	}
+	s.logger.Info("upload %s/%s stored (%d bytes)", canvasID, name, stored.Bytes)
+	return stored, nil
+}
+
+// Get returns an upload that is still on disk, or nil.
+//
+// It reads the directory rather than a table, so a file deleted by hand or by the sweep is reported as
+// gone instead of being remembered as present.
+func (s *Store) Get(canvasID, id string) *File {
+	path, err := s.canvases.FilePath(canvasID, id)
+	if err != nil {
+		return nil
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return nil
+	}
+	kind := KindOf("", id)
+	return &File{
 		ID:        id,
 		Kind:      kind,
-		Filename:  filename,
-		MimeType:  mimeType,
-		Bytes:     int64(len(data)),
+		Filename:  id,
+		MimeType:  mimeOf(kind),
+		Bytes:     info.Size(),
+		CreatedAt: info.ModTime().UTC().Format(time.RFC3339Nano),
 		Path:      path,
-		CreatedAt: util.NowIso(),
 	}
-	s.mu.Lock()
-	s.files[id] = file
-	s.mu.Unlock()
-	s.persist()
-	return file, nil
 }
 
-// Get returns one upload, or nil.
-func (s *Store) Get(id string) *File {
+// ComfyRef is the ComfyUI name this upload was pushed as, once it has been.
+func (s *Store) ComfyRef(id string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.files[id]
+	name, ok := s.comfy[id]
+	return name, ok
 }
 
-// SetComfyReference records where the file landed in ComfyUI, so the next run reuses it.
-func (s *Store) SetComfyReference(id, name, subfolder string) {
+// SetComfyRef records the push. Dropped on restart, deliberately: the name is derived, so the next
+// push overwrites the same file in ComfyUI instead of adding one.
+func (s *Store) SetComfyRef(id, name string) {
 	s.mu.Lock()
-	file, ok := s.files[id]
-	if ok {
-		file.ComfyName = name
-		file.ComfySubfolder = subfolder
-	}
-	s.mu.Unlock()
-	if ok {
-		s.persist()
-	}
+	defer s.mu.Unlock()
+	s.comfy[id] = name
 }
 
-// Read returns an upload's bytes for a lazy push to ComfyUI.
-func (f *File) Read() ([]byte, error) { return os.ReadFile(f.Path) }
-
-func (s *Store) persist() {
-	s.mu.RLock()
-	payload := struct {
-		Version int     `json:"version"`
-		Uploads []*File `json:"uploads"`
-	}{Version: 1, Uploads: make([]*File, 0, len(s.files))}
-	for _, file := range s.files {
-		payload.Uploads = append(payload.Uploads, file)
-	}
-	s.mu.RUnlock()
-	data, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		s.warn("failed to serialise the upload index: %s", err)
-		return
-	}
-	if err := util.WriteFileAtomic(s.indexPath, append(data, '\n')); err != nil {
-		s.warn("failed to save the upload index: %s", err)
-	}
+/**
+ * ComfyNameFor is the name this upload is pushed into ComfyUI under.
+ *
+ * Derived, not generated: the same upload always lands on the same file, and the upload endpoint is
+ * called with `overwrite=true` (internal/comfy). That is what keeps ComfyUI's input directory bounded.
+ * The gateway used to push under a random suffix per call, so every process restart left another copy
+ * of every reference image behind, and nothing on either side ever collected them.
+ */
+func ComfyNameFor(canvasID, id string) string {
+	return util.SafeFileName("cl-" + canvasID + "-" + id)
 }
 
-func (s *Store) warn(format string, args ...any) {
-	if s.logger != nil {
-		s.logger.Warn(format, args...)
-	}
-}
-
-func expired(createdAt string, now time.Time, days int) bool {
-	parsed := util.ParseIso(createdAt)
-	if parsed.IsZero() {
-		return false
-	}
-	return now.Sub(parsed) > time.Duration(days)*24*time.Hour
-}
-
-// KindOf places a file by its extension first, then its MIME type. Empty means "not media the
-// gateway can run", which is refused at the upload boundary.
+// KindOf maps a mime type and file name onto a media kind, or "" when neither says anything usable.
 func KindOf(mimeType, filename string) string {
-	extension := strings.ToLower(filepath.Ext(filename))
+	lower := strings.ToLower(mimeType)
+	ext := strings.ToLower(filepath.Ext(filename))
 	for _, kind := range []string{KindImage, KindVideo, KindAudio} {
-		for _, candidate := range extensionsByKind[kind] {
-			if extension == candidate {
-				return kind
+		if strings.HasPrefix(lower, kind+"/") {
+			// An audio mimetype served as `video/mp4` is common enough to special-case by extension.
+			if kind == KindVideo && contains(extensionsByKind[KindAudio], ext) {
+				return KindAudio
 			}
+			return kind
 		}
-	}
-	mime := strings.ToLower(strings.TrimSpace(mimeType))
-	switch {
-	case strings.HasPrefix(mime, "image/"):
-		return KindImage
-	case strings.HasPrefix(mime, "video/"):
-		return KindVideo
-	case strings.HasPrefix(mime, "audio/"):
-		return KindAudio
+		if contains(extensionsByKind[kind], ext) {
+			return kind
+		}
 	}
 	return ""
 }
 
-// AcceptedExtensions returns the extensions of a kind, for error messages.
-func AcceptedExtensions(kind string) []string {
-	return append([]string{}, extensionsByKind[kind]...)
-}
-
-func safeExtension(filename string) string {
-	extension := strings.ToLower(filepath.Ext(filename))
-	if extension == "" || strings.ContainsAny(extension, "/\\ ") {
-		return ".bin"
+// extensionFor picks the stored extension: the uploaded one when the kind allows it, else the kind's
+// default. The extension is part of the file name, and the file name is the id, so it decides how a
+// browser treats the bytes.
+func extensionFor(kind, filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	if contains(extensionsByKind[kind], ext) {
+		return ext
 	}
-	return extension
+	switch kind {
+	case KindImage:
+		return ".png"
+	case KindVideo:
+		return ".mp4"
+	case KindAudio:
+		return ".mp3"
+	}
+	return ""
 }
 
-// ErrTooLarge is returned by Save when the payload exceeds the configured limit.
-var ErrTooLarge = storeError("upload exceeds the configured size limit")
+func mimeOf(kind string) string {
+	switch kind {
+	case KindVideo:
+		return "video/mp4"
+	case KindAudio:
+		return "audio/mpeg"
+	}
+	return "image/png"
+}
 
-type storeError string
+// newName is `<prefix>-<8 hex><ext>`: short, readable, unique inside one canvas, and safe in a URL.
+func newName(prefix, ext string) (string, error) {
+	raw := make([]byte, 4)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("upload: no randomness for a name: %w", err)
+	}
+	return prefix + "-" + hex.EncodeToString(raw) + ext, nil
+}
 
-func (e storeError) Error() string { return string(e) }
+func contains(values []string, value string) bool {
+	for _, item := range values {
+		if item == value {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultString(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}

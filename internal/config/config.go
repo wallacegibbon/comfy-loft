@@ -33,7 +33,6 @@ type Config struct {
 
 	WorkflowDir string
 	DataDir     string
-	OutputDir   string
 	// RuntimeConfigPath, when set, is a file the gateway keeps current for the canvas's first paint:
 	// the gateway address and a copy of the settings document, so the page can apply the theme and the
 	// language before it draws. Empty means the operator serves that file themselves.
@@ -116,9 +115,6 @@ func AgentHostDir(host string) string {
 // WithDataDir overrides the data directory.
 func WithDataDir(dir string) Option { return func(c *Config) { c.DataDir = dir } }
 
-// WithOutputDir overrides the output directory.
-func WithOutputDir(dir string) Option { return func(c *Config) { c.OutputDir = dir } }
-
 // WithCanvasRoot overrides the canvas root.
 func WithCanvasRoot(dir string) Option { return func(c *Config) { c.CanvasRoot = dir } }
 
@@ -189,7 +185,6 @@ func Load(opts ...Option) (*Config, error) {
 
 	cfg.WorkflowDir = absOrJoin(root, os.Getenv("WORKFLOW_DIR"), "workflows")
 	cfg.DataDir = absOrJoin(root, os.Getenv("DATA_DIR"), "data")
-	cfg.OutputDir = absOrJoin(root, os.Getenv("OUTPUT_DIR"), filepath.Join("data", "outputs"))
 	cfg.CanvasRoot = absOrJoin(root, os.Getenv("CANVAS_ROOT"), "canvases")
 	// No default: an empty value means "no file to write", and a gateway run outside a served bundle
 	// should not invent one.
@@ -202,7 +197,6 @@ func Load(opts ...Option) (*Config, error) {
 	// An option may have replaced a directory, so resolve them all at the end.
 	cfg.WorkflowDir = absPath(cfg.WorkflowDir)
 	cfg.DataDir = absPath(cfg.DataDir)
-	cfg.OutputDir = absPath(cfg.OutputDir)
 	cfg.CanvasRoot = absPath(cfg.CanvasRoot)
 	if cfg.RuntimeConfigPath != "" {
 		cfg.RuntimeConfigPath = absPath(cfg.RuntimeConfigPath)
@@ -222,7 +216,7 @@ func Load(opts ...Option) (*Config, error) {
 		return nil, fmt.Errorf("CORS_ORIGINS must not be a wildcard; list the canvas origins explicitly (a canvas served from the same host as the gateway is allowed automatically)")
 	}
 
-	for _, dir := range []string{cfg.WorkflowDir, cfg.DataDir, cfg.OutputDir, cfg.CanvasRoot} {
+	for _, dir := range []string{cfg.WorkflowDir, cfg.DataDir, cfg.CanvasRoot} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, fmt.Errorf("cannot create directory %s: %w", dir, err)
 		}

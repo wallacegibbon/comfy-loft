@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -214,4 +215,67 @@ func TestCanvasSaveKeepsATitleItWasNotGiven(t *testing.T) {
 	if title, _ := payload["canvas"].(map[string]any)["title"].(string); title != "do not lose me" {
 		t.Errorf("title = %q, want it untouched by a save", title)
 	}
+}
+
+// Media belongs to a canvas: an upload lands in its files, is served from there, and is invisible from
+// any other canvas (docs/decisions.md #156).
+func TestCanvasFilesBelongToTheirCanvas(t *testing.T) {
+	gateway, _ := settingsGateway(t)
+	client := gateway.Client()
+
+	_, payload := doJSON(t, client, http.MethodPost, gateway.URL+"/api/canvases", map[string]any{"title": "with media"})
+	canvasID, _, _ := canvasOf(t, payload)
+	otherPayload := mustCreateCanvas(t, client, gateway.URL, "second")
+	otherID, _, _ := canvasOf(t, otherPayload)
+
+	status, body := postUpload(t, gateway.URL+"/api/canvases/"+canvasID+"/uploads", "note.png", "image/png", []byte("PNG"))
+	if status != http.StatusOK {
+		t.Fatalf("upload = %d %v", status, body)
+	}
+	upload, _ := body["upload"].(map[string]any)
+	name, _ := upload["id"].(string)
+	fileURL, _ := upload["url"].(string)
+	if name == "" || fileURL != "/api/canvases/"+canvasID+"/files/"+name {
+		t.Fatalf("upload = %v", upload)
+	}
+
+	response, err := client.Get(gateway.URL + fileURL)
+	if err != nil {
+		t.Fatalf("get file: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("file status = %d", response.StatusCode)
+	}
+	if cache := response.Header.Get("Cache-Control"); !strings.Contains(cache, "immutable") {
+		t.Errorf("cache-control = %q, want it cacheable", cache)
+	}
+
+	// Another canvas cannot read it.
+	response, err = client.Get(gateway.URL + "/api/canvases/" + otherID + "/files/" + name)
+	if err != nil {
+		t.Fatalf("get from the other canvas: %v", err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Errorf("cross-canvas read = %d, want 404", response.StatusCode)
+	}
+
+	// A run or an upload for a canvas that is not there is refused rather than written somewhere.
+	if status, _ := doJSON(t, client, http.MethodPost, gateway.URL+"/api/canvases/0123456789ab/runs", map[string]any{"workflow": "x"}); status != http.StatusNotFound {
+		t.Errorf("run for an unknown canvas = %d, want 404", status)
+	}
+	if status, _ := postUpload(t, gateway.URL+"/api/canvases/0123456789ab/uploads", "a.png", "image/png", []byte("PNG")); status != http.StatusNotFound {
+		t.Errorf("upload for an unknown canvas = %d, want 404", status)
+	}
+}
+
+// mustCreateCanvas creates a canvas over HTTP and returns its id.
+func mustCreateCanvas(t *testing.T, client *http.Client, base, title string) map[string]any {
+	t.Helper()
+	status, payload := doJSON(t, client, http.MethodPost, base+"/api/canvases", map[string]any{"title": title})
+	if status != http.StatusOK {
+		t.Fatalf("create canvas %q = %d: %v", title, status, payload)
+	}
+	return payload
 }

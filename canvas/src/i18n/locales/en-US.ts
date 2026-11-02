@@ -96,6 +96,7 @@ export default {
     },
     imageReferences: { label: "Image {{index}}", separator: ", ", promptPrefix: "Reference image labels: {{labels}}. Use these labels to interpret image references in the prompt.\n\n{{prompt}}" },
     apiErrors: {
+        noCanvas: "No canvas is open, so there is nowhere to put this file.",
         requestFailed: "Request failed",
         requestCanceled: "Request canceled",
         baseUrlRequired: "Configure the Base URL first",

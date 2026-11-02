@@ -73,7 +73,7 @@ func TestAudioRunTakesCaptionAndLyrics(t *testing.T) {
 	fake := audioFixture(t)
 	gateway := startAudioGateway(t, fake)
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "audio-test",
 		"inputs":   map[string]any{"prompt": "calm piano", "lyrics": "[Verse]\nline one"},
 	})
@@ -114,7 +114,7 @@ func TestAudioRunCarriesComfyUIsRejection(t *testing.T) {
 	fake.failSubmit = true
 	gateway := startAudioGateway(t, fake)
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/runs", map[string]any{
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "audio-test",
 		"inputs":   map[string]any{"prompt": "calm piano"},
 	})

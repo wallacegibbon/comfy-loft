@@ -20,6 +20,7 @@ import (
 // request, and the timeout. Keeping the queue in one place is what makes a run outlive the
 // HTTP request that started it — the reason audio no longer blocks a connection for minutes.
 type runSpec struct {
+	Canvas    string
 	Object    string
 	Entry     *workflow.Entry
 	Context   *workflow.Context
@@ -30,7 +31,7 @@ type runSpec struct {
 
 // submitRun queues one run and returns its record. The record's id is the caller's handle.
 func (s *Server) submitRun(spec runSpec) *task.Task {
-	stored := s.tasks.Create(spec.Object, spec.Entry.Name, spec.Request)
+	stored := s.tasks.Create(spec.Canvas, spec.Object, spec.Entry.Name, spec.Request)
 	s.tasks.Enqueue(stored, func(_ *task.Task, progress func(task.Update), jobCtx context.Context) (*task.Result, error) {
 		opts := generate.RunOptions{
 			Entry:          spec.Entry,

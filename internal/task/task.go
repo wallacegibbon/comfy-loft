@@ -88,7 +88,10 @@ type TaskOutput struct {
 
 // Task is one queued generation job.
 type Task struct {
-	ID          string         `json:"id"`
+	ID string `json:"id"`
+	// Canvas is the canvas the run belongs to: its outputs are written there, and that is where the
+	// URLs below point. Empty on records written before runs were canvas-scoped.
+	Canvas      string         `json:"canvas,omitempty"`
 	Object      string         `json:"object"`
 	Status      string         `json:"status"`
 	Progress    float64        `json:"progress"`
@@ -162,7 +165,7 @@ type Store struct {
 	running      bool
 	persistTimer *time.Timer
 	persistMu    sync.Mutex
-	outputDir    string
+	filesDirFor  func(canvasID string) (string, error)
 	file         string
 
 	// Shutdown plumbing so Close can stop the debounced writer and wait for workers.
@@ -173,18 +176,20 @@ type Store struct {
 
 // Options configures a Store.
 type Options struct {
-	DataDir       string
+	DataDir string
+	// FilesDirFor resolves the directory a canvas keeps its files in. Outputs are written there, so a
+	// run's artifacts live beside the document that names them (docs/decisions.md #156).
+	FilesDirFor   func(canvasID string) (string, error)
 	PublicBaseURL string
 	Logger        *logx.Logger
 	RetentionDays int
 	MaxTasks      int
 }
 
-// New builds a store and ensures the output directory exists.
+// New builds a store over the task index. It owns no media directory: the canvases do.
 func New(opts Options) (*Store, error) {
-	outputDir := filepath.Join(opts.DataDir, "outputs")
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
-		return nil, err
+	if opts.FilesDirFor == nil {
+		return nil, errors.New("task: FilesDirFor is required")
 	}
 	return &Store{
 		dataDir:       opts.DataDir,
@@ -194,7 +199,7 @@ func New(opts Options) (*Store, error) {
 		maxTasks:      opts.MaxTasks,
 		tasks:         map[string]*Task{},
 		closed:        make(chan struct{}),
-		outputDir:     outputDir,
+		filesDirFor:   opts.FilesDirFor,
 		file:          filepath.Join(opts.DataDir, "tasks.json"),
 	}, nil
 }
@@ -233,7 +238,11 @@ func (s *Store) Load() {
 // failed after a restart even though its video was still on disk.
 func (s *Store) reconcileLocked(task *Task) {
 	if task.File == nil || *task.File == "" {
-		for _, candidate := range candidateOutputPaths(s.outputDir, task.ID, task.Object) {
+		dir, err := s.filesDirFor(task.Canvas)
+		if err != nil {
+			dir = ""
+		}
+		for _, candidate := range candidateOutputPaths(dir, task.ID, task.Object) {
 			if util.Exists(candidate) {
 				value := candidate
 				task.File = &value
@@ -243,7 +252,7 @@ func (s *Store) reconcileLocked(task *Task) {
 	}
 	if task.File != nil && util.Exists(*task.File) {
 		if task.URL == nil {
-			value := s.publicURL(filepath.Base(*task.File))
+			value := s.publicURL(task.Canvas, filepath.Base(*task.File))
 			task.URL = &value
 		}
 		if task.Status != "completed" {
@@ -277,10 +286,11 @@ func (s *Store) reconcileLocked(task *Task) {
 //
 // The returned record is the live one the queue will mutate: read it through Get when the value is
 // about to be serialised, or the read races the worker.
-func (s *Store) Create(object, model string, request map[string]any) *Task {
+func (s *Store) Create(canvasID, object, model string, request map[string]any) *Task {
 	now := util.NowIso()
 	task := &Task{
 		ID:        util.RandomID("task_"),
+		Canvas:    canvasID,
 		Object:    normalizeObject(object),
 		Status:    "queued",
 		Progress:  0,
@@ -419,7 +429,7 @@ func (s *Store) pump(run RunFunc) {
 		task.CompletedAt = &completed
 		s.logger.Warn("task %s failed: %s", task.ID, message)
 	} else {
-		outputs, saveErr := s.saveOutputs(task.ID, task.Object, result.Outputs)
+		outputs, saveErr := s.saveOutputs(task.Canvas, task.ID, task.Object, result.Outputs)
 		if saveErr != nil {
 			message := "failed to write the output file: " + saveErr.Error()
 			task.Status = "failed"
@@ -530,15 +540,9 @@ func (s *Store) Cancel(id string) *Task {
 	return s.Get(id)
 }
 
-// ContentPath returns the on-disk path of a finished task's first output, or "" when it
-// is missing or outside the output directory.
-func (s *Store) ContentPath(id string) string {
-	return s.OutputPath(id, 0)
-}
-
 // OutputPath returns the on-disk path of one output of a finished task, or "" when it is
 // missing or outside the output directory.
-func (s *Store) OutputPath(id string, index int) string {
+func (s *Store) OutputPath(canvasID, id string, index int) string {
 	s.mu.RLock()
 	stored, ok := s.tasks[id]
 	s.mu.RUnlock()
@@ -551,21 +555,25 @@ func (s *Store) OutputPath(id string, index int) string {
 		if index != 0 || stored.File == nil || *stored.File == "" {
 			return ""
 		}
-		return s.withinOutput(*stored.File)
+		return s.withinOutput(canvasID, *stored.File)
 	}
 	if index < 0 || index >= len(files) {
 		return ""
 	}
-	return s.withinOutput(files[index].File)
+	return s.withinOutput(canvasID, files[index].File)
 }
 
-// withinOutput resolves a path and refuses anything outside this store's output directory.
-func (s *Store) withinOutput(path string) string {
+// withinOutput resolves a path and refuses anything outside the canvas's files directory.
+func (s *Store) withinOutput(canvasID, path string) string {
+	dir, err := s.filesDirFor(canvasID)
+	if err != nil {
+		return ""
+	}
 	resolved, err := filepath.Abs(path)
 	if err != nil {
 		return ""
 	}
-	root, err := filepath.Abs(s.outputDir)
+	root, err := filepath.Abs(dir)
 	if err != nil {
 		return ""
 	}
@@ -579,7 +587,11 @@ func (s *Store) withinOutput(path string) string {
 //
 // Names are `<id>.<ext>` for the first output and `<id>-2.<ext>` after that, so a batch is
 // recognisable on disk and the first file keeps the historical name.
-func (s *Store) saveOutputs(id, object string, files []ResultFile) ([]TaskOutput, error) {
+func (s *Store) saveOutputs(canvasID, id, object string, files []ResultFile) ([]TaskOutput, error) {
+	dir, err := s.filesDirFor(canvasID)
+	if err != nil {
+		return nil, err
+	}
 	outputs := make([]TaskOutput, 0, len(files))
 	for index, file := range files {
 		stem := id
@@ -587,7 +599,7 @@ func (s *Store) saveOutputs(id, object string, files []ResultFile) ([]TaskOutput
 			stem = id + "-" + strconv.Itoa(index+1)
 		}
 		filename := stem + "." + defaultExt(file.Ext)
-		target := filepath.Join(s.outputDir, filename)
+		target := filepath.Join(dir, filename)
 		if err := os.WriteFile(target, file.Buffer, 0o644); err != nil {
 			return nil, err
 		}
@@ -598,7 +610,7 @@ func (s *Store) saveOutputs(id, object string, files []ResultFile) ([]TaskOutput
 		outputs = append(outputs, TaskOutput{
 			Index:    index,
 			File:     target,
-			URL:      s.publicURL(filename),
+			URL:      s.publicURL(canvasID, filename),
 			MimeType: mimeType,
 			Bytes:    int64(len(file.Buffer)),
 		})
@@ -606,24 +618,67 @@ func (s *Store) saveOutputs(id, object string, files []ResultFile) ([]TaskOutput
 	return outputs, nil
 }
 
-// SaveFile stores a one-off file and returns its public URL.
-func (s *Store) SaveFile(id string, buffer []byte, ext string) (string, error) {
-	url, _, err := s.saveSingle(id, buffer, ext)
-	return url, err
-}
-
-// saveSingle writes one file outside any run (an image returned as a URL).
-func (s *Store) saveSingle(id string, buffer []byte, ext string) (string, string, error) {
-	filename := id + "." + defaultExt(ext)
-	target := filepath.Join(s.outputDir, filename)
-	if err := os.WriteFile(target, buffer, 0o644); err != nil {
-		return "", "", err
+// FileNames lists the files this canvas's runs still refer to: every artifact they produced and every
+// upload they consumed.
+//
+// It is a garbage-collection root, alongside the canvas document (#156). Older than the document and
+// weaker: task records expire, and when they do their say over a file expires with them.
+func (s *Store) FileNames(canvasID string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	seen := map[string]struct{}{}
+	for _, task := range s.tasks {
+		if task.Canvas != canvasID {
+			continue
+		}
+		if task.File != nil && *task.File != "" {
+			seen[filepath.Base(*task.File)] = struct{}{}
+		}
+		for _, output := range task.Outputs {
+			if output.File != "" {
+				seen[filepath.Base(output.File)] = struct{}{}
+			}
+		}
+		// The request names its inputs by upload id, which is a file name.
+		if media, ok := task.Request["media"].(map[string]any); ok {
+			collectMediaNames(media, seen)
+		}
 	}
-	return s.publicURL(filename), target, nil
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
-func (s *Store) publicURL(filename string) string {
-	return s.publicBaseURL + "/files/" + url.PathEscape(filename)
+// collectMediaNames walks a media map: role → id, or role → [ids].
+func collectMediaNames(value any, into map[string]struct{}) {
+	switch typed := value.(type) {
+	case string:
+		if typed != "" {
+			into[filepath.Base(typed)] = struct{}{}
+		}
+	case []any:
+		for _, item := range typed {
+			collectMediaNames(item, into)
+		}
+	case []string:
+		for _, item := range typed {
+			if item != "" {
+				into[filepath.Base(item)] = struct{}{}
+			}
+		}
+	case map[string]any:
+		for _, item := range typed {
+			collectMediaNames(item, into)
+		}
+	}
+}
+
+// publicURL is where a browser fetches one file of a canvas.
+func (s *Store) publicURL(canvasID, filename string) string {
+	return s.publicBaseURL + "/api/canvases/" + url.PathEscape(canvasID) + "/files/" + url.PathEscape(filename)
 }
 
 // PersistNow writes the task list synchronously.
@@ -720,24 +775,8 @@ func (s *Store) Cleanup(retentionDays, maxTasks int) (removed int, filesDeleted 
 	if removed == 0 {
 		return 0, 0
 	}
-	for _, task := range drop {
-		if task.File == nil {
-			continue
-		}
-		resolved, err := filepath.Abs(*task.File)
-		if err != nil {
-			continue
-		}
-		root, err := filepath.Abs(s.outputDir)
-		if err != nil || !within(root, resolved) {
-			continue
-		}
-		if err := os.Remove(resolved); err == nil {
-			filesDeleted++
-		}
-	}
 	s.persistNow()
-	s.logger.Info("pruned %d task(s) and deleted %d output file(s)", removed, filesDeleted)
+	s.logger.Info("pruned %d task record(s); their files belong to the canvases", removed)
 	return removed, filesDeleted
 }
 

@@ -188,8 +188,7 @@ func newTestGatewayWith(t *testing.T, fake *fakeComfy, graphFile string, graph, 
 	root := t.TempDir()
 	workflowDir := filepath.Join(root, "workflows")
 	dataDir := filepath.Join(root, "data")
-	outputDir := filepath.Join(dataDir, "outputs")
-	for _, dir := range []string{workflowDir, dataDir, outputDir} {
+	for _, dir := range []string{workflowDir, dataDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dir, err)
 		}
@@ -205,7 +204,6 @@ func newTestGatewayWith(t *testing.T, fake *fakeComfy, graphFile string, graph, 
 		config.WithComfyURL(fake.server.URL),
 		config.WithWorkflowDir(workflowDir),
 		config.WithDataDir(dataDir),
-		config.WithOutputDir(outputDir),
 		config.WithCanvasRoot(filepath.Join(root, "canvases")),
 		config.WithRuntimeConfigPath(filepath.Join(root, "config.js")),
 		config.WithGatewayHost("127.0.0.1"),
@@ -237,6 +235,38 @@ func writeFixture(t *testing.T, path string, value any) {
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
+}
+
+// canvasBase is the URL prefix a run or upload test posts to.
+//
+// A run belongs to a canvas: it is written into that canvas's files, and its artifact URLs point there
+// (docs/decisions.md #156). Each test gateway gets one canvas, created once and remembered by address,
+// so a test only has to say `canvasBase(t, gateway.URL)+"/runs"`.
+func canvasBase(t *testing.T, base string) string {
+	t.Helper()
+	if id, ok := testCanvasIDs.Load(base); ok {
+		return base + "/api/canvases/" + id.(string)
+	}
+	status, payload := doJSON(t, http.DefaultClient, http.MethodPost, base+"/api/canvases", map[string]any{"title": "test canvas"})
+	if status != http.StatusOK {
+		t.Fatalf("create test canvas: %d %v", status, payload)
+	}
+	id, _ := payload["canvas"].(map[string]any)["id"].(string)
+	if id == "" {
+		t.Fatalf("create test canvas returned no id: %v", payload)
+	}
+	testCanvasIDs.Store(base, id)
+	return base + "/api/canvases/" + id
+}
+
+var testCanvasIDs sync.Map
+
+// canvasID is the id behind canvasBase, for tests that build an expected URL.
+func canvasID(t *testing.T, base string) string {
+	t.Helper()
+	canvasBase(t, base)
+	id, _ := testCanvasIDs.Load(base)
+	return id.(string)
 }
 
 func doJSON(t *testing.T, client *http.Client, method, url string, body any) (int, map[string]any) {

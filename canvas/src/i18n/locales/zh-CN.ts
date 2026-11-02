@@ -111,6 +111,7 @@ export default {
     },
     imageReferences: { label: "图片{{index}}", separator: "、", promptPrefix: "参考图片编号：{{labels}}。请按这些编号理解提示词中的图片引用。\n\n{{prompt}}" },
     apiErrors: {
+        noCanvas: "还没有打开任何画布，无法上传文件。",
         requestFailed: "请求失败",
         requestCanceled: "请求已取消",
         baseUrlRequired: "请先配置 Base URL",

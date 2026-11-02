@@ -5386,3 +5386,66 @@ theme and the language wrote `settings.json` (`theme`, `locale`, `lastCanvas`, `
 `canvas/src/{services/api/settings.ts,stores/use-settings-store.ts}` (new),
 `canvas/src/{stores/{use-config-store.ts,use-theme-store.ts,canvas/use-canvas-side-panel-store.ts},lib/canvas/last-canvas.ts,i18n/index.ts,constant/runtime-config.ts,components/{layout/{app-providers,client-root-init,user-status-actions}.tsx,settings/{app-config-modal,resource-setup-gate}.tsx,canvas/canvas-node-hover-toolbar.tsx,kit/feedback.tsx}}`,
 `canvas/index.html`, `canvas/src/i18n/locales/*`, `start.sh`, `docs/gateway.md`.
+
+## 156. Media belongs to the canvas, and the gateway stops keeping scratch space
+
+**Decision** A run and an upload are canvas-scoped, and their bytes live in the canvas directory:
+
+```
+POST /api/canvases/{id}/runs          submit into that canvas
+POST /api/canvases/{id}/uploads       one media file into that canvas
+GET  /api/canvases/{id}/files/{name}  any file of that canvas, upload or artifact
+```
+
+`data/outputs`, `data/uploads` and `uploads.json` are gone. `config.OutputDir` is gone. A node names its
+media as `files/<name>` — the same string in the document, in the export zip and in the URL — and the
+browser resolves it against the canvas it is showing.
+
+**Why** #152 made the canvas a directory and #155 gave it its preferences; the media was the last thing
+still living somewhere else, and it lived in *two* other places at once: artifacts in the gateway's
+scratch directory, uploads in `data/uploads` plus an index, and the browser's own copy of whatever a
+node displayed. Three copies of one picture, with the canvas naming none of them. Now the canvas names
+all of them, and `cp -r canvases/` is a complete backup — which it was not before, since the images a
+canvas showed lived in `data/outputs` and in one browser profile.
+
+**The collector returns, and this is why it can** #154 had to delete the media sweep: it walked every
+canvas in the store, and the store only holds the ones you opened, so running it would have deleted the
+media of the rest. The files now sit next to the document, so the sweep asks each canvas directly: the
+document is scanned for `files/<name>` strings (a reference is a string; understanding nodes was never
+required), the canvas's run history adds its artifacts and upload inputs, and anything else older than
+**24 hours** is deleted. The grace window covers the gap between a run writing a file and the client
+putting it in a node; a task record expiring does not delete anything, because the canvas, not the run,
+owns the file.
+
+**ComfyUI's input directory stops growing** The gateway used to push every upload under a name with a
+fresh random suffix, so each process restart that touched a reference image left another copy in
+ComfyUI's `input/`, and nothing on either side ever collected them. The push name is now derived from
+the canvas and the upload (`upload.ComfyNameFor`), and the request already carried `overwrite=true`, so
+a re-push replaces one file instead of adding one. The in-memory push cache is an optimization again
+rather than the only thing preventing duplicates.
+
+**What the frontend lost** `localforage` (uninstalled), `services/localforage-databases.ts`, the
+IndexedDB media and preview stores, the client-side thumbnail generator (`createImageThumbnail`), and
+the blob-URL bookkeeping in `file-storage.ts` / `image-storage.ts`. Those two modules keep their names
+and their exported functions — `resolveImageUrl` still answers "what goes in an `img src`" — but the
+answer is now a URL on the gateway. A node's `metadata.content` holds the reference, not the URL, and
+the store strips resolved URLs on the way to disk so a document can never carry this host's address.
+
+**Tested** `internal/canvas` (reference scan, sweep with grace and references, path validation),
+`internal/upload` (save/get/kind/oversize/unknown canvas/derived ComfyUI name), the task store (outputs
+into a canvas, pruning that no longer deletes media), the e2e suites (uploads and runs through
+`/api/canvases/{id}/…`, artifacts fetched back over HTTP, cross-canvas reads refused, unknown canvas
+refused), `npm run check`, 127 canvas tests, `make check`, `make verify-static`, `make web`.
+
+**In the browser and against the real gateway** An upload landed in `<canvas>/files/up-*.png` and came
+back byte-identical with `Cache-Control: private, max-age=31536000, immutable`; a real generation through
+ComfyUI (`image-moss-sft-int8-8step`) wrote its 919 KB artifact into the same directory and reported
+`/api/canvases/<id>/files/task_*.png`; a file of another canvas is a 404; the canvas page loaded with an
+empty console.
+
+**Where** `internal/canvas/{files.go,files_test.go}` (new), `internal/upload/{upload.go,upload_test.go}`,
+`internal/task/task.go`, `internal/server/{routes_runs.go,routes_canvas.go,routes_generation.go,runs.go,server.go,e2e_test.go,canvas_e2e_test.go,*_runs_e2e_test.go}`,
+`internal/config/config.go`, `canvas/src/services/{canvas-files.ts (new),file-storage.ts,image-storage.ts}`,
+`canvas/src/stores/canvas/use-canvas-store.ts`, `canvas/src/lib/canvas/{canvas-export.ts,canvas-node-factory.ts,image-thumbnail.ts}`,
+`canvas/src/components/canvas/canvas-manager-dialog.tsx`, `canvas/src/pages/canvas/project.tsx`,
+`canvas/src/i18n/locales/*`, `canvas/package.json`, `docs/gateway.md`.
