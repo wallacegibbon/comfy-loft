@@ -739,6 +739,7 @@ export default {
             clearHistoryConfirm: "This conversation will be deleted and cannot be restored. The nodes on the canvas are not touched.",
             clearHistoryOk: "Clear",
             clearHistoryFailed: "The history could not be cleared",
+            clearHistoryBusy: "The agent is working — stop it or wait for it to finish",
         },
         promptPanel: {
             captionShort: "Caption",

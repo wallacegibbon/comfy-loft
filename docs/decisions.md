@@ -6426,3 +6426,26 @@ answered `DELETE /api/agent/session/canvas%3A…` 200, released the old process 
 new one (`pid=374193`), the file was gone, and the panel showed its empty state with no messages while the
 canvas kept its two nodes and its picture. The next message wrote a fresh file whose first entry was that
 new message, and the answer did not mention the earlier turn.
+
+## 187. Clearing the history waits for an idle agent
+
+**Decision** The clear-history button is disabled while the panel has a turn in flight, and its label says
+why (`canvas.agent.clearHistoryBusy`) instead of only looking greyed out. A turn is in flight from the send
+until the agent's `done`, and any `delta`, `reasoning`, `tool_call` or `tool_result` frame also marks the
+panel busy — so a turn this panel did not start cannot leave the button live. `clearHistory` refuses a busy
+panel as a second guard.
+
+**Why** Mid-turn, the words being written are the next entry in the file the button deletes: the release
+cancels the turn, which is a different act from forgetting a conversation and not one anybody asked for by
+pressing "clear history". The panel already knows the difference — it shows Stop while it is busy — so the
+rule is the same one the rest of the panel obeys.
+
+**Cost** A long answer has to finish (or be stopped) before the history can go. That is one more click for
+the impatient, and the stop button is right there.
+
+**Tested** `npm run check` (i18n 898/884: one new key, none dead), `npx vitest run` (156). In the browser
+(a `/tmp/verify` copy, the real agent): idle, the header button read `Clear history`; one message in, it
+read `The agent is working — stop it or wait for it to finish` and was `[disabled]` at +2 s and at +27 s
+while the answer streamed, next to the panel's Stop; after `done` it was `Clear history` again, pressable.
+
+**Where** `frontend/src/components/canvas/canvas-agent-panel.tsx`, both locales.

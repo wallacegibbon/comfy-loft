@@ -743,6 +743,7 @@ export default {
             clearHistoryConfirm: "这段对话会被删除，无法恢复。画布上的节点不受影响。",
             clearHistoryOk: "清空",
             clearHistoryFailed: "清空历史失败",
+            clearHistoryBusy: "agent 正在思考或执行工具，先停下或等它结束",
         },
         promptPanel: {
             captionShort: "反推",

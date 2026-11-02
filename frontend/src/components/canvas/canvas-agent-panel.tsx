@@ -120,6 +120,9 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
      * history, which is why an empty one is an empty panel rather than a second source of truth to clear.
      */
     const clearHistory = async () => {
+        // Only an idle agent has a conversation that can be thrown away: mid-turn, the words being
+        // written are the next entry in the file this would delete.
+        if (busy) return;
         setBusy(false);
         setStatus("connecting");
         try {
@@ -191,6 +194,9 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
             return;
         }
         if (event.type === "delta" || event.type === "reasoning" || event.type === "tool_call" || event.type === "tool_result") {
+            // Anything arriving mid-turn means the agent is working, whoever asked it. `busy` normally
+            // follows the send and the `done`, but a turn that outlived its panel would otherwise look idle.
+            setBusy(true);
             setMessages((current) => {
                 // The answer that is still being written, wherever it sits: a message sent while one is in
                 // flight is echoed above it, and the answer continues in its own bubble rather than
@@ -430,7 +436,8 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                 <span className="truncate text-xs opacity-60">{status === "connected" ? t("canvas.agent.connected") : status === "connecting" ? t("canvas.agent.connecting") : t("canvas.agent.disconnected")}</span>
                 <button
                     type="button"
-                    className="ml-auto rounded p-1 opacity-60 hover:opacity-100"
+                    className="ml-auto rounded p-1 opacity-60 hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:opacity-25"
+                    disabled={busy}
                     onClick={() =>
                         confirm({
                             title: t("canvas.agent.clearHistory"),
@@ -441,8 +448,8 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                             onOk: () => clearHistory(),
                         })
                     }
-                    title={t("canvas.agent.clearHistory")}
-                    aria-label={t("canvas.agent.clearHistory")}
+                    title={busy ? t("canvas.agent.clearHistoryBusy") : t("canvas.agent.clearHistory")}
+                    aria-label={busy ? t("canvas.agent.clearHistoryBusy") : t("canvas.agent.clearHistory")}
                 >
                     <Eraser className="size-3.5" />
                 </button>
