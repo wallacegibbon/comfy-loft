@@ -7284,3 +7284,35 @@ three times. `tsc --noEmit`, `prettier --check`, `npx vitest run` (22 files, 169
 `make check`, `go test -race`.
 
 **Where** `frontend/src/pages/canvas/project.tsx`.
+
+## 206. `connect` carries an example of both directions
+
+**Decision** The description of `connect` gained two sentences naming the two orders as the thing they mean:
+"the words into the picture: `fromNodeId` is the text node, `toNodeId` is the image node. The other order is
+real too — a picture into a text node is a reference that text node reads." Nothing else changed: the tool's
+answers, the canvas's rules and the arguments keep the shape they had.
+
+**Why** The table described one example and it was a picture into a config node, which is not what an agent
+does all day — since #203 the common wiring is a text node's words into a picture, and that had no shape to
+copy. A throwaway run showed the cost: asked to wire three pictures and a text node, an agent answered
+`fromNodeId: image-…, toNodeId: text-…` and reasoned "the user said 把这三张图都接上这个 Text 节点, so the image
+is the source" — it parsed an ambiguous sentence literally, and the words available to it never said which
+order produces which relation.
+
+**Why not in the answer, which was the first plan** Because a sentence that agrees with what the agent already
+believes does not get read: the #203 note works by contradicting a judgement ("would send them twice"), and
+"text-y now takes image-x" would only confirm the direction it had just chosen. The strongest branch of that
+plan — "image-x holds nothing to send yet, so text-y gains no input" — describes a state the agent created a
+moment earlier and already knows, so it reads as a status report. Three branches and a noun table for that is
+not worth the noise on a tool called several times per turn.
+
+**Cost** One more sentence in every `tools/list`. A wrong direction is still accepted and not flagged: a
+picture that never receives the words is not an error the canvas can recognise — image into text is a real
+wiring (the reverse-prompt flow builds exactly that) — and the human-visible signal is the panel's Generate,
+which #185 disables when a node has nothing to send.
+
+**Tested** `make check` (the new assertions in `TestAgentSpawnCarriesTheCanvasRule` pin both example clauses,
+and the existing one pins "say them twice"), `go test ./internal/server/`. Not exercised in a browser: no code
+path changed, only the text of a description, and the example is read by the model rather than run by the page.
+
+**Where** `internal/server/routes_mcp.go`, `internal/server/mcp_test.go`.
