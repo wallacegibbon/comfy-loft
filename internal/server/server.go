@@ -152,10 +152,6 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 		startedAt:     time.Now(),
 	}
 
-	// The conversation and the configuration outlive a restart in different ways: the legacy per-session
-	// config directories do not (they are copies), the conversations do (they are the user's words).
-	clearLegacyAgentState(cfg.DataDir)
-	server.adoptLegacyAgentConfig(config.LegacyAgentConfigDir(cfg.GatewayHost))
 	server.writeMCPConf()
 	if err := server.startMCPListener(); err != nil {
 		return nil, err

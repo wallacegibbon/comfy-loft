@@ -76,36 +76,6 @@ func (s *Server) mcpBridgePath() string {
 	return filepath.Join(filepath.Dir(exe), "comfyloft-mcp")
 }
 
-// adoptLegacyAgentConfig copies a configuration written before the per-host split into its new home.
-//
-// `model.conf` holds the operator's models and their API keys. Orphaning it would take an agent that
-// worked a minute ago and leave it with no models and no explanation, which is not the same kind of
-// cheap as an empty browser store. The old file is left where it is: this is a copy, not a move, and a
-// user who edits the old one can still see what they meant.
-func (s *Server) adoptLegacyAgentConfig(legacyDir string) {
-	if legacyDir == "" || legacyDir == s.cfg.AgentConfigPath {
-		return
-	}
-	if _, err := os.Stat(filepath.Join(s.cfg.AgentConfigPath, "model.conf")); err == nil {
-		return
-	}
-	for _, name := range []string{"model.conf", "runtime.conf"} {
-		data, err := os.ReadFile(filepath.Join(legacyDir, name))
-		if err != nil {
-			continue
-		}
-		if err := os.MkdirAll(s.cfg.AgentConfigPath, 0o755); err != nil {
-			s.logger.Warn("agent: cannot create %s: %s", s.cfg.AgentConfigPath, err)
-			return
-		}
-		if err := os.WriteFile(filepath.Join(s.cfg.AgentConfigPath, name), data, 0o644); err != nil {
-			s.logger.Warn("agent: cannot adopt %s: %s", name, err)
-			return
-		}
-		s.logger.Info("agent: adopted %s from %s", name, legacyDir)
-	}
-}
-
 // sessionFile is where a conversation is kept, created if this is the first time.
 func (s *Server) sessionFile(session string) (string, error) {
 	root := sessionsRoot(s.cfg.DataDir)
@@ -163,23 +133,4 @@ func (s *Server) agentOptionsFor(session string, history bool) (agent.SpawnOptio
 	}
 	opts.Session = file
 	return opts, nil
-}
-
-// clearLegacyAgentState removes the per-session directories an older layout left under `data/agent/`.
-//
-// Nothing reads them again: sessions no longer own a config copy, because `mcp.conf` is static and the
-// session name travels in the environment. Conversations are kept — they are the user's words, and a
-// gateway restart is not a reason to forget them.
-func clearLegacyAgentState(dataDir string) {
-	root := filepath.Join(dataDir, "agent")
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == "sessions" {
-			continue
-		}
-		_ = os.RemoveAll(filepath.Join(root, entry.Name()))
-	}
 }

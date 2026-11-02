@@ -657,16 +657,6 @@ export default {
             discard: "清空并重新开始",
             discardHint: "清空后原始数据会另存为 canvas_store.corrupt-<时间>，之后仍可导出。",
         },
-        legacyAssets: {
-            title: "旧资产库里还有东西",
-            description: "资产库已经从应用里移除。你存进去的 {{count}} 项记录和它们指向的文件，仍然只存在这个浏览器里。现在导出，或者丢弃。",
-            export: "导出资产库",
-            exported: "已导出 {{count}} 个文件",
-            exportFailed: "导出失败，请重试",
-            discard: "丢弃",
-            discarded: "已丢弃资产库",
-            hint: "丢弃会删掉旧记录，文件随后会随浏览器存储一起被清理。这里的内容不会被导入回应用——现在文件活在画布里。",
-        },
         editors: {
             reset: "重置",
             zoomOut: "缩小",

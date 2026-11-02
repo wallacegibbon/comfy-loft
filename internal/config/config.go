@@ -105,16 +105,6 @@ func AgentHostDir(host string) string {
 	return safe
 }
 
-// LegacyAgentConfigDir is where the agent's configuration lived before it was split by host. It is only
-// read once, to be copied into the new location.
-func LegacyAgentConfigDir(host string) string {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(dir, "comfyui-gateway", "alayacore")
-}
-
 // WithDataDir overrides the data directory.
 func WithDataDir(dir string) Option { return func(c *Config) { c.DataDir = dir } }
 

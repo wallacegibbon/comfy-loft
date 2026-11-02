@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-import { LegacyAssetsBanner } from "@/components/layout/legacy-assets-banner";
 import { StorageRecoveryBanner } from "@/components/layout/storage-recovery-banner";
 import { AppConfigModal } from "@/components/settings/app-config-modal";
 import { ResourceSetupGate } from "@/components/settings/resource-setup-gate";
@@ -18,11 +17,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     return (
         <div className="flex h-dvh overflow-hidden bg-background text-foreground">
             <div className="min-w-0 flex-1 overflow-hidden">{children}</div>
-            {/* One stack, so the two notices that must survive until answered cannot cover each
-                other: a store that could not be read, and a library that is no longer read. */}
+            {/* The one notice that must survive until it is answered: a store that could not be
+                read. It is kept out of the canvas so that it cannot be covered by anything. */}
             <div className="pointer-events-none fixed inset-x-0 top-16 z-[2999] flex flex-col items-center gap-2 px-4">
                 <StorageRecoveryBanner />
-                <LegacyAssetsBanner />
             </div>
             <AppConfigModal />
             <ResourceSetupGate />

@@ -5120,3 +5120,37 @@ two files dead also found this one alive, which is the reason it was checked at 
 **Tested** `npm run check` (i18n, exports, prettier, `tsc`), 143 canvas tests, `make web`.
 
 **Where** `canvas/vercel.json`, `canvas/components.json` (deleted).
+
+## 151. There are no users yet, so the compatibility layers go
+
+**Decision** The one-time exits and the old-data adopters are deleted, not kept one release longer.
+This is #145's "when to delete this" arriving early, plus the two places in the gateway that did the
+same job for files instead of browser storage.
+
+**Why** A compatibility layer costs nothing to *keep* and everything to *maintain*: it is a second
+input format, a second failure mode and a second set of tests, all of them describing data that only
+exists because someone was already using the app. Nobody is. There is no installed base, no stored
+library, no `model.conf` from an earlier layout. What would have been "one release, then delete" is
+just delete.
+
+**Deleted** `canvas/src/lib/canvas/legacy-asset-store.ts`, `components/layout/legacy-assets-banner.tsx`,
+`tests/legacy-asset-store.test.ts`, the `canvas.legacyAssets.*` strings in both dictionaries, the
+`legacy` root in `sweepUnusedCanvasFiles`, the two `TEST_ONLY` waivers those modules needed —
+exactly the list #145 wrote for itself. In the gateway: `adoptLegacyAgentConfig` (the copy of a
+`model.conf` written before the per-host split), `clearLegacyAgentState` (the sweep of older
+per-session directories under `data/agent/`), `config.LegacyAgentConfigDir`, and the two calls in
+`server.New`. Startup now does one thing to the agent's config: it writes the static `mcp.conf` (#147).
+
+**Deliberately not deleted** `internal/task`'s `File`/`URL`/`MimeType`/`Bytes` mirror of the first
+output and `internal/store`'s version-1 pack map are not old data on disk — they are part of the shape
+the canvas reads *today*. Removing either means changing routes and frontend together, which belongs
+to #152 and later, not to a sweep. `canvas-persist.ts`'s format migrations stay for the same reason
+they are useless: the file itself is replaced wholesale when the canvas becomes a directory.
+
+**Tested** `make check`, `go build ./...`, `npm run check` (i18n, exports, prettier, `tsc`), and the
+canvas suite — 129 tests, down from 143, every one of the 14 removed being a test of the code removed
+above.
+
+**Where** `canvas/src/{lib/canvas/{legacy-asset-store.ts,canvas-file-cleanup.ts},components/layout/legacy-assets-banner.tsx,layouts/user-layout.tsx,i18n/locales/*}`,
+`canvas/{tests/legacy-asset-store.test.ts,scripts/check-exports.cjs}`,
+`internal/{server/{agent_config.go,server.go},config/config.go}`.
