@@ -212,6 +212,31 @@ describe("a temporary failure", () => {
         expect(state.summaries.at(-1)?.rev).toBe("rev-2");
     });
 
+    test("stops once the retry schedule runs out, and a new edit starts it again", async () => {
+        let attempt = 0;
+        const { queue, state } = harness({
+            save: async () => {
+                attempt += 1;
+                throw new TypeError("network down");
+            },
+        });
+        state.snapshots.set("c1", snapshotOf("content"));
+
+        queue.schedule("c1");
+        // The initial save plus both configured retries, then nothing: a gateway that is refusing this
+        // document will refuse it again, and a loop every debounce would only fill the console.
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 1000 + 2000 + 60_000);
+
+        expect(attempt).toBe(3);
+        expect(state.errors).toHaveLength(3);
+        expect(queue.isDirty("c1")).toBe(true);
+
+        // The next edit is a new reason to try.
+        queue.schedule("c1");
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+        expect(attempt).toBe(4);
+    });
+
     test("a new edit during the retry wait saves sooner than the wait would", async () => {
         let attempt = 0;
         const { queue, state } = harness({

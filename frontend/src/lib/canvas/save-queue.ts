@@ -61,7 +61,10 @@ type Entry = {
     running: boolean;
     dirty: boolean;
     conflicts: number;
+    /** How many of `retryDelaysMs` have been spent on the current failure. */
     attempt: number;
+    /** The retry schedule ran out: only a new edit may try again. */
+    exhausted: boolean;
 };
 
 export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
@@ -73,7 +76,7 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
     const entryOf = (id: string): Entry => {
         let entry = entries.get(id);
         if (!entry) {
-            entry = { timer: undefined, retry: undefined, running: false, dirty: false, conflicts: 0, attempt: 0 };
+            entry = { timer: undefined, retry: undefined, running: false, dirty: false, conflicts: 0, attempt: 0, exhausted: false };
             entries.set(id, entry);
         }
         return entry;
@@ -83,25 +86,36 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
         if (handle !== undefined) timers.clearTimeout(handle as never);
     };
 
-    /** A settled save: either it worked, or the canvas is dirty again and the caller has been told. */
-    const settle = (id: string, entry: Entry) => {
-        entry.running = false;
-        if (!entry.dirty || entry.timer !== undefined || entry.retry !== undefined) return;
-        // A change arrived while this save was in flight. Wait out a fresh debounce rather than
-        // firing immediately: the next keystroke is usually already on its way.
-        schedule(id);
-    };
-
-    const schedule = (id: string) => {
-        const entry = entryOf(id);
-        entry.dirty = true;
-        if (entry.running || entry.timer !== undefined) return;
-        cancel(entry.retry);
-        entry.retry = undefined;
+    /** Arm the debounce that turns a pending change into a save, unless one is already armed. */
+    const arm = (id: string, entry: Entry) => {
+        if (entry.running || entry.timer !== undefined || entry.retry !== undefined) return;
         entry.timer = timers.setTimeout(() => {
             entry.timer = undefined;
             void flush(id);
         }, debounceMs);
+    };
+
+    /** A settled save: either it worked, or the canvas is dirty again and the caller has been told. */
+    const settle = (id: string, entry: Entry) => {
+        entry.running = false;
+        // Nothing more to do when the change is gone, when a timer is already armed, or when the retry
+        // schedule ran out — that last case is the one that used to re-arm the debounce for ever, one
+        // refused save every 400 ms.
+        if (!entry.dirty || entry.exhausted || entry.timer !== undefined || entry.retry !== undefined) return;
+        // A change arrived while this save was in flight. Wait out a fresh debounce rather than
+        // firing immediately: the next keystroke is usually already on its way.
+        arm(id, entry);
+    };
+
+    /** A change worth saving. Idempotent, and it restarts a retry schedule that had run out. */
+    const schedule = (id: string) => {
+        const entry = entryOf(id);
+        entry.dirty = true;
+        entry.exhausted = false;
+        entry.attempt = 0;
+        cancel(entry.retry);
+        entry.retry = undefined;
+        arm(id, entry);
     };
 
     const flush = async (id: string): Promise<void> => {
@@ -124,6 +138,7 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
             const summary = await options.save(id, snapshot);
             entry.conflicts = 0;
             entry.attempt = 0;
+            entry.exhausted = false;
             cancel(entry.retry);
             entry.retry = undefined;
             options.onSaved(id, summary);
@@ -152,6 +167,10 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
                         entry.retry = undefined;
                         void flush(id);
                     }, delay);
+                } else {
+                    // Out of retries. The change is kept (the canvas stays dirty) but nothing tries again
+                    // on its own: the next edit calls `schedule`, which starts a fresh schedule.
+                    entry.exhausted = true;
                 }
             }
         } finally {

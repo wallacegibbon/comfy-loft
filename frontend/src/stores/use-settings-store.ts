@@ -40,6 +40,8 @@ const SAVE_DEBOUNCE_MS = 600;
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let pending = false;
+/** The write that is on the wire, if any: one document at a time, so two saves cannot land out of order. */
+let saving: Promise<void> | null = null;
 
 export const useSettingsStore = create<SettingsStore>()((set, get) => ({
     settings: bootstrapped,
@@ -78,20 +80,36 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
     },
 }));
 
-async function save() {
-    if (!pending) return;
+/**
+ * Write the pending document, one request at a time.
+ *
+ * Serialised on purpose: the gateway replaces the whole file, so two requests in flight at once could
+ * land out of order and leave the older document as the one on disk. A change that arrives while a
+ * request is on the wire is written by the next one; a failure is left for the next change (or `flush`)
+ * to retry rather than looped on here.
+ */
+function save(): void {
+    if (saving || !pending) return;
     const state = useSettingsStore.getState();
     if (!state.ready) return;
     pending = false;
-    try {
-        await requestSettingsSave(state.settings);
-        useSettingsStore.setState({ error: null });
-    } catch (error) {
-        // Keep the change in memory and try again with the next one: preferences are cheap to lose, but
-        // silently losing every future change because one request failed would not be.
-        pending = true;
-        useSettingsStore.setState({ error: error instanceof Error ? error.message : String(error) });
-    }
+    const document = state.settings;
+    saving = (async () => {
+        let written = true;
+        try {
+            await requestSettingsSave(document);
+            useSettingsStore.setState({ error: null });
+        } catch (error) {
+            // Keep the change in memory and try again with the next one: preferences are cheap to lose, but
+            // silently losing every future change because one request failed would not be.
+            written = false;
+            pending = true;
+            useSettingsStore.setState({ error: error instanceof Error ? error.message : String(error) });
+        } finally {
+            saving = null;
+        }
+        if (written && pending) save();
+    })();
 }
 
 /**

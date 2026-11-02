@@ -50,7 +50,15 @@ export async function uploadImage(input: string | Blob, options?: ImageReadOptio
 async function storeImage(blob: Blob, options?: ImageReadOptions): Promise<UploadedImage> {
     const canvasId = activeCanvasId();
     if (!canvasId) throw new Error(i18n.t("apiErrors.noCanvas"));
-    const meta = await loadImageMeta(URL.createObjectURL(blob), options);
+    // A blob URL holds the blob alive for the life of the document, so it is released as soon as the
+    // dimensions are read: one per generated picture is a leak nobody would look for.
+    const objectUrl = URL.createObjectURL(blob);
+    let meta: { width: number; height: number } | null;
+    try {
+        meta = await loadImageMeta(objectUrl, options);
+    } finally {
+        URL.revokeObjectURL(objectUrl);
+    }
     if (!meta) throw new Error(i18n.t("common.imageReadFailed"));
     throwIfAborted(options?.signal);
     const uploaded = await uploadCanvasFile(canvasId, blob, `image.${extensionOf(blob)}`, options?.signal);

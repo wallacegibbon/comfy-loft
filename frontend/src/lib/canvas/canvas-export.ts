@@ -51,8 +51,6 @@ export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n
             const title = node.title || node.type;
             const storageKey = node.metadata?.storageKey || "";
             if (storageKey) {
-                const url = canvasFileUrl("", storageKey);
-                void url;
                 const blob = await (await fetch(activeFileUrl(storageKey))).blob().catch(() => null);
                 if (blob) return void zipFiles.push({ name: uniqueName(title, fileExtension(blob.type, storageKey)), data: blob });
             }
