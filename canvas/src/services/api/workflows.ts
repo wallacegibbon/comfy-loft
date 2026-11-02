@@ -64,9 +64,8 @@ export type GatewayWorkflow = {
 type WorkflowsPayload = { workflows?: GatewayWorkflow[] };
 
 /** Read every registered workflow. */
-export async function requestWorkflows(config: Pick<AiConfig, "baseUrl" | "apiKey">, options: { signal?: AbortSignal } = {}): Promise<GatewayWorkflow[]> {
+export async function requestWorkflows(config: Pick<AiConfig, "baseUrl">, options: { signal?: AbortSignal } = {}): Promise<GatewayWorkflow[]> {
     const payload = await httpJson<WorkflowsPayload>(`${gatewayProtocolRoot(config.baseUrl)}/api/workflows`, {
-        headers: { Authorization: `Bearer ${config.apiKey}` },
         signal: options.signal,
         timeout: 8000,
     });

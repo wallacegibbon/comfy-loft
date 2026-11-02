@@ -120,7 +120,7 @@ function AppConfigPanel({ showDoneButton = false, initialTab = "channels" }: { s
     }, [cardSkin, unlockedCardSkins]);
 
     const finishConfig = () => {
-        const ready = config.channels.some((channel) => channel.baseUrl.trim() && channel.apiKey.trim() && channel.models.length);
+        const ready = config.channels.some((channel) => channel.baseUrl.trim() && channel.models.length);
         setConfigDialogOpen(false);
         if (!ready) return;
         toast.success(t(shouldPromptContinue ? "config.savedContinue" : "config.saved"));
@@ -403,7 +403,6 @@ function withChannels(config: AiConfig, channels: ModelChannel[]): AiConfig {
         channels,
         models: modelOptionsFromChannels(channels),
         baseUrl: channels[0]?.baseUrl || config.baseUrl,
-        apiKey: channels[0]?.apiKey || config.apiKey,
     };
     return {
         ...next,

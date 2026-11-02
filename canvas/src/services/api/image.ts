@@ -252,7 +252,7 @@ type ImageAngleParams = {
  * leaving the knob out until the model can honour it.
  */
 export async function requestImageAngle(config: AiConfig, prompt: string, params: ImageAngleParams, references: ReferenceImage[], options?: RequestOptions): Promise<Array<{ id: string; dataUrl: string }>> {
-    const requestConfig = { ...resolveModelRequestConfig(config, config.imageModel || config.model), baseUrl: LOCAL_GATEWAY_BASE_URL, apiKey: "local", model: IMAGE_ANGLE_WORKFLOW };
+    const requestConfig = { ...resolveModelRequestConfig(config, config.imageModel || config.model), baseUrl: LOCAL_GATEWAY_BASE_URL, model: IMAGE_ANGLE_WORKFLOW };
     return requestGatewayImages({
         config: requestConfig,
         prompt,
@@ -278,7 +278,7 @@ type UpscaleOptions = { workflowId: string; params?: Record<string, unknown>; si
  * default, and sending an undeclared key would be rejected by the typed input contract.
  */
 export async function requestUpscale(config: AiConfig, image: ReferenceImage, options: UpscaleOptions) {
-    const requestConfig = { ...resolveModelRequestConfig(config, config.imageModel || config.model), baseUrl: LOCAL_GATEWAY_BASE_URL, apiKey: "local", model: options.workflowId };
+    const requestConfig = { ...resolveModelRequestConfig(config, config.imageModel || config.model), baseUrl: LOCAL_GATEWAY_BASE_URL, model: options.workflowId };
     try {
         const dataUrl = await imageToDataUrl(image);
         const uploaded = await uploadMedia(requestConfig, dataUrlToFile({ ...image, dataUrl }), image.name || `${image.id}.png`, { signal: options.signal });

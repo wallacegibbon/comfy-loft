@@ -111,7 +111,7 @@ func CORS(cfg *config.Config) Middleware {
 				w.Header().Add("Vary", "Origin")
 			}
 			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Requested-With, X-Request-Id")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Requested-With, X-Request-Id")
 			w.Header().Set("Access-Control-Expose-Headers", "X-Request-Id")
 			w.Header().Set("Access-Control-Max-Age", "86400")
 			if r.Method == http.MethodOptions {

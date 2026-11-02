@@ -78,16 +78,14 @@ function runUrl(config: AiConfig, path: string) {
     return `${gatewayProtocolRoot(config.baseUrl)}${path}`;
 }
 
-function jsonHeaders(config: AiConfig) {
-    return { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" };
-}
+const JSON_HEADERS = { "Content-Type": "application/json" };
 
 /** Submit a run. Always answers with the run, never with its result: the id is the handle. */
 export async function createRun(config: AiConfig, request: RunRequest): Promise<Run> {
     try {
         const run = await httpJson<Run>(runUrl(config, "/api/runs"), {
             method: "POST",
-            headers: jsonHeaders(config),
+            headers: JSON_HEADERS,
             body: JSON.stringify(request),
         });
         if (!run?.id) throw new Error(apiText("runCreateFailed"));
@@ -112,7 +110,6 @@ export async function uploadMedia(config: AiConfig, file: Blob, filename: string
     try {
         const payload = await httpJson<{ upload?: UploadedMedia }>(runUrl(config, "/api/uploads"), {
             method: "POST",
-            headers: { Authorization: `Bearer ${config.apiKey}` },
             body,
             signal: options.signal,
         });
@@ -138,7 +135,7 @@ export async function downloadRunOutputs(config: AiConfig, run: Run, options: { 
 async function getRun(config: AiConfig, id: string): Promise<Run> {
     try {
         return await httpJson<Run>(runUrl(config, `/api/runs/${encodeURIComponent(id)}`), {
-            headers: jsonHeaders(config),
+            headers: JSON_HEADERS,
         });
     } catch (error) {
         throw new Error(apiErrorMessage(error, apiText("runQueryFailed")));
@@ -149,7 +146,7 @@ async function getRun(config: AiConfig, id: string): Promise<Run> {
 export async function cancelRun(config: AiConfig, id: string): Promise<Run> {
     return httpJson<Run>(runUrl(config, `/api/runs/${encodeURIComponent(id)}`), {
         method: "DELETE",
-        headers: jsonHeaders(config),
+        headers: JSON_HEADERS,
     });
 }
 

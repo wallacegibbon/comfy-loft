@@ -5207,3 +5207,49 @@ whole `make check`, and `docs/gateway.md` now documents the layout, the five end
 **Where** `internal/canvas/{canvas.go,canvas_test.go}` (new), `internal/server/{routes_canvas.go,canvas_e2e_test.go}`
 (new), `internal/server/{server.go,routes_admin.go,e2e_test.go}`, `internal/config/{config.go,config_test.go}`,
 `docs/gateway.md`, `README.md`, `.env.example`, `.gitignore`.
+
+## 153. There is no API key, because there is nothing to authenticate to
+
+**Decision** `apiKey` is gone: the field on `AiConfig` and on `ModelChannel`, the two `"local"` defaults,
+the four call sites that hard-wrote it, the three gates that refused a run without it, and the
+`Authorization: Bearer …` header that four requests sent. The gateway's CORS no longer lists
+`Authorization` as an allowed header, because nothing sends one.
+
+**Where it came from** #71 deleted the cloud-provider concept — one channel, and it is the gateway the
+page came from — and removed the address field from the channel editor. The key survived that entry for
+one reason: the request layer still built an `Authorization` header, so the config had to hold
+*something* to put in it. That something was the literal string `"local"`, in every default, in the
+channel editor's save path, and in the model-sync hook.
+
+**Why it was never a secret, and never checked** `git grep Authorization internal/` answers with one
+line: the CORS allow-list. No handler reads the header, no middleware validates it, and the gateway
+serves a `Bearer local` exactly like no header at all. Meanwhile three code paths asked the user to
+configure a key that had no input field: `app-config-modal.tsx`'s "is this channel ready",
+`assertAudioConfig` and `assertVideoConfig`. The first was reachable only on a config whose
+`apiKey.trim()` was empty — which the defaults made impossible, so the check was dead weight that
+still carried two translation strings.
+
+**What is left of #71's repair path** `use-config-store`'s `merge` used to snapshot the whole persisted
+blob to `localStorage` under `…:pre-local-only-backup` and then keep only the channel that pointed at
+this gateway. That existed for saved configs written by the provider-era build, which cannot exist
+(#151). It is deleted; `merge` now merges over the defaults and normalizes the channels, nothing else.
+
+**Why this mattered for the next step** The plan for #152's frontend half was to move preferences to
+disk. Carrying `apiKey` through that move would have put a fake secret in `settings.json` and added a
+"never echo it back" rule to an endpoint that holds nothing worth hiding. Deleting it first makes the
+settings endpoint a plain settings endpoint.
+
+**Tested** `npm run check` (i18n 918/904 keys, 171 modules, prettier, `tsc`), 129 canvas tests, `make check`,
+`make web`. `model-selection.test.ts` lost the case that rotated a key — its real subject was that a
+saved task keeps the model it was made with, and that still has a test.
+
+**In the browser** The canvas loads, and the settings dialog's 网关 tab reports
+`本地 ComfyUI · 本地网关 · 11 个模型 · http://127.0.0.1:8190`: the model list arrives from a
+header-less `GET /api/workflows`, which is the path this entry changed most. An image node is created and
+the console stays empty. No generation was re-run for this entry: the removed header was ignored by the
+gateway, and the run and upload request shapes are covered by `tests/api-runs.test.ts`.
+
+**Where** `canvas/src/stores/use-config-store.ts`, `services/api/{runs,workflows,image,audio,video}.ts`,
+`hooks/use-local-gateway-sync.ts`, `components/settings/{app-config-modal,channel-editor-drawer}.tsx`,
+`components/layout/client-root-init.tsx`, `i18n/locales/*`, `tests/model-selection.test.ts`,
+`internal/httpx/middleware.go`.

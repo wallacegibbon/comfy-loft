@@ -30,7 +30,6 @@ const config: AiConfig = {
             id: "replacement",
             name: "Replacement",
             baseUrl: "https://example.com",
-            apiKey: "test-key",
             models: [
                 { name: "video-b", capability: "video" },
                 { name: "video-a", capability: "video" },
@@ -50,7 +49,7 @@ const videoNode = (model: string): CanvasNodeData => ({
     metadata: { model, videoTaskId: "original-task", seconds: "4" },
 });
 
-test("task recovery rejects a missing provider instead of querying the first provider", () => {
+test("task recovery rejects a model nothing offers instead of querying the first channel", () => {
     expect(ready(config, "removed::video-a")).toBe(false);
     expect(ready(config, "unknown-video")).toBe(false);
 });
@@ -65,11 +64,12 @@ test("switching generation capability still selects a model of the new capabilit
     expect(resolveModelForCapability(config, "replacement::image-a", "video")).toBe("replacement::video-b");
 });
 
-test("changing only the key on the same provider preserves the saved model and task", () => {
+// The node remembers what it was made with. Recovery asks about that model by name, so a task that
+// outlived a restart is queried on the canvas that started it, not on whatever the default now is.
+test("a saved task keeps the model it was made with", () => {
     const node = videoNode("replacement::video-a");
-    const selected = buildGenerationConfig({ ...config, channels: [{ ...config.channels[0], apiKey: "rotated-key" }] }, node, "video");
+    const selected = buildGenerationConfig(config, node, "video");
     expect(selected.model).toBe("replacement::video-a");
     expect(ready(selected, selected.model)).toBe(true);
     expect(node.metadata?.videoTaskId).toBe("original-task");
-    expect(ready({ ...selected, channels: [{ ...config.channels[0], apiKey: "" }] }, selected.model)).toBe(false);
 });

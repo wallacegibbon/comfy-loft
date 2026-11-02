@@ -39,7 +39,6 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
         onSave({
             ...draft,
             name: draft.name.trim() || t("config.channels.unnamed"),
-            apiKey: "local",
             models: normalizeChannelModels(draft.models),
         });
         onClose();

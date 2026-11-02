@@ -114,7 +114,6 @@ export default {
         requestFailed: "请求失败",
         requestCanceled: "请求已取消",
         baseUrlRequired: "请先配置 Base URL",
-        apiKeyRequired: "请先配置 API Key",
         authenticationFailed: "鉴权失败，请检查 API Key、套餐权限或模型权限",
         rateLimited: "请求被限流或额度不足，请稍后重试",
         notFound: "接口地址不存在（404），请检查 Base URL 和模型选择",

@@ -99,7 +99,6 @@ export default {
         requestFailed: "Request failed",
         requestCanceled: "Request canceled",
         baseUrlRequired: "Configure the Base URL first",
-        apiKeyRequired: "Configure the API key first",
         authenticationFailed: "Authentication failed. Check the API key, plan permissions, and model permissions.",
         rateLimited: "The request was rate-limited or the quota is insufficient. Try again later.",
         notFound: "The endpoint was not found (404). Check the Base URL and selected model.",

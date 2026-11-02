@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
 import { gatewayModelLabel } from "@/lib/gateway-labels";
-import { gatewayRoot, isLocalGatewayUrl, LOCAL_GATEWAY_BASE_URL, LOCAL_GATEWAY_CHANNEL_ID } from "@/constant/app-mode";
+import { gatewayRoot, LOCAL_GATEWAY_BASE_URL, LOCAL_GATEWAY_CHANNEL_ID } from "@/constant/app-mode";
 import { normalizeProgressRingSkin, type ProgressRingSkinId } from "@/lib/canvas/progress-ring-skins";
 
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -33,13 +33,11 @@ export type ModelChannel = {
      */
     nameKey?: string;
     baseUrl: string;
-    apiKey: string;
     models: ChannelModel[];
 };
 
 export type AiConfig = {
     baseUrl: string;
-    apiKey: string;
     channels: ModelChannel[];
     model: string;
     imageModel: string;
@@ -84,7 +82,6 @@ const localDefaultChannel: ModelChannel = {
     name: i18n.t("config.channels.localName"),
     nameKey: "config.channels.localName",
     baseUrl: LOCAL_GATEWAY_BASE_URL,
-    apiKey: "local",
     models: [],
 };
 
@@ -93,7 +90,6 @@ const localDefaultChannel: ModelChannel = {
 // in sync field by field.
 export const defaultConfig: AiConfig = {
     baseUrl: LOCAL_GATEWAY_BASE_URL,
-    apiKey: "local",
     channels: [localDefaultChannel],
     // No workflow id is baked in as the default: the first image/video workflow the gateway reports
     // becomes the selection (see `pickModel` below), so adding or renaming a workflow in the registry
@@ -270,7 +266,7 @@ export function modelImageInputs(config: AiConfig, value: string) {
 
 function isAiConfigReady(config: AiConfig, model: string) {
     const match = findChannelModel(config, model);
-    return Boolean(match && match.channel.baseUrl.trim() && match.channel.apiKey.trim());
+    return Boolean(match && match.channel.baseUrl.trim());
 }
 
 export const useConfigStore = create<ConfigStore>()(
@@ -300,31 +296,6 @@ export const useConfigStore = create<ConfigStore>()(
                 const persistedConfig = (persistedState.config || {}) as Partial<AiConfig>;
                 const config = { ...defaultConfig, ...withoutRetiredKeys(persistedConfig) };
                 if (!Array.isArray(persistedConfig.channels)) config.channels = [];
-                {
-                    try {
-                        const backupKey = `${CONFIG_STORE_KEY}:pre-local-only-backup`;
-                        if (typeof window !== "undefined" && !window.localStorage.getItem(backupKey)) {
-                            window.localStorage.setItem(backupKey, JSON.stringify(persisted));
-                        }
-                    } catch {
-                        // Skip the backup when localStorage is unavailable; config loading still works.
-                    }
-                    const existingChannels = Array.isArray(config.channels) ? config.channels : [];
-                    const localChannels = existingChannels.filter((channel) => isLocalGatewayUrl(channel.baseUrl));
-                    const candidate = localChannels[0] || createModelChannel({ ...localDefaultChannel });
-                    const keptModels = normalizeChannelModels((candidate.models || []).filter((model) => !/mock/i.test(model.name)));
-                    config.channels = [
-                        {
-                            ...candidate,
-                            name: candidate.name || i18n.t("config.channels.localName"),
-                            baseUrl: candidate.baseUrl || LOCAL_GATEWAY_BASE_URL,
-                            apiKey: candidate.apiKey || "local",
-                            models: keptModels,
-                        },
-                    ];
-                    config.baseUrl = config.channels[0].baseUrl;
-                    config.apiKey = config.channels[0].apiKey;
-                }
                 const channels = normalizeChannels(config);
                 const models = modelOptionsFromChannels(channels);
                 const imageOptions = channels.flatMap((channel) => channel.models.filter((model) => model.capability === "image").map((model) => encodeChannelModel(channel.id, model.name)));
@@ -434,7 +405,6 @@ function createModelChannel(channel?: Partial<ModelChannel>): ModelChannel {
         baseUrl: gatewayRoot(channel?.baseUrl || defaultBaseUrl()),
         // An older config stored the translated default; adopt the key so the name follows the language.
         nameKey: channel?.nameKey || defaultChannelNameKey(name) || undefined,
-        apiKey: channel?.apiKey || "",
         models: normalizeChannelModels(channel?.models),
     };
 }
@@ -492,7 +462,6 @@ function resolveModelChannel(config: AiConfig, value: string) {
             id: "default",
             name: i18n.t("config.channels.defaultName"),
             baseUrl: config.baseUrl,
-            apiKey: config.apiKey,
             models: config.models.map(modelOptionName).map((name) => ({ name, capability: guessCapability(name) })),
         })
     );
@@ -504,7 +473,6 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
         ...config,
         model: modelOptionName(value || config.model),
         baseUrl: channel.baseUrl,
-        apiKey: channel.apiKey,
     };
 }
 
@@ -524,7 +492,6 @@ function normalizeChannels(config: AiConfig) {
                 id: "default",
                 name: i18n.t("config.channels.defaultName"),
                 baseUrl: config.baseUrl || defaultConfig.baseUrl,
-                apiKey: config.apiKey || "",
                 models: normalizeChannelModels([config.model, config.imageModel, config.videoModel, config.textModel, config.audioModel].map(modelOptionName)),
             }),
         );

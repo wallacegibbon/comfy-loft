@@ -232,7 +232,6 @@ async function referenceMediaToFile(item: { name: string; type?: string; url?: s
 function assertVideoConfig(config: AiConfig, model: string) {
     if (!model) throw new Error(apiText("videoModelRequired"));
     if (!config.baseUrl.trim()) throw new Error(apiText("baseUrlRequired"));
-    if (!config.apiKey.trim()) throw new Error(apiText("apiKeyRequired"));
 }
 
 function normalizeVideoSeconds(value: string) {

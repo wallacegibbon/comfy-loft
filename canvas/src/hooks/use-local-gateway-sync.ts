@@ -9,7 +9,7 @@ import { encodeChannelModel, modelOptionsFromChannels, useConfigStore, type Chan
 const SYNC_INTERVAL_MS = 8000;
 const REQUEST_TIMEOUT_MS = 4000;
 
-const SYNC_CONFIG = { baseUrl: LOCAL_GATEWAY_BASE_URL, apiKey: "local" };
+const SYNC_CONFIG = { baseUrl: LOCAL_GATEWAY_BASE_URL };
 
 /** Sync models from the gateway automatically, so adding or removing a workflow needs no manual channel refresh. */
 export function useLocalGatewaySync() {
@@ -30,7 +30,7 @@ export function useLocalGatewaySync() {
             });
             if (modelSignature(channel.models) === modelSignature(nextModels)) return;
 
-            const channels = config.channels.map((item) => (item.id === channel.id ? { ...item, apiKey: item.apiKey || "local", baseUrl: LOCAL_GATEWAY_BASE_URL, models: nextModels } : item));
+            const channels = config.channels.map((item) => (item.id === channel.id ? { ...item, baseUrl: LOCAL_GATEWAY_BASE_URL, models: nextModels } : item));
             const optionsFor = (capability: ModelCapability) => channels.flatMap((item) => item.models.filter((model) => model.capability === capability).map((model) => encodeChannelModel(item.id, model.name)));
             const imageOptions = optionsFor("image");
             useConfigStore.setState({
@@ -44,7 +44,6 @@ export function useLocalGatewaySync() {
                     // The image model is also the general one: text-to-image is the default action.
                     model: pickModelOption("image", config.model, imageOptions),
                     baseUrl: LOCAL_GATEWAY_BASE_URL,
-                    apiKey: channel.apiKey || "local",
                 },
             });
         };
