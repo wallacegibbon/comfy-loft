@@ -59,7 +59,7 @@ import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
 import { rememberLastCanvas } from "@/lib/canvas/last-canvas";
 import { setActiveCanvas } from "@/services/canvas-files";
-import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
+import { useCanvasStore, flushCanvasSaves } from "@/stores/canvas/use-canvas-store";
 import { holdsResult } from "@/lib/canvas/node-prompt-field";
 import { useCanvasAgentTools } from "@/pages/canvas/hooks/use-canvas-agent-tools";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
@@ -173,6 +173,9 @@ function InfiniteCanvasPage() {
     const lastHistoryRef = useRef<CanvasHistoryEntry | null>(null);
     const historyCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const viewportSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const agentWindowSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    /** The debounced write above, so a page that is going away can run it before it is gone. */
+    const agentWindowWriteRef = useRef<(() => void) | null>(null);
     const applyingHistoryRef = useRef(false);
     const historyPausedRef = useRef(false);
     const rafRef = useRef<number | null>(null);
@@ -205,8 +208,9 @@ function InfiniteCanvasPage() {
     const currentProject = useCanvasStore((state) => state.projects.find((project) => project.id === projectId));
     const saveError = useCanvasStore((state) => state.saveErrors[projectId]);
     const theme = useCanvasTheme();
-    const agentOpen = useCanvasAgentStore((state) => state.open);
+    const agentOpen = useCanvasAgentStore((state) => state.windows[projectId]?.open ?? false);
     const toggleAgent = useCanvasAgentStore((state) => state.toggle);
+    const restoreAgentWindow = useCanvasAgentStore((state) => state.restore);
     const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
     const [connections, setConnections] = useState<CanvasConnection[]>([]);
     const [viewport, setViewport] = useState<ViewportTransform>({ x: 0, y: 0, k: 1 });
@@ -520,6 +524,9 @@ function InfiniteCanvasPage() {
             setBackgroundMode(project.backgroundMode);
             setShowImageInfo(project.showImageInfo || false);
             setViewport(project.viewport);
+            // The panel's window is part of the document, so it comes back with the viewport — the
+            // conversation and the corner it was left in, not a default.
+            restoreAgentWindow(projectId, project.agent);
             historyRef.current = { past: [], future: [] };
             if (historyCommitTimerRef.current) {
                 clearTimeout(historyCommitTimerRef.current);
@@ -593,6 +600,66 @@ function InfiniteCanvasPage() {
             if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
         };
     }, [projectId, projectLoaded, updateProject, viewport]);
+
+    /**
+     * The agent's window is document state like the viewport, so it is written back the same way.
+     *
+     * Subscribed rather than selected: a drag or a resize changes this store on every pointer frame, and
+     * selecting the whole window here would re-render the whole canvas for each one. The page reads only
+     * `open` (for the toggle button); the geometry is the panel's. Open and closed are written at once —
+     * that is a decision, not a gesture — while geometry waits for the pointer to settle, which is the
+     * same bargain the viewport makes.
+     */
+    useEffect(() => {
+        if (!projectLoaded) return;
+        const initial = useCanvasAgentStore.getState().windows[projectId];
+        /** What is already in the document this effect last wrote, so a restore is not saved back. */
+        let written = JSON.stringify(initial ?? null);
+        let open = initial?.open ?? false;
+        const write = () => {
+            if (agentWindowSaveTimerRef.current) {
+                clearTimeout(agentWindowSaveTimerRef.current);
+                agentWindowSaveTimerRef.current = null;
+            }
+            const next = useCanvasAgentStore.getState().windows[projectId];
+            if (!next) return;
+            const encoded = JSON.stringify(next);
+            if (encoded === written) return;
+            written = encoded;
+            updateProject(projectId, { agent: next });
+        };
+        const unsubscribe = useCanvasAgentStore.subscribe((state) => {
+            const next = state.windows[projectId];
+            if (!next) return;
+            if (next.open !== open) {
+                open = next.open;
+                write();
+                return;
+            }
+            if (agentWindowSaveTimerRef.current) clearTimeout(agentWindowSaveTimerRef.current);
+            agentWindowSaveTimerRef.current = setTimeout(write, 500);
+        });
+        agentWindowWriteRef.current = write;
+        return () => {
+            unsubscribe();
+            agentWindowWriteRef.current = null;
+            // Leaving the canvas must not drop the last frame of a drag: write it now and let the save
+            // queue coalesce it with whatever else is waiting.
+            write();
+        };
+    }, [projectId, projectLoaded, updateProject]);
+
+    // A refresh takes the page away in the middle of whatever debounce is pending. The window is part
+    // of the document, so the last drag is written here and pushed out with the queue — the same answer
+    // #177 gave the saves themselves.
+    useEffect(() => {
+        const flush = () => {
+            agentWindowWriteRef.current?.();
+            flushCanvasSaves();
+        };
+        window.addEventListener("pagehide", flush);
+        return () => window.removeEventListener("pagehide", flush);
+    }, []);
 
     // The tab coming back is exactly when the mistake shows up: somebody opened a second tab, worked
     // there, and switched to this one. One GET of the entry says whether the file moved on (#158).
@@ -2224,7 +2291,7 @@ function InfiniteCanvasPage() {
                     <button
                         type="button"
                         data-canvas-overlay=""
-                        onClick={toggleAgent}
+                        onClick={() => toggleAgent(projectId)}
                         aria-label={t("canvas.agent.title")}
                         className="absolute bottom-4 right-4 z-[95] grid size-12 place-items-center rounded-full border shadow-lg backdrop-blur transition hover:opacity-90"
                         style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}

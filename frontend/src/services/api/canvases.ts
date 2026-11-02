@@ -1,7 +1,7 @@
 import { LOCAL_GATEWAY_BASE_URL } from "@/constant/app-mode";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { ApiError, KEEPALIVE_BYTES, httpJson, httpVoid } from "@/services/api/http";
-import type { CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
+import type { CanvasAgentWindow, CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
 
 /**
  * The canvas documents, as the gateway keeps them.
@@ -31,6 +31,8 @@ export type CanvasDocument = {
     backgroundMode: CanvasBackgroundMode;
     showImageInfo: boolean;
     viewport: ViewportTransform;
+    /** The agent panel's window: open or not, and the place and size the user left it at. */
+    agent: CanvasAgentWindow;
 };
 
 type CanvasRecord = {
@@ -54,9 +56,30 @@ export class CanvasMissingError extends Error {
     }
 }
 
+/** The agent window as a new canvas starts: closed, in the default corner, at its default size. */
+const DEFAULT_AGENT_WINDOW: CanvasAgentWindow = { open: false, position: null, size: null };
+
 /** The document as a new canvas starts: no nodes, a blank view, the default background. */
 export function emptyCanvasDocument(): CanvasDocument {
-    return { nodes: [], connections: [], backgroundMode: "lines", showImageInfo: false, viewport: { x: 0, y: 0, k: 1 } };
+    return { nodes: [], connections: [], backgroundMode: "lines", showImageInfo: false, viewport: { x: 0, y: 0, k: 1 }, agent: { ...DEFAULT_AGENT_WINDOW } };
+}
+
+/**
+ * The agent window a document describes, or the default when it does not describe one.
+ *
+ * A document written before the window was part of the canvas has no `agent` field at all, and one
+ * written by hand can hold a position that is not a pair of numbers. Both open the panel where it
+ * would have opened anyway rather than putting a `NaN` into its style.
+ */
+function readAgentWindow(raw: unknown): CanvasAgentWindow {
+    const source = (raw || {}) as Partial<CanvasAgentWindow>;
+    const position = source.position;
+    const size = source.size;
+    return {
+        open: source.open === true,
+        position: position && Number.isFinite(position.x) && Number.isFinite(position.y) ? { x: position.x, y: position.y } : null,
+        size: size && Number.isFinite(size.width) && Number.isFinite(size.height) && size.width > 0 && size.height > 0 ? { width: size.width, height: size.height } : null,
+    };
 }
 
 /** Fill in whatever a document is missing, so a canvas written by an older build still opens. */
@@ -69,6 +92,7 @@ function readDocument(raw: unknown): CanvasDocument {
         backgroundMode: source.backgroundMode || empty.backgroundMode,
         showImageInfo: Boolean(source.showImageInfo),
         viewport: source.viewport && typeof source.viewport.k === "number" ? source.viewport : empty.viewport,
+        agent: readAgentWindow(source.agent),
     };
 }
 

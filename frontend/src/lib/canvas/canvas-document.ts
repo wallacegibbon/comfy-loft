@@ -17,6 +17,7 @@ export function documentOf(project: CanvasDocument): CanvasDocument {
         backgroundMode: project.backgroundMode,
         showImageInfo: project.showImageInfo,
         viewport: project.viewport,
+        agent: project.agent,
     };
 }
 

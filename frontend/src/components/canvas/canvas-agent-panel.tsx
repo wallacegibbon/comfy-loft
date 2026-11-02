@@ -19,7 +19,8 @@ import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
  * It is not a node: it does not pan, it does not zoom, it is not selected, exported or garbage
  * collected with the content. That is what a conversation is — a surface for working *on* the canvas,
  * not another thing on it. It carries `data-canvas-overlay` so the wheel and the drag stop at its edge
- * (see `lib/canvas-overlay.ts`), and its position is the window's, not the document's.
+ * (see `lib/canvas-overlay.ts`), and its window — open, place, size — is remembered in the document
+ * (`CanvasAgentWindow`), so a canvas reopens with the conversation where it was left.
  */
 
 type ToolStep = { callId: string; name: string; input?: string; output?: string };
@@ -59,9 +60,10 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
     const { t } = useTranslation();
     const theme = useCanvasTheme();
     const config = useEffectiveConfig();
-    const open = useCanvasAgentStore((state) => state.open);
-    const position = useCanvasAgentStore((state) => state.position);
-    const size = useCanvasAgentStore((state) => state.size);
+    const agentWindow = useCanvasAgentStore((state) => state.windows[canvasId]);
+    const open = agentWindow?.open ?? false;
+    const position = agentWindow?.position ?? null;
+    const size = agentWindow?.size ?? null;
     const setSize = useCanvasAgentStore((state) => state.setSize);
     const setOpen = useCanvasAgentStore((state) => state.setOpen);
     const setPosition = useCanvasAgentStore((state) => state.setPosition);
@@ -269,11 +271,22 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
     // It opens at a share of the canvas rather than a fixed pair of numbers: the panel is for reading long
     // answers and watching tools run, and 380×480 was too small for either on a normal window. Measured
     // against the space the canvas actually has, so a small window still gets a panel that fits in it.
+    // A remembered size is used as written but still bounded by the room: the window may have been much
+    // larger when the size was chosen, and a panel taller than the canvas cannot be grabbed to shrink.
     const host = cardRef.current?.parentElement?.getBoundingClientRect() ?? null;
     const roomWidth = host?.width || window.innerWidth;
     const roomHeight = host?.height || window.innerHeight;
-    const width = size?.width ?? Math.min(520, roomWidth - 24);
-    const height = size?.height ?? Math.min(760, Math.max(420, Math.round(roomHeight * 0.8)));
+    const width = Math.min(size?.width ?? Math.min(520, roomWidth - 24), roomWidth - 16);
+    const height = Math.min(size?.height ?? Math.min(760, Math.max(420, Math.round(roomHeight * 0.8))), roomHeight - 16);
+    // A window remembered off-screen — the browser got smaller since it was placed — is pulled back into
+    // the canvas when it is drawn, but the stored value is left alone: the person's own position is what
+    // goes back to disk if they close without touching it.
+    const placed = position
+        ? {
+              left: Math.min(Math.max(8, position.x), Math.max(8, roomWidth - width - 8)),
+              top: Math.min(Math.max(8, position.y), Math.max(8, roomHeight - height - 8)),
+          }
+        : null;
 
     // --- dragging ---------------------------------------------------------------------------------------
     // Pointer events are captured on the header, so a fast drag that leaves the card keeps moving it.
@@ -281,7 +294,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         const rect = cardRef.current?.getBoundingClientRect();
         if (!rect) return;
         dragRef.current = { dx: event.clientX - rect.left, dy: event.clientY - rect.top };
-        setPosition({ x: rect.left, y: rect.top });
+        setPosition(canvasId, { x: rect.left, y: rect.top });
         (event.target as HTMLElement).setPointerCapture(event.pointerId);
     };
     const moveDrag = (event: React.PointerEvent) => {
@@ -292,7 +305,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         const height = cardRef.current?.offsetHeight || 480;
         const maxX = (host?.width || window.innerWidth) - width - 8;
         const maxY = (host?.height || window.innerHeight) - height - 8;
-        setPosition({ x: Math.min(Math.max(8, event.clientX - drag.dx), Math.max(8, maxX)), y: Math.min(Math.max(8, event.clientY - drag.dy), Math.max(8, maxY)) });
+        setPosition(canvasId, { x: Math.min(Math.max(8, event.clientX - drag.dx), Math.max(8, maxX)), y: Math.min(Math.max(8, event.clientY - drag.dy), Math.max(8, maxY)) });
     };
     const endDrag = (event: React.PointerEvent) => {
         dragRef.current = null;
@@ -309,7 +322,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
     const startResize = (corner: "top-left" | "bottom-right") => (event: React.PointerEvent) => {
         event.preventDefault();
         event.stopPropagation();
-        resizeRef.current = { corner, x: event.clientX, y: event.clientY, width, height, anchor: position };
+        resizeRef.current = { corner, x: event.clientX, y: event.clientY, width, height, anchor: placed ? { x: placed.left, y: placed.top } : null };
         (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
     };
     const moveResize = (event: React.PointerEvent) => {
@@ -324,10 +337,10 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         const sign = grip.corner === "top-left" ? -1 : 1;
         const nextWidth = limit(grip.width + sign * dx, 320, (host?.width || window.innerWidth) - 16);
         const nextHeight = limit(grip.height + sign * dy, 280, (host?.height || window.innerHeight) - 16);
-        setSize({ width: nextWidth, height: nextHeight });
+        setSize(canvasId, { width: nextWidth, height: nextHeight });
         // With an explicit position the panel is pinned by its top-left corner, so moving that corner is moving
         // the panel: the opposite one stays where it is, which is what makes it look like the corner was pulled.
-        if (grip.anchor && grip.corner === "top-left") setPosition({ x: grip.anchor.x + (grip.width - nextWidth), y: grip.anchor.y + (grip.height - nextHeight) });
+        if (grip.anchor && grip.corner === "top-left") setPosition(canvasId, { x: grip.anchor.x + (grip.width - nextWidth), y: grip.anchor.y + (grip.height - nextHeight) });
     };
     const endResize = (event: React.PointerEvent) => {
         resizeRef.current = null;
@@ -425,7 +438,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
 
     if (!open) return null;
 
-    const style = position ? { left: position.x, top: position.y } : { right: 24, bottom: 24 };
+    const style = placed ?? { right: 24, bottom: 24 };
 
     return (
         <div
@@ -457,7 +470,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                 >
                     <Eraser className="size-3.5" />
                 </button>
-                <button type="button" className="rounded p-1 opacity-60 hover:opacity-100" onClick={() => setOpen(false)} title={t("canvas.agent.close")} aria-label={t("canvas.agent.close")}>
+                <button type="button" className="rounded p-1 opacity-60 hover:opacity-100" onClick={() => setOpen(canvasId, false)} title={t("canvas.agent.close")} aria-label={t("canvas.agent.close")}>
                     <X className="size-3.5" />
                 </button>
             </div>

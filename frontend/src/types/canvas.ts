@@ -9,6 +9,21 @@ export type ViewportTransform = {
     k: number;
 };
 
+/**
+ * The agent's window on a canvas: whether it is open, where it sits and how big it is.
+ *
+ * It is part of the document because it is how the person left the canvas, in the same way the
+ * viewport is: reopening a canvas puts the conversation back where it was instead of in the corner
+ * this build happens to default to. `position` is null while the window has never been dragged, and
+ * `size` is null while it is the size it opens at — an explicit value is the user's own, and it is
+ * restored as written.
+ */
+export type CanvasAgentWindow = {
+    open: boolean;
+    position: Position | null;
+    size: { width: number; height: number } | null;
+};
+
 export enum CanvasNodeType {
     Image = "image",
     Text = "text",

@@ -17,7 +17,7 @@ function node(overrides: Partial<CanvasNodeData>): CanvasNodeData {
 }
 
 function documentWith(nodes: CanvasNodeData[]): CanvasDocument {
-    return { nodes, connections: [], backgroundMode: "lines", showImageInfo: false, viewport: { x: 0, y: 0, k: 1 } };
+    return { nodes, connections: [], backgroundMode: "lines", showImageInfo: false, viewport: { x: 0, y: 0, k: 1 }, agent: { open: false, position: null, size: null } };
 }
 
 const resolved = "http://127.0.0.1:8190/api/canvases/349b70cf4764/files/up-a1b2c3d4.png";
@@ -50,6 +50,12 @@ describe("a canvas document", () => {
     test("is the document and nothing else", () => {
         const project = { ...documentWith([]), id: "349b70cf4764", title: "kept by the summary", rev: "abc", createdAt: "x", updatedAt: "y", bytes: 2 };
         const written = documentOf(project);
-        expect(Object.keys(written).sort()).toEqual(["backgroundMode", "connections", "nodes", "showImageInfo", "viewport"]);
+        expect(Object.keys(written).sort()).toEqual(["agent", "backgroundMode", "connections", "nodes", "showImageInfo", "viewport"]);
+    });
+
+    test("carries the agent window with the canvas", () => {
+        const document = documentWith([]);
+        document.agent = { open: true, position: { x: 40, y: 60 }, size: { width: 640, height: 520 } };
+        expect(documentOf(document).agent).toEqual({ open: true, position: { x: 40, y: 60 }, size: { width: 640, height: 520 } });
     });
 });
