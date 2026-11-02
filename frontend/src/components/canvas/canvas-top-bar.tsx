@@ -101,7 +101,9 @@ export function CanvasTopBar({
                     {/* The name is the right end of the bar, sharing the column's right edge with the panel and the
                         dock below (#191). `ml-auto` does the pushing; the title has no `flex-1` for that reason,
                         and shrinks instead of pushing the buttons. No divider in front of it: it used to separate
-                        the name from the icons it sat against, and now there is nothing between them to split. */}
+                        the name from the icons it sat against, and now there is nothing between them to split.
+                        A hover dims it — no box, no underline: a filled pill on the translucent bar reads as a
+                        border, and this is the bar's title before it is a button. */}
                     <div ref={titleRef} className="ml-auto flex min-w-0 items-center gap-2">
                         {isTitleEditing ? (
                             <input
@@ -141,7 +143,7 @@ export function CanvasTopBar({
                                     "clickable" inside one bar, and the uglier one. */}
                                 <button
                                     type="button"
-                                    className="-mx-1.5 flex min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left text-lg font-semibold tracking-normal transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                                    className="flex min-w-0 items-center gap-1.5 text-left text-lg font-semibold tracking-normal transition-opacity hover:opacity-70"
                                     title={t("canvas.switchProject")}
                                     aria-label={t("canvas.switchProject")}
                                 >

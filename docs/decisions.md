@@ -6597,9 +6597,9 @@ the same frame, no close button, and the skip footer with the new hint.
 left edge, same radius, same shadow — and they are *stacked*: the bar on top, the panel under it, the dock
 at its foot. The panel's bottom edge *is* the dock's height plus the two gaps (`CANVAS_ABOVE_DOCK_BOTTOM`),
 so opening the panel shortens the panel and moves nothing else. The canvas name sits at the right end of the
-bar (`ml-auto`), so the column has one left edge *and* one right edge — and the name hovers the way its
-neighbours do, a background rather than the dashed underline it used to draw: one bar should not say
-"clickable" in two ways, least of all the uglier one. The divider that used to stand in front of the name is
+bar (`ml-auto`), so the column has one left edge *and* one right edge. It answers a hover by dimming, with
+no box and no underline: a 10% white pill on a translucent bar reads as a border, and the name is the bar's
+title before it is a button. The divider that used to stand in front of the name is
 gone with the move: it separated the name from the icons it sat against, and at the far end there is nothing
 to separate.
 
