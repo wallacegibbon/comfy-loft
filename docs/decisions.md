@@ -6756,3 +6756,32 @@ renders now.
 `frontend/src/stores/use-config-store.ts`, `frontend/src/styles/globals.css`, `frontend/src/i18n/locales/*`,
 `frontend/src/components/layout/client-root-init.tsx`, `internal/store/preferences.go`,
 `internal/server/routes_admin.go`, `internal/server/server.go`.
+
+## 194. A dropdown's list outranks the dialog that opened it
+
+**Decision** The listbox in `kit/select-primitive` sets `z-[1500]`, and no caller passes a layer of its own any
+more: `model-picker` (both pickers), `kit/select` and `agent-settings-controls` lost theirs. 1500 is the app's one
+floating-layer number — above dialogs (overlay 1300, frame 1301), above the canvas panel (60) and its menus
+(80–120), shared with tooltips and `kit/floating` menus.
+
+**Why** The list is portalled to `body`, so it is a *sibling* of the dialog that opened it, not a child. The two
+default-model pickers in the Preferences window passed `z-[1200]`, and `cn` is tailwind-merge, so that number
+replaced the primitive's: with the overlay at 1300 and the frame at 1301, opening a picker drew its options
+behind the window, under a 45%-black scrim. The trigger flipped to open, nothing was visible or clickable, and
+the report was "the default image and video models cannot be chosen". Every other select in the app was fine
+because `kit/select` carried 1500 itself — which is exactly why only those two were broken, and why the number
+belongs to the primitive: a caller cannot know what layer it will be opened from, and this one went stale the
+moment the dialog's own numbers moved to 1300/1301.
+
+**Cost** A dropdown opened from a dialog now paints over a confirm dialog (1400/1401) if one opens while it is
+open. Nothing opens a confirm from inside an open listbox — selecting an option closes it.
+
+**Tested** In the browser (`/tmp/verify`, 8191/3001, its own data directory): `bsk` opened Preferences, clicked the
+default image model, saw the list render its six options, and choosing "MOSS Balanced fast 8-step" changed the
+trigger from "Z-Image Turbo" to that label — the list is above the dialog and takes the click. The video picker's
+list opened with the four H3 workflows. `tailwind-merge` resolves both callers' class lists to `z-[1500]`
+(checked directly), the built bundle contains no `z-[1200]`, and `tsc --noEmit`, `npm run check`, the 155 tests
+and `npm run build` all pass.
+
+**Where** `frontend/src/components/kit/select-primitive.tsx`, `frontend/src/components/kit/select.tsx`,
+`frontend/src/components/model-picker.tsx`, `frontend/src/components/canvas/agent-settings-controls.tsx`.
