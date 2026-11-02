@@ -5902,9 +5902,11 @@ fresh install is English. Existing workspaces are unaffected — their `locale` 
 anyone switched the language, and the read is what runs first.
 
 **Tested** `npm run check` (i18n keys still agree: 905 / 891), `npx vitest run` (146 — no test depended on the
-Chinese default; the ones that need a language name it), `npx tsc --noEmit`. In the browser: a fresh
-workspace with no `locale` opens in English with `document.documentElement.lang === "en-US"`, and the switcher
-writes `locale: "zh-CN"` into the workspace's settings when the person asks for it.
+Chinese default; the ones that need a language name it), `npx tsc --noEmit`. In the browser: a gateway on a
+temporary data directory (so the workspace really has no `locale`) served the bundle on a fresh tab —
+`document.documentElement.lang` is `en-US`, the first canvas is created as "Canvas 1", and the toolbar reads
+"Canvas elements" / "No nodes on this canvas" with the switcher offering `中`. A workspace that has chosen a
+language keeps it, because `bootLocale()` reads the saved document first.
 
 **Where** `frontend/src/i18n/index.ts`, `frontend/index.html`, `frontend/scripts/check-i18n.cjs`,
 `docs/decisions.md` #20 and #41 (their wording no longer rests on the fallback being Chinese).
@@ -5946,9 +5948,10 @@ escaping name 400, unknown canvas 404). Frontend: `tests/canvas-document.test.ts
 nodes without metadata untouched, and only the five document fields in the result. Gates: `make check`,
 `go test -race`, `npm run check`, `npx vitest run` (149).
 
-**In the browser** Exported the canvas that has a generated image, deleted it, imported the zip: the canvas came
-back with the same node, the file in `files/` kept the name the document names, no `up-` copy was created, and
-`canvas.json` on disk contains no `http` at all.
+**In the browser** Exported a canvas holding an image, deleted it, imported the zip: the canvas came back with
+the same node, the file in `files/` kept the name the document names (`files/import-test.png`, no `up-` copy),
+the bytes were identical, and `canvas.json` on disk contains no `http` at all. The zip itself is the check that
+matters: `projects.json` carries five document fields plus the title — no id, no rev, no URL.
 
 **Where** `internal/canvas/files.go`, `internal/canvas/canvas.go`, `internal/server/routes_canvas.go`,
 `frontend/src/services/canvas-files.ts`, `frontend/src/lib/canvas/canvas-document.ts`,
