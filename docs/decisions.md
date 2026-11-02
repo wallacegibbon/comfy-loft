@@ -4870,3 +4870,38 @@ a node's toolbar, `/assets` lands back on a canvas instead of opening anything (
 tombstone, the same courtesy `/config` gets), and a file dropped on the canvas still becomes a node.
 
 **Where** `canvas/web/src/{stores/use-asset-store.ts,stores/asset-persist.ts,components/assets/**,components/kit/{tag-input,tag,nav,display}.tsx,components/canvas/canvas-side-panel.tsx,components/canvas/canvas-node-hover-toolbar.tsx,components/canvas/canvas-top-bar.tsx,pages/canvas/project.tsx,pages/panel-entries.tsx,router.tsx,types/canvas.ts,i18n/locales/*,styles/globals.css,tests/persist-migration.test.ts}`.
+
+## 145. The deleted library gets one exit, and then it is gone
+
+**Decision** `lib/canvas/legacy-asset-store.ts` reads the `comfy-loft:asset_store` record back,
+`components/layout/legacy-assets-banner.tsx` offers it once as a zip, and discarding the offer deletes
+the record. While the record exists its `storageKey`s are one more root for the blob sweep, so nothing
+it names is collected before the user has been asked. Nothing is imported back into the app.
+
+**Why not just delete it with #144** Because the code was the only thing that knew those files
+existed. A record in `comfy-loft:asset_store` can point at a blob that no canvas, no undo snapshot and
+no generation log mentions — a picture saved to the library and nowhere else — and the first sweep
+after the removal would have collected it. That is a feature removal quietly deleting user data, which
+is not the same thing as removing a feature.
+
+**Why a dead end rather than a migration** Converting library records into canvases would resurrect
+the very shape #144 removed: a project per saved picture, or one junk canvas per library. The package
+is the old format (`assets.json` verbatim + `files/` + a `README.txt` that says what it is), which
+means this path writes a format nothing reads. That is the point: the exit has to be worth deleting
+once it is unused, and a format nobody parses is easier to delete than an importer.
+
+**The common case is silence** Most machines that ever opened the app have
+`{"state":{"assets":[]},"version":1}` sitting there. `readLegacyLibrary` reports that as `empty`, the
+banner deletes it without a word. Only a record with something in it, or a blob that will not parse,
+is worth asking a person about — an unreadable blob is not empty, because its bytes are still theirs.
+
+**Verified end to end in a browser** A seeded library of one image record and one text record: the
+banner says 2, exporting downloads a zip holding the record's bytes verbatim, a 79-byte
+`files/1-Legacy-hero.png` and no file for the text record; a sweep with the record still present leaves
+the image alive; discarding removes the record and the next sweep collects the image.
+
+**When to delete this** After the release in which nobody can still hold an old library. It is
+`lib/canvas/legacy-asset-store.ts`, the banner, its `canvas.legacyAssets.*` strings, the
+`legacy` root in `sweepUnusedCanvasFiles`, and `tests/legacy-asset-store.test.ts`.
+
+**Where** `canvas/web/src/{lib/canvas/legacy-asset-store.ts,lib/canvas/canvas-file-cleanup.ts,components/layout/legacy-assets-banner.tsx,layouts/user-layout.tsx,i18n/locales/*}`,`canvas/web/{tests/legacy-asset-store.test.ts,scripts/check-exports.cjs}`.

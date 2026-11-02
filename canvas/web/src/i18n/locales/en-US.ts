@@ -644,6 +644,16 @@ export default {
             discard: "Clear and start over",
             discardHint: "The original is kept as canvas_store.corrupt-<time> and can still be exported afterwards.",
         },
+        legacyAssets: {
+            title: "Your old asset library is still here",
+            description: "The asset library has been removed from this app. {{count}} item(s) saved to it, and the files they point at, are still in this browser and nowhere else. Export them now, or discard them.",
+            export: "Export asset library",
+            exported: "Exported {{count}} file(s)",
+            exportFailed: "Export failed. Try again.",
+            discard: "Discard",
+            discarded: "Asset library discarded",
+            hint: "Discarding deletes the old records; their files are then cleaned up with the rest of the browser storage. Nothing here is imported back into the app — a canvas is where a file lives now.",
+        },
         editors: {
             reset: "Reset",
             zoomOut: "Zoom out",

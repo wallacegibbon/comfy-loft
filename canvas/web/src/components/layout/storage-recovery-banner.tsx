@@ -41,26 +41,24 @@ export function StorageRecoveryBanner() {
     };
 
     return (
-        <div className="pointer-events-none fixed inset-x-0 top-16 z-[2999] flex justify-center px-4">
-            <div className="pointer-events-auto w-full max-w-2xl rounded-xl border border-amber-300 bg-white/97 p-4 shadow-xl backdrop-blur dark:border-amber-900/70 dark:bg-stone-900/97">
-                <div className="flex items-start gap-3">
-                    <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-500" />
-                    <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold">{t("canvas.recovery.title")}</div>
-                        <p className="mt-1 text-xs leading-relaxed text-stone-600 dark:text-stone-300">{t("canvas.recovery.description")}</p>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <Button type="primary" icon={<Download className="size-4" />} onClick={exportRaw}>
-                                {t("canvas.recovery.export")}
-                            </Button>
-                            <Button icon={<RotateCcw className="size-4" />} onClick={() => window.location.reload()}>
-                                {t("canvas.recovery.retry")}
-                            </Button>
-                            <button type="button" className="ml-1 text-xs text-stone-500 underline underline-offset-2 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200" onClick={discard}>
-                                {t("canvas.recovery.discard")}
-                            </button>
-                        </div>
-                        <p className="mt-2 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">{t("canvas.recovery.discardHint")}</p>
+        <div className="pointer-events-auto w-full max-w-2xl rounded-xl border border-amber-300 bg-white/97 p-4 shadow-xl backdrop-blur dark:border-amber-900/70 dark:bg-stone-900/97">
+            <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-500" />
+                <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold">{t("canvas.recovery.title")}</div>
+                    <p className="mt-1 text-xs leading-relaxed text-stone-600 dark:text-stone-300">{t("canvas.recovery.description")}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <Button type="primary" icon={<Download className="size-4" />} onClick={exportRaw}>
+                            {t("canvas.recovery.export")}
+                        </Button>
+                        <Button icon={<RotateCcw className="size-4" />} onClick={() => window.location.reload()}>
+                            {t("canvas.recovery.retry")}
+                        </Button>
+                        <button type="button" className="ml-1 text-xs text-stone-500 underline underline-offset-2 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200" onClick={discard}>
+                            {t("canvas.recovery.discard")}
+                        </button>
                     </div>
+                    <p className="mt-2 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">{t("canvas.recovery.discardHint")}</p>
                 </div>
             </div>
         </div>

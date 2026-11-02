@@ -31,6 +31,8 @@ const EXEMPT = new Set([path.join(WEB, "src/types/canvas-plugin.ts"), path.join(
 const TEST_ONLY = new Map([
     ["src/lib/gateway-models.ts:modelsOf", "一个 workflow → 若干候选条目的映射，本身就是被测单元；gatewayModels 只是它的 fold"],
     ["src/services/api/http.ts:ApiError", "http.ts 抛出的错误类型，测试用它断言 status/body 的形状"],
+    ["src/lib/canvas/legacy-asset-store.ts:buildLegacyAssetPackage", "一次性退出通道的打包函数：产品侧唯一调用者是同文件的 exportLegacyAssetLibrary，而它读的两个 IndexedDB store 没法在测试里造，所以把 blob 读者做成参数、只测包本身"],
+    ["src/lib/canvas/legacy-asset-store.ts:readLegacyLibrary", "资产库一次性退出通道的解析器：产品侧唯一调用者是同文件的 loadLegacyAssetLibrary，而它要防的边界（坏 JSON、旧信封、缺字段、裸数组、空信封）只能在单测里喂进去"],
     ["src/services/api/http.ts:readApiErrorMessage", "解析器本身是被测单元：表格用例覆盖 msg/message/error/detail/序列化 JSON/HTML 六种形状；从 apiErrorMessage 走会混进状态码兜底"],
 ]);
 
