@@ -25,8 +25,9 @@ type FormData struct {
 // MaxUploadFiles mirrors the old multer limits.files = 12.
 const MaxUploadFiles = 12
 
-// MaxFileBytes is the default per-file ceiling (50MB). The server layer checks
-// the configured value as well.
+// MaxFileBytes is the per-file ceiling used when the caller does not name one (50MB). The gateway passes
+// its configured `MAX_UPLOAD_BYTES`, so raising that raises the ceiling rather than being silently capped
+// here — which is what a hardcoded limit amounts to when the parser is the one that reads the body.
 const MaxFileBytes = 50 << 20
 
 func isMultipart(contentType string) bool {
@@ -39,7 +40,12 @@ func isFormURLEncoded(contentType string) bool {
 
 // ParseMultipart streams the multipart body and stops as soon as a file exceeds
 // the ceiling, instead of spooling everything to a temp file first.
-func ParseMultipart(r *http.Request) (*FormData, error) {
+//
+// maxFileBytes is the per-file limit this deployment configured; zero means the default.
+func ParseMultipart(r *http.Request, maxFileBytes int64) (*FormData, error) {
+	if maxFileBytes <= 0 {
+		maxFileBytes = MaxFileBytes
+	}
 	form := &FormData{Values: map[string][]string{}}
 	reader, err := r.MultipartReader()
 	if err != nil {
@@ -73,13 +79,13 @@ func ParseMultipart(r *http.Request) (*FormData, error) {
 			return nil, NewError(http.StatusBadRequest, "LIMIT_FILE_COUNT", "at most 12 files per upload")
 		}
 
-		data, readErr := io.ReadAll(io.LimitReader(part, MaxFileBytes+1))
+		data, readErr := io.ReadAll(io.LimitReader(part, maxFileBytes+1))
 		mimetype := part.Header.Get("Content-Type")
 		_ = part.Close()
 		if readErr != nil {
 			return nil, BadRequest("invalid_multipart", "failed to read an uploaded file")
 		}
-		if int64(len(data)) > MaxFileBytes {
+		if int64(len(data)) > maxFileBytes {
 			return nil, NewError(http.StatusRequestEntityTooLarge, "LIMIT_FILE_SIZE", "uploaded file is too large")
 		}
 		if mimetype == "" {

@@ -298,7 +298,7 @@ func TestParseMultipartFieldsAndFiles(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/x", reader)
 	request.Header.Set("Content-Type", contentType)
 
-	form, err := ParseMultipart(request)
+	form, err := ParseMultipart(request, 0)
 	if err != nil {
 		t.Fatalf("ParseMultipart: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestParseMultipartRejectsTooManyFiles(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/x", reader)
 	request.Header.Set("Content-Type", contentType)
 
-	_, err := ParseMultipart(request)
+	_, err := ParseMultipart(request, 0)
 	var appErr *Error
 	if !errors.As(err, &appErr) || appErr.Code != "LIMIT_FILE_COUNT" {
 		t.Fatalf("got %v, want LIMIT_FILE_COUNT", err)
@@ -330,7 +330,7 @@ func TestParseMultipartRejectsOversizedFile(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/x", reader)
 	request.Header.Set("Content-Type", contentType)
 
-	_, err := ParseMultipart(request)
+	_, err := ParseMultipart(request, 0)
 	var appErr *Error
 	if !errors.As(err, &appErr) || appErr.Code != "LIMIT_FILE_SIZE" {
 		t.Fatalf("got %v, want LIMIT_FILE_SIZE", err)
@@ -372,5 +372,31 @@ func TestBoolAndStringSliceHelpers(t *testing.T) {
 	ids := StringSlice(body, "ids")
 	if len(ids) != 2 || ids[0] != "a" {
 		t.Errorf("StringSlice = %v, want only the string entries", ids)
+	}
+}
+
+// The ceiling is the deployment's, not the package's: a gateway configured with MAX_UPLOAD_BYTES smaller
+// (or larger) than the default must be read at that value, or the knob is a label rather than a limit.
+func TestParseMultipartHonoursAConfiguredCeiling(t *testing.T) {
+	size := 2 << 20
+	build := func() *http.Request {
+		reader, contentType := buildMultipart(t, 1, size)
+		request := httptest.NewRequest(http.MethodPost, "/x", reader)
+		request.Header.Set("Content-Type", contentType)
+		return request
+	}
+
+	_, err := ParseMultipart(build(), int64(size)-1024)
+	var appErr *Error
+	if !errors.As(err, &appErr) || appErr.Code != "LIMIT_FILE_SIZE" {
+		t.Fatalf("a configured limit below the file size gave %v, want LIMIT_FILE_SIZE", err)
+	}
+
+	form, err := ParseMultipart(build(), int64(size)+1024)
+	if err != nil {
+		t.Fatalf("a configured limit above the file size was not honoured: %v", err)
+	}
+	if len(form.Files) != 1 {
+		t.Fatalf("files = %d, want 1", len(form.Files))
 	}
 }

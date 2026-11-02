@@ -139,6 +139,9 @@ type Ctx struct {
 	W         http.ResponseWriter
 	R         *http.Request
 	RequestID string
+	// MaxFileBytes is this deployment's per-file upload ceiling, for the multipart parser. Zero means the
+	// package default.
+	MaxFileBytes int64
 
 	body     map[string]any
 	bodyErr  error
@@ -239,7 +242,7 @@ func (c *Ctx) Form() (*FormData, error) {
 		return c.formData, c.formErr
 	}
 	c.formDone = true
-	c.formData, c.formErr = ParseMultipart(c.R)
+	c.formData, c.formErr = ParseMultipart(c.R, c.MaxFileBytes)
 	return c.formData, c.formErr
 }
 

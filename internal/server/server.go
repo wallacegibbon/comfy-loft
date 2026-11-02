@@ -211,7 +211,7 @@ func (s *Server) Handler() http.Handler {
 // route registers a business handler and centralizes error rendering.
 func (s *Server) route(mux *http.ServeMux, pattern string, handler httpx.Handler) {
 	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-		ctx := &httpx.Ctx{W: w, R: r, RequestID: httpx.RequestIDOf(r)}
+		ctx := &httpx.Ctx{W: w, R: r, RequestID: httpx.RequestIDOf(r), MaxFileBytes: s.cfg.MaxUploadBytes}
 		if err := handler(ctx); err != nil {
 			if s.writeKnownError(w, err) {
 				return
