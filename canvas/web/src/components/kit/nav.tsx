@@ -1,12 +1,12 @@
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
 /**
- * Tabs, Collapse and Pagination — the three pieces of chrome that carry their content in
- * antd's `items` arrays. Keeping that shape means the `items` literals at the call sites
- * did not move; only what renders them changed.
+ * Tabs and Collapse — the two pieces of chrome that carry their content in antd's `items`
+ * arrays. Keeping that shape means the `items` literals at the call sites did not move;
+ * only what renders them changed.
  */
 
 /* ------------------------------------------------------------------ Tabs */
@@ -107,66 +107,6 @@ export function Collapse({
                     </div>
                 );
             })}
-        </div>
-    );
-}
-
-/* ------------------------------------------------------------ Pagination */
-
-export function Pagination({
-    current = 1,
-    pageSize = 10,
-    total = 0,
-    onChange,
-    pageSizeOptions = [10, 20, 50, 100],
-    showSizeChanger = false,
-    perPageLabel,
-    size = "middle",
-    className,
-}: {
-    current?: number;
-    pageSize?: number;
-    total?: number;
-    onChange?: (page: number, pageSize: number) => void;
-    pageSizeOptions?: number[];
-    showSizeChanger?: boolean;
-    /** Rendered after the size selector; antd took this from its own locale. */
-    perPageLabel?: string;
-    size?: "small" | "middle";
-    className?: string;
-}): ReactNode {
-    const pages = Math.max(1, Math.ceil(total / pageSize));
-    const go = (page: number) => {
-        const next = Math.min(Math.max(1, page), pages);
-        if (next !== current) onChange?.(next, pageSize);
-    };
-    const button =
-        "inline-flex items-center justify-center rounded-md border border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-40 enabled:hover:bg-stone-100 enabled:dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300";
-    const dimension = size === "small" ? "size-6 text-[13px]" : "size-8 text-sm";
-    return (
-        <div className={cn("flex flex-wrap items-center gap-1", className)}>
-            <button type="button" aria-label="Previous page" disabled={current <= 1} onClick={() => go(current - 1)} className={cn(button, dimension)}>
-                <ChevronLeft className="size-4" />
-            </button>
-            <span className={cn("inline-flex min-w-8 items-center justify-center rounded-md border border-stone-300 font-medium text-stone-900 tabular-nums dark:border-stone-700 dark:text-stone-100", dimension)}>{current}</span>
-            <span className="px-1 text-xs text-stone-400">/ {pages}</span>
-            <button type="button" aria-label="Next page" disabled={current >= pages} onClick={() => go(current + 1)} className={cn(button, dimension)}>
-                <ChevronRight className="size-4" />
-            </button>
-            {showSizeChanger ? (
-                <select
-                    value={pageSize}
-                    onChange={(event) => onChange?.(1, Number(event.target.value))}
-                    className="ml-2 h-8 rounded-md border border-stone-300 bg-white px-1.5 text-sm text-stone-700 outline-none dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200"
-                >
-                    {pageSizeOptions.map((option) => (
-                        <option key={option} value={option}>
-                            {option}
-                        </option>
-                    ))}
-                </select>
-            ) : null}
-            {showSizeChanger && perPageLabel ? <span className="text-xs text-stone-400">{perPageLabel}</span> : null}
         </div>
     );
 }

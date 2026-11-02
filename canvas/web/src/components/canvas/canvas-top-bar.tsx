@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown, Images, LayoutGrid, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, LayoutGrid, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { useTranslation } from "react-i18next";
 
@@ -56,9 +56,8 @@ export function CanvasTopBar({
     const sidePanelOpen = useCanvasSidePanelStore((state) => state.panelOpen);
     const toggleSidePanel = useCanvasSidePanelStore((state) => state.togglePanel);
     const projects = useCanvasStore((state) => state.projects);
-    // The list and the asset library are panels over the canvas, not routes.
+    // The canvas list is a panel over the canvas, not a route.
     const openManager = useCanvasPanelStore((state) => state.setCanvasManagerOpen);
-    const openAssets = useCanvasPanelStore((state) => state.setAssetsOpen);
     // Current canvas first, the rest most-recent-first: switching is a "where am I" question,
     // so the answer you are most likely looking for should not be buried.
     const orderedProjects = useMemo(() => {
@@ -82,9 +81,6 @@ export function CanvasTopBar({
                 <div className={barClass} style={barStyle}>
                     <TopBarButton label={sidePanelOpen ? t("canvas.collapsePanel") : t("canvas.expandPanel")} onClick={toggleSidePanel}>
                         {sidePanelOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
-                    </TopBarButton>
-                    <TopBarButton label={t("navigation.assets")} onClick={() => openAssets(true)}>
-                        <Images className="size-4" />
                     </TopBarButton>
                     <TopBarButton label={t("canvas.projects")} onClick={() => openManager(true)}>
                         <LayoutGrid className="size-4" />

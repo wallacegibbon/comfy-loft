@@ -17,6 +17,6 @@ export const PLUGIN_DATABASE = "comfy-loft-plugins";
 
 /**
  * The object stores in {@link APP_DATABASE}, for anyone who needs the list rather than a single
- * name: `app_state` (canvas and asset state), `media_files`, `image_files`, `image_previews`, and
+ * name: `app_state` (canvas state), `media_files`, `image_files`, `image_previews`, and
  * the `image_generation_logs` / `video_generation_logs` history.
  */

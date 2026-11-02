@@ -78,9 +78,9 @@ export function useImageEditors(deps: NodeEditorDeps) {
                     return {
                         id,
                         type: CanvasNodeType.Image,
-                        title: t("canvas.runtime.splitTitle", { name: node.title || t("assets.kinds.image"), row: piece.row + 1, column: piece.column + 1 }),
+                        title: t("canvas.runtime.splitTitle", { name: node.title || t("canvas.nodeTypes.image"), row: piece.row + 1, column: piece.column + 1 }),
                         titleKey: "canvas.runtime.splitTitle",
-                        titleParams: { name: node.title || t("assets.kinds.image"), row: piece.row + 1, column: piece.column + 1 },
+                        titleParams: { name: node.title || t("canvas.nodeTypes.image"), row: piece.row + 1, column: piece.column + 1 },
                         position: { x: startX + piece.column * (cellWidth + gap), y: startY + piece.row * (cellHeight + gap) },
                         width: cellWidth,
                         height: cellHeight,

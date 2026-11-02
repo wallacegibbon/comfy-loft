@@ -14,7 +14,7 @@ import { create } from "zustand";
  */
 export type StorageFailure = {
     /** Which persisted store failed. Used both as the flag and as the banner's export name. */
-    store: "canvas" | "asset";
+    store: "canvas";
     /** The key the adapter was asked for, e.g. `comfy-loft:canvas_store`. */
     key: string;
     /** The bytes as stored. Held so the user can export them. */

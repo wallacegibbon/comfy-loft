@@ -2,14 +2,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * Small labels and filter chips, replacing antd's `Tag`.
- *
- * antd exposed `Tag.CheckableTag` as a static; here it is a named export, so a call site
- * says `<CheckableTag>` and the import makes it obvious which one is used. The checked
- * state is also written as an `is-active` class, because `globals.css` styles the prompt
- * filter chips through that class rather than through antd's generated one.
- */
+/** Small labels, replacing antd's `Tag`. */
 type TagColor = "default" | "blue" | "green" | "orange" | "gold";
 
 const COLORS: Record<TagColor, string> = {
@@ -24,13 +17,4 @@ const BASE = "inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs 
 
 export function Tag({ color = "default", className, children }: { color?: TagColor; className?: string; children?: ReactNode }): ReactNode {
     return <span className={cn(BASE, COLORS[color] ?? COLORS.default, className)}>{children}</span>;
-}
-
-/** A chip that toggles. `is-active` mirrors `checked` for the stylesheet. */
-export function CheckableTag({ checked, onChange, className, children }: { checked: boolean; onChange?: (checked: boolean) => void; className?: string; children?: ReactNode }): ReactNode {
-    return (
-        <button type="button" aria-pressed={checked} onClick={() => onChange?.(!checked)} className={cn("cursor-pointer transition-colors", className, checked && "is-active")}>
-            {children}
-        </button>
-    );
 }

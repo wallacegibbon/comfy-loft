@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { CANVAS_PERSIST_VERSION, readCanvasPersisted } from "@/stores/canvas/canvas-persist";
-import { ASSET_PERSIST_VERSION, readAssetPersisted } from "@/stores/asset-persist";
 
 /**
- * These feed blobs to `readCanvasPersisted` / `readAssetPersisted`, which is exactly what the
- * storage adapters call. A throw there is not an exception to catch — it is the signal that turns
- * into "copy the blob aside, refuse to write, show the banner", so most of these assert `toThrow`.
+ * These feed blobs to `readCanvasPersisted`, which is exactly what the storage adapter calls. A
+ * throw there is not an exception to catch — it is the signal that turns into "copy the blob aside,
+ * refuse to write, show the banner", so most of these assert `toThrow`.
  */
 
 const project = (overrides: Record<string, unknown> = {}) => ({
@@ -146,46 +145,5 @@ describe("canvas store format", () => {
     it("refuses a project with no id", () => {
         const raw = JSON.stringify({ version: CANVAS_PERSIST_VERSION, state: { projects: [project({ id: "" })] } });
         expect(() => readCanvasPersisted(raw)).toThrow(/id/);
-    });
-});
-
-describe("asset store format", () => {
-    const image = (overrides: Record<string, unknown> = {}) => ({
-        id: "A1",
-        kind: "image",
-        title: "Asset",
-        coverUrl: "",
-        tags: [],
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-        data: { dataUrl: "blob:x", width: 1, height: 1, bytes: 1, mimeType: "image/png" },
-        ...overrides,
-    });
-
-    it("reads a current-version blob unchanged", () => {
-        const raw = JSON.stringify({ version: ASSET_PERSIST_VERSION, state: { assets: [image()] } });
-        expect(readAssetPersisted(raw).assets).toHaveLength(1);
-    });
-
-    it("migrates a versionless blob", () => {
-        const raw = JSON.stringify({ state: { assets: [image()] } });
-        expect(readAssetPersisted(raw).assets).toHaveLength(1);
-    });
-
-    it("drops entries with no data, which the hydration pass would dereference", () => {
-        const raw = JSON.stringify({ version: 0, state: { assets: [image(), { id: "A2", kind: "image", title: "broken", tags: [] }] } });
-        const assets = readAssetPersisted(raw).assets;
-        expect(assets).toHaveLength(1);
-        expect(assets[0].id).toBe("A1");
-    });
-
-    it("refuses a blob written by a newer build", () => {
-        const raw = JSON.stringify({ version: ASSET_PERSIST_VERSION + 1, state: { assets: [] } });
-        expect(() => readAssetPersisted(raw)).toThrow(/format version/);
-    });
-
-    it("refuses assets that are not an array", () => {
-        const raw = JSON.stringify({ version: ASSET_PERSIST_VERSION, state: { assets: {} } });
-        expect(() => readAssetPersisted(raw)).toThrow(/assets/);
     });
 });

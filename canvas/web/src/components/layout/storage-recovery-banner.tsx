@@ -3,7 +3,6 @@ import { AlertTriangle, Download, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/kit/button";
-import { useAssetStore } from "@/stores/use-asset-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useStorageRecoveryStore } from "@/stores/use-storage-recovery-store";
 
@@ -28,11 +27,10 @@ export function StorageRecoveryBanner() {
 
     const discard = () => {
         dismiss();
-        // Nudge both stores so the moment writes are allowed again the cleared state replaces the
+        // Nudge the store so the moment writes are allowed again the cleared state replaces the
         // unreadable blob. Without this, "start over" only stops showing the banner: nothing has
         // been written yet, so a reload reads the same broken value and shows it again.
         useCanvasStore.setState({});
-        useAssetStore.setState({});
     };
 
     const exportRaw = () => {

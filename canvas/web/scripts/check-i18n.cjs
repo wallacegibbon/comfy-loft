@@ -3,7 +3,7 @@
 //
 // 为什么需要它：`fallbackLng` 是 zh-CN，所以英文缺一个 key 时界面会**静默显示中文**，
 // 不报错也不警告。反过来，删掉一个还在被引用的 key，界面会**原样印出 key 名**
-// （`assets.kinds.audio`）。这两种都不产生类型错误，只有跑一遍对比才能发现。
+// （`canvas.nodeTypes.audio`）。这两种都不产生类型错误，只有跑一遍对比才能发现。
 //
 // 用法：npm run check:i18n   （字典或调用点有问题时以非零码退出）
 
@@ -81,7 +81,7 @@ const DYNAMIC_PREFIXES = new Map([
             why: "`canvas.promptPanel.${mode}` 的 mode 是节点的生成方式；editImage/editText 由模板自己的字面量分支给出",
         },
     ],
-    ["assets.kinds", { why: "后缀是资产自身的 kind 字段，静态读不出" }],
+    ["canvas.nodeTypes", { why: "后缀是节点类型（image/video/audio/text），来自 CanvasNodeType 取值" }],
     ["canvas.sidePanel.filter", { why: "后缀是 NODE_FILTER_VALUES 里的节点类型" }],
     ["canvas.composer.resources", { why: "后缀是输入节点的类型（image/video/audio/text/group）" }],
     ["canvas.toolbar", { why: "后缀是当前画布工具（select/pan）" }],

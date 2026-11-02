@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { Clapperboard, Download, Ellipsis, FolderPlus, Image as ImageIcon, Info, MessageSquare, Minus, Music2, Plus, RefreshCw, Settings2, Trash2, Ungroup, Upload, Video } from "lucide-react";
+import { Clapperboard, Download, Ellipsis, Image as ImageIcon, Info, MessageSquare, Minus, Music2, Plus, RefreshCw, Settings2, Trash2, Ungroup, Upload, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Dialog } from "@/components/kit/dialog";
@@ -29,7 +29,6 @@ type CanvasNodeHoverToolbarProps = {
     onUpload: (node: CanvasNodeData) => void;
     onInterpolateVideo: (node: CanvasNodeData) => void;
     onDownload: (node: CanvasNodeData) => void;
-    onSaveAsset: (node: CanvasNodeData) => void;
     onMaskEdit: (node: CanvasNodeData) => void;
     onCrop: (node: CanvasNodeData) => void;
     onSplit: (node: CanvasNodeData) => void;
@@ -68,7 +67,6 @@ export function CanvasNodeHoverToolbar({
     onUpload,
     onInterpolateVideo,
     onDownload,
-    onSaveAsset,
     onMaskEdit,
     onCrop,
     onSplit,
@@ -149,7 +147,6 @@ export function CanvasNodeHoverToolbar({
     const nodeToolbarTools: ToolbarTool[] = [
         ...(canQueryVideoTask ? [{ id: "queryVideoTask", title: t("canvas.nodeToolbar.queryVideoTaskTitle"), label: t("canvas.nodeToolbar.queryVideoTask"), icon: <RefreshCw className="size-4" />, onClick: () => onRetry(node) }] : []),
         ...(canRetry ? [{ id: "retry", title: t("canvas.nodeToolbar.retryTitle"), label: t("canvas.node.retry"), icon: <RefreshCw className="size-4" />, onClick: () => onRetry(node) }] : []),
-        ...(hasImage || hasVideo || isText ? [{ id: "saveAsset", title: t("common.addToAssets"), label: t("canvas.nodeToolbar.saveAsset"), icon: <FolderPlus className="size-4" />, onClick: () => onSaveAsset(node) }] : []),
         ...(hasImage || hasVideo || hasAudio
             ? [
                   {
@@ -316,7 +313,7 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
                                         : node.type === CanvasNodeType.Config
                                           ? t("canvas.configNode.title")
                                           : [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text].includes(node.type as CanvasNodeType)
-                                            ? t(`assets.kinds.${node.type}`)
+                                            ? t(`canvas.nodeTypes.${node.type}`)
                                             : getNodeDefinition(node.type)?.title || node.type
                                 }
                             />

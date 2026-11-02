@@ -4,7 +4,7 @@ import i18n from "@/i18n";
 import { createZip } from "@/lib/zip";
 import { getMediaBlob } from "@/services/file-storage";
 import { getImageBlob } from "@/services/image-storage";
-import type { CanvasExportAsset, CanvasExportFile } from "@/types/canvas-export";
+import type { CanvasExportProjectFile, CanvasExportFile } from "@/types/canvas-export";
 import type { CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
@@ -12,7 +12,7 @@ export async function exportCanvasProjects(projects: CanvasProject[], fileName =
     const zipFiles: { name: string; data: BlobPart }[] = [];
     const exportedProjects = await Promise.all(
         projects.map(async (project) => {
-            const files: CanvasExportAsset[] = [];
+            const files: CanvasExportProjectFile[] = [];
             await Promise.all(
                 collectStorageKeys(project).map(async (storageKey) => {
                     const blob = storageKey.startsWith("image:") ? await getImageBlob(storageKey) : await getMediaBlob(storageKey);

@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
  * **`size` is not a hint.** `panel` is one fixed width *and* one fixed height, shared by every
  * floating panel in the app, because a window that resizes to its contents breaks the one thing
  * a window is for: the user's sense of where it is and how big it is. Switch between the canvas
- * list, the asset library and settings and the frame does not move; switch tabs inside settings
+ * list and settings and the frame does not move; switch tabs inside settings
  * and the frame does not move either. Short content leaves space at the bottom, which is the
  * price and is accepted. Only two things are exempt: a confirmation, where a 1000px box around
  * one sentence would be its own kind of wrong, and an image preview, whose size *is* the image.

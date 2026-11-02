@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
  * A bordered surface, replacing antd's `Card`.
  *
  * `cover` renders above the body and `styles.body` still reaches the body padding, because
- * the asset card uses a full-bleed cover and zero body padding to make the whole tile a
- * click target.
+ * a card that is a picture uses a full-bleed cover and zero body padding to make the whole
+ * tile a click target.
  */
 export function Card({
     title,

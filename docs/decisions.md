@@ -1320,9 +1320,9 @@ renders — all ten render from the same two places.
 `use-theme-store`, while `stores/canvas/` held the graph and the plugin registry. Two of those four
 are about a canvas and two are about the app, and nothing said which was which.
 
-The rule now holds and is visible from the directory listing: **`stores/` is app-wide** (assets,
-config, theme); **`stores/canvas/` is everything about a canvas** (the graph, plugins, the floating
-panels, the side panel, the canvas list). Three files moved and two were renamed:
+The rule now holds and is visible from the directory listing: **`stores/` is app-wide** (config,
+theme, storage recovery); **`stores/canvas/` is everything about a canvas** (the graph, plugins, the
+floating panels, the side panel, the canvas list). Three files moved and two were renamed:
 
 | was                                     | is                                             |
 | --------------------------------------- | ---------------------------------------------- |
@@ -4820,3 +4820,53 @@ and no `infinite-canvas:` key. A fresh browser therefore starts with an empty ap
 stores/canvas/{use-canvas-store,use-plugin-store}.ts,i18n/index.ts,services/localforage-databases.ts,
 types/canvas-export.ts,lib/canvas/canvas-export.ts,components/assets/asset-transfer.ts}`,
 `canvas/plugins/canvas/sdk/src/jsx-runtime.ts`.
+
+## 144. The asset library is deleted, not hidden
+
+**Decision** `use-asset-store`, `asset-persist`, `components/assets/`, the Assets tab in the side
+panel, the "Add to My Assets" node action and the asset package format are gone, and `/assets` is
+nothing but an address that lands back on a canvas. A canvas's nodes are the only place a file lives:
+what is on a canvas is what exists.
+
+**Why** The library was the cloud-era organ of a product that no longer exists. Upstream could not
+read the user's disk, so it had to keep a pool of its own inside the browser; this fork deleted the
+cloud (README, #71, #76) and kept the pool. On a local machine the pool is the filesystem, and it is
+better at every part of the job: it can be searched, backed up, synced, opened by other programs and
+seen without this app running. The app's copy was worse than that — IndexedDB, no
+`navigator.storage.persist()`, cleared by "clear site data" and collected by the canvas GC — so
+keeping user originals there was a net risk, not a service.
+
+**Nothing was lost from the loop** Content already enters a canvas without the library: files
+dropped on the canvas, pasted from the clipboard, or chosen from the picker all become nodes
+(`use-content-ingress.ts`), and that path accepted images, video and audio before this change. The
+library's own "Add" button did the same job with an extra step, and its create form only ever
+supported text and images.
+
+**What else went with it** Four kit components whose only callers were the asset UI — `Empty`,
+`Pagination`, `TagInput`, `CheckableTag` — and the `.prompt-filter-tag` styles. The `assets.*`
+translation namespace went whole; the node-type titles it was also carrying (`assets.kinds.*`) moved
+to `canvas.nodeTypes.*`, which already existed and already had all four kinds. `common.addToAssets`,
+`common.addedToAssets`, the side panel's asset keys and the six `canvas.runtime` strings that only
+said "there is nothing here to save" went with their call sites.
+
+**The one thing the library did that a canvas does not** Cross-canvas reuse: copy/paste of nodes is
+page state, so it does not survive switching canvases, and the export zip carries whole projects, not
+a chosen set. Both are accepted losses — re-dragging from the disk is one gesture, and the filesystem
+is a better selection UI than a dialog would be.
+
+**Data already on disk** `comfy-loft:asset_store` and the records in it are left where they are; no
+migration reads them. Blobs that only a library record referred to are now unreachable, so the next
+sweep (`lib/canvas/canvas-file-cleanup.ts`) collects them. That is the intent of a deletion, and this
+project is at the stage where #143 already said an empty app beats a compatibility shim.
+
+**Where the sweep lives now** With the asset store gone, `sweepUnusedCanvasFiles` in
+`lib/canvas/canvas-file-cleanup.ts` is the single entry point for blob collection, called by node
+deletion (with the undo snapshot as an extra root) and by project deletion.
+
+**Tested** `npm run check:i18n`, `check:exports` and `tsc --noEmit` (the three gates a deletion can
+break), 129 canvas tests, `make web`,
+and in a browser: no Assets button in the top bar, no second side-panel tab, no "Add to My Assets" in
+a node's toolbar, `/assets` lands back on a canvas instead of opening anything (the address is a
+tombstone, the same courtesy `/config` gets), and a file dropped on the canvas still becomes a node.
+
+**Where** `canvas/web/src/{stores/use-asset-store.ts,stores/asset-persist.ts,components/assets/**,components/kit/{tag-input,tag,nav,display}.tsx,components/canvas/canvas-side-panel.tsx,components/canvas/canvas-node-hover-toolbar.tsx,components/canvas/canvas-top-bar.tsx,pages/canvas/project.tsx,pages/panel-entries.tsx,router.tsx,types/canvas.ts,i18n/locales/*,styles/globals.css,tests/persist-migration.test.ts}`.

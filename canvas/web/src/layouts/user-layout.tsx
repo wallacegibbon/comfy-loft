@@ -8,7 +8,8 @@ import { ResourceSetupGate } from "@/components/settings/resource-setup-gate";
  * The only layout left.
  *
  * There used to be a top bar here with a brand link and three tabs — canvases, assets,
- * settings. All three became panels over the canvas, so the bar had nothing to hold. What
+ * settings. All three became panels over the canvas (the asset library has since been
+ * removed), so the bar had nothing to hold. What
  * remains is the two things that are genuinely global and belong outside any one canvas:
  * the settings dialog and the first-run resource prompt.
  */

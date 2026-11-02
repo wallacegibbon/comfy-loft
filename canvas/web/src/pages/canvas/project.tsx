@@ -12,13 +12,12 @@ import { forgetCanvasConversation } from "@/services/api/agent";
 import { requestEdit, requestGeneration } from "@/services/api/image";
 import { createVideoGenerationTask, isVideoTaskFailed, storeGeneratedVideo, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
 import { useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
-import { ensureImagePreview, resolveImageUrl, uploadImage } from "@/services/image-storage";
+import { uploadImage } from "@/services/image-storage";
 import { nanoid } from "nanoid";
-import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
-import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
+import { sweepUnusedCanvasFiles } from "@/lib/canvas/canvas-file-cleanup";
 import { IMAGE_UPSCALE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 import { VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH, applyGeneratedVideo } from "@/lib/canvas/canvas-generated-video";
 import { NODE_STATUS_ERROR, NODE_STATUS_IDLE, NODE_STATUS_LOADING, NODE_STATUS_SUCCESS } from "@/lib/canvas/canvas-node-status";
@@ -36,7 +35,6 @@ import { ActiveConnectionPath, ConnectionPath } from "@/components/canvas/canvas
 import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
 import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
 import { CanvasManagerDialog } from "@/components/canvas/canvas-manager-dialog";
-import { AssetsManagerDialog } from "@/components/assets/assets-manager-dialog";
 import { CanvasNodeContextMenu } from "@/components/canvas/canvas-context-menu";
 
 // The angle dialog drags in three.js (~136 kB gzip) for one control panel that most sessions
@@ -104,19 +102,7 @@ import { confirm } from "@/components/kit/confirm";
 import { CanvasRefreshShell } from "@/components/canvas/canvas-refresh-shell";
 import { CanvasTopBar } from "@/components/canvas/canvas-top-bar";
 import { ConnectionCreateMenu, NodeCreateMenu, type PendingConnectionCreate } from "@/components/canvas/canvas-create-menus";
-import {
-    CanvasNodeType,
-    type CanvasConnection,
-    type CanvasNodeData,
-    type CanvasNodeMetadata,
-    type CanvasNodeTypeId,
-    type ConnectionHandle,
-    type ContextMenuState,
-    type InsertAssetPayload,
-    type Position,
-    type SelectionBox,
-    type ViewportTransform,
-} from "@/types/canvas";
+import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type ConnectionHandle, type ContextMenuState, type Position, type SelectionBox, type ViewportTransform } from "@/types/canvas";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
 // Register built-in nodes in the shared registry once when the module loads.
@@ -216,8 +202,6 @@ function InfiniteCanvasPage() {
     const effectiveConfig = useEffectiveConfig();
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
-    const addAsset = useAssetStore((state) => state.addAsset);
-    const cleanupAssetImages = useAssetStore((state) => state.cleanupImages);
     const hydrated = useCanvasStore((state) => state.hydrated);
     const createProject = useCanvasStore((state) => state.createProject);
     const openProject = useCanvasStore((state) => state.openProject);
@@ -300,12 +284,9 @@ function InfiniteCanvasPage() {
         [backgroundMode, showImageInfo],
     );
 
-    const cleanupCanvasFiles = useCallback(
-        (extra?: unknown) => {
-            cleanupAssetImages({ extra, history: historyRef.current, lastHistory: lastHistoryRef.current });
-        },
-        [cleanupAssetImages],
-    );
+    const cleanupCanvasFiles = useCallback((extra?: unknown) => {
+        sweepUnusedCanvasFiles({ extra, history: historyRef.current, lastHistory: lastHistoryRef.current });
+    }, []);
 
     const startGenerationRequest = useCallback((targetNodeId: string, originNodeId: string, runningId = originNodeId, controller = new AbortController()) => {
         const previous = generationRequestsRef.current.get(targetNodeId);
@@ -1333,13 +1314,13 @@ function InfiniteCanvasPage() {
             danger: true,
             onOk: () => {
                 deleteProjects([projectId]);
-                cleanupAssetImages();
+                cleanupCanvasFiles();
                 // The canvas's agent conversation is a file on the gateway; deleting the canvas ends it.
                 void forgetCanvasConversation(effectiveConfig, projectId);
                 navigate("/canvas");
             },
         });
-    }, [cleanupAssetImages, deleteProjects, effectiveConfig, navigate, projectId, t]);
+    }, [cleanupCanvasFiles, deleteProjects, effectiveConfig, navigate, projectId, t]);
 
     const exportCurrentProject = useCallback(async () => {
         const project = useCanvasStore.getState().projects.find((item) => item.id === projectId);
@@ -1877,9 +1858,9 @@ function InfiniteCanvasPage() {
                 const child: CanvasNodeData = {
                     id,
                     type: CanvasNodeType.Image,
-                    title: t(`canvas.videoFrames.${position}Title`, { name: node.title || t("assets.kinds.video") }),
+                    title: t(`canvas.videoFrames.${position}Title`, { name: node.title || t("canvas.nodeTypes.video") }),
                     titleKey: `canvas.videoFrames.${position}Title`,
-                    titleParams: { name: node.title || t("assets.kinds.video") },
+                    titleParams: { name: node.title || t("canvas.nodeTypes.video") },
                     position: { x, y },
                     ...size,
                     metadata: imageMetadata(image),
@@ -1895,55 +1876,6 @@ function InfiniteCanvasPage() {
             }
         },
         [t],
-    );
-
-    const saveNodeAsset = useCallback(
-        async (node: CanvasNodeData) => {
-            if (node.type === CanvasNodeType.Text) {
-                const content = node.metadata?.content?.trim();
-                if (!content) return toast.error(t("canvas.runtime.noTextToSave"));
-                addAsset({ kind: "text", title: node.metadata?.prompt?.slice(0, 24) || t("canvas.runtime.canvasText"), coverUrl: "", tags: [], source: "Canvas", data: { content }, metadata: { source: "canvas", nodeId: node.id } });
-                toast.success(t("common.addedToAssets"));
-                return;
-            }
-            if (node.type === CanvasNodeType.Video) {
-                if (!node.metadata?.content) return toast.error(t("canvas.runtime.noVideoToSave"));
-                addAsset({
-                    kind: "video",
-                    title: node.metadata?.prompt?.slice(0, 24) || t("canvas.runtime.canvasVideo"),
-                    coverUrl: "",
-                    tags: [],
-                    source: "Canvas",
-                    data: { url: node.metadata.content, storageKey: node.metadata.storageKey, width: node.width, height: node.height, bytes: node.metadata.bytes || 0, mimeType: node.metadata.mimeType || "video/mp4" },
-                    metadata: { source: "canvas", nodeId: node.id, prompt: node.metadata?.prompt },
-                });
-                toast.success(t("common.addedToAssets"));
-                return;
-            }
-            const primaryImage = node.metadata?.images?.find((image) => image.id === node.metadata?.primaryImageId) || node.metadata?.images?.[0];
-            const imageContent = primaryImage?.content || node.metadata?.content || "";
-            const imageStorageKey = primaryImage?.storageKey || node.metadata?.storageKey;
-            if (!imageContent) return toast.error(t("canvas.runtime.noImageToSave"));
-            const dataUrl = imageStorageKey ? "" : imageContent;
-            addAsset({
-                kind: "image",
-                title: node.metadata?.prompt?.slice(0, 24) || t("canvas.runtime.canvasImage"),
-                coverUrl: imageContent,
-                tags: [],
-                source: "Canvas",
-                data: {
-                    dataUrl,
-                    storageKey: imageStorageKey,
-                    width: primaryImage?.naturalWidth || node.metadata?.naturalWidth || node.width,
-                    height: primaryImage?.naturalHeight || node.metadata?.naturalHeight || node.height,
-                    bytes: primaryImage?.bytes || node.metadata?.bytes || getDataUrlByteSize(dataUrl),
-                    mimeType: primaryImage?.mimeType || node.metadata?.mimeType || "image/png",
-                },
-                metadata: { source: "canvas", nodeId: node.id, prompt: node.metadata?.prompt },
-            });
-            toast.success(t("common.addedToAssets"));
-        },
-        [addAsset, t],
     );
 
     const createImageReversePromptNodes = useCallback(
@@ -2244,80 +2176,6 @@ function InfiniteCanvasPage() {
         [effectiveConfig.canvasImageCount, effectiveConfig.count, effectiveConfig.imageModel, effectiveConfig.model, effectiveConfig.size, t],
     );
 
-    const insertImageNode = useCallback(
-        async (image: { dataUrl: string; storageKey?: string; prompt: string }) => {
-            const storedImage = image.storageKey ? { url: image.dataUrl || (await resolveImageUrl(image.storageKey)), storageKey: image.storageKey, width: 1, height: 1, bytes: 0, mimeType: "image/png" } : await uploadImage(image.dataUrl);
-            if (!storedImage.url) {
-                toast.error(t("assets.downloadFailed"));
-                return;
-            }
-            await ensureImagePreview(storedImage.storageKey);
-            const meta = storedImage.width === 1 && storedImage.height === 1 ? await readImageMeta(storedImage.url) : storedImage;
-            const config = fitNodeSize(meta.width, meta.height);
-            const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
-            const id = `image-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-            const node: CanvasNodeData = {
-                id,
-                type: CanvasNodeType.Image,
-                title: image.prompt.slice(0, 32) || "Generated Image",
-                position: { x: center.x - config.width / 2, y: center.y - config.height / 2 },
-                width: config.width,
-                height: config.height,
-                metadata: { ...imageMetadata({ ...storedImage, width: meta.width, height: meta.height }), prompt: image.prompt },
-            };
-
-            setNodes((prev) => [...prev, node]);
-            setSelectedNodeIds(new Set([id]));
-            setSelectedConnectionId(null);
-            setDialogNodeId(id);
-        },
-        [screenToCanvas, size.height, size.width, t],
-    );
-
-    const insertTextNode = useCallback(
-        (text: string, title?: string) => {
-            const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
-            const node = {
-                ...createCanvasNode(CanvasNodeType.Text, center, { content: text, status: NODE_STATUS_SUCCESS }),
-                title: title || text.slice(0, 32) || "Assistant Text",
-            };
-
-            setNodes((prev) => [...prev, node]);
-            setSelectedNodeIds(new Set([node.id]));
-            setSelectedConnectionId(null);
-        },
-        [screenToCanvas, size.height, size.width],
-    );
-
-    const handleAssetInsert = useCallback(
-        (payload: InsertAssetPayload) => {
-            if (payload.kind === "text") {
-                insertTextNode(payload.content, payload.title);
-            } else if (payload.kind === "video") {
-                const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Video];
-                const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
-                const id = `video-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-                const nextSize = fitNodeSize(payload.width || spec.width, payload.height || spec.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-                setNodes((prev) => [
-                    ...prev,
-                    {
-                        id,
-                        type: CanvasNodeType.Video,
-                        title: payload.title,
-                        position: { x: center.x - nextSize.width / 2, y: center.y - nextSize.height / 2 },
-                        width: nextSize.width,
-                        height: nextSize.height,
-                        metadata: { content: payload.url, storageKey: payload.storageKey, status: NODE_STATUS_SUCCESS, naturalWidth: payload.width, naturalHeight: payload.height },
-                    },
-                ]);
-                setSelectedNodeIds(new Set([id]));
-            } else {
-                insertImageNode({ prompt: payload.title, dataUrl: payload.dataUrl, storageKey: payload.storageKey });
-            }
-        },
-        [insertImageNode, insertTextNode, screenToCanvas, size.height, size.width],
-    );
-
     // Memoize every callback and render function passed to CanvasNode.
     // CanvasNode uses React.memo, but new prop references would invalidate it on every render and rerender every node
     // during click, hover, or viewport changes, which is especially expensive for Markdown. These useCallback values
@@ -2475,7 +2333,7 @@ function InfiniteCanvasPage() {
     const hoverPrimaryImage = hoverImages.find((image) => image.id === hoverPreviewNode?.metadata?.primaryImageId) || hoverImages[0];
     const hoverImage = (hoverPreviewImageId ? hoverImages.find((image) => image.id === hoverPreviewImageId) : undefined) || hoverPrimaryImage;
     const hoverImageIndex = hoverImage ? hoverImages.findIndex((image) => image.id === hoverImage.id) + 1 : 0;
-    const hoverImageTitle = hoverPreviewNode && hoverImages.length > 1 && hoverImageIndex ? `${hoverPreviewNode.title || t("assets.kinds.image")} · ${hoverImageIndex}/${hoverImages.length}` : hoverPreviewNode?.title || "";
+    const hoverImageTitle = hoverPreviewNode && hoverImages.length > 1 && hoverImageIndex ? `${hoverPreviewNode.title || t("canvas.nodeTypes.image")} · ${hoverImageIndex}/${hoverImages.length}` : hoverPreviewNode?.title || "";
     const hoverPreviewMedia =
         hoverPreviewNode && (hoverPreviewNode.type === CanvasNodeType.Image || hoverPreviewNode.type === CanvasNodeType.Video) && (hoverImage?.content || hoverPreviewNode.metadata?.content)
             ? {
@@ -2509,7 +2367,6 @@ function InfiniteCanvasPage() {
                     onPreviewImage={handleSidebarPreviewImage}
                     onHoverNode={handleSidebarHoverNode}
                     onHoverImage={handleSidebarHoverImage}
-                    onInsertAsset={handleAssetInsert}
                 />
                 {agentOpen ? null : (
                     <button
@@ -2525,7 +2382,6 @@ function InfiniteCanvasPage() {
                 )}
                 <CanvasAgentPanel canvasId={projectId} nodes={nodes} onFocusNode={focusNode} onPickNode={pickNodeForAgent} />
                 <CanvasManagerDialog />
-                <AssetsManagerDialog />
                 <CanvasTopBar
                     title={currentProject?.title || t("canvas.runtime.untitledCanvas")}
                     titleDraft={titleDraft}
@@ -2701,7 +2557,7 @@ function InfiniteCanvasPage() {
                         {retainedPreview ? (
                             <>
                                 <div className="max-w-full truncate px-3.5 py-2 text-sm font-medium" style={{ color: theme.node.text }}>
-                                    {retainedPreview.title || t(retainedPreview.video ? "assets.kinds.video" : "assets.kinds.image")}
+                                    {retainedPreview.title || t(retainedPreview.video ? "canvas.nodeTypes.video" : "canvas.nodeTypes.image")}
                                 </div>
                                 <div className="overflow-hidden" style={{ width: retainedPreview.width, height: retainedPreview.height }}>
                                     {retainedPreview.video ? (
@@ -2729,7 +2585,6 @@ function InfiniteCanvasPage() {
                     onUpload={(node) => handleUploadRequest(node.id)}
                     onInterpolateVideo={(node) => void interpolateVideoNode(node)}
                     onDownload={downloadNodeImage}
-                    onSaveAsset={(node) => void saveNodeAsset(node)}
                     onMaskEdit={(node) => openNodeTool("maskEdit", node.id)}
                     onCrop={(node) => openNodeTool("crop", node.id)}
                     onSplit={(node) => openNodeTool("split", node.id)}
@@ -2893,7 +2748,7 @@ function InfiniteCanvasPage() {
                     bodyClassName="p-0"
                     bodyStyle={{ display: "flex", justifyContent: "center", alignItems: "center", maxHeight: "80vh" }}
                 >
-                    {previewContent ? <img src={previewContent} alt={previewNode?.title || t("assets.kinds.image")} style={{ maxWidth: "100%", maxHeight: "80vh", objectFit: "contain" }} /> : null}
+                    {previewContent ? <img src={previewContent} alt={previewNode?.title || t("canvas.nodeTypes.image")} style={{ maxWidth: "100%", maxHeight: "80vh", objectFit: "contain" }} /> : null}
                 </Dialog>
 
                 <Dialog

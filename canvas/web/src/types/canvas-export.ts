@@ -9,10 +9,10 @@ export type CanvasExportFile = {
 
 type CanvasProjectExportItem = {
     project: CanvasProject;
-    files: CanvasExportAsset[];
+    files: CanvasExportProjectFile[];
 };
 
-export type CanvasExportAsset = {
+export type CanvasExportProjectFile = {
     storageKey: string;
     path: string;
     mimeType: string;

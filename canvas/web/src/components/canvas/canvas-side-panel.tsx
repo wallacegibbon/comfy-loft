@@ -1,23 +1,18 @@
-import { Fragment, memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
-import { Check, ChevronRight, Download, Eye, FileText, Image as ImageIcon, LayoutGrid, ListChecks, Music2, Plus, Rows3, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
+import { Check, ChevronRight, Download, Eye, FileText, Image as ImageIcon, LayoutGrid, ListChecks, Music2, Rows3, Search, Settings2, Square, Type, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { confirm } from "@/components/kit/confirm";
-import { Empty } from "@/components/kit/display";
 import { Input } from "@/components/kit/input";
 import { Select } from "@/components/kit/select";
-import { CheckableTag } from "@/components/kit/tag";
 import { toast } from "@/components/kit/toast";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { exportCanvasNodes } from "@/lib/canvas/canvas-export";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { cn } from "@/lib/utils";
-import { uploadMediaFile } from "@/services/file-storage";
-import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision, uploadImage } from "@/services/image-storage";
-import { useAssetStore, type Asset, type AssetKind } from "@/stores/use-asset-store";
+import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision } from "@/services/image-storage";
 import { CANVAS_SIDE_PANEL_MAX_WIDTH, CANVAS_SIDE_PANEL_MIN_WIDTH, CANVAS_SIDE_PANEL_MOTION_MS, useCanvasSidePanelStore } from "@/stores/canvas/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { CanvasNodeType, type CanvasNodeData, type InsertAssetPayload } from "@/types/canvas";
+import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
 /**
  * The panel's open/close animation was `motion` (framer-motion); it is a CSS transition now.
@@ -32,8 +27,6 @@ import { CanvasNodeType, type CanvasNodeData, type InsertAssetPayload } from "@/
 const PANEL_TRANSITION_MS = CANVAS_SIDE_PANEL_MOTION_MS;
 const PANEL_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 
-type PanelTab = "canvas" | "assets" | "prompts";
-
 type Props = {
     nodes: CanvasNodeData[];
     selectedNodeIds: Set<string>;
@@ -42,7 +35,6 @@ type Props = {
     onPreviewImage?: (nodeId: string, imageId: string) => void;
     onHoverNode: (nodeId: string | null) => void;
     onHoverImage?: (nodeId: string, imageId: string | null) => void;
-    onInsertAsset: (payload: InsertAssetPayload) => void;
 };
 
 const NODE_TYPE_ICON: Record<string, typeof Square> = {
@@ -61,10 +53,9 @@ const STATUS_COLOR: Record<string, string> = {
     idle: "transparent",
 };
 
-export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, onPreviewImage, onHoverNode, onHoverImage, onInsertAsset }: Props) {
+export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, onPreviewImage, onHoverNode, onHoverImage }: Props) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const [tab, setTab] = useState<PanelTab>("canvas");
     const width = useCanvasSidePanelStore((state) => state.width);
     const panelOpen = useCanvasSidePanelStore((state) => state.panelOpen);
     const setWidth = useCanvasSidePanelStore((state) => state.setWidth);
@@ -111,36 +102,16 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
             }}
             data-canvas-no-zoom
         >
-            <div className="flex items-center gap-5 px-4 pt-3.5">
-                <TabButton label={t("canvas.sidePanel.canvas")} active={tab === "canvas"} theme={theme} onClick={() => setTab("canvas")} />
-                <TabButton label={t("canvas.sidePanel.assets")} active={tab === "assets"} theme={theme} onClick={() => setTab("assets")} />
-            </div>
-            <div className="mt-2 min-h-0 flex-1 overflow-hidden">
-                {tab === "canvas" ? (
-                    <CanvasNodesTab nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} onPreviewNode={onPreviewNode} onPreviewImage={onPreviewImage} onHoverNode={onHoverNode} onHoverImage={onHoverImage} theme={theme} />
-                ) : tab === "assets" ? (
-                    <CanvasAssetsTab onInsert={onInsertAsset} theme={theme} />
-                ) : null}
+            <div className="min-h-0 flex-1 overflow-hidden">
+                <CanvasNodesTab nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} onPreviewNode={onPreviewNode} onPreviewImage={onPreviewImage} onHoverNode={onHoverNode} onHoverImage={onHoverImage} theme={theme} />
             </div>
             <button type="button" className="absolute inset-y-0 right-0 z-40 w-4 translate-x-1/2 cursor-col-resize" onPointerDown={startResize} aria-label={t("canvas.sidePanel.resize")} />
         </aside>
     );
 }
 
-function TabButton({ label, active, theme, onClick }: { label: string; active: boolean; theme: CanvasTheme; onClick: () => void }) {
-    return (
-        <button type="button" onClick={onClick} className="relative pb-1.5 text-sm font-semibold transition-opacity" style={{ color: theme.node.text, opacity: active ? 1 : 0.45 }}>
-            {label}
-            {/* Was motion's `layoutId` shared-element spring. CSS has no equivalent, so each tab owns
-                its own underline and fades instead of sliding — the only visual difference from
-                before, and the reason the dependency could go. */}
-            <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full transition-opacity duration-200" style={{ background: theme.toolbar.activeText, opacity: active ? 1 : 0 }} />
-        </button>
-    );
-}
-
 // ---------------------------------------------------------------------------
-// Canvas tab: list nodes and center, zoom, and select the clicked node.
+// The list: nodes on this canvas, with center, zoom and select.
 // ---------------------------------------------------------------------------
 
 const NODE_FILTER_VALUES = ["all", CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Text, CanvasNodeType.Audio, CanvasNodeType.Config, CanvasNodeType.Group];
@@ -441,8 +412,8 @@ function CanvasNodesTab({
                                                     }}
                                                     className="group/batch relative aspect-square overflow-hidden rounded-md border transition hover:opacity-90"
                                                     style={{ borderColor: theme.toolbar.border }}
-                                                    title={`${node.title || t("assets.kinds.image")} ${index + 1}/${batchImages.length}`}
-                                                    aria-label={`${node.title || t("assets.kinds.image")} ${index + 1}/${batchImages.length}`}
+                                                    title={`${node.title || t("canvas.nodeTypes.image")} ${index + 1}/${batchImages.length}`}
+                                                    aria-label={`${node.title || t("canvas.nodeTypes.image")} ${index + 1}/${batchImages.length}`}
                                                 >
                                                     <img src={previewUrlFor(image.storageKey) || image.content} alt="" className="size-full object-cover" />
                                                     <span className="absolute bottom-0.5 right-0.5 rounded bg-black/55 px-1 text-[10px] leading-4 text-white">{index + 1}</span>
@@ -487,185 +458,3 @@ function CheckMark({ checked, theme }: { checked: boolean; theme: CanvasTheme })
         </span>
     );
 }
-
-// ---------------------------------------------------------------------------
-// Assets tab: collapsible type groups, tag filtering, and click-to-insert.
-// ---------------------------------------------------------------------------
-
-const ASSET_GROUPS: { kind: AssetKind; icon: typeof Square }[] = [
-    { kind: "image", icon: ImageIcon },
-    { kind: "video", icon: Video },
-    { kind: "text", icon: FileText },
-];
-
-function buildInsertPayload(asset: Asset): InsertAssetPayload {
-    if (asset.kind === "text") return { kind: "text", content: asset.data.content, title: asset.title };
-    if (asset.kind === "video") return { kind: "video", url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, width: asset.data.width, height: asset.data.height };
-    return { kind: "image", dataUrl: asset.data.dataUrl, storageKey: asset.data.storageKey, title: asset.title };
-}
-
-const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onInsert: (payload: InsertAssetPayload) => void; theme: CanvasTheme }) {
-    const { t } = useTranslation();
-    const assets = useAssetStore((state) => state.assets);
-    const addAsset = useAssetStore((state) => state.addAsset);
-    const removeAsset = useAssetStore((state) => state.removeAsset);
-    const [keyword, setKeyword] = useState("");
-    const [tagFilter, setTagFilter] = useState<string>("all");
-    const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-    const [uploading, setUploading] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    const allTags = useMemo(() => Array.from(new Set(assets.flatMap((asset) => asset.tags || []))).slice(0, 20), [assets]);
-
-    const filtered = useMemo(() => {
-        const query = keyword.trim().toLowerCase();
-        return assets.filter((asset) => (tagFilter === "all" || (asset.tags || []).includes(tagFilter)) && (!query || [asset.title, ...(asset.tags || [])].join(" ").toLowerCase().includes(query)));
-    }, [assets, keyword, tagFilter]);
-
-    const groups = useMemo(() => ASSET_GROUPS.map((group) => ({ ...group, items: filtered.filter((asset) => asset.kind === group.kind) })).filter((group) => group.items.length > 0), [filtered]);
-
-    const handleFiles = async (fileList: FileList | null) => {
-        const files = Array.from(fileList || []);
-        if (!files.length) return;
-        setUploading(true);
-        const hide = toast.loading(t("canvas.sidePanel.addingAssets"));
-        let added = 0;
-        try {
-            for (const file of files) {
-                if (file.type.startsWith("image/")) {
-                    const image = await uploadImage(file);
-                    addAsset({
-                        kind: "image",
-                        title: file.name || t("assets.kinds.image"),
-                        coverUrl: image.url,
-                        tags: [],
-                        data: { dataUrl: image.url, storageKey: image.storageKey, width: image.width, height: image.height, bytes: image.bytes, mimeType: image.mimeType },
-                    });
-                    added += 1;
-                } else if (file.type.startsWith("video/")) {
-                    const media = await uploadMediaFile(file, "video");
-                    addAsset({
-                        kind: "video",
-                        title: file.name || t("assets.kinds.video"),
-                        coverUrl: "",
-                        tags: [],
-                        data: { url: media.url, storageKey: media.storageKey, width: media.width || 0, height: media.height || 0, bytes: media.bytes, mimeType: media.mimeType },
-                    });
-                    added += 1;
-                }
-            }
-            if (added) toast.success(t("canvas.sidePanel.addedAssets", { count: added }));
-            else toast.warning(t("canvas.sidePanel.mediaOnly"));
-        } catch (error) {
-            console.error(error);
-            toast.error(t("canvas.sidePanel.addFailed"));
-        } finally {
-            hide();
-            setUploading(false);
-            if (fileInputRef.current) fileInputRef.current.value = "";
-        }
-    };
-
-    return (
-        <div className="flex h-full flex-col">
-            <div className="flex items-center gap-2 px-3 pb-2 pt-1">
-                <Input size="small" allowClear prefix={<Search className="size-3.5 text-stone-400" />} placeholder={t("canvas.sidePanel.searchAssets")} value={keyword} onChange={(e) => setKeyword(e.target.value)} />
-                <button
-                    type="button"
-                    disabled={uploading}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/10"
-                    style={{ color: theme.node.text }}
-                >
-                    <Plus className="size-3.5" />
-                    {t("canvas.sidePanel.add")}
-                </button>
-                <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => void handleFiles(e.target.files)} />
-            </div>
-            {allTags.length ? (
-                <div className="flex flex-wrap gap-1.5 px-3 pb-2">
-                    <CheckableTag checked={tagFilter === "all"} className={cn("prompt-filter-tag", tagFilter === "all" && "is-active")} onChange={() => setTagFilter("all")}>
-                        {t("common.all")}
-                    </CheckableTag>
-                    {allTags.map((tag) => (
-                        <CheckableTag key={tag} checked={tagFilter === tag} className={cn("prompt-filter-tag", tagFilter === tag && "is-active")} onChange={() => setTagFilter((prev) => (prev === tag ? "all" : tag))}>
-                            {tag}
-                        </CheckableTag>
-                    ))}
-                </div>
-            ) : null}
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-                {groups.length ? (
-                    <div className="space-y-1">
-                        {groups.map((group) => {
-                            const isCollapsed = collapsed[group.kind];
-                            return (
-                                <div key={group.kind}>
-                                    <button
-                                        type="button"
-                                        onClick={() => setCollapsed((prev) => ({ ...prev, [group.kind]: !prev[group.kind] }))}
-                                        className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-xs font-semibold opacity-75 transition hover:opacity-100"
-                                    >
-                                        <ChevronRight className={cn("size-3.5 transition-transform", !isCollapsed && "rotate-90")} />
-                                        <group.icon className="size-3.5" />
-                                        <span>{t(`assets.kinds.${group.kind}`)}</span>
-                                        <span className="opacity-50">{group.items.length}</span>
-                                    </button>
-                                    {isCollapsed ? null : (
-                                        <div className="grid grid-cols-2 gap-2 px-1 pb-2 pt-1">
-                                            {group.items.map((asset) => (
-                                                <AssetCard key={asset.id} asset={asset} theme={theme} onInsert={() => onInsert(buildInsertPayload(asset))} onRemove={() => (removeAsset(asset.id), toast.success(t("canvas.sidePanel.assetRemoved")))} />
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                ) : (
-                    <Empty description={t("canvas.sidePanel.noAssets")} className="pt-16" />
-                )}
-            </div>
-        </div>
-    );
-});
-
-function AssetCard({ asset, theme, onInsert, onRemove }: { asset: Asset; theme: CanvasTheme; onInsert: () => void; onRemove: () => void }) {
-    const { t } = useTranslation();
-    return (
-        <div className="group relative aspect-square overflow-hidden rounded-xl border transition duration-200 hover:-translate-y-0.5 hover:shadow-lg" style={{ borderColor: theme.node.stroke, background: theme.node.panel }}>
-            <AssetCover asset={asset} />
-            <div className="absolute inset-0 flex items-center justify-center gap-2.5 opacity-0 transition duration-200 group-hover:opacity-100">
-                <button
-                    type="button"
-                    onClick={onInsert}
-                    className="grid size-8 place-items-center rounded-full bg-white/90 text-stone-700 shadow-sm backdrop-blur transition hover:bg-white hover:text-stone-900 dark:bg-black/60 dark:text-stone-100 dark:hover:bg-black/80"
-                    aria-label={t("canvas.sidePanel.inserted")}
-                >
-                    <Plus className="size-4" />
-                </button>
-                <button
-                    type="button"
-                    className="grid size-8 place-items-center rounded-full bg-white/90 text-stone-700 shadow-sm backdrop-blur transition hover:bg-white hover:text-red-500 dark:bg-black/60 dark:text-stone-100 dark:hover:bg-black/80 dark:hover:text-red-400"
-                    aria-label={t("canvas.sidePanel.removeAsset")}
-                    onClick={() => confirm({ title: t("canvas.sidePanel.removeAssetTitle"), okText: t("canvas.sidePanel.remove"), cancelText: t("common.cancel"), danger: true, onOk: onRemove })}
-                >
-                    <Trash2 className="size-4" />
-                </button>
-            </div>
-        </div>
-    );
-}
-
-function AssetCover({ asset }: { asset: Asset }) {
-    if (asset.kind === "text") return <div className="size-full overflow-hidden whitespace-pre-wrap break-words p-2.5 text-[11px] leading-snug opacity-80">{asset.data.content}</div>;
-    if (asset.kind === "video") {
-        if (asset.coverUrl) return <img src={asset.coverUrl} alt="" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;
-        return <video src={`${asset.data.url}#t=0.1`} muted playsInline preload="metadata" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;
-    }
-    return <img src={asset.coverUrl || asset.data.dataUrl} alt="" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;
-}
-
-// ---------------------------------------------------------------------------
-// Prompt library tab: collapsible source groups, lazy loading, and copy or text-node insertion actions.
-// ---------------------------------------------------------------------------
