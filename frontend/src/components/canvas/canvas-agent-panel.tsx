@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUp, Bot, LoaderCircle, Square, Wrench, X } from "lucide-react";
+import { ArrowUp, Bot, Eraser, LoaderCircle, Square, Wrench, X } from "lucide-react";
 
 import { citationLabel, mentionSegments, referenceBlock, referenceEntries, referenceLine, withoutReferences, type Citation } from "@/lib/canvas/agent-references";
 import { nodeTitle } from "@/lib/canvas/node-title";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
+import { confirm } from "@/components/kit/confirm";
 import { AgentSettingsControls } from "./agent-settings-controls";
-import { cancelAgentSession, canvasAgent, closeAgentSession, onAgentEvent, openAgentSession, sendAgentMessage, type AgentEvent } from "@/services/api/agent";
+import { cancelAgentSession, canvasAgent, clearAgentConversation, closeAgentSession, onAgentEvent, openAgentSession, sendAgentMessage, type AgentEvent } from "@/services/api/agent";
 import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
 import { useEffectiveConfig } from "@/stores/use-config-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
@@ -109,6 +110,26 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
     // the socket on every keystroke elsewhere on the canvas.
     const connectRef = useRef(connect);
     connectRef.current = connect;
+
+    /**
+     * Throw the conversation away on both sides, then open a new one.
+     *
+     * The gateway releases the agent first and deletes its session file after — a process left writing
+     * into a file that is going away is the one thing that could put the old words back — so the next
+     * connect starts a new agent with no history to replay. This panel draws its transcript from that
+     * history, which is why an empty one is an empty panel rather than a second source of truth to clear.
+     */
+    const clearHistory = async () => {
+        setBusy(false);
+        setStatus("connecting");
+        try {
+            await clearAgentConversation(config, session);
+            await connectRef.current();
+        } catch (error) {
+            setStatus("closed");
+            setMessages((current) => [...current, { id: nextId(), role: "error", text: error instanceof Error ? error.message : t("canvas.agent.clearHistoryFailed"), mentions: [], reasoning: "", tools: [], streaming: false }]);
+        }
+    };
 
     useEffect(() => {
         if (!open) return;
@@ -407,7 +428,25 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                 <Bot className="size-4 shrink-0" style={{ color: theme.node.activeStroke }} />
                 <span className="text-sm font-medium">{t("canvas.agent.title")}</span>
                 <span className="truncate text-xs opacity-60">{status === "connected" ? t("canvas.agent.connected") : status === "connecting" ? t("canvas.agent.connecting") : t("canvas.agent.disconnected")}</span>
-                <button type="button" className="ml-auto rounded p-1 opacity-60 hover:opacity-100" onClick={() => setOpen(false)} title={t("canvas.agent.close")} aria-label={t("canvas.agent.close")}>
+                <button
+                    type="button"
+                    className="ml-auto rounded p-1 opacity-60 hover:opacity-100"
+                    onClick={() =>
+                        confirm({
+                            title: t("canvas.agent.clearHistory"),
+                            content: t("canvas.agent.clearHistoryConfirm"),
+                            okText: t("canvas.agent.clearHistoryOk"),
+                            cancelText: t("common.cancel"),
+                            danger: true,
+                            onOk: () => clearHistory(),
+                        })
+                    }
+                    title={t("canvas.agent.clearHistory")}
+                    aria-label={t("canvas.agent.clearHistory")}
+                >
+                    <Eraser className="size-3.5" />
+                </button>
+                <button type="button" className="rounded p-1 opacity-60 hover:opacity-100" onClick={() => setOpen(false)} title={t("canvas.agent.close")} aria-label={t("canvas.agent.close")}>
                     <X className="size-3.5" />
                 </button>
             </div>

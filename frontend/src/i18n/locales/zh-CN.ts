@@ -739,6 +739,10 @@ export default {
             reasoningOff: "不思考",
             reasoningNormal: "普通思考",
             reasoningMax: "深度思考",
+            clearHistory: "清空历史",
+            clearHistoryConfirm: "这段对话会被删除，无法恢复。画布上的节点不受影响。",
+            clearHistoryOk: "清空",
+            clearHistoryFailed: "清空历史失败",
         },
         promptPanel: {
             captionShort: "反推",

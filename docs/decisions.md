@@ -6400,3 +6400,29 @@ picture; the saved node then held `prompt: ""`, `sentPrompt: "【Text 1】\na re
 `frontend/src/pages/canvas/hooks/use-generation-runs.ts`,
 `frontend/src/components/canvas/canvas-node-generation.ts` (unchanged by this: it already appended),
 `frontend/tests/canvas-generation-context.test.ts`.
+
+## 186. The agent's history can be thrown away
+
+**Decision** The agent panel's header carries one more button (`canvas.agent.clearHistory`): it asks first,
+then hands the session to `DELETE /api/agent/session/{session}` — the route that releases the agent and
+deletes its session file — and reopens the socket. The next connection spawns a new AlayaCore, which finds
+no session file and starts a new one; the transcript is drawn from the agent's own replayed history, so an
+empty history is an empty panel.
+
+**Why** A conversation is a working surface with a limit: a long one costs tokens on every turn and carries
+mistakes into the next answer, and the only way to start over was to delete the canvas. The gateway already
+had the half that matters — release the process, then remove the file, in that order, so nothing is left
+writing what was just deleted (#183's route) — and the panel already redraws itself from `history`.
+
+**Cost** Clearing mid-answer stops the turn (the release cancels it), which is what the confirmation is
+for. The conversation is gone for good: no archive, no undo. A canvas that is never cleared keeps growing,
+and one that is cleared leaves nothing behind to explain the nodes it made — the nodes are still there, and
+that is the half that survives.
+
+**Tested** `npm run check` (i18n 897/883: four new keys, none dead), `npx vitest run` (156), `make check`.
+In the browser (a `/tmp/verify` copy, its own `AGENT_CONFIG_PATH`, the real agent): one exchange
+(`X`→`ok`) left `canvas.json` and a 715-byte `session.alaya` next to it; pressing the button, confirming,
+answered `DELETE /api/agent/session/canvas%3A…` 200, released the old process (`pid=374053`) and spawned a
+new one (`pid=374193`), the file was gone, and the panel showed its empty state with no messages while the
+canvas kept its two nodes and its picture. The next message wrote a fresh file whose first entry was that
+new message, and the answer did not mention the earlier turn.

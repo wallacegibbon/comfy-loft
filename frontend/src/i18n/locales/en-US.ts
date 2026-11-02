@@ -735,6 +735,10 @@ export default {
             reasoningOff: "No thinking",
             reasoningNormal: "Normal",
             reasoningMax: "Deep",
+            clearHistory: "Clear history",
+            clearHistoryConfirm: "This conversation will be deleted and cannot be restored. The nodes on the canvas are not touched.",
+            clearHistoryOk: "Clear",
+            clearHistoryFailed: "The history could not be cleared",
         },
         promptPanel: {
             captionShort: "Caption",

@@ -391,6 +391,19 @@ export function endAgentSession(name: string): void {
 }
 
 /**
+ * Forget a conversation: the file, and the agent holding it.
+ *
+ * The gateway releases the process first and removes the file after it, so nothing is left writing what
+ * was just deleted; the next connect spawns a fresh agent, which finds no session file and starts a new
+ * one. Nothing here keeps the old words around — that is the point.
+ */
+export async function clearAgentConversation(config: AiConfig, session: string): Promise<void> {
+    closeAgentSession(session);
+    const response = await fetch(`${gatewayProtocolRoot(config.baseUrl)}/api/agent/session/${encodeURIComponent(session)}`, { method: "DELETE" });
+    if (!response.ok) throw new Error(apiText("requestFailed"));
+}
+
+/**
  * Forget a canvas's conversation, on the gateway as well as here.
  *
  * The conversation is part of the canvas, so deleting the canvas already deletes it; this is the other half
@@ -402,12 +415,9 @@ export function endAgentSession(name: string): void {
  * line in the console, because it means an agent process outlived its canvas.
  */
 export async function forgetCanvasConversation(config: AiConfig, canvasId: string): Promise<void> {
-    const name = canvasAgent(canvasId);
-    closeAgentSession(name);
     try {
-        const response = await fetch(`${gatewayProtocolRoot(config.baseUrl)}/api/agent/session/${encodeURIComponent(name)}`, { method: "DELETE" });
-        if (!response.ok) console.warn(`agent: the gateway did not forget ${name} (${response.status})`);
+        await clearAgentConversation(config, canvasAgent(canvasId));
     } catch (error) {
-        console.warn(`agent: could not reach the gateway to forget ${name}`, error);
+        console.warn(`agent: the gateway did not forget ${canvasAgent(canvasId)}`, error);
     }
 }
