@@ -1,7 +1,8 @@
 // Package canvas keeps the canvases on disk.
 //
 // A canvas is a directory, not a row: <root>/<id>/ holds canvas.meta.json (the facts the list needs),
-// canvas.json (the document itself) and files/ (the media its nodes point at). The gateway owns the
+// canvas.json (the document itself), files/ (the media its nodes point at) and, once somebody has talked
+// to its agent, agent.session (the conversation). The gateway owns the
 // directory, the id and the timestamps; it does not read canvas.json — what a node is, is the
 // canvas's business, and a gateway that understood nodes would have to be redeployed every time one
 // was added.
@@ -33,6 +34,10 @@ const (
 	// are exported rather than repeated as strings.
 	DocumentName = "canvas.json"
 	FilesName    = "files"
+	// AgentSessionName is the canvas's agent conversation, written by the agent rather than here. It is not
+	// part of the document: an export carries the nodes and the files they point at, and what was said
+	// about them stays with the canvas it was said on.
+	AgentSessionName = "agent.session"
 
 	// MaxDocumentBytes caps one canvas.json. Media lives in files/, so a document that needs more
 	// than this is a document that inlined something it should have referenced.
@@ -129,7 +134,7 @@ func (s *Store) List() ([]Summary, error) {
 	}
 	summaries := make([]Summary, 0, len(entries))
 	for _, entry := range entries {
-		if !entry.IsDir() || !validID(entry.Name()) {
+		if !entry.IsDir() || !ValidID(entry.Name()) {
 			continue
 		}
 		loaded, err := s.readMeta(entry.Name())
@@ -266,9 +271,25 @@ func (s *Store) FilesPath(id string) (string, error) {
 	return dir, nil
 }
 
+// SessionPath is where a canvas keeps its agent's conversation.
+//
+// The conversation is part of the canvas, so it lives inside the canvas directory: deleting the canvas
+// deletes it, copying the directory copies it, and no file can outlive the canvas it belongs to. It is a
+// file of its own rather than a field of canvas.json because it is not part of the document — it is the
+// agent's, in the agent's format, and what a canvas is exported *for* is the nodes.
+//
+// The directory is not created here. A canvas that does not exist has no conversation, and making a
+// directory for one would leave exactly the stray directory this arrangement removes.
+func (s *Store) SessionPath(id string) (string, error) {
+	if _, err := s.readMeta(id); err != nil {
+		return "", err
+	}
+	return filepath.Join(s.root, id, AgentSessionName), nil
+}
+
 // readMeta loads one canvas's meta, refusing ids this store would never have written.
 func (s *Store) readMeta(id string) (meta, error) {
-	if !validID(id) {
+	if !ValidID(id) {
 		return meta{}, ErrInvalidID
 	}
 	raw, err := os.ReadFile(filepath.Join(s.root, id, metaName))
@@ -352,8 +373,9 @@ func writeFile(path string, data []byte) error {
 	return nil
 }
 
-// validID is the shape newID produces — nothing else is a canvas.
-func validID(id string) bool {
+// ValidID is the shape newID produces — nothing else is a canvas. It is exported because the session a
+// canvas panel names carries the id, and a reader of a name has to know what a canvas id looks like.
+func ValidID(id string) bool {
 	if len(id) != 12 {
 		return false
 	}

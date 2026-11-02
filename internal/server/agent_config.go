@@ -13,11 +13,10 @@ package server
 // MCP URL named it.
 //
 // What is deliberately NOT here: the conversation. It is the user's words, it survives restarts, and it
-// is kept under `data/agent/sessions/`, named after the session — which is named after the canvas that
-// owns it, so a canvas and its conversation are found by the same id even though they live apart.
+// is kept inside the canvas directory it belongs to (`agent_conversations.go`), so a canvas and its
+// conversation are one thing on disk.
 
 import (
-	"crypto/sha1"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -77,45 +76,13 @@ func (s *Server) mcpBridgePath() string {
 	return filepath.Join(filepath.Dir(exe), "comfyloft-mcp")
 }
 
-// sessionFile is where a conversation is kept, created if this is the first time.
-func (s *Server) sessionFile(session string) (string, error) {
-	root := sessionsRoot(s.cfg.DataDir)
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		return "", err
-	}
-	return filepath.Join(root, sessionKey(session)+".session"), nil
-}
-
-// sessionsRoot holds one conversation per session.
-func sessionsRoot(dataDir string) string { return filepath.Join(dataDir, "agent", "sessions") }
-
-// sessionKey is a session name as a file name: readable, and unique by hash.
-//
-// The hash is here because the readable half is lossy — `node:n1` and `node-n1` both survive as
-// `node-n1` — and two conversations sharing one file would be a bug nobody would look for.
-func sessionKey(session string) string {
-	var safe strings.Builder
-	for _, r := range session {
-		if safe.Len() >= 40 {
-			break
-		}
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
-			safe.WriteRune(r)
-		default:
-			safe.WriteByte('-')
-		}
-	}
-	sum := sha1.Sum([]byte(session))
-	return fmt.Sprintf("%s-%x", safe.String(), sum[:4])
-}
-
 // agentOptionsFor is what one session's spawn needs: the shared operator configuration, the two facts
 // this bridge needs about itself, and — when the client says this name is a conversation rather than a
-// question — a session file to keep it in.
+// question — the file inside its canvas to keep it in.
 //
 // A node's agent is asked one thing at a time and writes the answer into the node; keeping that in a file
-// would leave one per node on disk, and would carry an earlier question into the next answer.
+// would leave one per node on disk, and would carry an earlier question into the next answer. So a name
+// that is not a canvas keeps nothing (`agent_conversations.go`).
 func (s *Server) agentOptionsFor(session string, history bool) (agent.SpawnOptions, error) {
 	opts := s.agentOptions()
 	opts.Env = append(opts.Env,

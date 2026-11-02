@@ -168,11 +168,12 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 // be enough to find the session, and only the page can actually run the tool.
 func TestMCPToolIsRunByTheCanvas(t *testing.T) {
 	gateway, server, _ := startMCPGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	session := canvasSession(t, gateway)
+	conn := openSocket(t, gateway, session)
 
 	answered := make(chan map[string]any, 1)
 	go func() {
-		_, answer, err := postMCP(t, server, "canvas-1", toolCall(3, "ping", map[string]any{"where": "here"}))
+		_, answer, err := postMCP(t, server, session, toolCall(3, "ping", map[string]any{"where": "here"}))
 		if err != nil {
 			answered <- map[string]any{"post": err.Error()}
 			return
@@ -213,11 +214,12 @@ func TestMCPToolIsRunByTheCanvas(t *testing.T) {
 // one — has to survive the trip exactly as written.
 func TestMCPCarriesTheBlocksThePageProduced(t *testing.T) {
 	gateway, server, _ := startMCPGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	session := canvasSession(t, gateway)
+	conn := openSocket(t, gateway, session)
 
 	answered := make(chan map[string]any, 1)
 	go func() {
-		_, answer, err := postMCP(t, server, "canvas-1", toolCall(8, "read_node", map[string]any{"nodeId": "image-1"}))
+		_, answer, err := postMCP(t, server, session, toolCall(8, "read_node", map[string]any{"nodeId": "image-1"}))
 		if err != nil {
 			answered <- map[string]any{"post": err.Error()}
 			return
@@ -252,11 +254,12 @@ func TestMCPCarriesTheBlocksThePageProduced(t *testing.T) {
 // broken response.
 func TestMCPToolReportsWhatTheCanvasCalledAFailure(t *testing.T) {
 	gateway, server, _ := startMCPGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	session := canvasSession(t, gateway)
+	conn := openSocket(t, gateway, session)
 
 	answered := make(chan map[string]any, 1)
 	go func() {
-		_, answer, err := postMCP(t, server, "canvas-1", toolCall(4, "ping", map[string]any{}))
+		_, answer, err := postMCP(t, server, session, toolCall(4, "ping", map[string]any{}))
 		if err != nil {
 			answered <- map[string]any{"post": err.Error()}
 			return
@@ -282,11 +285,12 @@ func TestMCPToolReportsWhatTheCanvasCalledAFailure(t *testing.T) {
 // the page is gone has nobody to run it — and has to be answered anyway, in words a reader can act on.
 func TestMCPToolSaysWhenNoCanvasIsWatching(t *testing.T) {
 	gateway, server, _ := startMCPGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	session := canvasSession(t, gateway)
+	conn := openSocket(t, gateway, session)
 	_ = conn.Close()
 	time.Sleep(300 * time.Millisecond) // long enough for the gateway to notice the socket is gone
 
-	_, answer := mcpCall(t, server, "canvas-1", toolCall(5, "ping", map[string]any{}))
+	_, answer := mcpCall(t, server, session, toolCall(5, "ping", map[string]any{}))
 	result := resultOf(t, answer)
 	if result["isError"] != true {
 		t.Fatalf("a call with no canvas behind it is not an error: %v", result)
@@ -300,9 +304,10 @@ func TestMCPToolSaysWhenNoCanvasIsWatching(t *testing.T) {
 // reach the canvas at all.
 func TestMCPUnknownToolIsRefused(t *testing.T) {
 	gateway, server, _ := startMCPGateway(t)
-	openSocket(t, gateway, "canvas-1")
+	session := canvasSession(t, gateway)
+	openSocket(t, gateway, session)
 
-	_, answer := mcpCall(t, server, "canvas-1", toolCall(6, "empty_the_canvas", map[string]any{}))
+	_, answer := mcpCall(t, server, session, toolCall(6, "empty_the_canvas", map[string]any{}))
 	result := resultOf(t, answer)
 	if text := textOfResult(t, result); !strings.Contains(text, "no tool named") {
 		t.Fatalf("answer = %q, want it to refuse the name", text)
@@ -348,7 +353,8 @@ func TestMCPOneStaticConfigServesEverySession(t *testing.T) {
 	envLog := filepath.Join(t.TempDir(), "environ")
 	t.Setenv("FAKE_ENV_LOG", envLog)
 
-	openSocket(t, gateway, "canvas-1")
+	one := canvasSession(t, gateway)
+	openSocket(t, gateway, one)
 	first := waitForEnv(t, envLog)
 
 	// The file the agent reads: written by the gateway, identical for everyone, naming the bridge.
@@ -361,23 +367,24 @@ func TestMCPOneStaticConfigServesEverySession(t *testing.T) {
 			t.Fatalf("mcp.conf = %q, want it to contain %q", written, want)
 		}
 	}
-	if strings.Contains(string(written), "canvas-1") {
+	if strings.Contains(string(written), strings.TrimPrefix(one, canvasSessionPrefix)) {
 		t.Fatalf("mcp.conf names a session: %q", written)
 	}
 
 	// And the session, in the process's environment, pointing at the listener that is running now.
-	if first.session != "canvas-1" {
-		t.Fatalf("COMFYLOFT_SESSION = %q, want the canvas that opened the socket", first.session)
+	if first.session != one {
+		t.Fatalf("COMFYLOFT_SESSION = %q, want the canvas that opened the socket (%q)", first.session, one)
 	}
 	if first.endpoint != server.mcpURL {
 		t.Fatalf("COMFYLOFT_MCP = %q, want %q", first.endpoint, server.mcpURL)
 	}
 
 	// A second session gets its own environment and the same file.
-	openSocket(t, gateway, "canvas-2")
+	two := canvasSession(t, gateway)
+	openSocket(t, gateway, two)
 	second := waitForEnv(t, envLog)
-	if second.session != "canvas-2" || second.endpoint != first.endpoint {
-		t.Fatalf("second spawn = %+v, want session canvas-2 at the same endpoint", second)
+	if second.session != two || second.endpoint != first.endpoint {
+		t.Fatalf("second spawn = %+v, want session %q at the same endpoint", second, two)
 	}
 	again, err := os.ReadFile(filepath.Join(configDir, "mcp.conf"))
 	if err != nil {

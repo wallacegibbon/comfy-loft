@@ -99,12 +99,46 @@ func spawns(t *testing.T, path string) int {
 	return len(strings.Split(strings.TrimSpace(string(raw)), "\n"))
 }
 
+// canvasSession makes a canvas through the API and answers the name its panel gives the session: `canvas:`
+// and the canvas id, which is also the canvas whose directory keeps the conversation (#178).
+func canvasSession(t *testing.T, gateway *httptest.Server) string {
+	t.Helper()
+	response, err := gateway.Client().Post(gateway.URL+"/api/canvases", "application/json", strings.NewReader(`{"title":"Talked to"}`))
+	if err != nil {
+		t.Fatalf("create canvas: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("create canvas: status %d", response.StatusCode)
+	}
+	var body struct {
+		Canvas struct {
+			ID string `json:"id"`
+		} `json:"canvas"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("create canvas: %v", err)
+	}
+	if body.Canvas.ID == "" {
+		t.Fatal("create canvas: no id")
+	}
+	return "canvas:" + body.Canvas.ID
+}
+
+// socketURL is one session's socket: `history=1` is the client asking for its conversation back.
+func socketURL(gateway *httptest.Server, session string, history bool) string {
+	url := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/api/agent/socket/" + session
+	if history {
+		url += "?history=1"
+	}
+	return url
+}
+
 // openSocket dials a conversation — the canvas panel's socket, which asks for a history — and drains the
 // startup broadcast and the replayed conversation, which is what a client does before it says anything.
 func openSocket(t *testing.T, gateway *httptest.Server, session string) *comfy.WSConn {
 	t.Helper()
-	url := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/api/agent/socket/" + session + "?history=1"
-	conn, err := comfy.DialWS(context.Background(), url)
+	conn, err := comfy.DialWS(context.Background(), socketURL(gateway, session, true))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -174,8 +208,7 @@ func send(t *testing.T, conn *comfy.WSConn, message map[string]any) {
 
 func TestSocketStartsWithTheModelList(t *testing.T) {
 	gateway, _ := startAgentGateway(t)
-	url := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/api/agent/socket/canvas-1"
-	conn, err := comfy.DialWS(context.Background(), url)
+	conn, err := comfy.DialWS(context.Background(), socketURL(gateway, canvasSession(t, gateway), false))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -201,7 +234,7 @@ func TestSocketStartsWithTheModelList(t *testing.T) {
 
 func TestSocketAnswersAPrompt(t *testing.T) {
 	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	conn := openSocket(t, gateway, canvasSession(t, gateway))
 
 	send(t, conn, map[string]any{"prompt": "hi"})
 	seen := until(t, conn, "done")
@@ -219,7 +252,7 @@ func TestSocketAnswersAPrompt(t *testing.T) {
 // same process, so the agent still has the first in front of it.
 func TestSocketAnswersAgainOnTheSameConnection(t *testing.T) {
 	gateway, spawnLog := startAgentGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	conn := openSocket(t, gateway, canvasSession(t, gateway))
 
 	for turn := 1; turn <= 2; turn++ {
 		send(t, conn, map[string]any{"prompt": "hi"})
@@ -237,10 +270,10 @@ func TestSocketAnswersAgainOnTheSameConnection(t *testing.T) {
 // of being left to wait for answers that will never arrive (#160).
 func TestTheNewestSocketTakesTheSessionOver(t *testing.T) {
 	gateway, _ := startAgentGateway(t)
-	first := openSocket(t, gateway, "canvas-1")
+	session := canvasSession(t, gateway)
+	first := openSocket(t, gateway, session)
 
-	url := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/api/agent/socket/canvas-1"
-	second, err := comfy.DialWS(context.Background(), url)
+	second, err := comfy.DialWS(context.Background(), socketURL(gateway, session, false))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -270,10 +303,10 @@ func TestTheNewestSocketTakesTheSessionOver(t *testing.T) {
 // person is looking at.
 func TestTheReplacedSocketDoesNotTakeTheAgentWithIt(t *testing.T) {
 	gateway, spawnLog := startAgentGateway(t)
-	first := openSocket(t, gateway, "canvas-1")
+	session := canvasSession(t, gateway)
+	first := openSocket(t, gateway, session)
 
-	url := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/api/agent/socket/canvas-1"
-	second, err := comfy.DialWS(context.Background(), url)
+	second, err := comfy.DialWS(context.Background(), socketURL(gateway, session, false))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -307,7 +340,7 @@ func TestTheReplacedSocketDoesNotTakeTheAgentWithIt(t *testing.T) {
 // panel made — is what a user message is drawn from. Live and replayed arrive the same way.
 func TestSocketRelaysTheUsersWordsOnce(t *testing.T) {
 	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	conn := openSocket(t, gateway, canvasSession(t, gateway))
 
 	send(t, conn, map[string]any{"prompt": "remember the violet"})
 	seen := until(t, conn, "done")
@@ -323,12 +356,11 @@ func TestSocketRelaysTheUsersWordsOnce(t *testing.T) {
 }
 
 // TestOneShotSessionKeepsNoFile: a node's agent asks one question and writes the answer into the node. It is
-// not a conversation, so it gets no session file — one per node would pile up in the data directory, and an
-// earlier question would be carried into the next answer.
+// not a conversation, so it gets no file — one per node would live in the canvas forever, and an earlier
+// question would be carried into the next answer.
 func TestOneShotSessionKeepsNoFile(t *testing.T) {
 	gateway, server, _ := startMCPGateway(t)
-	url := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/api/agent/socket/node:n1"
-	conn, err := comfy.DialWS(context.Background(), url)
+	conn, err := comfy.DialWS(context.Background(), socketURL(gateway, "node:n1", false))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -344,12 +376,9 @@ func TestOneShotSessionKeepsNoFile(t *testing.T) {
 	send(t, conn, map[string]any{"prompt": "describe the sea"})
 	until(t, conn, "done")
 
-	file, err := server.sessionFile("node:n1")
-	if err != nil {
-		t.Fatalf("session file path: %v", err)
-	}
-	if _, err := os.Stat(file); !os.IsNotExist(err) {
-		t.Fatalf("a one-shot session wrote a conversation file: %v", err)
+	// There is nowhere for it to go: a conversation is kept inside its canvas, and this name is not one.
+	if file, err := server.sessionFile("node:n1"); err == nil {
+		t.Fatalf("a one-shot session has a conversation file: %s", file)
 	}
 }
 
@@ -357,7 +386,7 @@ func TestOneShotSessionKeepsNoFile(t *testing.T) {
 // and later says when it used it. The panel shows the difference; the gateway only carries it.
 func TestSocketRelaysTheSteeringQueue(t *testing.T) {
 	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	conn := openSocket(t, gateway, canvasSession(t, gateway))
 
 	send(t, conn, map[string]any{"prompt": "write a long one"})
 	seen := until(t, conn, "done")
@@ -374,7 +403,7 @@ func TestSocketRelaysTheSteeringQueue(t *testing.T) {
 
 func TestSocketRelaysASettingChange(t *testing.T) {
 	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	conn := openSocket(t, gateway, canvasSession(t, gateway))
 
 	send(t, conn, map[string]any{"command": "model_set", "args": "2"})
 	seen := until(t, conn, "command")
@@ -406,7 +435,7 @@ func TestSocketRelaysASettingChange(t *testing.T) {
 // both frames coming back. The gateway neither answers nor interprets them — it draws them.
 func TestSocketRelaysTheToolItUsed(t *testing.T) {
 	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	conn := openSocket(t, gateway, canvasSession(t, gateway))
 
 	send(t, conn, map[string]any{"prompt": "read it"})
 	seen := until(t, conn, "done")
@@ -434,7 +463,8 @@ func TestSocketRelaysTheToolItUsed(t *testing.T) {
 // only way a canvas can say "I am done with this" rather than "I am not looking right now".
 func TestSocketCloseReleasesTheAgent(t *testing.T) {
 	gateway, spawnLog := startAgentGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	session := canvasSession(t, gateway)
+	conn := openSocket(t, gateway, session)
 	if got := spawns(t, spawnLog); got != 1 {
 		t.Fatalf("spawned %d agents, want 1", got)
 	}
@@ -448,7 +478,7 @@ func TestSocketCloseReleasesTheAgent(t *testing.T) {
 	}
 
 	// A new connection to the same name starts a new agent, which is what releasing it means.
-	openSocket(t, gateway, "canvas-1")
+	openSocket(t, gateway, session)
 	if got := spawns(t, spawnLog); got != 2 {
 		t.Fatalf("spawned %d agents after closing, want a new one", got)
 	}
@@ -459,7 +489,8 @@ func TestSocketCloseReleasesTheAgent(t *testing.T) {
 // reloaded page show the conversation it left, and it is the reason the process may be this short-lived.
 func TestSocketGoingAwayReplaysTheConversation(t *testing.T) {
 	gateway, spawnLog := startAgentGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	session := canvasSession(t, gateway)
+	conn := openSocket(t, gateway, session)
 	if got := spawns(t, spawnLog); got != 1 {
 		t.Fatalf("spawned %d agents, want 1", got)
 	}
@@ -473,8 +504,7 @@ func TestSocketGoingAwayReplaysTheConversation(t *testing.T) {
 	}
 
 	// A new connection: a new process, and the words from the file — not an empty conversation.
-	url := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/api/agent/socket/canvas-1?history=1"
-	next, err := comfy.DialWS(context.Background(), url)
+	next, err := comfy.DialWS(context.Background(), socketURL(gateway, session, true))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -504,15 +534,16 @@ func TestSocketGoingAwayReplaysTheConversation(t *testing.T) {
 	}
 }
 
-// TestDeletingASessionForgetsTheConversation: a canvas that is gone has nobody left to talk to, so its
-// session file — the whole conversation — goes with it, and the next connection starts clean.
+// TestDeletingASessionForgetsTheConversation: the canvas can also end its conversation without ending
+// itself. The file goes, and the next connection starts clean.
 func TestDeletingASessionForgetsTheConversation(t *testing.T) {
 	gateway, server, _ := startMCPGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	session := canvasSession(t, gateway)
+	conn := openSocket(t, gateway, session)
 	send(t, conn, map[string]any{"prompt": "remember the violet"})
 	until(t, conn, "done")
 
-	file, err := server.sessionFile("canvas-1")
+	file, err := server.sessionFile(session)
 	if err != nil {
 		t.Fatalf("session file: %v", err)
 	}
@@ -520,7 +551,7 @@ func TestDeletingASessionForgetsTheConversation(t *testing.T) {
 		t.Fatalf("the fake agent wrote no session file: %v", err)
 	}
 
-	request, err := http.NewRequest(http.MethodDelete, gateway.URL+"/api/agent/session/canvas-1", nil)
+	request, err := http.NewRequest(http.MethodDelete, gateway.URL+"/api/agent/session/"+session, nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -537,8 +568,7 @@ func TestDeletingASessionForgetsTheConversation(t *testing.T) {
 	}
 
 	// The next connection is a new conversation: nothing to replay.
-	url := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/api/agent/socket/canvas-1?history=1"
-	next, err := comfy.DialWS(context.Background(), url)
+	next, err := comfy.DialWS(context.Background(), socketURL(gateway, session, true))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -553,11 +583,50 @@ func TestDeletingASessionForgetsTheConversation(t *testing.T) {
 	}
 }
 
+// TestDeletingACanvasTakesItsConversationWithIt: the conversation is part of the canvas, so deleting the
+// canvas is all it takes for the conversation to be gone — there is no second file anywhere to forget.
+func TestDeletingACanvasTakesItsConversationWithIt(t *testing.T) {
+	gateway, server, _ := startMCPGateway(t)
+	session := canvasSession(t, gateway)
+	id := strings.TrimPrefix(session, canvasSessionPrefix)
+	conn := openSocket(t, gateway, session)
+	send(t, conn, map[string]any{"prompt": "remember the violet"})
+	until(t, conn, "done")
+
+	file, err := server.canvases.SessionPath(id)
+	if err != nil {
+		t.Fatalf("SessionPath: %v", err)
+	}
+	if _, err := os.Stat(file); err != nil {
+		t.Fatalf("the fake agent wrote no conversation: %v", err)
+	}
+	// One directory holds the document, the media and the conversation.
+	if want := filepath.Join(server.cfg.CanvasRoot, id); filepath.Dir(file) != want {
+		t.Fatalf("conversation at %q, want a file in %q", file, want)
+	}
+
+	request, err := http.NewRequest(http.MethodDelete, gateway.URL+"/api/canvases/"+id, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	response, err := gateway.Client().Do(request)
+	if err != nil {
+		t.Fatalf("delete canvas: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("delete canvas: status %d", response.StatusCode)
+	}
+	if _, err := os.Stat(filepath.Join(server.cfg.CanvasRoot, id)); !os.IsNotExist(err) {
+		t.Fatalf("the canvas directory survived: %v", err)
+	}
+}
+
 // TestSocketReportsADeadProcess: an agent killed under a live conversation has to be reported, not
 // waited on.
 func TestSocketReportsADeadProcess(t *testing.T) {
 	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	conn := openSocket(t, gateway, canvasSession(t, gateway))
 
 	// The fake agent exits on this prompt, which is what a crash looks like from here.
 	send(t, conn, map[string]any{"prompt": "die"})

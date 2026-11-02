@@ -14,7 +14,7 @@ type AgentModel = { id: number; name: string; protocolType?: string; contextLimi
  * The agent, as sessions.
  *
  * A session is one agent process with one socket, named by whatever surface owns it: the canvas panel
- * owns `canvas`, a node's panel owns `node:<id>`. Everything the agent knows about itself — which models
+ * owns `canvas:<canvasId>`, a node's panel owns `node:<id>`. Everything the agent knows about itself — which models
  * exist, which one this session is on, how hard it is thinking — belongs to that process and is only
  * ever read back from what it announces. Nothing here mirrors it, and nothing is shared between two
  * sessions: the processes are independent, they are small, and there are as many as there are surfaces.
@@ -141,9 +141,10 @@ export function agentSession(name: string): AgentSession {
 /**
  * A session's name: the canvas panel's, one per canvas, and one per node panel.
  *
- * The canvas's name carries the canvas id because the agent's conversation is kept in a file named after
- * it. One name for every canvas meant one conversation for every canvas — what was said on one showed up
- * on the next, and now it would also be replayed there.
+ * The canvas's name carries the canvas id because the conversation is kept inside that canvas: the gateway
+ * reads the id out of the name and puts the file in the canvas's own directory, so the conversation is
+ * deleted, copied and inspected with the canvas it belongs to (decisions #178). One name for every canvas
+ * meant one conversation for every canvas — what was said on one showed up on the next.
  */
 export const canvasAgent = (canvasId: string) => `canvas:${canvasId}`;
 export const nodeAgent = (nodeId: string) => `node:${nodeId}`;
@@ -151,7 +152,8 @@ export const nodeAgent = (nodeId: string) => `node:${nodeId}`;
 function socketUrl(config: AiConfig, name: string, history: boolean): string {
     const root = gatewayProtocolRoot(config.baseUrl);
     // `history=1` is this surface saying "this name is a conversation": the agent then keeps it in a file
-    // that outlives the socket. A node's one-shot question does not ask, and leaves nothing behind.
+    // that outlives the socket, inside the canvas the name points at. A node's one-shot question does not
+    // ask, and leaves nothing behind.
     return `${root.replace(/^http/i, "ws")}/api/agent/socket/${encodeURIComponent(name)}${history ? "?history=1" : ""}`;
 }
 
@@ -391,13 +393,13 @@ export function endAgentSession(name: string): void {
 /**
  * Forget a canvas's conversation, on the gateway as well as here.
  *
- * The agent keeps a conversation in a file named after its session, and the session is named after the
- * canvas. When the canvas is deleted there is nobody left to talk to, so the file would sit in the data
- * directory forever — this is the canvas saying "this conversation is over", which is the one thing only
- * the canvas knows. Closing the panel is not this: it leaves the conversation for the next visit.
+ * The conversation is part of the canvas, so deleting the canvas already deletes it; this is the other half
+ * — the running agent is released first, since a process left writing into a directory that is going away
+ * is the one thing that could put it back. Closing the panel is not this: it leaves the conversation for
+ * the next visit.
  *
  * A failure is not worth failing a delete over — the canvas is going away either way — but it is worth a
- * line in the console, because a file that outlives its canvas is a small mess nobody would find again.
+ * line in the console, because it means an agent process outlived its canvas.
  */
 export async function forgetCanvasConversation(config: AiConfig, canvasId: string): Promise<void> {
     const name = canvasAgent(canvasId);

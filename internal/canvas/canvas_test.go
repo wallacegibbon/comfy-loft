@@ -39,7 +39,7 @@ func TestCreateWritesTheWholeLayout(t *testing.T) {
 	store := openTestStore(t)
 
 	summary := mustCreate(t, store, "  A canvas  ")
-	if !validID(summary.ID) {
+	if !ValidID(summary.ID) {
 		t.Fatalf("id %q is not the shape this store hands out", summary.ID)
 	}
 	if summary.Title != "A canvas" {
@@ -352,3 +352,45 @@ func TestNewRejectsAnEmptyRootAndCreatesTheDirectory(t *testing.T) {
 }
 
 func ptr(value string) *string { return &value }
+
+// TestSessionPathIsInsideTheCanvas: the agent's conversation is part of the canvas it belongs to, so it
+// is a file in the canvas directory and there is nothing to clean up when the canvas goes (#178).
+func TestSessionPathIsInsideTheCanvas(t *testing.T) {
+	store := openTestStore(t)
+	summary := mustCreate(t, store, "Talked to")
+
+	path, err := store.SessionPath(summary.ID)
+	if err != nil {
+		t.Fatalf("SessionPath: %v", err)
+	}
+	if want := filepath.Join(store.Root(), summary.ID, AgentSessionName); path != want {
+		t.Fatalf("SessionPath = %q, want %q", path, want)
+	}
+	// The path is not a file until the agent has something to say.
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("SessionPath created the file: %v", err)
+	}
+
+	// A canvas that does not exist has no conversation, and asking for one does not make a directory.
+	absent := "0123456789ab"
+	if _, err := store.SessionPath(absent); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("SessionPath(%q) = %v, want ErrNotFound", absent, err)
+	}
+	if _, err := store.SessionPath("../x"); !errors.Is(err, ErrInvalidID) {
+		t.Fatalf("SessionPath(../x) = %v, want ErrInvalidID", err)
+	}
+	if _, err := os.Stat(filepath.Join(store.Root(), absent)); !os.IsNotExist(err) {
+		t.Fatalf("a path for a missing canvas made a directory: %v", err)
+	}
+
+	// And it goes with the canvas, because it is inside it.
+	if err := os.WriteFile(path, []byte("a conversation"), 0o644); err != nil {
+		t.Fatalf("write the conversation: %v", err)
+	}
+	if err := store.Delete(summary.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("the conversation outlived its canvas: %v", err)
+	}
+}

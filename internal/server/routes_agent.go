@@ -19,7 +19,7 @@ import (
 // its own `canvas:<canvasId>`, a node's panel calls its own `node:<id>`. The lifetimes differ (the
 // canvas's agent lives as long as its socket, a node's while its panel is open) and the client owns both,
 // because the client is what knows when a surface went away. The gateway only files processes under
-// names, and keeps their conversations in files named after them.
+// names, and keeps the one conversation that has somewhere to go — a canvas's — inside that canvas.
 func (s *Server) routesAgent(mux *http.ServeMux) {
 	s.route(mux, "GET /api/agent/socket/{session}", s.handleAgentSocket)
 	s.route(mux, "DELETE /api/agent/session/{session}", s.handleAgentSessionDelete)
@@ -27,9 +27,10 @@ func (s *Server) routesAgent(mux *http.ServeMux) {
 
 // handleAgentSessionDelete implements DELETE /api/agent/session/{session}: forget this conversation.
 //
-// The canvas owns the name and is the only thing that knows a conversation is over — a canvas that has
-// been deleted has nobody left to talk to, and its session file would sit in the data directory forever.
-// The process, if one is running, is released first so nothing writes the file back after it is removed.
+// The canvas owns the name and is the only thing that knows a conversation is over. The file lives inside
+// the canvas, so deleting the canvas is what normally ends it; this route is the other half — the process
+// is released first, so nothing writes the file back after it is removed, and the client can end a
+// conversation without ending the canvas.
 func (s *Server) handleAgentSessionDelete(ctx *httpx.Ctx) error {
 	id := ctx.R.PathValue("session")
 	s.agentSessions.Close(id, "forgotten")
@@ -122,7 +123,7 @@ func (s *Server) handleAgentSocket(ctx *httpx.Ctx) error {
 	options, err := s.agentOptionsFor(id, history)
 	if err != nil {
 		if s.logger != nil {
-			s.logger.Warn("agent: socket %q has no workspace: %v", id, err)
+			s.logger.Warn("agent: socket %q cannot keep its conversation: %v", id, err)
 		}
 		_ = send(agent.Event{Type: "error", Message: err.Error()})
 		return nil
