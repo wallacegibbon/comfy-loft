@@ -177,7 +177,7 @@ among its endpoints. `/v1/...` in this repository belongs to the model provider 
 | `/api/agent/socket/{session}`, `/api/agent/session/{session}` | The agent: one WebSocket per session, named by the surface that owns it |
 | `/mcp` (its own listener) | The agent's hands: the MCP server a session's tool calls arrive at. Loopback only |
 | `/api/resources/*` | Download models, install custom nodes |
-| `/api/system/*`, `/api/loras`, `/api/skin-unlocks`, `/health` | System status, LoRA files, canvas skins, liveness |
+| `/api/system/*`, `/api/loras`, `/health` | System status, LoRA files, liveness |
 
 **ComfyUI `:8188` endpoints** — only the gateway's ComfyUI client (`internal/comfy`) calls
 these, the canvas never sees them:

@@ -445,10 +445,9 @@ it are not allowed to spread past one file each:
   `src/lib/canvas-overlay.ts`. The overlay guards match our own `data-canvas-overlay` marker
   and the existing `data-canvas-no-zoom` first; the antd class list is a documented fallback
   array beneath them. When antd goes, that array goes and the canvas is not touched.
-- _The palette._ Colour values live in `src/lib/design-tokens.ts`; `src/lib/app-theme.ts`
-  only maps them onto antd's `ThemeConfig`. `src/lib/canvas-theme.ts` keeps its own hex on
-  purpose — it is feature data (six card skins handed to node renderers and the plugin
-  context), not app chrome.
+- _The palette._ App chrome takes its colours from Tailwind's `stone` scale.
+  `src/lib/canvas-theme.ts` keeps its own hex on purpose — it is feature data (the canvas
+  palette handed to node renderers and the plugin context), not app chrome.
 
 **Why** Measured before this decision: 60 of 167 frontend files import antd, ~530 JSX
 instances and 121 `message.*` calls go through `App.useApp()`, and the antd chunk is 916 kB
@@ -6532,7 +6531,8 @@ is deleted. Two windows replace it, each opened by its own button at the right e
 closed by the X in its own top-right corner:
 
 - `PreferencesDialog` (`components/settings/preferences-dialog.tsx`): default image and video model,
-  generation defaults, card skin, progress ring skin, auto-center on select, system prompt.
+  generation defaults, auto-center on select, system prompt. (The card skin and progress-ring skin
+  pickers were in this list too; #193 removed them.)
 - `AddWorkflowsDialog` (`components/settings/workflows-dialog.tsx`): the resource panel in a frame. The
   first-run `ResourceSetupGate` opens the same window with its own heading and no close button, so the
   two cannot drift apart in size or padding. The panel's summary card lost its own "Add workflows" line
@@ -6690,3 +6690,69 @@ lasso share that parent and those two numbers.
 
 **Where** `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`,
 `frontend/src/components/canvas/canvas-selection-toolbar.tsx`.
+
+## 193. The card skins, the progress-ring skins and the unlock flow are gone
+
+**Decision** The canvas has one card look and one charge light. Four things left whole:
+
+- **Card skins.** Six palettes — `warm`, `cream`, `mist`, `forest`, `angel`, `fish` — each overriding a dozen
+  `canvasThemes[].node` colours per light/dark, two of which also replaced the card fill with a gradient and
+  painted character art inside the card; a second table did the same to the toolbar palette; a `Map` cached
+  the theme × skin pair. All of it went, with `getCanvasTheme()`'s second argument, `getCardBackground()`,
+  `useEffectiveCardSkin()`, the `data-card-skin` attribute and `globals.css`'s
+  `[data-card-skin="cream"] button:disabled` rule. `theme.node.fill` is the card background again, and
+  `use-canvas-theme.ts` is a hook, not a palette resolver: `canvasThemes[theme]`.
+- **The character animation.** The two art skins carried a rig beside and inside the card — a lantern jellyfish
+  with an "AT field" halo, an angel with falling feathers — plus *Character animation while generating* and its
+  left/right toggle, reachable only while one of those two skins was selected. Deleted with the skins:
+  `fish-guard-*` and `angel-*` in `globals.css` (about 380 lines of keyframes and rules), `public/skins/` (four
+  images, 2.3 MB), `theme.fishWhipEnabled` / `theme.fishWhipSide` and the art-skin branches in `canvas-node.tsx`
+  (a backdrop, the inline artwork, the blessing, the halo, the two mascot rigs).
+- **Progress-ring skins.** Seven palettes × two themes, each with its own stroke widths, blur radii, tail length
+  and breathing period, and one of them — `tide` — a second rendering path that filled the card with rising
+  water. The ring stays, with the palette and the numbers it shipped with (`cyan`, `balancedStyle`): the glow is
+  the run's progress, not a preference. `lib/canvas/progress-ring-skins.ts` and `config.progressRingSkin` are
+  gone; `tide` went with the other six.
+- **The unlock flow.** A PBKDF2-SHA256 verifier in the client bundle gated exactly one skin; unlocking posted to
+  `POST /api/skin-unlocks`, which `store.Skins` persisted to `data/skin-unlocks.json`, and
+  `useSkinUnlockPersistence` merged the server's list into the store and pushed back every local unlock the
+  server did not have. Both routes, the store, its two tests, the hook, the service and the password dialog are
+  gone. `theme` in `use-theme-store` is now one field.
+
+45 i18n keys per locale went with them (870/856 → 825/811). `lib/design-tokens.ts` went too: its last reader was
+the progress-ring preview grid, so the `stone` table had no importer left and the two comments that pointed at it
+now point at Tailwind's `stone` scale.
+
+**Why** Every one of those mechanisms changed a colour or a timing constant on the same renderer, and the "skins"
+differed by appearance alone — seven rings that all meant "charging", six cards that all meant "a card". They cost
+a cache keyed by theme × skin, two override tables to keep in step with the base palette, a stylesheet section
+larger than the rest of the canvas chrome, 2.3 MB of art, an HTTP route and a file on disk, for a choice the
+canvas does not need. The unlock flow is the loudest case: the verifier shipped in the bundle it gated, so the
+password protected nothing — its only real effect was that `fish` could not be selected until a record existed.
+
+**Why the character animation did not survive on its own** It was good to watch, but its only door was the
+card-skin picker: the switch appeared under the `fish`/`angel` entry. With the skins gone it could not be turned
+on and nothing would trigger it, which is dead code with a name. If it comes back it should come back as its own
+setting with its own door, not as a property of a palette.
+
+**Cost** The only appearance choice left is light/dark. Bringing any of the six looks back means writing the
+tables again rather than flipping a flag, which is the point. A workspace whose saved settings still name a
+`cardSkin`, `fishWhipSide` or `progressRingSkin` keeps those keys until the next save — nothing reads them, and
+no migration was written for them (the same no-backward-compatibility rule as #190).
+
+**Tested** `npm run check` (i18n 825/811, no dead keys, export check clean), `npx vitest run` (21 files, 155
+tests), `make check`, `CGO_ENABLED=1 go test -race ./cmd/... ./internal/...`, `make verify-static`, and
+`npm run build`. A grep of the tree for `skin`, `cardSkin`, `progressRingSkin` and `fishWhip` over Go, TS, TSX,
+CSS and the check scripts returns nothing. `TestSkinsUnlockAndValidate` and `TestSkinsReadLegacyStringEntries`
+went with the store; `internal/server`'s settings round-trip test lost the `cardSkin` key it happened to carry.
+Not exercised in a browser: the two surviving paths are the ones the default settings already used — `warm` had
+an empty override table and `cyan` was the default ring — so what the default workspace rendered is what it
+renders now.
+
+**Where** `frontend/src/components/canvas/canvas-node.tsx`,
+`frontend/src/components/canvas/canvas-node-progress-ring.tsx`,
+`frontend/src/components/settings/preferences-dialog.tsx`, `frontend/src/lib/canvas-theme.ts`,
+`frontend/src/lib/canvas/use-canvas-theme.ts`, `frontend/src/stores/use-theme-store.ts`,
+`frontend/src/stores/use-config-store.ts`, `frontend/src/styles/globals.css`, `frontend/src/i18n/locales/*`,
+`frontend/src/components/layout/client-root-init.tsx`, `internal/store/preferences.go`,
+`internal/server/routes_admin.go`, `internal/server/server.go`.

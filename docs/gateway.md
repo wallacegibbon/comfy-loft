@@ -317,7 +317,6 @@ Metadata and management:
 | `POST` | `/api/resources/jobs/{id}/cancel` | Stop that job. Files already written stay. |
 | `POST` | `/api/resources/pick-replacement` | Open the operator's file dialog on a model directory, and answer with the file chosen. |
 | `POST` | `/api/resources/replacement` | Point a resource at a file that is already installed (the alias the panel's "choose replacement" writes). |
-| `GET` / `POST` | `/api/skin-unlocks` | Which canvas skins this install has unlocked. |
 | `GET`  | `/api/loras`             | The LoRA files ComfyUI reports, filtered by `?q=`. |
 | `POST` | `/api/system/free-memory` | Ask ComfyUI to free VRAM, then report what that freed. `503` when ComfyUI is unreachable. |
 
@@ -395,7 +394,7 @@ internal/task            the run queue: persistence, progress, cancel, multi-out
 internal/upload          uploaded media: bytes on disk, index, cached ComfyUI reference
 internal/resource        resources.json, install jobs, main-model override
 internal/prompt          H3 prompt rewriting, speaker tags, MOSS layout prompts
-internal/store           skins, workflow visibility, main-model overrides
+internal/store           workflow visibility, main-model overrides
 internal/sysinfo         ComfyUI's /system_stats, as the panel's units
 internal/server          route table and wiring
 ```
