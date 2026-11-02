@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/kit/button";
 import { Dialog } from "@/components/kit/dialog";
 import { Tooltip } from "@/components/kit/tooltip";
-import { canvasThemes } from "@/lib/canvas-theme";
+import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { CANVAS_CHROME_GUTTER, CANVAS_ZOOM_DOCK_HEIGHT, useCanvasChromeWidth } from "@/stores/canvas/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -26,7 +26,7 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpe
     // it stays put when the panel opens — the panel is the box that gets shorter (#191).
     const width = useCanvasChromeWidth();
     const colorTheme = useThemeStore((state) => state.theme);
-    const theme = canvasThemes[colorTheme];
+    const theme = useCanvasTheme();
     const dockStyle = { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 18px 45px rgba(0,0,0,.32)" : "0 16px 40px rgba(28,25,23,.12)" };
     const activeStyle = { background: theme.toolbar.activeBg, color: theme.toolbar.activeText };
 

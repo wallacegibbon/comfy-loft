@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { ImageIcon, List, Music2, Settings2, Video, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { canvasThemes } from "@/lib/canvas-theme";
+import { type CanvasTheme } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { listNodeDefinitions } from "@/lib/canvas/node-registry";
 import { getNodeSpec } from "@/constant/canvas";
@@ -56,7 +56,7 @@ export function ConnectionCreateMenu({ pending, scale = 1, onCreate, onClose }: 
     );
 }
 
-function ConnectionCreateOption({ theme, icon, title, description, onClick }: { theme: (typeof canvasThemes)[keyof typeof canvasThemes]; icon: React.ReactNode; title: string; description?: string; onClick?: () => void }) {
+function ConnectionCreateOption({ theme, icon, title, description, onClick }: { theme: CanvasTheme; icon: React.ReactNode; title: string; description?: string; onClick?: () => void }) {
     return (
         <button
             type="button"

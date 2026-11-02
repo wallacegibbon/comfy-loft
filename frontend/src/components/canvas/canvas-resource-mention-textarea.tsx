@@ -3,7 +3,7 @@ import type { CSSProperties, MouseEvent, PointerEvent, TextareaHTMLAttributes } 
 import { createPortal } from "react-dom";
 import { FileText, Image as ImageIcon, Music2, Video } from "lucide-react";
 
-import { canvasThemes } from "@/lib/canvas-theme";
+import { type CanvasTheme } from "@/lib/canvas-theme";
 import { CANVAS_DIALOG_CONTENT } from "@/lib/canvas-overlay";
 import { isImeComposing, isPlainEnterKey } from "@/lib/keyboard-event";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
@@ -232,7 +232,7 @@ function MentionMenu({
     caretIndex: number;
     references: CanvasResourceReference[];
     activeIndex: number;
-    theme: (typeof canvasThemes)[keyof typeof canvasThemes];
+    theme: CanvasTheme;
     onSelect: (reference: CanvasResourceReference) => void;
 }) {
     const selectedRef = useRef(false);

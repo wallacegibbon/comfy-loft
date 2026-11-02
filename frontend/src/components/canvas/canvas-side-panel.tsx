@@ -5,7 +5,8 @@ import { useTranslation } from "react-i18next";
 import { Input } from "@/components/kit/input";
 import { Select } from "@/components/kit/select";
 import { toast } from "@/components/kit/toast";
-import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
+import { type CanvasTheme } from "@/lib/canvas-theme";
+import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { exportCanvasNodes } from "@/lib/canvas/canvas-export";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { cn } from "@/lib/utils";
@@ -63,7 +64,7 @@ const STATUS_COLOR: Record<string, string> = {
 export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, onHoverNode }: Props) {
     const { t } = useTranslation();
     const colorTheme = useThemeStore((state) => state.theme);
-    const theme = canvasThemes[colorTheme];
+    const theme = useCanvasTheme();
     const width = useCanvasSidePanelStore((state) => state.width);
     // The width it draws at: the stored one, clamped so the column never eats the whole window (#191).
     const chromeWidth = useCanvasChromeWidth();

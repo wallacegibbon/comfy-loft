@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/kit/button";
 import { Image } from "@/components/kit/media";
 import i18n from "@/i18n";
-import { canvasThemes } from "@/lib/canvas-theme";
+import { type CanvasTheme } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import type { NodeGenerationInput } from "./canvas-node-generation";
 import { CanvasNodeReferenceBar } from "./canvas-node-reference-bar";
@@ -201,19 +201,7 @@ export function CanvasConfigComposer({ nodeId, nodes, value, inputs, connectedNo
     );
 }
 
-function MentionMenu({
-    inputs,
-    allInputs,
-    activeIndex,
-    theme,
-    onSelect,
-}: {
-    inputs: NodeGenerationInput[];
-    allInputs: NodeGenerationInput[];
-    activeIndex: number;
-    theme: (typeof canvasThemes)[keyof typeof canvasThemes];
-    onSelect: (input: NodeGenerationInput) => void;
-}) {
+function MentionMenu({ inputs, allInputs, activeIndex, theme, onSelect }: { inputs: NodeGenerationInput[]; allInputs: NodeGenerationInput[]; activeIndex: number; theme: CanvasTheme; onSelect: (input: NodeGenerationInput) => void }) {
     const selectedRef = useRef(false);
     const activeItemRef = useRef<HTMLButtonElement | null>(null);
 
@@ -270,7 +258,7 @@ function ResourcePreview({ input }: { input: NodeGenerationInput }) {
     );
 }
 
-function createReferenceChip(input: NodeGenerationInput, _inputs: NodeGenerationInput[], theme: (typeof canvasThemes)[keyof typeof canvasThemes], onImagePreview: (url: string) => void) {
+function createReferenceChip(input: NodeGenerationInput, _inputs: NodeGenerationInput[], theme: CanvasTheme, onImagePreview: (url: string) => void) {
     const wrapper = document.createElement("span");
     wrapper.contentEditable = "false";
     wrapper.dataset.referenceNodeId = input.nodeId;
@@ -406,6 +394,6 @@ function resourceLabel(input: NodeGenerationInput, inputs: NodeGenerationInput[]
     return i18n.t(`canvas.composer.resources.${input.type}`, { index: index + 1 });
 }
 
-function chipStyle(theme: (typeof canvasThemes)[keyof typeof canvasThemes]): CSSProperties {
+function chipStyle(theme: CanvasTheme): CSSProperties {
     return { background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text };
 }

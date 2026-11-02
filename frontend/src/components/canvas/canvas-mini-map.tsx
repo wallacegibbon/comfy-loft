@@ -1,13 +1,12 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { canvasThemes } from "@/lib/canvas-theme";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { CANVAS_ABOVE_DOCK_BOTTOM, CANVAS_CHROME_GUTTER, useCanvasChromeWidth } from "@/stores/canvas/use-canvas-side-panel-store";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 
 export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { nodes: CanvasNodeData[]; viewport: ViewportTransform; viewportSize: { width: number; height: number }; onViewportChange: (viewport: ViewportTransform) => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = useCanvasTheme();
     // A popover on the compass button that opens it: the compass is the first button in the dock, and this
     // sits directly above the dock, on the column's left edge (#191). It used to be pushed out of the
     // panel's way, which put it in the middle of the board instead of above its own button.

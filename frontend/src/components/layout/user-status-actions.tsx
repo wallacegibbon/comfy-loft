@@ -7,7 +7,7 @@ import { Tooltip } from "@/components/kit/tooltip";
 import { AnimatedThemeToggler } from "@/components/kit/animated-theme-toggler";
 import { changeAppLocale, type AppLocale } from "@/i18n";
 import { writeSetting } from "@/stores/use-settings-store";
-import { canvasThemes } from "@/lib/canvas-theme";
+import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -29,7 +29,7 @@ export function UserStatusActions({ variant = "default", onOpenShortcuts }: User
     const setTheme = useThemeStore((state) => state.setTheme);
     const openPreferences = useConfigStore((state) => state.openPreferences);
     const openWorkflows = useConfigStore((state) => state.openWorkflows);
-    const canvasTheme = canvasThemes[theme];
+    const canvasTheme = useCanvasTheme();
     const naturalIconClass =
         "inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-600 transition-colors hover:bg-black/5 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-white/10 dark:hover:text-white [&_svg]:size-4";
     const iconStyle: CSSProperties | undefined = variant === "canvas" ? { color: canvasTheme.node.text } : undefined;

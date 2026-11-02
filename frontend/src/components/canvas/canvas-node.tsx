@@ -2,9 +2,8 @@ import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore }
 import type { ReactNode } from "react";
 import { ChevronRight, Download, Group, Image as ImageIcon, Music2, Puzzle, RefreshCw, Star, Video } from "lucide-react";
 
-import { canvasThemes } from "@/lib/canvas-theme";
+import { type CanvasTheme } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
-import { useThemeStore } from "@/stores/use-theme-store";
 import { formatBytes } from "@/lib/image-utils";
 import { pickImageSource } from "@/lib/image-thumbnail";
 import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision } from "@/services/image-storage";
@@ -59,7 +58,7 @@ type CanvasNodeProps = {
 
 type NodeContentRendererProps = {
     node: CanvasNodeData;
-    theme: (typeof canvasThemes)[keyof typeof canvasThemes];
+    theme: CanvasTheme;
     isEditingContent: boolean;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     isBatchRoot: boolean;
@@ -115,8 +114,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     onContextMenu,
 }: CanvasNodeProps) {
     const theme = useCanvasTheme();
-    const colorTheme = useThemeStore((state) => state.theme);
-    const titleTheme = canvasThemes[colorTheme].node;
+    const titleTheme = theme.node;
     const { t } = useTranslation();
     const [hovered, setHovered] = useState(false);
     const definition = getNodeDefinition(data.type);

@@ -14,8 +14,8 @@ import { createVideoGenerationTask, isVideoTaskFailed, waitForVideoGenerationTas
 import { useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { uploadImage } from "@/services/image-storage";
 import { nanoid } from "nanoid";
-import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { type CanvasBackgroundMode } from "@/lib/canvas-theme";
+import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
 import { IMAGE_UPSCALE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 import { VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH, applyGeneratedVideo } from "@/lib/canvas/canvas-generated-video";
@@ -209,7 +209,7 @@ function InfiniteCanvasPage() {
     const checkForNewerCopy = useCanvasStore((state) => state.checkForNewerCopy);
     const currentProject = useCanvasStore((state) => state.projects.find((project) => project.id === projectId));
     const saveError = useCanvasStore((state) => state.saveErrors[projectId]);
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = useCanvasTheme();
     const agentOpen = useCanvasAgentStore((state) => state.open);
     const toggleAgent = useCanvasAgentStore((state) => state.toggle);
     const [nodes, setNodes] = useState<CanvasNodeData[]>([]);

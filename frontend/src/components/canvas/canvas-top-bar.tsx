@@ -8,7 +8,7 @@ import { Dropdown, type DropdownItem } from "@/components/kit/floating";
 import { Tooltip } from "@/components/kit/tooltip";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { CanvasSystemStatus } from "@/components/canvas/canvas-system-status";
-import { canvasThemes } from "@/lib/canvas-theme";
+import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { byUpdatedAtDesc } from "@/lib/canvas/last-canvas";
 import { CANVAS_TOP_BAR_ROW, useCanvasChromeWidth } from "@/stores/canvas/use-canvas-side-panel-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
@@ -47,7 +47,7 @@ export function CanvasTopBar({
 }) {
     const colorTheme = useThemeStore((state) => state.theme);
     const { t } = useTranslation();
-    const theme = canvasThemes[colorTheme];
+    const theme = useCanvasTheme();
     // The same recipe as the zoom dock in the bottom corner: these are bars that sit on the canvas, so they
     // have to read as bars — a surface, a border, and a shadow — not as glyphs printed onto someone's
     // artwork.
@@ -185,7 +185,7 @@ export function CanvasTopBar({
 }
 
 function TopBarButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = useCanvasTheme();
 
     return (
         <Tooltip title={label}>

@@ -5,7 +5,7 @@ import { Settings2 } from "lucide-react";
 import { Button } from "@/components/kit/button";
 import { VideoSettingsPanel, videoModeLabel, videoResolutionLabel, videoSecondsLabel, videoSelfLiftLabel, videoSizeLabel } from "@/components/video-settings-panel";
 import i18n from "@/i18n";
-import { canvasThemes } from "@/lib/canvas-theme";
+import { type CanvasTheme } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import type { AiConfig } from "@/stores/use-config-store";
 
@@ -105,7 +105,7 @@ function VideoSettingsPortal({
     buttonRect: DOMRect;
     panelRef: RefObject<HTMLDivElement | null>;
     placement: CanvasVideoSettingsPopoverProps["placement"];
-    theme: (typeof canvasThemes)[keyof typeof canvasThemes];
+    theme: CanvasTheme;
     config: AiConfig;
     onConfigChange: (key: keyof AiConfig, value: string) => void;
     frameMode?: "first" | "last" | "both";

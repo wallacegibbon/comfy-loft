@@ -7,8 +7,7 @@ import { Button } from "@/components/kit/button";
 import { Dialog } from "@/components/kit/dialog";
 import { Spin } from "@/components/kit/display";
 import { LOCAL_GATEWAY_BASE_URL } from "@/constant/app-mode";
-import { canvasThemes } from "@/lib/canvas-theme";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 
 type GpuStats = {
     index: number;
@@ -51,8 +50,7 @@ function percent(used: number, total: number) {
 
 export function CanvasSystemStatus() {
     const { t } = useTranslation();
-    const colorTheme = useThemeStore((state) => state.theme);
-    const theme = canvasThemes[colorTheme];
+    const theme = useCanvasTheme();
     const [stats, setStats] = useState<SystemStats | null>(null);
     const [open, setOpen] = useState(false);
     const [freeing, setFreeing] = useState(false);

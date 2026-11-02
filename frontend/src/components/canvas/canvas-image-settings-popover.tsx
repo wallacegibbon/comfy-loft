@@ -8,7 +8,7 @@ import { ImageSettingsPanel, OptionPill, SettingTitle, imageSizeLabel } from "@/
 import { Button } from "@/components/kit/button";
 import { Switch } from "@/components/kit/choice";
 import i18n from "@/i18n";
-import { canvasThemes } from "@/lib/canvas-theme";
+import { type CanvasTheme } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { gatewayVariantLabel } from "@/lib/gateway-labels";
 import { channelModelOf } from "@/stores/use-config-store";
@@ -188,7 +188,7 @@ function ImageSettingsPortal({
     buttonRect: DOMRect;
     panelRef: RefObject<HTMLDivElement | null>;
     placement: CanvasImageSettingsPopoverProps["placement"];
-    theme: (typeof canvasThemes)[keyof typeof canvasThemes];
+    theme: CanvasTheme;
     config: AiConfig;
     onConfigChange: (key: keyof AiConfig, value: string) => void;
     onParamsChange?: (params: Record<string, unknown>) => void;
