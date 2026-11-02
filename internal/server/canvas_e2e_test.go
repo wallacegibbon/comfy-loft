@@ -332,6 +332,35 @@ func TestImportingAnArchiveRestoresTheCanvasAsItWasExported(t *testing.T) {
 	}
 }
 
+// An export is a directory, and a directory that somebody unzipped and zipped again carries a `files/`
+// entry that is an empty directory: `zip -r`, Archive Utility and Explorer all write one. That entry is
+// not a canvas file and not an unexpected shape — the ordinary way of moving an export has to import.
+func TestAnImportAcceptsTheDirectoryEntriesARezipAdds(t *testing.T) {
+	gateway := canvasGateway(t)
+	client := gateway.Client()
+
+	archive := buildImportArchive(t, map[string][]byte{
+		"manifest.json":         []byte(`{"app":"comfyloft","version":1,"title":"re-zipped"}`),
+		"canvas.json":           []byte(`{"nodes":[],"connections":[]}`),
+		"files/":                nil,
+		"files/up-a1b2c3d4.png": []byte("PNG-bytes"),
+	})
+
+	status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", archive)
+	if status != http.StatusOK {
+		t.Fatalf("import = %d: %v", status, payload)
+	}
+	id, _, _ := canvasOf(t, payload)
+	response, err := client.Get(gateway.URL + "/api/canvases/" + id + "/files/up-a1b2c3d4.png")
+	if err != nil {
+		t.Fatalf("get file: %v", err)
+	}
+	defer response.Body.Close()
+	if body, _ := io.ReadAll(response.Body); response.StatusCode != http.StatusOK || string(body) != "PNG-bytes" {
+		t.Errorf("file = %d %q", response.StatusCode, body)
+	}
+}
+
 func TestAnArchiveThatIsNotOneCanvasIsRefused(t *testing.T) {
 	gateway := canvasGateway(t)
 	client := gateway.Client()
@@ -378,6 +407,14 @@ func buildImportArchive(t *testing.T, entries map[string][]byte) []byte {
 	}
 	sort.Strings(names)
 	for _, name := range names {
+		// A key that ends in a separator is a directory entry: a zip tool writes one for every folder, and
+		// a canvas that was unzipped and re-zipped has one for `files/`.
+		if strings.HasSuffix(name, "/") {
+			if _, err := writer.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store}); err != nil {
+				t.Fatalf("zip directory %s: %v", name, err)
+			}
+			continue
+		}
 		// Stored, not deflated: these tests are about the layout, and a tiny archive is quicker to read.
 		file, err := writer.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store})
 		if err != nil {

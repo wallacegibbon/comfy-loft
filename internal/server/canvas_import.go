@@ -8,8 +8,8 @@ package server
 // renamed and nothing is rewritten (decisions #172).
 //
 // The archive is the one thing this gateway parses out of user input, so the rules are explicit: only the
-// three shapes above are accepted, an entry may not leave the directory, and the unpacked bytes are bounded
-// by the same ceiling as the body.
+// three shapes above are accepted (plus the empty directory entries a re-zip adds), an entry may not leave
+// the directory, and the unpacked bytes are bounded by the same ceiling as the body.
 
 import (
 	"archive/zip"
@@ -106,6 +106,12 @@ func (s *Server) importArchive(archivePath string, limit int64) (canvas.Canvas, 
 		if !ok {
 			return canvas.Canvas{}, httpx.Errorf(http.StatusUnprocessableEntity, "import_invalid_entry",
 				"the archive holds an entry that would leave the canvas directory: %q", entry.Name)
+		}
+		// A directory entry is a directory, not a file to restore: `zip -r`, Archive Utility and Explorer
+		// all write one for every folder, so a canvas somebody unzipped and re-zipped carries `files/`
+		// beside the files themselves. Refusing it would refuse the ordinary way of moving an export.
+		if entry.FileInfo().IsDir() {
+			continue
 		}
 		switch {
 		case entryName == canvas.DocumentName:
