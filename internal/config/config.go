@@ -79,6 +79,42 @@ func WithComfyURL(url string) Option { return func(c *Config) { c.ComfyURL = url
 // WithWorkflowDir overrides the gateway workflow directory.
 func WithWorkflowDir(dir string) Option { return func(c *Config) { c.WorkflowDir = dir } }
 
+// AgentHostDir is the per-host segment of the agent's configuration directory.
+//
+// It is the address the gateway is bound to, because that is what the agent is told to dial; a wildcard
+// bind has no address of its own, so it means loopback — the same substitution mcpURL makes.
+func AgentHostDir(host string) string {
+	host = strings.TrimSpace(host)
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		return "127.0.0.1"
+	}
+	safe := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+			return r
+		default:
+			// IPv6 literals and anything else a bind address can carry: a colon is not a Windows path
+			// segment, and this directory has to be creatable on every platform the gateway builds for.
+			return '-'
+		}
+	}, strings.Trim(host, "[]"))
+	if safe == "" {
+		return "127.0.0.1"
+	}
+	return safe
+}
+
+// LegacyAgentConfigDir is where the agent's configuration lived before it was split by host. It is only
+// read once, to be copied into the new location.
+func LegacyAgentConfigDir(host string) string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "comfyui-gateway", "alayacore")
+}
+
 // WithDataDir overrides the data directory.
 func WithDataDir(dir string) Option { return func(c *Config) { c.DataDir = dir } }
 
@@ -137,9 +173,13 @@ func Load(opts ...Option) (*Config, error) {
 	// The agent keeps its own configuration; the gateway only says where. A default under the user's
 	// config directory (the platform's, not a hardcoded ~/.config) so a fresh directory is created by
 	// the agent itself on first spawn.
+	//
+	// One directory per host, because `mcp.conf` names the address an agent dials back to: a machine
+	// reachable at 127.0.0.1 and at a LAN address is two different answers, and the operator may want a
+	// different model behind each.
 	if cfg.AgentConfigPath == "" {
 		if dir, err := os.UserConfigDir(); err == nil {
-			cfg.AgentConfigPath = filepath.Join(dir, "comfyui-gateway", "alayacore")
+			cfg.AgentConfigPath = filepath.Join(dir, "comfyui-gateway", AgentHostDir(cfg.GatewayHost), "alayacore")
 		}
 	}
 

@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	"path/filepath"
 
 	"comfyloft/internal/agent"
 	"comfyloft/internal/httpx"
@@ -44,7 +43,6 @@ func (s *Server) handleAgentSessionDelete(ctx *httpx.Ctx) error {
 			return err
 		}
 	}
-	_ = os.RemoveAll(filepath.Join(workspacesRoot(s.cfg.DataDir), agentWorkspaceKey(id)))
 
 	httpx.OK(ctx.W, map[string]any{"ok": true, "removed": removed})
 	return nil

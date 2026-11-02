@@ -1,17 +1,18 @@
 # comfyui-gateway (Go)
 
 The gateway behind Comfy Loft: a local service that runs ComfyUI workflows. It is the repository root
-— `main.go`, `internal/`, and the runtime assets (`workflows/`, `resources.json`, `prompts/`) live at the
-top level, while the canvas frontend sits beside them in `canvas/`.
+— `cmd/`, `internal/`, and the runtime assets (`workflows/`, `resources.json`, `prompts/`) live at the top
+level, while the canvas frontend sits beside them in `canvas/`.
 
 Two names, on purpose (docs/decisions.md #146): the **binary** is `comfyui-gateway`, because what it faces
 is ComfyUI, and its module path and config directory follow that. The **project's** own identity is
 `comfyloft` — the Go module is `comfyloft`, and so are the npm package, the browser storage keys and the
 export marker. Display text says `Comfy Loft`.
 
-It is a **single statically linked binary**: no Node runtime, no `node_modules`, no
-Python virtualenv. Configuration comes from the environment; all mutable state lives
-in `data/`.
+It is **two statically linked binaries** — `bin/comfyui-gateway` (this service) and `bin/comfyloft-mcp`
+(the stdio bridge AlayaCore spawns to reach the canvas tools) — and no Node runtime, no `node_modules`,
+no Python virtualenv. Configuration comes from the environment; all mutable state lives in `data/`, and
+the agent's own configuration lives under the user's config directory (#147).
 
 ## Why Go
 
@@ -37,8 +38,8 @@ cross-compiles to the three mainstream targets from any host, and the frontend i
 browser bundle.
 
 ```bash
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o comfyui-gateway.exe .
-CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o comfyui-gateway-mac .
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o comfyui-gateway.exe ./cmd/comfyui-gateway
+CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o comfyui-gateway-mac ./cmd/comfyui-gateway
 ```
 
 Linux is the target that is actually run and tested. Two things lean on facilities a container or
@@ -55,7 +56,7 @@ by hand works anywhere.
 ## Quick start
 
 ```bash
-make build          # -> bin/comfyui-gateway (static, ~2 MB)
+make build          # -> bin/comfyui-gateway + bin/comfyloft-mcp (static)
 GATEWAY_HOST=192.168.3.232 ./bin/comfyui-gateway
 ```
 
@@ -119,7 +120,8 @@ authentication; there is no configuration in this gateway that makes an untruste
 | `MAX_UPLOAD_BYTES` | `52428800` | Per-file upload limit. |
 | `RESOURCE_CONCURRENCY` | `2` | Parallel downloads during a resource install. |
 | `ALAYACORE_BIN` | _(found)_ | The agent binary. Empty looks on `PATH`, then beside the gateway. |
-| `AGENT_CONFIG_PATH` | `UserConfigDir()/comfyui-gateway/alayacore` | The agent's own config directory (`model.conf`, …). The gateway names it and never reads or writes it; AlayaCore creates it on first spawn. |
+| `AGENT_CONFIG_PATH` | `UserConfigDir()/comfyui-gateway/<host>/alayacore` | The agent's own config directory (`model.conf`, and the `mcp.conf` the gateway writes). One per host, because `mcp.conf` names the address the agent dials back to; a pre-#147 `model.conf` is copied into it once. |
+| `MCP_BIN` | beside the gateway binary (`comfyloft-mcp`) | Overrides where the bridge is expected. The path goes into the static `mcp.conf` on every start, so a moved release directory does not leave a stale one behind. |
 
 ### The gateway runs beside ComfyUI
 
@@ -204,7 +206,7 @@ back what AlayaCore says. The gateway owns no wording, no model choice and no st
 | -------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | `GET`    | `/api/agent/socket/{session}`  | One agent process, named by the client, both directions. Its conversation is kept in a session file. |
 | `DELETE` | `/api/agent/session/{session}` | Forget a conversation: releases the process, removes its session file and its workspace. Idempotent. |
-| `POST`   | `/mcp/{workspace}`             | The agent's tools, spoken to AlayaCore. One workspace per session.                                   |
+| `POST`   | `/mcp` (own listener)          | The agent's tools, reached through `comfyloft-mcp`. Loopback only — never the address above.      |
 
 A session is one `alayacore --rawio` process with one socket, filed under a name the **client** chooses:
 the canvas agent panel calls its own `canvas:<canvasId>`, a node's panel calls its own `node:<id>`. The
@@ -237,92 +239,40 @@ eyes, and two readers would take half the frames each.
 A built-in tool (`read_file`, enabled for the skills the agent loads) runs inside AlayaCore, so the call
 and its result arrive as frames and the gateway relays both without answering either.
 
-### The agent's hands are MCP
+### The agent's hands are MCP, over a bridge
 
 Anything the agent does that AlayaCore cannot do by itself — build a node, wire an edge, start a
-generation — is a tool this gateway serves, because the gateway is already the process holding the
-socket to the browser. AlayaCore learns about it the same way it learns anything about its
-configuration: from a file.
-
-Each session is spawned with its own `--config-path`, a directory under `<DATA_DIR>/agent/`
-(`<sanitised-session>-<hash8>`), holding a copy of the operator's `model.conf` and `runtime.conf` plus
-an `mcp.conf` written for that session:
+generation — is a tool this gateway serves, because the gateway is already the process holding the socket
+to the browser. AlayaCore learns about it from a file, and that file is static: every session reads the
+same one.
 
 ```
 server: canvas
-url: http://<GATEWAY_HOST>:<GATEWAY_PORT>/mcp/<workspace>
+command: "/path/to/bin/comfyloft-mcp"
+args: []
 proto-version: 2025-11-25
 ```
 
-The URL is the operator's own address — the one the gateway is listening on, since MCP is a part of the
-gateway and the agent runs beside it. A gateway bound to `192.168.3.232` does not answer on loopback at
-all, so a fixed `127.0.0.1` here is a tool server the agent can never reach; a wildcard bind (`0.0.0.0`)
-is not dialable and becomes loopback. See [`decisions.md`](decisions.md) #87.
+`comfyloft-mcp` is spawned by AlayaCore, speaks JSON-RPC on stdin/stdout, and forwards each call to the
+gateway over loopback. The gateway rewrites that file on every start — the path moves with the release
+directory, and a stale one fails as `handshake: EOF`, which names the symptom rather than the cause (#147).
 
-The URL is the only thing that says which agent is asking: an MCP call carries no identity of its own,
-and guessing from "the session with a turn in flight" is wrong as soon as two panels ask at once. The
-workspace name is derived from the session name (`agentWorkspaceKey`), so a call routes back to the
-session it came from without a registry that could disagree with the sessions that exist.
+**The session travels in the environment, not in the address.** The gateway spawns AlayaCore with
 
-A session's directory is removed when the process is released, and every leftover is removed at startup:
-a session does not survive a restart, so neither should what it wrote. Copying `runtime.conf` rather than
-sharing it is what keeps one session's model choice out of the next one's default.
-
-The endpoint speaks `initialize`, `tools/list` and `tools/call`; notifications are answered `202`. A call
-is not answered by the gateway — it goes down the session's socket and the **canvas** runs it, because
-the page is the only thing that knows what a node is. Down:
-
-```json
-{ "type": "tool", "callId": "tool-1", "name": "ping", "arguments": {} }
+```
+COMFY_LOFT_MCP=http://127.0.0.1:<ephemeral>
+COMFY_LOFT_SESSION=<session name>
 ```
 
-and up, on the same socket, the answer that the waiting call returns to AlayaCore:
+and AlayaCore hands its environment to the bridge it starts. The bridge puts the session in
+`X-Comfy-Loft-Session` and its own version in `X-Comfy-Loft-Bridge`; the gateway refuses a version it does
+not speak, because two binaries can come from two builds — and says which half to rebuild.
 
-```json
-{
-  "toolResult": {
-    "callId": "tool-1",
-    "content": [{ "type": "text", "text": "pong from the page" }]
-  }
-}
-```
+That is a second, **loopback-only** listener, never the address `GATEWAY_HOST` names: a tool that creates
+nodes and starts generations has no business being reachable from the network, and requiring a custom
+header means a browser cannot reach it cross-site without a preflight this server never answers.
 
-`content` is the protocol's content array, carried through untouched: `text`, `image` (`data` + `mimeType`),
-`audio` (`data` + `mimeType`), `resource` (`resource.mimeType` + `blob`, which is how a film travels — the
-protocol has no video block), `resource_link`. Nothing between the page and AlayaCore inspects or converts
-it: the blocks say what they are, and AlayaCore turns them into what its model can look at. See
-[`decisions.md`](decisions.md) #88.
-
-A call waits 30s, and every way of not getting an answer — nobody watching, a canvas that went away, a
-page that never replied — comes back as a tool result with `isError`, not a broken response: the agent can
-report those, while an aborted turn leaves it with nothing to say.
-
-Tool names are **not** prefixed with `canvas_`: AlayaCore adds the server's name itself, so a tool called
-`ping` here is `canvas_ping` to the model and arrives back as `ping`. See
-[`decisions.md`](decisions.md) #84.
-
-Seven tools: `ping` (how much is on the canvas), `list_nodes` (every node — id, type, title, prompt, position
-— and every connection, the ids being what the other tools act on), `create_node` (make one node the way the
-user's own button makes one: in the middle of the view, selected, panel open when that is what the button
-does), `connect` (drag one node onto another: what the source holds becomes the target's input),
-`set_prompt` (change a node's prompt in the field its own panel writes to), `generate` (press that node's
-generate button: it starts the work and answers at once, and the result replaces what that node held) and
-`read_node` (that node's actual content — its words, or the picture, film or sound it holds). See
-[`decisions.md`](decisions.md) #85 for why the page runs them, #86 for what "the way the button does" means,
-#88 for what a tool is allowed to answer with, #89 for why generating is a button and not a wait, #91 for why
-changing a prompt and re-running are two tools that add up to the manual gesture, and #92 for why a connection
-is the same call a drag makes.
-
-A music graph needs two texts, and both are ordinary `registry.json` bindings (`prompt`, `lyrics`), so
-a run carries them as inputs like any other parameter. `response_format`-style container selection is
-`outputs.formats` in the registry: the encoder writes `mp3`, `flac` or `opus`, and anything else is
-refused with `unsupported_audio_format` at submission instead of being silently converted.
-
-Runs (the protocol in [`protocol.md`](protocol.md); every canvas node and tool uses them — frame
-interpolation included, as a run of the `video-rife` workflow):
-
-| Method   | Path                             | Purpose                                                           |
-| -------- | -------------------------------- | ----------------------------------------------------------------- |
+-------- | -------------------------------- | ----------------------------------------------------------------- |
 | `POST`   | `/api/uploads`                   | Upload one media file. Returns an id a run can reference by role. |
 | `POST`   | `/api/runs`                      | Submit a run. Always `202` with the run, never blocks.            |
 | `GET`    | `/api/runs`                      | Runs, newest first; `?status=` and `?workflow=` filter.           |
@@ -370,7 +320,9 @@ what it says.
 ## Architecture
 
 ```
-main.go                  startup, signal handling, task cleanup loop
+cmd/comfyui-gateway      startup, signal handling, task cleanup loop
+cmd/comfyloft-mcp        the stdio bridge: JSON-RPC in, loopback call out
+internal/mcpstdio        the bridge's protocol half, testable without a process
 internal/config          environment -> immutable Config
 internal/httpx           error type, JSON responses, middleware, multipart
 internal/comfy           ComfyUI HTTP client + minimal WebSocket client

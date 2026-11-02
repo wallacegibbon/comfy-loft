@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"os/exec"
 	"path/filepath"
@@ -45,14 +46,17 @@ type Server struct {
 	setup         *setup.Manager
 	resources     *resource.Manager
 
+	// The bridge's endpoint: a second listener, bound to 127.0.0.1, that only comfyloft-mcp talks to.
+	mcpServer   *http.Server
+	mcpListener net.Listener
+	mcpURL      string
+
 	startedAt time.Time
 }
 
 // New constructs the whole gateway. Everything is loaded before the first request,
 // so a half-initialized server can never answer.
 func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
-	// Sessions do not survive a restart, so neither do the directories their agents worked in.
-	clearAgentWorkspaces(cfg.DataDir)
 	// A gateway that was killed mid-write leaves its temporary file next to the target; nothing reads it
 	// again, so startup is the one moment it can be swept safely.
 	util.SweepTempFiles(cfg.DataDir)
@@ -148,11 +152,25 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 		startedAt:     time.Now(),
 	}
 
+	// The conversation and the configuration outlive a restart in different ways: the legacy per-session
+	// config directories do not (they are copies), the conversations do (they are the user's words).
+	clearLegacyAgentState(cfg.DataDir)
+	server.adoptLegacyAgentConfig(config.LegacyAgentConfigDir(cfg.GatewayHost))
+	server.writeMCPConf()
+	if err := server.startMCPListener(); err != nil {
+		return nil, err
+	}
+	logger.Info("agent: MCP bridge listening on %s (static mcp.conf in %s)", server.mcpURL, cfg.AgentConfigPath)
+
 	if cfg.ScanOnStart {
 		setupManager.Start()
 	}
 	return server, nil
 }
+
+// Close stops what the gateway started that is not the main HTTP server: the bridge listener. Agents are
+// released by their sockets closing, on the same shutdown path.
+func (s *Server) Close() { s.closeMCP() }
 
 // Setup exposes the setup manager for lifecycle control.
 func (s *Server) Setup() *setup.Manager { return s.setup }

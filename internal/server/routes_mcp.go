@@ -48,18 +48,19 @@ type mcpResult struct {
 // client's to reconcile, and AlayaCore's `proto-version` field is where it says which it wants.
 const mcpProtocolVersion = "2025-11-25"
 
-// routesMCP registers the MCP endpoint.
-//
-// It is deliberately outside `/api`: it is a protocol for another process, not a route for a canvas.
-// The workspace in the path is how a tool call says which agent made it — MCP itself carries no such
-// identity, and the alternative (guessing the session that has a turn in flight) is wrong as soon as
-// two panels are asking at once.
-func (s *Server) routesMCP(mux *http.ServeMux) {
-	s.route(mux, "POST /mcp/{workspace}", s.handleMCP)
-}
-
 // handleMCP speaks just enough of the protocol for a client to discover and call tools.
+//
+// Registered on the loopback listener only (see mcp_server.go), so the identity is not a URL segment a
+// stranger could guess: it is a header the bridge writes from the environment its parent inherited.
 func (s *Server) handleMCP(ctx *httpx.Ctx) error {
+	if err := s.checkBridge(ctx.R); err != nil {
+		return err
+	}
+	session, err := s.sessionOf(ctx.R)
+	if err != nil {
+		return err
+	}
+
 	var request mcpRequest
 	if err := json.Unmarshal(mustBody(ctx), &request); err != nil {
 		return mcpError(ctx, nil, -32700, "parse error")
@@ -89,7 +90,7 @@ func (s *Server) handleMCP(ctx *httpx.Ctx) error {
 		if err := json.Unmarshal(request.Params, &params); err != nil {
 			return mcpError(ctx, request.ID, -32602, "invalid params")
 		}
-		result, err := s.callMCPTool(ctx.R.PathValue("workspace"), params.Name, params.Arguments)
+		result, err := s.callMCPTool(session, params.Name, params.Arguments)
 		if err != nil {
 			return mcpError(ctx, request.ID, -32603, err.Error())
 		}
@@ -187,14 +188,15 @@ func (s *Server) mcpTools() []mcpTool {
 //
 // Everything that goes wrong is a tool result with `isError`, not a JSON-RPC error. The agent is holding
 // a turn open waiting for this write; telling it "the canvas did not answer" lets it say so, while a
-// broken response leaves it with nothing to report.
-func (s *Server) callMCPTool(workspace, name string, args json.RawMessage) (mcpResult, error) {
-	session, ok := s.sessionForWorkspace(workspace)
+// broken response leaves it with nothing to report. The message names the side: a session that is gone is
+// the browser's story (the tab closed), an unknown tool is this install's (two builds disagreeing).
+func (s *Server) callMCPTool(sessionID, name string, args json.RawMessage) (mcpResult, error) {
+	session, ok := s.agentSessions.Lookup(sessionID)
 	if !ok {
-		return mcpResult{Content: agent.TextContent("no agent is attached to this workspace"), IsError: true}, nil
+		return mcpResult{Content: agent.TextContent("no agent is attached to " + sessionID + " any more — its canvas tab was closed or its process was released"), IsError: true}, nil
 	}
 	if !s.hasMCPTool(name) {
-		return mcpResult{Content: agent.TextContent("no such tool: " + name), IsError: true}, nil
+		return mcpResult{Content: agent.TextContent("this gateway has no tool named " + name + "; it offers what tools/list advertises"), IsError: true}, nil
 	}
 	content, failed := session.CallTool(name, args)
 	return mcpResult{Content: content, IsError: failed}, nil

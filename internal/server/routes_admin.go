@@ -19,8 +19,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	s.routesGeneration(mux)
 	s.routesRuns(mux)
 	s.routesAdmin(mux)
-	// The agent's own protocol, outside `/api`: it is what AlayaCore talks to when a tool is called.
-	s.routesMCP(mux)
+	// The agent's MCP endpoint is NOT here: it lives on a second, loopback-only listener so a tool that
+	// creates nodes and starts generations is not reachable from whatever address GATEWAY_HOST names.
+	// See mcp_server.go.
 }
 
 // routesAdmin registers health, configuration and management endpoints.

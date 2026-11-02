@@ -29,12 +29,14 @@ treat `canvas/` as this project's own code.
 
 ## Layout
 
-The repository root *is* the Go gateway (`main.go` + `internal/` + runtime assets);
+The repository root *is* the Go gateway (`cmd/` + `internal/` + runtime assets);
 the canvas frontend is a self-contained subtree beside it (see Credits):
 
 ```text
 .
-├── main.go            # gateway entry point
+├── cmd/
+│   ├── comfyui-gateway/   # the service: API, workflows, the canvas's websocket
+│   └── comfyloft-mcp/     # the stdio bridge AlayaCore spawns to reach the canvas tools
 ├── internal/          # the whole gateway (config/comfy/workflow/generate/resource/prompt/…)
 ├── workflows/         # what the product exposes: graphs + registry.json
 ├── resources.json     # what has to be installed: models, node packs, runtime deps

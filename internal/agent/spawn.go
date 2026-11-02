@@ -29,8 +29,6 @@ type Process struct {
 	Stderr    *stderrTail
 	Log       *logx.Logger
 	startedAt time.Time
-	// workDir is removed on release; empty for an agent that shares the operator's directory.
-	workDir string
 
 	stdinFile *os.File
 
@@ -49,14 +47,13 @@ type SpawnOptions struct {
 	// Tools is the `--builtin-tools` list. Read-only file access is what a skill needs in order to be
 	// activated at all (the agent loads a skill by reading its SKILL.md); no other tool is enabled.
 	Tools string
-	// WorkDir is a directory this agent owns and removes when it is released: its copy of the operator's
-	// configuration, and the `mcp.conf` that points its tool calls at this gateway. Empty means the
-	// agent shares one directory with everyone else.
-	WorkDir string
-	// Session is the file AlayaCore keeps this conversation in. It is not work: the workspace above is
-	// thrown away with the process, while this file is what lets the next process replay what was said.
-	// Empty means the conversation dies with the process, which is what a node's single question wants:
-	// one file per node would outlive the node that asked.
+	// Env is what this spawn knows that the operator's environment does not: where the MCP bridge should
+	// send its calls, and which session it speaks for. AlayaCore hands its environment to the stdio
+	// servers it starts, so this is how a per-session fact reaches a static `mcp.conf`.
+	Env []string
+	// Session is the file AlayaCore keeps this conversation in. It is not work: it is what lets the next
+	// process replay what was said. Empty means the conversation dies with the process, which is what a
+	// node's single question wants: one file per node would outlive the node that asked.
 	Session string
 	// Log records what happened in terms someone who knows AlayaCore can follow: the command line,
 	// every frame in both directions, and how the process ended.
@@ -103,6 +100,11 @@ func findBinary(configured string) string {
 // Spawn starts the agent. The caller must Release it.
 func Spawn(o SpawnOptions) (*Process, error) {
 	cmd := exec.Command(findBinary(o.Binary), o.args()...)
+	if len(o.Env) > 0 {
+		// Prepended to the inherited environment so a later assignment wins, which is Go's rule for a
+		// duplicate name and the one that lets a caller override what the operator exported.
+		cmd.Env = append(o.Env, os.Environ()...)
+	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -148,7 +150,6 @@ func Spawn(o SpawnOptions) (*Process, error) {
 		stdinFile: stdin.(*os.File),
 		Log:       o.Log,
 		startedAt: time.Now(),
-		workDir:   o.WorkDir,
 	}, nil
 }
 
@@ -217,9 +218,6 @@ func (p *Process) Wait() error {
 // the OS still reaps it — Wait blocks until it does, which is why the caller does this in the
 // background rather than on the response path.
 func (p *Process) Release() {
-	if p.workDir != "" {
-		_ = os.RemoveAll(p.workDir)
-	}
 	if p.stdinFile != nil {
 		_ = p.stdinFile.Close()
 	}

@@ -95,6 +95,7 @@ func run() error {
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Warn("HTTP shutdown timed out: %s", err)
 	}
+	app.Close()
 	app.Tasks().Close()
 	<-cleanupDone
 	logger.Info("stopped")

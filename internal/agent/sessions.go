@@ -86,7 +86,7 @@ func (s *Sessions) Connect(ctx context.Context, id string, opts SpawnOptions) (C
 	if id == "" {
 		id = newSessionID()
 	}
-	if existing, ok := s.lookup(id); ok {
+	if existing, ok := s.Lookup(id); ok {
 		return Connected{Session: existing, Startup: snapshotEvent(existing)}, nil
 	}
 
@@ -128,8 +128,11 @@ func (s *Sessions) Connect(ctx context.Context, id string, opts SpawnOptions) (C
 	return Connected{Session: session, Startup: state.event(), History: history, Spawned: true}, nil
 }
 
-// lookup returns the session filed under this name, if there is one.
-func (s *Sessions) lookup(id string) (*Session, bool) {
+// Lookup returns the session filed under this name, if there is one.
+//
+// This is how an MCP call says who it is: the bridge carries the session name it inherited, and the
+// name is the whole identity — no derivation, nothing to keep in step with a directory name.
+func (s *Sessions) Lookup(id string) (*Session, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session, ok := s.list[id]

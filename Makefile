@@ -1,27 +1,32 @@
 # Build and test automation for the gateway, which is the whole repository: the Go
-# service lives at the root and the canvas frontend is a self-contained subtree.
+# binaries live under cmd/ and the canvas frontend is a self-contained subtree.
 #
-# CGO is disabled and the output is statically linked. That is not a micro
-# optimisation: the whole point of this gateway is a single self-contained binary,
-# and a cgo build would reintroduce a libc dependency that breaks when the host is
-# upgraded. Nothing in this module needs cgo, so the constraint costs us nothing.
+# Two binaries, both statically linked:
+#   bin/comfyui-gateway  the service (HTTP API, workflows, the canvas's websocket)
+#   bin/comfyloft-mcp    the stdio bridge AlayaCore spawns to reach the canvas tools
+#
+# CGO is disabled for both. That is not a micro optimisation: a cgo build would
+# reintroduce a libc dependency that breaks when the host is upgraded. Nothing in
+# this module needs cgo, so the constraint costs us nothing.
 
 GO      ?= go
 BIN_DIR := bin
 BIN     := $(BIN_DIR)/comfyui-gateway
-PKG     := .
+MCP_BIN := $(BIN_DIR)/comfyloft-mcp
+GATEWAY_PKG := ./cmd/comfyui-gateway
+MCP_PKG     := ./cmd/comfyloft-mcp
 
 # The canvas is a separate npm project under canvas/web. `build` stays
-# Go-only on purpose (one static binary), so the bundle has its own entry points:
+# Go-only on purpose, so the bundle has its own entry points:
 # `web-deps` installs, `web` builds, `web-check` typechecks.
 WEB_DIR   := canvas/web
 NPM       ?= npm
 WEB_STAMP := $(WEB_DIR)/node_modules/.package-lock.json
-# Every Go package lives in main.go or under internal/. Listing them keeps the gates
+# Every Go package lives under cmd/ or internal/. Listing them keeps the gates
 # off the vendored frontend: `./...` would walk canvas/web/node_modules, and a
 # stray .go file in a future npm package would then break `make check`.
-PKGS    := . ./internal/...
-GO_DIRS := main.go internal
+PKGS    := ./cmd/... ./internal/...
+GO_DIRS := cmd internal
 GOFLAGS := -trimpath
 LDFLAGS := -s -w
 
@@ -31,13 +36,14 @@ export CGO_ENABLED := 0
 .DEFAULT_GOAL := build
 .PHONY: build run test test-race test-v vet fmt fmt-check lint check check-full verify-static size clean tidy web web-deps web-check web-clean help
 
-build: ## Compile the gateway binary into bin/
+build: ## Compile both binaries into bin/
 	@mkdir -p $(BIN_DIR)
-	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN) $(PKG)
-	@echo "built $(BIN)"
+	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN) $(GATEWAY_PKG)
+	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(MCP_BIN) $(MCP_PKG)
+	@echo "built $(BIN) $(MCP_BIN)"
 
 run: ## Run the gateway from source
-	$(GO) run $(PKG)
+	$(GO) run $(GATEWAY_PKG)
 
 web-deps: ## Install canvas dependencies when node_modules is missing or stale
 	@if [ ! -f $(WEB_STAMP) ] || [ $(WEB_DIR)/package-lock.json -nt $(WEB_STAMP) ]; then \
@@ -87,18 +93,19 @@ lint: fmt-check vet ## Check formatting and run vet
 
 check: lint test ## The default gate: no C toolchain required
 
-verify-static: build ## Assert the binary has no dynamic dependencies
-	@if ldd $(BIN) >/dev/null 2>&1; then \
-		echo "ERROR: $(BIN) is dynamically linked"; ldd $(BIN); exit 1; \
-	else \
-		echo "static: $(BIN) has no dynamic dependencies"; \
-	fi
-	@file $(BIN)
+verify-static: build ## Assert both binaries have no dynamic dependencies
+	@for binary in $(BIN) $(MCP_BIN); do \
+		if ldd $$binary >/dev/null 2>&1; then \
+			echo "ERROR: $$binary is dynamically linked"; ldd $$binary; exit 1; \
+		fi; \
+		echo "static: $$binary has no dynamic dependencies"; \
+		file $$binary; \
+	done
 
 check-full: lint test-race ## The strict gate, including the race detector
 
-size: build ## Report the binary size
-	@ls -lh $(BIN)
+size: build ## Report the binaries' size
+	@ls -lh $(BIN) $(MCP_BIN)
 
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)

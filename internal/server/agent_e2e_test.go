@@ -22,6 +22,9 @@ import (
 // it, which is the contract the gateway is written against.
 const fakeAgentScript = `#!/bin/sh
 printf '%s\n' "$$" >> "$FAKE_SPAWN_LOG"
+if [ -n "$FAKE_ENV_LOG" ]; then
+  printf '%s|%s\n' "$COMFY_LOFT_MCP" "$COMFY_LOFT_SESSION" >> "$FAKE_ENV_LOG"
+fi
 SESSION=""
 while [ $# -gt 0 ]; do
   case "$1" in

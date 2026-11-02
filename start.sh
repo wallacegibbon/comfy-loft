@@ -34,6 +34,7 @@ CANVAS_PORT="${CANVAS_PORT:-3000}"
 
 VITE_BIN="$ROOT/canvas/web/node_modules/.bin/vite"
 GATEWAY_BIN="$ROOT/bin/comfyui-gateway"
+MCP_BIN="$ROOT/bin/comfyloft-mcp"
 DIST_INDEX="$ROOT/canvas/web/dist/index.html"
 
 command -v node >/dev/null 2>&1 || { echo "node not found; install Node.js first" >&2; exit 1; }
@@ -71,10 +72,14 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # The gateway is a static binary: build it once when it is missing, then startup is instant.
+# `make build` produces both it and the bridge.
 if [ ! -x "$GATEWAY_BIN" ]; then
   echo "→ building the gateway (first run, needs the Go toolchain)"
   ( cd "$ROOT" && make build ) || { echo "gateway build failed" >&2; exit 1; }
 fi
+
+# The bridge is spawned by AlayaCore from the static mcp.conf, which names it beside the gateway binary.
+[ -x "$MCP_BIN" ] || { echo "missing $MCP_BIN; run: make build" >&2; exit 1; }
 
 echo "→ gateway   http://${GATEWAY_HOST}:${GATEWAY_PORT}   (ComfyUI at ${COMFY_URL})"
 ( cd "$ROOT" && exec "$GATEWAY_BIN" ) & pids+=($!)

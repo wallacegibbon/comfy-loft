@@ -3,11 +3,13 @@ package server
 // The MCP endpoint, through the HTTP layer: what AlayaCore sees when it reads the `mcp.conf` this
 // gateway wrote for it.
 //
-// These tests are about the two halves that have to agree: a call arrives with a workspace in the URL
-// and nothing else, so the workspace has to be enough to find the session that sent it; and the tool
-// names the model sees are not the names that arrive here.
+// These tests are about the two halves that have to agree: a call arrives carrying only a session name in
+// a header — put there by the bridge from the environment its parent inherited — so that name has to be
+// enough to find the session that sent it; and the tool names the model sees are not the names that
+// arrive here.
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"comfyloft/internal/config"
+	"comfyloft/internal/mcpstdio"
 )
 
 // startMCPGateway is a gateway whose agent is the fake binary and whose operator configuration has one
@@ -43,14 +45,27 @@ func startMCPGateway(t *testing.T) (*httptest.Server, *Server, string) {
 	return gateway, server, configDir
 }
 
-// postMCP sends one JSON-RPC call and returns the status and the decoded answer. It is the raw half, so
-// a test can post from a goroutine while the main one reads the canvas's socket.
-func postMCP(gateway *httptest.Server, workspace string, call map[string]any) (int, map[string]any, error) {
+// postMCP sends one JSON-RPC call to the bridge endpoint and returns the status and the decoded answer.
+//
+// The endpoint is the loopback listener, not the main handler: a tool that creates nodes has no business
+// on the address GATEWAY_HOST names, and this is also what lets the tests check the two headers without
+// going through a real bridge process.
+func postMCP(t *testing.T, server *Server, session string, call map[string]any) (int, map[string]any, error) {
+	t.Helper()
 	body, err := json.Marshal(call)
 	if err != nil {
 		return 0, nil, err
 	}
-	response, err := http.Post(gateway.URL+"/mcp/"+workspace, "application/json", strings.NewReader(string(body)))
+	request, err := http.NewRequest(http.MethodPost, server.mcpURL+"/mcp", bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if session != "" {
+		request.Header.Set("X-Comfy-Loft-Session", session)
+	}
+	request.Header.Set("X-Comfy-Loft-Bridge", mcpstdio.Version)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -65,9 +80,9 @@ func postMCP(gateway *httptest.Server, workspace string, call map[string]any) (i
 }
 
 // mcpCall is postMCP for a call that is supposed to happen on this goroutine.
-func mcpCall(t *testing.T, gateway *httptest.Server, workspace string, call map[string]any) (int, map[string]any) {
+func mcpCall(t *testing.T, server *Server, session string, call map[string]any) (int, map[string]any) {
 	t.Helper()
-	status, answer, err := postMCP(gateway, workspace, call)
+	status, answer, err := postMCP(t, server, session, call)
 	if err != nil {
 		t.Fatalf("mcp call: %v", err)
 	}
@@ -118,9 +133,9 @@ func resultOf(t *testing.T, answer map[string]any) map[string]any {
 // TestMCPHandshakeIsEnoughToDiscoverTheTools: what AlayaCore does on connect — initialize, then
 // tools/list — and what it has to get back for the server to show up at all.
 func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
-	gateway, _, _ := startMCPGateway(t)
+	_, server, _ := startMCPGateway(t)
 
-	_, answer := mcpCall(t, gateway, "whatever", map[string]any{
+	_, answer := mcpCall(t, server, "whatever", map[string]any{
 		"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{},
 	})
 	handshake := resultOf(t, answer)
@@ -131,7 +146,7 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 		t.Fatalf("handshake has no serverInfo: %v", handshake)
 	}
 
-	_, answer = mcpCall(t, gateway, "whatever", map[string]any{
+	_, answer = mcpCall(t, server, "whatever", map[string]any{
 		"jsonrpc": "2.0", "id": 2, "method": "tools/list",
 	})
 	tools, ok := resultOf(t, answer)["tools"].([]any)
@@ -152,12 +167,12 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 // TestMCPToolIsRunByTheCanvas is the whole point of the pipe: a call carries no identity, the URL has to
 // be enough to find the session, and only the page can actually run the tool.
 func TestMCPToolIsRunByTheCanvas(t *testing.T) {
-	gateway, _, _ := startMCPGateway(t)
+	gateway, server, _ := startMCPGateway(t)
 	conn := openSocket(t, gateway, "canvas-1")
 
 	answered := make(chan map[string]any, 1)
 	go func() {
-		_, answer, err := postMCP(gateway, agentWorkspaceKey("canvas-1"), toolCall(3, "ping", map[string]any{"where": "here"}))
+		_, answer, err := postMCP(t, server, "canvas-1", toolCall(3, "ping", map[string]any{"where": "here"}))
 		if err != nil {
 			answered <- map[string]any{"post": err.Error()}
 			return
@@ -197,12 +212,12 @@ func TestMCPToolIsRunByTheCanvas(t *testing.T) {
 // AlayaCore unchanged. Nothing here inspects it, so a media block — and any field a later revision adds to
 // one — has to survive the trip exactly as written.
 func TestMCPCarriesTheBlocksThePageProduced(t *testing.T) {
-	gateway, _, _ := startMCPGateway(t)
+	gateway, server, _ := startMCPGateway(t)
 	conn := openSocket(t, gateway, "canvas-1")
 
 	answered := make(chan map[string]any, 1)
 	go func() {
-		_, answer, err := postMCP(gateway, agentWorkspaceKey("canvas-1"), toolCall(8, "read_node", map[string]any{"nodeId": "image-1"}))
+		_, answer, err := postMCP(t, server, "canvas-1", toolCall(8, "read_node", map[string]any{"nodeId": "image-1"}))
 		if err != nil {
 			answered <- map[string]any{"post": err.Error()}
 			return
@@ -236,12 +251,12 @@ func TestMCPCarriesTheBlocksThePageProduced(t *testing.T) {
 // TestMCPToolReportsWhatTheCanvasCalledAFailure: a tool that failed is a result the agent can read, not a
 // broken response.
 func TestMCPToolReportsWhatTheCanvasCalledAFailure(t *testing.T) {
-	gateway, _, _ := startMCPGateway(t)
+	gateway, server, _ := startMCPGateway(t)
 	conn := openSocket(t, gateway, "canvas-1")
 
 	answered := make(chan map[string]any, 1)
 	go func() {
-		_, answer, err := postMCP(gateway, agentWorkspaceKey("canvas-1"), toolCall(4, "ping", map[string]any{}))
+		_, answer, err := postMCP(t, server, "canvas-1", toolCall(4, "ping", map[string]any{}))
 		if err != nil {
 			answered <- map[string]any{"post": err.Error()}
 			return
@@ -266,12 +281,12 @@ func TestMCPToolReportsWhatTheCanvasCalledAFailure(t *testing.T) {
 // TestMCPToolSaysWhenNoCanvasIsWatching: a session lives as long as its socket, so a call that arrives after
 // the page is gone has nobody to run it — and has to be answered anyway, in words a reader can act on.
 func TestMCPToolSaysWhenNoCanvasIsWatching(t *testing.T) {
-	gateway, _, _ := startMCPGateway(t)
+	gateway, server, _ := startMCPGateway(t)
 	conn := openSocket(t, gateway, "canvas-1")
 	_ = conn.Close()
 	time.Sleep(300 * time.Millisecond) // long enough for the gateway to notice the socket is gone
 
-	_, answer := mcpCall(t, gateway, agentWorkspaceKey("canvas-1"), toolCall(5, "ping", map[string]any{}))
+	_, answer := mcpCall(t, server, "canvas-1", toolCall(5, "ping", map[string]any{}))
 	result := resultOf(t, answer)
 	if result["isError"] != true {
 		t.Fatalf("a call with no canvas behind it is not an error: %v", result)
@@ -284,22 +299,22 @@ func TestMCPToolSaysWhenNoCanvasIsWatching(t *testing.T) {
 // TestMCPUnknownToolIsRefused: the vocabulary is the gateway's, so a name it never advertised does not
 // reach the canvas at all.
 func TestMCPUnknownToolIsRefused(t *testing.T) {
-	gateway, _, _ := startMCPGateway(t)
+	gateway, server, _ := startMCPGateway(t)
 	openSocket(t, gateway, "canvas-1")
 
-	_, answer := mcpCall(t, gateway, agentWorkspaceKey("canvas-1"), toolCall(6, "empty_the_canvas", map[string]any{}))
+	_, answer := mcpCall(t, server, "canvas-1", toolCall(6, "empty_the_canvas", map[string]any{}))
 	result := resultOf(t, answer)
-	if text := textOfResult(t, result); !strings.Contains(text, "no such tool") {
+	if text := textOfResult(t, result); !strings.Contains(text, "no tool named") {
 		t.Fatalf("answer = %q, want it to refuse the name", text)
 	}
 }
 
-// TestMCPToolSaysWhenNoAgentOwnsTheWorkspace: a call that arrives after the session was released is
+// TestMCPToolSaysWhenNoAgentOwnsTheSession: a call that arrives after the session was released is
 // answered, not dropped — the agent is waiting for this write.
-func TestMCPToolSaysWhenNoAgentOwnsTheWorkspace(t *testing.T) {
-	gateway, _, _ := startMCPGateway(t)
+func TestMCPToolSaysWhenNoAgentOwnsTheSession(t *testing.T) {
+	_, server, _ := startMCPGateway(t)
 
-	_, answer := mcpCall(t, gateway, agentWorkspaceKey("canvas-1"), toolCall(7, "ping", map[string]any{}))
+	_, answer := mcpCall(t, server, "canvas-1", toolCall(7, "ping", map[string]any{}))
 	result := resultOf(t, answer)
 	if result["isError"] != true {
 		t.Fatalf("a call with no agent behind it is not an error: %v", result)
@@ -312,9 +327,9 @@ func TestMCPToolSaysWhenNoAgentOwnsTheWorkspace(t *testing.T) {
 // TestMCPNotificationIsAccepted: `notifications/initialized` has no id and no answer, and a server that
 // replies to it leaves the client waiting for an answer to something it never asked.
 func TestMCPNotificationIsAccepted(t *testing.T) {
-	gateway, _, _ := startMCPGateway(t)
+	_, server, _ := startMCPGateway(t)
 
-	status, answer := mcpCall(t, gateway, "whatever", map[string]any{
+	status, answer := mcpCall(t, server, "whatever", map[string]any{
 		"jsonrpc": "2.0", "method": "notifications/initialized",
 	})
 	if status != http.StatusAccepted {
@@ -325,104 +340,124 @@ func TestMCPNotificationIsAccepted(t *testing.T) {
 	}
 }
 
-// TestMCPWorkspaceIsTheSessionsOwnConfig: the directory the agent reads is written per session, points
-// its tool calls at that session, and is removed with the session.
-func TestMCPWorkspaceIsTheSessionsOwnConfig(t *testing.T) {
+// TestMCPOneStaticConfigServesEverySession is the point of moving the identity out of the URL: the file
+// AlayaCore reads says nothing about a session, so two canvases can share it, and what tells them apart
+// is the environment the gateway put in each spawned process.
+func TestMCPOneStaticConfigServesEverySession(t *testing.T) {
 	gateway, server, configDir := startMCPGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
+	envLog := filepath.Join(t.TempDir(), "environ")
+	t.Setenv("FAKE_ENV_LOG", envLog)
 
-	key := agentWorkspaceKey("canvas-1")
-	dir := filepath.Join(workspacesRoot(server.cfg.DataDir), key)
-
-	// The operator's models, copied rather than shared: choosing one must not change the default.
-	copied, err := os.ReadFile(filepath.Join(dir, "model.conf"))
-	if err != nil {
-		t.Fatalf("read the session's model.conf: %v", err)
-	}
-	original, err := os.ReadFile(filepath.Join(configDir, "model.conf"))
-	if err != nil {
-		t.Fatalf("read the operator's model.conf: %v", err)
-	}
-	if string(copied) != string(original) {
-		t.Fatalf("model.conf = %q, want the operator's %q", copied, original)
-	}
-
-	// And where its tool calls go, which is the only thing that says which session is asking.
-	written, err := os.ReadFile(filepath.Join(dir, "mcp.conf"))
-	if err != nil {
-		t.Fatalf("read the session's mcp.conf: %v", err)
-	}
-	want := "/mcp/" + key
-	if !strings.Contains(string(written), want) {
-		t.Fatalf("mcp.conf = %q, want the URL to contain %q", written, want)
-	}
-	if !strings.Contains(string(written), "proto-version: "+mcpProtocolVersion) {
-		t.Fatalf("mcp.conf = %q, want the protocol version it speaks", written)
-	}
-
-	send(t, conn, map[string]any{"close": true})
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the workspace %s outlived the session", dir)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-}
-
-// TestMCPWorkspaceIsNotReused is the other direction: a session is not a file, so the same name later
-// gets a directory built for it rather than the last one's leftovers.
-func TestMCPWorkspaceIsNotReused(t *testing.T) {
-	gateway, server, _ := startMCPGateway(t)
-	conn := openSocket(t, gateway, "canvas-1")
-	key := agentWorkspaceKey("canvas-1")
-	dir := filepath.Join(workspacesRoot(server.cfg.DataDir), key)
-
-	// Something the agent itself would have written: a model chosen in that session.
-	if err := os.WriteFile(filepath.Join(dir, "runtime.conf"), []byte("chosen in the last session\n"), 0o644); err != nil {
-		t.Fatalf("write runtime.conf: %v", err)
-	}
-	send(t, conn, map[string]any{"close": true})
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the workspace %s outlived the session", dir)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-
-	// A new session of the same name starts from the operator's configuration, not the last model.
 	openSocket(t, gateway, "canvas-1")
-	written, err := os.ReadFile(filepath.Join(dir, "runtime.conf"))
+	first := waitForEnv(t, envLog)
+
+	// The file the agent reads: written by the gateway, identical for everyone, naming the bridge.
+	written, err := os.ReadFile(filepath.Join(configDir, "mcp.conf"))
 	if err != nil {
-		return // the operator has no runtime.conf to copy, which is a fresh start too
+		t.Fatalf("read mcp.conf: %v", err)
 	}
-	if strings.Contains(string(written), "chosen in the last session") {
-		t.Fatalf("the new session inherited %q", written)
+	for _, want := range []string{"server: canvas", "comfyloft-mcp", "proto-version: " + mcpProtocolVersion} {
+		if !strings.Contains(string(written), want) {
+			t.Fatalf("mcp.conf = %q, want it to contain %q", written, want)
+		}
+	}
+	if strings.Contains(string(written), "canvas-1") {
+		t.Fatalf("mcp.conf names a session: %q", written)
+	}
+
+	// And the session, in the process's environment, pointing at the listener that is running now.
+	if first.session != "canvas-1" {
+		t.Fatalf("COMFY_LOFT_SESSION = %q, want the canvas that opened the socket", first.session)
+	}
+	if first.endpoint != server.mcpURL {
+		t.Fatalf("COMFY_LOFT_MCP = %q, want %q", first.endpoint, server.mcpURL)
+	}
+
+	// A second session gets its own environment and the same file.
+	openSocket(t, gateway, "canvas-2")
+	second := waitForEnv(t, envLog)
+	if second.session != "canvas-2" || second.endpoint != first.endpoint {
+		t.Fatalf("second spawn = %+v, want session canvas-2 at the same endpoint", second)
+	}
+	again, err := os.ReadFile(filepath.Join(configDir, "mcp.conf"))
+	if err != nil {
+		t.Fatalf("read mcp.conf: %v", err)
+	}
+	if string(again) != string(written) {
+		t.Fatalf("mcp.conf changed between sessions: %q -> %q", written, again)
 	}
 }
 
-// TestMCPURLIsAnAddressTheAgentCanDial: the agent runs on this machine, so the only address that is
-// certainly up is the one the gateway listens on. Handing it `127.0.0.1` while the gateway is bound to a
-// LAN address is a server the agent can never reach — it loads no tools, and nothing here would notice.
-func TestMCPURLIsAnAddressTheAgentCanDial(t *testing.T) {
-	cases := []struct{ host, want string }{
-		{"127.0.0.1", "http://127.0.0.1:8190/mcp/w"},
-		{"192.168.3.232", "http://192.168.3.232:8190/mcp/w"},
-		{"0.0.0.0", "http://127.0.0.1:8190/mcp/w"}, // a wildcard has no address of its own
-		{"", "http://127.0.0.1:8190/mcp/w"},
-		{"::1", "http://[::1]:8190/mcp/w"},
-	}
-	for _, one := range cases {
-		server := &Server{cfg: &config.Config{GatewayHost: one.host, GatewayPort: 8190}}
-		if got := server.mcpURL("w"); got != one.want {
-			t.Fatalf("mcpURL with host %q = %q, want %q", one.host, got, one.want)
+// TestMCPRefusesABridgeItDoesNotSpeak: two binaries can be from different builds, and the failure has to
+// name both sides instead of turning into a handshake EOF inside AlayaCore.
+func TestMCPRefusesABridgeItDoesNotSpeak(t *testing.T) {
+	_, server, _ := startMCPGateway(t)
+
+	post := func(bridge, session string) (int, string) {
+		request, err := http.NewRequest(http.MethodPost, server.mcpURL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+		if err != nil {
+			t.Fatalf("request: %v", err)
 		}
+		if bridge != "" {
+			request.Header.Set("X-Comfy-Loft-Bridge", bridge)
+		}
+		if session != "" {
+			request.Header.Set("X-Comfy-Loft-Session", session)
+		}
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		defer response.Body.Close()
+		body := make([]byte, 512)
+		n, _ := response.Body.Read(body)
+		return response.StatusCode, string(body[:n])
+	}
+
+	if status, body := post("999", "canvas-1"); status != http.StatusBadRequest || !strings.Contains(body, "rebuild both") {
+		t.Fatalf("a newer bridge answered %d %q, want a 400 that says to rebuild both", status, body)
+	}
+	if status, body := post("", "canvas-1"); status != http.StatusBadRequest || !strings.Contains(body, "comfyloft-mcp") {
+		t.Fatalf("a bridge with no version answered %d %q, want a 400 naming the bridge", status, body)
+	}
+	if status, body := post(mcpstdio.Version, ""); status != http.StatusBadRequest || !strings.Contains(body, "X-Comfy-Loft-Session") {
+		t.Fatalf("a bridge with no session answered %d %q, want a 400 naming the missing header", status, body)
+	}
+}
+
+// TestMCPListenerIsLoopbackOnly: the endpoint must not be reachable from whatever address GATEWAY_HOST
+// names, so the address it reports has to be a loopback one.
+func TestMCPListenerIsLoopbackOnly(t *testing.T) {
+	_, server, _ := startMCPGateway(t)
+	host := strings.TrimPrefix(strings.TrimSuffix(strings.TrimPrefix(server.mcpURL, "http://"), ""), "")
+	host = strings.Split(host, ":")[0]
+	if host != "127.0.0.1" {
+		t.Fatalf("MCP endpoint = %q, want a loopback address", server.mcpURL)
+	}
+}
+
+// spawnEnv is what the fake agent recorded about one spawn.
+type spawnEnv struct{ endpoint, session string }
+
+// waitForEnv blocks until the fake agent has recorded one more spawn's environment.
+func waitForEnv(t *testing.T, path string) spawnEnv {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	seen := 0
+	for {
+		if raw, err := os.ReadFile(path); err == nil {
+			lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+			if strings.TrimSpace(lines[0]) != "" && len(lines) > seen {
+				seen = len(lines)
+				parts := strings.Split(lines[seen-1], "|")
+				if len(parts) == 2 {
+					return spawnEnv{endpoint: parts[0], session: parts[1]}
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the fake agent recorded no environment at %s", path)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

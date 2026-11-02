@@ -4955,3 +4955,64 @@ logs no console errors.
 **Where** `go.mod`, 61 Go files' import paths, `canvas/plugins/canvas/{sdk,html,markdown,panorama,registry,sticky-note,svg,template}/**`,
 `canvas/web/{package.json,package-lock.json,src/{i18n/index.ts,lib/canvas/canvas-export.ts,services/localforage-databases.ts,stores/**,types/canvas-export.ts}}`,
 `docs/gateway.md`.
+
+## 147. The MCP edge is a bridge process, not a URL
+
+**Decision** AlayaCore reaches the canvas tools through `bin/comfyloft-mcp`, a second small binary that
+speaks JSON-RPC on stdin/stdout and forwards each call to the gateway on a **loopback-only** listener.
+The session is not in any address: the gateway spawns AlayaCore with `COMFY_LOFT_MCP` and
+`COMFY_LOFT_SESSION` in its environment, AlayaCore hands that environment to the bridge it starts, and the
+bridge puts the session in `X-Comfy-Loft-Session`. `mcp.conf` is one static file for every session, and the
+agent's configuration lives in one directory per host, `~/.config/comfyui-gateway/<host>/alayacore/`.
+
+**Why the URL had to carry identity, and why it no longer does** MCP carries no identity of its own and
+the bridge is configured with one URL per server, so with an HTTP-only endpoint the URL was the only place
+left: `/mcp/<sanitised-session>-<sha1[:4]>`. That derivation was a chain of its own — sanitising is lossy,
+so two sessions could collide, so a hash was appended, so the URL carried the session id while being
+unreadable and unguessable-but-not-secret. AlayaCore supports stdio servers, which deletes the chain at the
+root: the identity is a file descriptor's parent's environment, not a string in a path.
+
+**What the loopback listener is for** The old route sat on the main mux, which is served on whatever
+`GATEWAY_HOST` names — and a tool that creates nodes and starts generations was reachable from the network
+with no token. The bridge endpoint is now a second listener bound to `127.0.0.1` on an ephemeral port, known
+only to the processes it was written into. Requiring a custom header also means a browser cannot reach it
+cross-site without a CORS preflight this server never answers.
+
+**Two binaries, and the rule that went with them** `make build` produces `comfyui-gateway` and
+`comfyloft-mcp`. The old "one self-contained binary" rule is retired: it was never true of the *release*
+(the canvas bundle, `workflows/`, `resources.json` and the external AlayaCore were always beside it), and
+with two binaries a mixed install is possible — so the bridge sends `X-Comfy-Loft-Bridge` and the gateway
+refuses a version it does not speak, naming which half to rebuild. What must stay true is what the rule was
+actually protecting: both are static, cgo-free, and need no runtime.
+
+**One config directory, per host** `mcp.conf` names the address the agent dials, so a machine reachable at
+two addresses needs two answers, and `<host>` is that address (a wildcard bind means loopback, as it always
+did for the URL). Inside it, nothing is per session: `model.conf` is the operator's, `mcp.conf` is written by
+the gateway on every start — the `command` is an absolute path that moves with the release directory, and a
+stale one fails as `handshake: EOF`, which names the symptom and not the cause. Per-session config copies are
+gone; the `runtime.conf` that AlayaCore writes is now shared, and concurrent writes are AlayaCore's own
+problem to solve.
+
+**What did not move** The conversation. It is the user's words and it belongs beside the canvas it belongs
+to, which is where #144's directory layout will put it; until then it stays in `data/agent/sessions/`.
+`clearLegacyAgentState` still sweeps the old per-session directories under `data/agent/`, and keeps
+`sessions`.
+
+**Costs, named** The shim is a second artifact to build, ship and verify-static. The wire contract between
+the two binaries has to stay dumb (one `POST /mcp`, two headers, JSON-RPC verbatim) so a new bridge against
+a not-yet-restarted gateway is survivable. And MCP servers are started *lazily*, on the first turn: a bridge
+that cannot start fails that turn rather than the boot, so its diagnostics go to stderr and its errors have to
+name the side — unknown session, unknown tool, unreachable gateway, version mismatch are four different
+stories.
+
+**Tested** `make check`, `make build`, `make verify-static` (both binaries static), `go test ./...` including
+new tests that the bridge relays whole lines and answers its own failures (`internal/mcpstdio`), that one
+static `mcp.conf` serves two sessions with the session arriving in the environment, that the endpoint is
+loopback-only, and that a bridge from another build is refused with both versions named. End to end in a
+browser, with the real AlayaCore and a real model: `MCP servers initialized: 1 servers, 7 tools loaded`,
+then a tool call answered — the model's reply described the empty canvas it had just been told about.
+
+**Where** `cmd/{comfyui-gateway,comfyloft-mcp}/main.go`, `internal/mcpstdio/**`,
+`internal/server/{mcp_server.go,routes_mcp.go,agent_config.go,server.go,routes_agent.go}`,
+`internal/agent/{spawn.go,sessions.go}`, `internal/config/config.go`, `Makefile`, `start.sh`,
+`README.md`, `docs/gateway.md`.
