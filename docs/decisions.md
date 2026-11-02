@@ -7015,3 +7015,43 @@ is the four-pixel difference the report was seeing. `npm run check`, `npx vitest
 **Where** `frontend/src/components/canvas/canvas-side-panel-parts.tsx`,
 `frontend/src/components/canvas/canvas-side-panel-elements.tsx`,
 `frontend/src/components/canvas/canvas-side-panel-canvases.tsx`.
+
+## 200. A rename has a button that finishes it
+
+**Decision** The row that turns into a field in the canvases list carries a tick and a cross beside the input.
+The tick commits, the cross throws the edit away, and Enter and Escape still do exactly what they did — the
+tick and the cross are the same two actions, drawn. An empty field disables the tick.
+
+**Why** Enter was the only way to finish a rename, and nothing on screen said so. The menu says **Rename**, the
+row becomes a field, and then the one way out of it is a key on a keyboard the user is not looking at. A
+control that can only be finished by a shortcut is a control most people will abandon, having already typed
+the new name.
+
+**Why a cross as well** Because Escape was the other invisible key. Without it, a user who cleared the field —
+the state the tick refuses — has no visible way to say "never mind" and only the escape hatch they were never
+told about, so the row would sit there as a field forever.
+
+**Why an empty field is refused rather than taken as a cancel** `renameCanvas` already trims and returns on
+nothing, so committing it would close the editor having changed nothing, which reads as "it worked" while the
+canvas still has the old name. The tick is disabled in that state and Enter does nothing either, so the two
+agree; the name is one cross away, and a name is not something to lose to a stray select-all.
+
+**Why the row's height is pinned in the same change** The editor is a 32px input where the display row is a
+title and a date, so entering rename made the row 8px shorter and pulled the rows under it up with it — the
+same flinch #199 removed from the header row, one row lower down. `h-13` (52px) is the height the row already
+had in every other mode it can be in, now stated instead of inferred.
+
+**Cost** 52px is a number in the markup, and a row asked to hold more than that would overflow rather than
+grow — the fix is the number, in one place, which is the point. Two more tab stops in a rename, and a green
+the rows do not otherwise use, borrowed from `Text`'s success tone so it is not a new one.
+
+**Tested** In the browser (`/tmp/verify`, 8191/3011, its own data directory), both themes. Renaming **Beta**
+through the tick and reading `GET /api/canvases` → the canvas answers `Gamma`, so the click really saves;
+typing "Discard me" and clicking the cross leaves `Gamma` and writes nothing; clearing the field reports
+`button "Confirm rename" [disabled]`; Enter from the field still commits (`Gamma two`) and Escape still leaves.
+The list holds still: the current row measured 65 device pixels at ratio 1.25 — 52 CSS px — both before the
+editor opened and while another row was in it (it was 44px, 55 device pixels, with the editor open before this
+change). `npm run check` (zh 825 / en 811 keys), `npx vitest run` (156), `npm run build`.
+
+**Where** `frontend/src/components/canvas/canvas-side-panel-canvases.tsx`,
+`frontend/src/i18n/locales/zh-CN.ts`, `frontend/src/i18n/locales/en-US.ts`.
