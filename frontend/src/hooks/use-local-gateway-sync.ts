@@ -24,13 +24,9 @@ export function useLocalGatewaySync() {
             if (!channel) return;
             if (!models.length && !channel.models.length) return;
 
-            const nextModels = models.map((model) => {
-                const previous = channel.models.find((item) => item.name === model.name);
-                return { ...model, capability: previous?.capability || model.capability };
-            });
-            if (modelSignature(channel.models) === modelSignature(nextModels)) return;
+            if (modelSignature(channel.models) === modelSignature(models)) return;
 
-            const channels = config.channels.map((item) => (item.id === channel.id ? { ...item, baseUrl: LOCAL_GATEWAY_BASE_URL, models: nextModels } : item));
+            const channels = config.channels.map((item) => (item.id === channel.id ? { ...item, baseUrl: LOCAL_GATEWAY_BASE_URL, models } : item));
             const optionsFor = (capability: ModelCapability) => channels.flatMap((item) => item.models.filter((model) => model.capability === capability).map((model) => encodeChannelModel(item.id, model.name)));
             const imageOptions = optionsFor("image");
             useConfigStore.setState({

@@ -172,7 +172,7 @@ capability is checked rather than a number.
 Workflows are the gateway's own: `workflows/registry.json` plus its graphs. There is no polling and
 no automatic import of ComfyUI's workflow folder. To add a graph made in ComfyUI, export it in
 **API format** (the UI format ComfyUI saves is rejected) and drop the file into `workflows/`, then
-scan with `POST /api/resources/refresh` — the refresh button in the canvas's _Add workflows_ tab.
+scan with `POST /api/resources/refresh` — the refresh button in the canvas's _Add workflows_ window.
 One scan both registers the graph and clears its availability, which is why it is the only scan
 route: no "scan only the workflow folder" endpoint, no reload endpoint and no background poller.
 

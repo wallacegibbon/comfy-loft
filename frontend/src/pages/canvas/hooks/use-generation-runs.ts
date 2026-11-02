@@ -104,7 +104,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
     const { t } = useTranslation();
     const effectiveConfig = useEffectiveConfig();
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
-    const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const openPreferences = useConfigStore((state) => state.openPreferences);
 
     /** Node ids whose run is currently being polled, so a resume and a live run cannot both poll. */
     const audioPollIdsRef = useRef(new Set<string>());
@@ -555,7 +555,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                     : buildGenerationConfig(effectiveConfig, sourceNode, node.type === CanvasNodeType.Text ? "text" : node.type === CanvasNodeType.Video ? "video" : node.type === CanvasNodeType.Audio ? "audio" : "image");
             // A text node retries against the agent, which needs no configuration here.
             if (node.type !== CanvasNodeType.Text && !isAiConfigReady(generationConfig, generationConfig.model)) {
-                openConfigDialog(true);
+                openPreferences();
                 return;
             }
 
@@ -712,7 +712,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                 setRunningNodeId(null);
             }
         },
-        [completeVideoNodeTask, effectiveConfig, finishGenerationRequest, isAiConfigReady, openConfigDialog, pollVideoNodeTask, setRunStepProgress, startGenerationRequest, t],
+        [completeVideoNodeTask, effectiveConfig, finishGenerationRequest, isAiConfigReady, openPreferences, pollVideoNodeTask, setRunStepProgress, startGenerationRequest, t],
     );
 
     /**
@@ -736,7 +736,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                         setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails: t("workbench.configFirst") } } : item)));
                         return;
                     }
-                    openConfigDialog(true);
+                    openPreferences();
                     return;
                 }
                 setRunningNodeId(node.id);
@@ -765,7 +765,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                 audioPollIdsRef.current.delete(node.id);
             }
         },
-        [effectiveConfig, finishGenerationRequest, isAiConfigReady, openConfigDialog, setNodes, setRunStepProgress, setRunningNodeId, startGenerationRequest, t],
+        [effectiveConfig, finishGenerationRequest, isAiConfigReady, openPreferences, setNodes, setRunStepProgress, setRunningNodeId, startGenerationRequest, t],
     );
 
     /**
@@ -787,7 +787,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                         setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails: t("workbench.configFirst") } } : item)));
                         return;
                     }
-                    openConfigDialog(true);
+                    openPreferences();
                     return;
                 }
                 const requestConfig = resolveModelRequestConfig(generationConfig, generationConfig.model);
@@ -814,7 +814,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                 imagePollIdsRef.current.delete(node.id);
             }
         },
-        [effectiveConfig, fillImage, finishGenerationRequest, isAiConfigReady, openConfigDialog, setNodes, setRunStepProgress, setRunningNodeId, startGenerationRequest, t],
+        [effectiveConfig, fillImage, finishGenerationRequest, isAiConfigReady, openPreferences, setNodes, setRunStepProgress, setRunningNodeId, startGenerationRequest, t],
     );
 
     return { runImageGeneration, runVideoGeneration, runAudioGeneration, runTextGeneration, retryNode, pollAudioRun, pollImageRun };

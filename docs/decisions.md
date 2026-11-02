@@ -6524,3 +6524,69 @@ binary that has none beside it (which is what `go run` looks like), and `MCP_BIN
 MCP tests (which go through `writeMCPConf`) still pass.
 
 **Where** `internal/server/agent_config.go`, `internal/server/agent_config_test.go`.
+
+## 190. Preferences and Add workflows are two windows, and the Gateway tab is gone
+
+**Decision** The settings window — one `Dialog` with three tabs, Gateway / Preferences / Add workflows —
+is deleted. Two windows replace it, each opened by its own button at the right end of the top bar and
+closed by the X in its own top-right corner:
+
+- `PreferencesDialog` (`components/settings/preferences-dialog.tsx`): default image and video model,
+  generation defaults, card skin, progress ring skin, auto-center on select, system prompt.
+- `AddWorkflowsDialog` (`components/settings/workflows-dialog.tsx`): the resource panel in a frame. The
+  first-run `ResourceSetupGate` opens the same window with its own heading and no close button, so the
+  two cannot drift apart in size or padding. The panel's summary card lost its own "Add workflows" line
+  for this: the window title says it once.
+
+`use-config-store` keeps two flags, `preferencesOpen` and `workflowsOpen`, instead of `isConfigOpen`
+plus a `configTab`.
+
+The Gateway tab went, with everything only it reached: `channel-editor-drawer.tsx`, `kit/drawer.tsx`
+(its last user), `kit/nav.tsx`'s `Tabs`, `withChannels` / `pickDefaultModel` / `saveChannel`,
+`normalizeModelOptionValue`, `config.title` / `modalDescription` / `saved` / `savedContinue` /
+`tabs.*`, the display half of `config.channels.*`, all of `config.channelEditor.*`,
+`config.preferences.defaultTextModel` / `defaultAudioModel` (the model list was already filtered to
+image and video, so those two branches could never render), `topNav.settings` and `common.done` —
+28 keys, with `config.preferences.title` / `description` and `topNav.preferences` /
+`topNav.addWorkflows` added.
+
+**Why** The tab edited three things and none of them was a setting: the channel's name (nothing on
+screen names a channel outside a model label's fallback), its address (it comes from the page and is
+rewritten by `use-local-gateway-sync` on every scan, #71), and a model's media kind (an override the
+same sync then preserved, whose only author was that editor — the sync now takes the gateway's `type`,
+which is the side that knows what a graph does). A form whose fields are re-derived behind it is a form
+that lies. Splitting the window is the other half: "Preferences" and "Add workflows" are answers to
+different questions, and one gear labelled "Settings" described neither.
+
+**Why the Done button went with it** A preference is written when it changes (#155, #166), so the
+gateway already had the value before the button could be pressed — "Done" saved nothing. The toast it
+raised ("Settings saved. Continue with your previous request.") promised a continuation that no call
+site performed: all twenty blocked-generation call sites did `openConfigDialog(true)` and returned, and
+Continue was then a click the user made anyway. They now call `openPreferences()`, and
+`shouldPromptContinue` / `clearPromptContinue` are gone with the flag.
+
+**Cost** Re-tagging a workflow whose registry `type` is not what you want is now an edit to
+`workflows/registry.json`; there is no UI for it. The preferences window has no "saved" feedback,
+because a window that saves as you type has nothing left to announce.
+
+**Tested** `npm run check` (i18n 870 zh / 856 en: 28 keys gone, 4 added, no dead or missing keys;
+exports 170 modules), `npx vitest run` (155 — `tests/overlay-z-index.test.ts` lost its `drawer.tsx`
+half), `make check`. In the browser, on a `/tmp/verify` copy (8191/3001): the top bar shows
+"Preferences" and "Add workflows" where the gear was, each opens its own 1000×646 window with the X in
+its own top-right corner and leaves the other shut; `/config` still opens the preferences window and
+returns to the canvas; toggling "Auto-center on select" reached `data/settings.json` with no button
+pressed (`autoFocusOnSelect: true` through `GET /api/settings`); the first-run gate — forced open in the
+throwaway copy, since every pack here is installed — renders its own "Prepare resources" heading over
+the same frame, no close button, and the skip footer with the new hint.
+
+**Where** `frontend/src/components/settings/preferences-dialog.tsx` (new),
+`frontend/src/components/settings/workflows-dialog.tsx` (new),
+`frontend/src/components/settings/app-config-modal.tsx` (deleted),
+`frontend/src/components/settings/channel-editor-drawer.tsx` (deleted),
+`frontend/src/components/kit/drawer.tsx` (deleted), `frontend/src/components/kit/nav.tsx`,
+`frontend/src/components/settings/resource-center-panel.tsx`,
+`frontend/src/components/settings/resource-setup-gate.tsx`,
+`frontend/src/components/layout/user-status-actions.tsx`, `frontend/src/layouts/user-layout.tsx`,
+`frontend/src/stores/use-config-store.ts`, `frontend/src/hooks/use-local-gateway-sync.ts`,
+`frontend/src/pages/panel-entries.tsx`, `frontend/src/i18n/locales/*`, `frontend/scripts/check-*.cjs`,
+`frontend/tests/overlay-z-index.test.ts`, `docs/gateway.md`.

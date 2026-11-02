@@ -9,7 +9,7 @@ import type { AiConfig } from "@/stores/use-config-store";
 
 const DIMENSION_STEP = 16;
 
-/** Read by the config modal's aspect-ratio select. */
+/** Read by the preferences window's aspect-ratio select. */
 export const imageAspectOptions = mediaRatioOptions.map((item) => ({ value: item.value, label: item.value === "auto" ? i18n.t("settingsPanels.common.auto") : item.value }));
 
 type ImageSettingsPanelProps = {

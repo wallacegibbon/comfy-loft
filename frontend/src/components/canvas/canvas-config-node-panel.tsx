@@ -35,7 +35,7 @@ type CanvasConfigNodePanelProps = {
 export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigChange, onGenerate, onStop, onComposerToggle, onOpenMaskEditor, onOpenOutpaintEditor, onOpenMossLayoutEditor }: CanvasConfigNodePanelProps) {
     const { t } = useTranslation();
     const globalConfig = useEffectiveConfig();
-    const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const openPreferences = useConfigStore((state) => state.openPreferences);
     // This panel's own agent, like a text node's: connecting starts it, the answer releases it, and the
     // button follows the session rather than a flag beside it.
     const agentName = nodeAgent(node.id);
@@ -136,7 +136,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
                                 value={config.model}
                                 onChange={(model) => onConfigChange(node.id, mode === "video" ? videoModelModePatch(config, model) : { model })}
                                 capability={mode}
-                                onMissingConfig={() => openConfigDialog(true)}
+                                onMissingConfig={() => openPreferences()}
                                 fullWidth
                             />
                             <BaseModelPicker className="canvas-compact-control h-10" config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} fullWidth />

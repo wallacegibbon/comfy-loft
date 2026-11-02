@@ -4,19 +4,18 @@ import { useNavigate } from "react-router-dom";
 import { useConfigStore } from "@/stores/use-config-store";
 
 /**
- * `/config` is not a page any more. Settings are a panel over the canvas, reached from the
- * gear in the canvas toolbar — the same `AppConfigPanel` the old `/config` route wrapped in
- * a 19-line shell. The address stays so a bookmark or a pasted link still works: it opens
- * the panel and puts you back on a canvas.
+ * `/config` is not a page any more. Preferences are a window over the canvas, opened from the first
+ * button at the right end of the top bar. The address stays so a bookmark or a pasted link still
+ * works: it opens the window and puts you back on a canvas.
  */
 export function ConfigEntry() {
     const navigate = useNavigate();
-    const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const openPreferences = useConfigStore((state) => state.openPreferences);
 
     useEffect(() => {
-        openConfigDialog(false);
+        openPreferences();
         navigate("/", { replace: true });
-    }, [navigate, openConfigDialog]);
+    }, [navigate, openPreferences]);
 
     return null;
 }

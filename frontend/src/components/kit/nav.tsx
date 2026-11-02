@@ -4,54 +4,12 @@ import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Tabs and Collapse — the two pieces of chrome that carry their content in antd's `items`
- * arrays. Keeping that shape means the `items` literals at the call sites did not move;
- * only what renders them changed.
+ * Collapse — the one piece of chrome that carries its content in antd's `items` array. Keeping that
+ * shape means the `items` literal at the call site did not move; only what renders it changed.
+ *
+ * `Tabs` used to sit here too. It rendered the three tabs of the settings window (Gateway,
+ * Preferences, Add workflows); when the window was split into two, nothing else wanted tabs (#190).
  */
-
-/* ------------------------------------------------------------------ Tabs */
-
-type TabItem = { key: string; label?: ReactNode; children?: ReactNode; icon?: ReactNode };
-
-export function Tabs({ items, activeKey, defaultActiveKey, onChange, className }: { items: readonly TabItem[]; activeKey?: string; defaultActiveKey?: string; onChange?: (key: string) => void; className?: string }): ReactNode {
-    const [internal, setInternal] = useState(defaultActiveKey ?? items[0]?.key);
-    const current = activeKey ?? internal;
-    const select = (key: string) => {
-        if (activeKey === undefined) setInternal(key);
-        onChange?.(key);
-    };
-    const active = items.find((item) => item.key === current);
-    return (
-        <div className={className}>
-            <div role="tablist" className="flex items-center gap-1 border-b border-stone-200 dark:border-stone-800">
-                {items.map((item) => {
-                    const selected = item.key === current;
-                    return (
-                        <button
-                            key={item.key}
-                            type="button"
-                            role="tab"
-                            aria-selected={selected}
-                            onClick={() => select(item.key)}
-                            className={cn(
-                                "-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors",
-                                selected ? "border-stone-900 font-medium text-stone-900 dark:border-stone-100 dark:text-stone-100" : "border-transparent text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200",
-                            )}
-                        >
-                            {item.icon}
-                            {item.label}
-                        </button>
-                    );
-                })}
-            </div>
-            {active?.children !== undefined ? (
-                <div role="tabpanel" className="pt-4">
-                    {active.children}
-                </div>
-            ) : null}
-        </div>
-    );
-}
 
 /* -------------------------------------------------------------- Collapse */
 

@@ -33,7 +33,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
     const { t } = useTranslation();
     const effectiveConfig = useEffectiveConfig();
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
-    const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const openPreferences = useConfigStore((state) => state.openPreferences);
 
     const cropImageNode = useCallback(async (node: CanvasNodeData, crop: CanvasImageCropRect) => {
         if (!node.metadata?.content) return;
@@ -112,7 +112,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 ...(isQwenImage ? { imageMode: "inpaint" } : {}),
             };
             if (payload.generate && !isAiConfigReady(generationConfig, generationConfig.model)) {
-                openConfigDialog(true);
+                openPreferences();
                 return;
             }
             const userPrompt = payload.prompt.trim();
@@ -178,7 +178,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, isAiConfigReady, openConfigDialog, startGenerationRequest, t],
+        [effectiveConfig, finishGenerationRequest, isAiConfigReady, openPreferences, startGenerationRequest, t],
     );
 
     const outpaintImageNode = useCallback(
@@ -192,7 +192,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 outpaint: { left: payload.left, top: payload.top, right: payload.right, bottom: payload.bottom, width: payload.width, height: payload.height },
             };
             if (!isAiConfigReady(generationConfig, generationConfig.model)) {
-                openConfigDialog(true);
+                openPreferences();
                 return;
             }
             closeNodeTool();
@@ -234,7 +234,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, isAiConfigReady, openConfigDialog, startGenerationRequest],
+        [effectiveConfig, finishGenerationRequest, isAiConfigReady, openPreferences, startGenerationRequest],
     );
 
     const mossLayoutImageNode = useCallback(
@@ -247,7 +247,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 layout: payload,
             };
             if (!isAiConfigReady(generationConfig, generationConfig.model)) {
-                openConfigDialog(true);
+                openPreferences();
                 return;
             }
             closeNodeTool();
@@ -290,7 +290,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, isAiConfigReady, openConfigDialog, startGenerationRequest],
+        [effectiveConfig, finishGenerationRequest, isAiConfigReady, openPreferences, startGenerationRequest],
     );
 
     const superResolveImageNode = useCallback(
@@ -350,7 +350,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
             if (!node.metadata?.content) return;
             const generationConfig = { ...buildGenerationConfig(effectiveConfig, node, "image"), count: "1" };
             if (!isAiConfigReady(generationConfig, generationConfig.model)) {
-                openConfigDialog(true);
+                openPreferences();
                 return;
             }
             const childId = nanoid();
@@ -397,7 +397,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, openConfigDialog, startGenerationRequest, t],
+        [effectiveConfig, finishGenerationRequest, openPreferences, startGenerationRequest, t],
     );
 
     return { cropImageNode, splitImageNode, maskEditImageNode, outpaintImageNode, mossLayoutImageNode, runSuperResolve, runFastUpscale, generateAngleNode };

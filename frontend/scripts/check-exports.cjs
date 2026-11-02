@@ -35,6 +35,14 @@ const TEST_ONLY = new Map([
     ["src/lib/gateway-models.ts:modelsOf", "the mapping from one workflow to its candidate entries — the unit under test itself; gatewayModels is only its fold"],
     ["src/services/api/http.ts:ApiError", "the error type http.ts throws; the tests use it to assert the shape of status and body"],
     ["src/services/api/http.ts:readApiErrorMessage", "the parser is the unit under test: the table covers msg / message / error / detail / serialised JSON / HTML; going through apiErrorMessage would mix in the status-code fallback"],
+    [
+        "src/stores/use-config-store.ts:channelName",
+        "the name a channel is rendered by. Its one product caller is `modelOptionLabel` in the same file; nothing on screen names a channel any more — the gateway tab that renamed them is gone (#190) — so there is no other entry to reach it through",
+    ],
+    [
+        "src/stores/use-config-store.ts:normalizeChannelModels",
+        "the normalisation `createModelChannel` runs while hydrating a stored document; hydration is behind the module-level store singleton, so the test pins the rule (a stored capability survives) directly rather than by seeding a settings document",
+    ],
 ]);
 
 function walk(dir, out = []) {

@@ -3,8 +3,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/kit/button";
-import { Dialog } from "@/components/kit/dialog";
-import { ResourceCenterPanel } from "@/components/settings/resource-center-panel";
+import { WorkflowsDialog } from "@/components/settings/workflows-dialog";
 import { fetchResourceStatus, type ResourceStatus } from "@/services/api/resources";
 import { readSetting, writeSetting } from "@/stores/use-settings-store";
 
@@ -47,7 +46,11 @@ export function ResourceSetupGate() {
     };
 
     return (
-        <Dialog
+        <WorkflowsDialog
+            open={open}
+            onClose={skip}
+            closable={false}
+            compact
             title={
                 <div className="flex items-center gap-2">
                     <Download className="size-5" />
@@ -57,25 +60,15 @@ export function ResourceSetupGate() {
                     </div>
                 </div>
             }
-            open={open}
-            size="panel"
-            closable={false}
-            onClose={skip}
-            bodyStyle={{ maxHeight: "72vh" }}
-            bodyClassName="pr-3"
-        >
-            <ResourceCenterPanel
-                compact
-                footer={
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-stone-200 pt-3 dark:border-stone-800">
-                        <span className="text-[11px] text-stone-400 dark:text-stone-500">{t("resources.setup.skipHint")}</span>
-                        <Button onClick={skip}>
-                            <X className="size-4" />
-                            {t("resources.setup.skipButton")}
-                        </Button>
-                    </div>
-                }
-            />
-        </Dialog>
+            footer={
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-stone-200 pt-3 dark:border-stone-800">
+                    <span className="text-[11px] text-stone-400 dark:text-stone-500">{t("resources.setup.skipHint")}</span>
+                    <Button onClick={skip}>
+                        <X className="size-4" />
+                        {t("resources.setup.skipButton")}
+                    </Button>
+                </div>
+            }
+        />
     );
 }

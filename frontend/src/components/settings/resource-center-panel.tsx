@@ -571,11 +571,10 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
             <div className="rounded-xl border border-stone-200 bg-stone-50/70 p-3 dark:border-stone-800 dark:bg-white/[.03]">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 text-sm font-semibold">
-                            <HardDriveDownload className="size-4" />
-                            {copy.title}
+                        <div className="flex items-center gap-1.5 text-xs leading-5 text-stone-500 dark:text-stone-400">
+                            <HardDriveDownload className="size-3.5 shrink-0" />
+                            {copy.subtitle}
                         </div>
-                        <div className="text-xs leading-5 text-stone-500 dark:text-stone-400">{copy.subtitle}</div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500 dark:text-stone-400">
                             <span className="inline-flex items-center gap-1">
                                 <Server className="size-3" />

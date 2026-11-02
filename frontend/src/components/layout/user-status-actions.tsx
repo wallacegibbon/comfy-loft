@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import { Keyboard, Settings2 } from "lucide-react";
+import { Keyboard, PackagePlus, SlidersHorizontal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Tooltip } from "@/components/kit/tooltip";
@@ -12,16 +12,23 @@ import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 type UserStatusActionsProps = {
-    showConfig?: boolean;
     variant?: "default" | "canvas";
     onOpenShortcuts?: () => void;
 };
 
-export function UserStatusActions({ showConfig = true, variant = "default", onOpenShortcuts }: UserStatusActionsProps) {
+/**
+ * The right-hand end of the top bar: the two windows that are settings-ish, then the toggles.
+ *
+ * Preferences and Add workflows used to be two tabs of one window behind one gear, so the gear's own
+ * label was a choice ("Settings") that described neither. They are separate windows now, and each has the
+ * button that opens it (#190).
+ */
+export function UserStatusActions({ variant = "default", onOpenShortcuts }: UserStatusActionsProps) {
     const { i18n, t } = useTranslation();
     const theme = useThemeStore((state) => state.theme);
     const setTheme = useThemeStore((state) => state.setTheme);
-    const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const openPreferences = useConfigStore((state) => state.openPreferences);
+    const openWorkflows = useConfigStore((state) => state.openWorkflows);
     const canvasTheme = canvasThemes[theme];
     const naturalIconClass =
         "inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-600 transition-colors hover:bg-black/5 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-white/10 dark:hover:text-white [&_svg]:size-4";
@@ -32,11 +39,12 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
 
     return (
         <div className="inline-flex shrink-0 items-center gap-1">
-            {showConfig ? (
-                <button type="button" className={naturalIconClass} style={iconStyle} onClick={() => openConfigDialog(false)} aria-label={t("topNav.settings")} title={t("topNav.settings")}>
-                    <Settings2 className="size-4" />
-                </button>
-            ) : null}
+            <button type="button" className={naturalIconClass} style={iconStyle} onClick={() => openPreferences()} aria-label={t("topNav.preferences")} title={t("topNav.preferences")}>
+                <SlidersHorizontal className="size-4" />
+            </button>
+            <button type="button" className={naturalIconClass} style={iconStyle} onClick={() => openWorkflows()} aria-label={t("topNav.addWorkflows")} title={t("topNav.addWorkflows")}>
+                <PackagePlus className="size-4" />
+            </button>
             <Tooltip title={languageLabel} mouseEnterDelay={0.2}>
                 <button
                     type="button"

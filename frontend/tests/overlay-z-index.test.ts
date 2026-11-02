@@ -12,16 +12,17 @@ import path from "node:path";
  * app's Radix dialog (1300), and the migration never revisited the number.
  *
  * The rule these tests state is the one the app already follows everywhere else: dialogs sit at
- * 1300+, drawers at 1350+, and anything that must float above them — tooltips, selects, menus,
- * a brush ring — sits at 1400 or higher.
+ * 1300+, and anything that must float above them — tooltips, selects, menus, a brush ring — sits
+ * at 1400 or higher. (Drawers were the third layer, at 1350+, until the only one left — the gateway
+ * channel editor — was deleted with its tab, #190.)
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const srcDir = path.resolve(here, "../src");
 
-/** The highest z-index a dialog or drawer claims, i.e. the floor for anything drawn over it. */
+/** The highest z-index a dialog claims, i.e. the floor for anything drawn over it. */
 async function overlayFloor(): Promise<number> {
-    const files = ["components/kit/dialog.tsx", "components/kit/drawer.tsx"];
+    const files = ["components/kit/dialog.tsx"];
     let highest = 0;
     for (const file of files) {
         const raw = await readFile(path.join(srcDir, file), "utf8");
@@ -34,7 +35,7 @@ async function overlayFloor(): Promise<number> {
 }
 
 /**
- * Every `fixed z-[n]` portal declared in a component that renders a dialog or a drawer.
+ * Every `fixed z-[n]` portal declared in a component that renders a dialog.
  *
  * A portalled menu or ring belongs to the component that renders it, so an overlay drawn by a
  * component living inside a dialog has to outrank that dialog. Portals belonging to the canvas —
@@ -51,9 +52,9 @@ async function dialogPortals(): Promise<Array<{ file: string; z: number; line: s
                 continue;
             }
             if (!/\.tsx?$/.test(entry.name)) continue;
-            if (file_endsWith(full, "dialog.tsx") || file_endsWith(full, "drawer.tsx")) continue;
+            if (file_endsWith(full, "dialog.tsx")) continue;
             const raw = await readFile(full, "utf8");
-            if (!/<Dialog\b|<Drawer\b/.test(raw)) continue;
+            if (!/<Dialog\b/.test(raw)) continue;
             for (const line of raw.split("\n")) {
                 if (!line.includes("fixed")) continue;
                 const match = /z-\[(\d+)\]/.exec(line);

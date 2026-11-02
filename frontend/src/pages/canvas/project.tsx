@@ -198,7 +198,7 @@ function InfiniteCanvasPage() {
 
     const effectiveConfig = useEffectiveConfig();
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
-    const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const openPreferences = useConfigStore((state) => state.openPreferences);
     const ready = useCanvasStore((state) => state.ready);
     const createCanvas = useCanvasStore((state) => state.createCanvas);
     const loadCanvas = useCanvasStore((state) => state.loadCanvas);
@@ -386,7 +386,7 @@ function InfiniteCanvasPage() {
                         setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails: t("workbench.configFirst") } } : item)));
                         return;
                     }
-                    openConfigDialog(true);
+                    openPreferences();
                     return;
                 }
                 setRunningNodeId(node.id);
@@ -448,7 +448,7 @@ function InfiniteCanvasPage() {
                 }
             }
         },
-        [effectiveConfig, finishGenerationRequest, isAiConfigReady, openConfigDialog, startGenerationRequest, t, updateVideoPreview, updateVideoSteps],
+        [effectiveConfig, finishGenerationRequest, isAiConfigReady, openPreferences, startGenerationRequest, t, updateVideoPreview, updateVideoSteps],
     );
 
     const stopGenerationByRunningId = useCallback(
@@ -1930,7 +1930,7 @@ function InfiniteCanvasPage() {
             const generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode);
             // Text is answered by the agent, which needs nothing configured here; media needs a workflow.
             if (mode !== "text" && !isAiConfigReady(generationConfig, generationConfig.model)) {
-                openConfigDialog(true);
+                openPreferences();
                 return;
             }
 
@@ -2048,7 +2048,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [completeVideoNodeTask, effectiveConfig, finishGenerationRequest, isAiConfigReady, openConfigDialog, startGenerationRequest, t],
+        [completeVideoNodeTask, effectiveConfig, finishGenerationRequest, isAiConfigReady, openPreferences, startGenerationRequest, t],
     );
     useEffect(() => {
         generateNodeRef.current = handleGenerateNode;

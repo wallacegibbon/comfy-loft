@@ -23,7 +23,7 @@ export type ChannelModel = {
     imageInputs?: number;
 };
 
-export type ModelChannel = {
+type ModelChannel = {
     id: string;
     /** The stored name: a user-typed one, or a snapshot of the translated default. */
     name: string;
@@ -71,8 +71,6 @@ export type AiConfig = {
     params?: Record<string, unknown>;
 };
 
-export type ConfigTabKey = "channels" | "preferences" | "resources";
-
 const CHANNEL_MODEL_SEPARATOR = "::";
 const localDefaultChannel: ModelChannel = {
     id: LOCAL_GATEWAY_CHANNEL_ID,
@@ -119,14 +117,18 @@ export const defaultConfig: AiConfig = {
 
 type ConfigStore = {
     config: AiConfig;
-    isConfigOpen: boolean;
-    configTab: ConfigTabKey;
-    shouldPromptContinue: boolean;
+    /**
+     * The two floating windows over the canvas that read this config each keep their own flag: they are
+     * separate windows (`preferences-dialog.tsx`, `workflows-dialog.tsx`), opened from separate buttons.
+     */
+    preferencesOpen: boolean;
+    workflowsOpen: boolean;
     updateConfig: <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
     isAiConfigReady: (config: AiConfig, model: string) => boolean;
-    openConfigDialog: (shouldPromptContinue?: boolean, tab?: ConfigTabKey) => void;
-    setConfigDialogOpen: (isOpen: boolean) => void;
-    clearPromptContinue: () => void;
+    openPreferences: () => void;
+    openWorkflows: () => void;
+    setPreferencesOpen: (open: boolean) => void;
+    setWorkflowsOpen: (open: boolean) => void;
 };
 
 const VIDEO_KEYWORDS = ["video", "sora", "veo", "kling", "wan", "hailuo"];
@@ -279,9 +281,8 @@ function hydrateConfig(stored: Partial<AiConfig>): AiConfig {
 
 export const useConfigStore = create<ConfigStore>()((set) => ({
     config: hydrateConfig(readSetting<Partial<AiConfig>>("config", {})),
-    isConfigOpen: false,
-    configTab: "channels",
-    shouldPromptContinue: false,
+    preferencesOpen: false,
+    workflowsOpen: false,
     updateConfig: (key, value) =>
         set((state) => ({
             config: {
@@ -290,13 +291,14 @@ export const useConfigStore = create<ConfigStore>()((set) => ({
             },
         })),
     isAiConfigReady: (config, model) => isAiConfigReady(config, model),
-    openConfigDialog: (shouldPromptContinue = false, configTab = "channels") => set({ isConfigOpen: true, shouldPromptContinue, configTab }),
-    setConfigDialogOpen: (isConfigOpen) => set({ isConfigOpen }),
-    clearPromptContinue: () => set({ shouldPromptContinue: false }),
+    openPreferences: () => set({ preferencesOpen: true }),
+    openWorkflows: () => set({ workflowsOpen: true }),
+    setPreferencesOpen: (preferencesOpen) => set({ preferencesOpen }),
+    setWorkflowsOpen: (workflowsOpen) => set({ workflowsOpen }),
 }));
 
-// The channel names, the capability overrides and the model selections are a preference: they are the
-// same on the phone in the next room, and they survive a cleared browser.
+// The channel name and the model selections are a preference: they are the same on the phone in the next
+// room, and they survive a cleared browser.
 mirrorToSettings(useConfigStore, "config", (state) => state.config);
 
 /**
@@ -400,18 +402,6 @@ export function modelOptionLabel(config: AiConfig, value: string) {
 
 export function modelOptionsFromChannels(channels: ModelChannel[]) {
     return uniqueModelOptions(channels.flatMap((channel) => channel.models.map((model) => encodeChannelModel(channel.id, model.name))));
-}
-
-export function normalizeModelOptionValue(value: string | undefined, channels: ModelChannel[]) {
-    const model = (value || "").trim();
-    if (!model) return "";
-    const decoded = decodeChannelModel(model);
-    if (decoded) {
-        const channel = channels.find((item) => item.id === decoded.channelId);
-        return channel && channel.models.some((item) => item.name === decoded.model) ? model : "";
-    }
-    const channel = channels.find((item) => item.models.some((entry) => entry.name === model)) || channels[0];
-    return channel && channel.models.some((item) => item.name === model) ? encodeChannelModel(channel.id, model) : model;
 }
 
 function resolveModelChannel(config: AiConfig, value: string) {

@@ -70,7 +70,7 @@ export function CanvasNodePromptPanel({
 }: CanvasNodePromptPanelProps) {
     const { t } = useTranslation();
     const globalConfig = useEffectiveConfig();
-    const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const openPreferences = useConfigStore((state) => state.openPreferences);
     const theme = useCanvasTheme();
     const mode = modeOverride ?? defaultMode(node.type);
     const config = buildNodeConfig(globalConfig, node, mode);
@@ -469,7 +469,7 @@ export function CanvasNodePromptPanel({
                     ) : null}
                     {mode === "image" ? (
                         <>
-                            <WorkflowModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="image" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
+                            <WorkflowModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="image" onMissingConfig={() => openPreferences()} className="max-w-[190px]" />
                             <BaseModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} className="max-w-[140px]" />
                             <CanvasImageSettingsPopover
                                 config={config}
@@ -478,7 +478,7 @@ export function CanvasNodePromptPanel({
                                 buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3"
                                 onConfigChange={(key, value) => onConfigChange(node.id, { [key]: value })}
                                 onParamsChange={(params) => onConfigChange(node.id, { params: { ...node.metadata?.params, ...params } })}
-                                onMissingConfig={() => openConfigDialog(true)}
+                                onMissingConfig={() => openPreferences()}
                                 onOpenChange={onImageSettingsOpenChange}
                                 onOpenMaskEditor={() => onOpenMaskEditor?.(node.id)}
                                 onOpenOutpaintEditor={() => onOpenOutpaintEditor?.(node.id)}
@@ -492,7 +492,7 @@ export function CanvasNodePromptPanel({
                                 value={config.model}
                                 onChange={(model) => onConfigChange(node.id, videoModelModePatch(config, model))}
                                 capability="video"
-                                onMissingConfig={() => openConfigDialog(true)}
+                                onMissingConfig={() => openPreferences()}
                                 className="max-w-[190px]"
                             />
                             <BaseModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} className="max-w-[140px]" />
@@ -509,7 +509,7 @@ export function CanvasNodePromptPanel({
                         </>
                     ) : mode === "audio" ? (
                         <>
-                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="audio" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
+                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="audio" onMissingConfig={() => openPreferences()} className="max-w-[190px]" />
                             <CanvasAudioSettingsPopover config={config} buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3" onConfigChange={(key, value) => onConfigChange(node.id, audioConfigPatch(key, value))} />
                         </>
                     ) : (
