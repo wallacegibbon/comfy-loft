@@ -9,12 +9,14 @@ import { Tooltip } from "@/components/kit/tooltip";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { CanvasSystemStatus } from "@/components/canvas/canvas-system-status";
 import { canvasThemes } from "@/lib/canvas-theme";
+import { byUpdatedAtDesc } from "@/lib/canvas/last-canvas";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasPanelStore } from "@/stores/canvas/use-canvas-panel-store";
 import { useCanvasSidePanelStore } from "@/stores/canvas/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 export function CanvasTopBar({
+    projectId,
     title,
     titleDraft,
     isTitleEditing,
@@ -26,6 +28,8 @@ export function CanvasTopBar({
     onCreateProject,
     onDeleteProject,
 }: {
+    /** The canvas on screen. The id, not the title: two canvases may be called the same thing. */
+    projectId: string;
     title: string;
     titleDraft: string;
     isTitleEditing: boolean;
@@ -59,10 +63,10 @@ export function CanvasTopBar({
     // Current canvas first, the rest most-recent-first: switching is a "where am I" question,
     // so the answer you are most likely looking for should not be buried.
     const orderedProjects = useMemo(() => {
-        const current = canvases.find((canvas) => canvas.title === title);
-        const rest = canvases.filter((canvas) => canvas !== current).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+        const current = canvases.find((canvas) => canvas.id === projectId);
+        const rest = canvases.filter((canvas) => canvas !== current).sort(byUpdatedAtDesc);
         return current ? [current, ...rest] : rest;
-    }, [canvases, title]);
+    }, [canvases, projectId]);
 
     useEffect(() => {
         if (!isTitleEditing) return;

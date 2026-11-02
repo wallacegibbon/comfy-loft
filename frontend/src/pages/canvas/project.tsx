@@ -2397,6 +2397,7 @@ function InfiniteCanvasPage() {
                 <CanvasConflictDialog projectId={projectId} />
                 <CanvasManagerDialog />
                 <CanvasTopBar
+                    projectId={projectId}
                     title={currentProject?.title || t("canvas.runtime.untitledCanvas")}
                     titleDraft={titleDraft}
                     isTitleEditing={titleEditing}

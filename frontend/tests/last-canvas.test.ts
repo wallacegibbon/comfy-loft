@@ -7,7 +7,7 @@ vi.mock("@/stores/use-settings-store", () => ({
     writeSetting: () => undefined,
 }));
 
-const { newestCanvasId } = await import("../src/lib/canvas/last-canvas");
+const { byUpdatedAtDesc, newestCanvasId } = await import("../src/lib/canvas/last-canvas");
 
 /**
  * Which canvas a bare visit opens.
@@ -56,5 +56,23 @@ describe("the canvas to open", () => {
             { id: "second", updatedAt: "?" },
         ];
         expect(newestCanvasId(canvases)).toBe("first");
+    });
+});
+
+describe("the canvas list order", () => {
+    test("newest first, by instant", () => {
+        const canvases = [
+            { id: "a", updatedAt: "2026-11-02T11:00:00.900Z" },
+            { id: "b", updatedAt: "2026-11-02T11:00:00.916503133Z" },
+            { id: "c", updatedAt: "2026-11-02T10:59:59.000Z" },
+        ];
+        expect(canvases.sort(byUpdatedAtDesc).map((canvas) => canvas.id)).toEqual(["b", "a", "c"]);
+    });
+
+    test("two canvases written in the same millisecond keep a stable order", () => {
+        const first = { id: "aaa", updatedAt: "2026-11-02T11:00:00.000Z" };
+        const second = { id: "bbb", updatedAt: "2026-11-02T11:00:00.000Z" };
+        expect([second, first].sort(byUpdatedAtDesc).map((canvas) => canvas.id)).toEqual(["aaa", "bbb"]);
+        expect([first, second].sort(byUpdatedAtDesc).map((canvas) => canvas.id)).toEqual(["aaa", "bbb"]);
     });
 });
