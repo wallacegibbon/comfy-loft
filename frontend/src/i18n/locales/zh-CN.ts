@@ -400,6 +400,8 @@ export default {
             updated: "更新于 {{date}}",
             export: "导出",
             rename: "重命名",
+            confirmRename: "确认重命名",
+            cancelRename: "取消重命名",
             delete: "删除",
             more: "更多操作",
             deleteTitle: "删除画布？",

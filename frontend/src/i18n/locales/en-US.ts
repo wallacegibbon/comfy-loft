@@ -386,6 +386,8 @@ export default {
             updated: "Updated {{date}}",
             export: "Export",
             rename: "Rename",
+            confirmRename: "Confirm rename",
+            cancelRename: "Cancel rename",
             delete: "Delete",
             more: "More actions",
             deleteTitle: "Delete canvases?",

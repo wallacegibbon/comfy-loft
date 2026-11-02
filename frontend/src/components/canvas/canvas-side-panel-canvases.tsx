@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, Download, FileUp, ListChecks, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Download, FileUp, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { CanvasDeleteProjectsDialog } from "@/components/canvas/canvas-delete-projects-dialog";
@@ -104,7 +104,15 @@ export function CanvasCanvasesSection({ projectId }: { projectId: string }) {
         }
     };
 
+    /**
+     * Commit the name being typed.
+     *
+     * A blank field is not a rename, and it is not a cancel either: the store trims and refuses it, so the
+     * editor stays open with the old name one cross away. The tick is disabled in the same state, so the
+     * button and the key agree on what the field has to contain (#200).
+     */
     const saveTitle = (id: string) => {
+        if (!editingTitle.trim()) return;
         void renameCanvas(id, editingTitle);
         stopEditing();
     };
@@ -159,24 +167,54 @@ export function CanvasCanvasesSection({ projectId }: { projectId: string }) {
                             const editing = editingId === canvas.id;
                             const checked = selectedIds.includes(canvas.id);
                             const active = selectMode ? checked : current;
+                            // One height for every mode the row can be in — two lines of text and their padding. The
+                            // rename input is shorter than the title and date it replaces, so a row that sized itself
+                            // pulled the rest of the list up by eight pixels when it was pressed (#200).
                             return (
-                                <div key={canvas.id} data-canvas-row className="group flex items-center gap-1 rounded-lg pl-1 pr-0.5 transition" style={active ? { background: theme.toolbar.activeBg } : undefined}>
+                                <div key={canvas.id} data-canvas-row className="group flex h-13 items-center gap-1 rounded-lg pl-1 pr-0.5 transition" style={active ? { background: theme.toolbar.activeBg } : undefined}>
                                     {selectMode ? (
                                         <button type="button" onClick={() => toggleSelected(canvas.id, !checked)} className="grid size-6 shrink-0 place-items-center" aria-label={t("canvas.project.select", { name: canvas.title })}>
                                             <CheckMark checked={checked} theme={theme} />
                                         </button>
                                     ) : null}
                                     {editing ? (
-                                        <div className="min-w-0 flex-1 py-1.5">
-                                            <Input
-                                                autoFocus
-                                                value={editingTitle}
-                                                onChange={(event) => setEditingTitle(event.target.value)}
-                                                onKeyDown={(event) => {
-                                                    if (event.key === "Enter") saveTitle(canvas.id);
-                                                    if (event.key === "Escape") stopEditing();
-                                                }}
-                                            />
+                                        <div className="flex min-w-0 flex-1 items-center gap-1">
+                                            <div className="min-w-0 flex-1">
+                                                <Input
+                                                    autoFocus
+                                                    value={editingTitle}
+                                                    onChange={(event) => setEditingTitle(event.target.value)}
+                                                    onKeyDown={(event) => {
+                                                        if (event.key === "Enter") saveTitle(canvas.id);
+                                                        if (event.key === "Escape") stopEditing();
+                                                    }}
+                                                />
+                                            </div>
+                                            {/* A rename that can only be finished with a key nobody was told about is not
+                                                finished (#200). Both buttons are also what the keys do: tick = Enter,
+                                                cross = Escape. */}
+                                            <Tooltip title={t("canvas.project.confirmRename")}>
+                                                <button
+                                                    type="button"
+                                                    disabled={!editingTitle.trim()}
+                                                    onClick={() => saveTitle(canvas.id)}
+                                                    aria-label={t("canvas.project.confirmRename")}
+                                                    className="grid size-6 shrink-0 place-items-center rounded-md text-emerald-600 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-35 dark:text-emerald-400"
+                                                >
+                                                    <Check className="size-4" />
+                                                </button>
+                                            </Tooltip>
+                                            <Tooltip title={t("canvas.project.cancelRename")}>
+                                                <button
+                                                    type="button"
+                                                    onClick={stopEditing}
+                                                    aria-label={t("canvas.project.cancelRename")}
+                                                    className="grid size-6 shrink-0 place-items-center rounded-md opacity-55 transition hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+                                                    style={{ color: theme.node.text }}
+                                                >
+                                                    <X className="size-4" />
+                                                </button>
+                                            </Tooltip>
                                         </div>
                                     ) : (
                                         <button type="button" onClick={() => (selectMode ? toggleSelected(canvas.id, !checked) : enterCanvas(canvas.id))} className="min-w-0 flex-1 py-2 text-left">
