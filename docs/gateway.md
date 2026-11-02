@@ -206,20 +206,26 @@ back what AlayaCore says. The gateway owns no wording, no model choice and no st
 
 | Method   | Path                           | Purpose                                                                                              |
 | -------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `GET`    | `/api/agent/socket/{session}`  | One agent process, named by the client, both directions. Its conversation is kept in a session file. |
-| `DELETE` | `/api/agent/session/{session}` | Forget a conversation: releases the process, removes its session file and its workspace. Idempotent. |
+| `GET`    | `/api/agent/socket/{session}`  | One agent process, named by the client, both directions. A canvas's conversation is kept inside it. |
+| `DELETE` | `/api/agent/session/{session}` | Forget a conversation: releases the process and removes the file. Idempotent. |
 | `POST`   | `/mcp` (own listener)          | The agent's tools, reached through `comfyloft-mcp`. Loopback only — never the address above.      |
 
 A session is one `alayacore --rawio` process with one socket, filed under a name the **client** chooses:
-the canvas agent panel calls its own `canvas:<canvasId>`, a node's panel calls its own `node:<id>`. The
-gateway does not know what a canvas or a node is — it files processes under strings.
+the canvas agent panel calls its own `canvas:<canvasId>`, a node's panel calls its own `node:<id>`. That
+prefix is the only thing the gateway reads about a name — it never learns what a node is, and it does not
+care which canvas a name points at beyond where the file goes.
 
-Each name also owns a **session file**: `DATA_DIR/agent/sessions/<name>-<hash>.session`, passed to
-AlayaCore as `--session`. That file, not the process, is the conversation. The process lives exactly as
-long as its socket, and the next connection starts a new one that replays the file before it says it is
-ready — which the gateway relays as one `history` event, so a reloaded page draws what was said instead
-of an empty panel. The file is not deleted at startup the way the per-session config copies are: it is
-the user's words.
+A canvas's name also owns a **conversation file**: `<CANVAS_ROOT>/<id>/agent.session`, passed to AlayaCore
+as `--session`. That file, not the process, is the conversation, and it is part of the canvas — deleting
+the canvas deletes it, copying the canvas's directory copies it (decisions #178). It is not part of the
+document, so an export carries the nodes and their media and not what was said about them. The process
+lives exactly as long as its socket, and the next connection starts a new one that replays the file before
+it says it is ready — which the gateway relays as one `history` event, so a reloaded page draws what was
+said instead of an empty panel.
+
+A name that is not a canvas keeps no file at all: a node panel asks one question at a time and writes the
+answer into the node, so a file there would carry an earlier question into the next answer and leave one
+per node on disk.
 
 The lifetimes differ and the client owns both, because the client is what knows when a surface went
 away. The canvas's session lives until it says `{"close":true}`; a node panel's ends when the panel does,
@@ -327,6 +333,7 @@ A canvas is a directory, not a row:
 <CANVAS_ROOT>/<id>/canvas.meta.json   id, title, createdAt, updatedAt, rev — what the list needs
 <CANVAS_ROOT>/<id>/canvas.json        the document
 <CANVAS_ROOT>/<id>/files/             the media its nodes point at
+<CANVAS_ROOT>/<id>/agent.session      the agent's conversation, once there is one — the agent's file
 ```
 
 The id is the directory name and is never derived from the title, so renaming a canvas never moves a

@@ -6161,3 +6161,35 @@ request that usually still arrives.
 
 **Where** `frontend/src/services/api/http.ts`, `frontend/src/services/api/{canvases,settings}.ts`,
 `frontend/src/lib/canvas/save-queue.ts`, `frontend/src/stores/{canvas/use-canvas-store,use-settings-store}.ts`.
+
+## 178. A canvas's conversation is a file in the canvas
+
+**Decision** The agent's conversation for a canvas is `<CANVAS_ROOT>/<id>/agent.session`, handed to AlayaCore
+as `--session`. The gateway reads exactly one thing out of a session name — the `canvas:` prefix and the id
+after it (`frontend/src/services/api/agent.ts` is the other side of that contract) — and puts the file there.
+A name that is not a canvas keeps no file: a node panel's question is one question, and its answer belongs to
+the node. Nothing is migrated: no release has users, so there is no arrangement worth carrying.
+
+**Why** A conversation is part of the canvas. Inside the directory it is deleted with the canvas, copied with
+it, and found where somebody looking at the canvas would look. Before this it was `data/agent/sessions/
+<session>-<hash>.session`, named after a session rather than a canvas: the UI had to remember to call
+`DELETE /api/agent/session/...` before deleting a canvas, and every other way of deleting one (the API, a
+script, a hand) left a file that nothing could attribute, on a disk nobody sweeps. Two such files were already
+sitting in this workspace, for canvases deleted weeks ago. A file whose owner is a directory needs no second
+lifetime rule.
+
+**Cost** The conversation is not in an export. That is deliberate — a zip is the document and the media its
+nodes point at — but it does mean a canvas that travels arrives without what was said about it. And the
+gateway now knows the `canvas:` prefix exists, which the session registry otherwise does not: the alternative
+was a second copy of the id in the socket URL, free to disagree with the name.
+
+**Tested** `internal/canvas`: `TestSessionPathIsInsideTheCanvas` (the path is inside the canvas, asking for it
+creates nothing, a missing canvas has none, deleting the canvas deletes the file). `internal/server`:
+`TestSessionFileIsTheCanvasesOwn`, `TestDeletingACanvasTakesItsConversationWithIt` (a real socket, a real
+conversation, one `DELETE /api/canvases/{id}`), `TestOneShotSessionKeepsNoFile`. By hand: the conversation of
+the one canvas in this workspace was moved into `canvases/349b70cf4764/agent.session` and the agent replayed
+it on the next connection.
+
+**Where** `internal/canvas/canvas.go` (`AgentSessionName`, `SessionPath`, `ValidID`),
+`internal/server/agent_conversations.go`, `internal/server/{agent_config,routes_agent}.go`,
+`frontend/src/services/api/agent.ts`, `docs/gateway.md`.
