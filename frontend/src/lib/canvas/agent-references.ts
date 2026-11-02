@@ -10,7 +10,7 @@
  * image node is created with the same default, so a canvas has as many nodes called `图片` as it has
  * images — which is why the block carries the node's id on every line and why a label that is already in
  * use in one message gets an ordinal (`图片 2`). Reading a mention back is therefore never a lookup of a
- * node called `x`: it is the id the message recorded, in the order the message cited them (#162).
+ * node called `x`: it is the id the message recorded, in the order the message cited them (#163).
  */
 
 /** The marker in either language: a conversation can be read back in a UI that has switched languages. */

@@ -83,7 +83,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
      * The nodes this draft cites, in the order they were cited, each with the label the text shows.
      *
      * The id is what the click follows and the label is what the reader sees; keeping both here is what
-     * makes two nodes with the same name two citations instead of one (#162).
+     * makes two nodes with the same name two citations instead of one (#163).
      */
     const [citations, setCitations] = useState<Citation[]>([]);
 
@@ -527,7 +527,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
  * A message's text with each `@label` citation as a link to the node it cited.
  *
  * Which node a mention means comes from the message itself: the block it was sent with carries an id per
- * citation, so two nodes that share a name are two links, not one (#162). A node the canvas still names is
+ * citation, so two nodes that share a name are two links, not one (#163). A node the canvas still names is
  * the fallback, so an answer that mentions something is clickable too. Clicking does what clicking a row in
  * the side panel does: the canvas moves to that node and selects it.
  */
