@@ -164,6 +164,20 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 	}
 }
 
+// TestAgentSpawnCarriesTheCanvasRule: the rule that chooses between the tools travels in the agent's
+// system prompt, because a tool description explains one tool and a skill has to be read before it can
+// help. It is set on every spawn, canvas panel and node panel alike.
+func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
+	server := newTestGateway(t, newFakeComfy(t))
+
+	system := strings.Join(server.agentOptions().System, "\n")
+	for _, want := range []string{"canvas_connect", "copy", "canvas_focus_node"} {
+		if !strings.Contains(system, want) {
+			t.Fatalf("the agent's system prompt does not mention %q: %q", want, system)
+		}
+	}
+}
+
 // TestMCPToolIsRunByTheCanvas is the whole point of the pipe: a call carries no identity, the URL has to
 // be enough to find the session, and only the page can actually run the tool.
 func TestMCPToolIsRunByTheCanvas(t *testing.T) {

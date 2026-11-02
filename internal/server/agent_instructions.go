@@ -1,0 +1,18 @@
+package server
+
+// What the gateway tells every agent, on top of whatever the operator configured.
+//
+// The agent's tools are described one by one (`routes_mcp.go`), and a description can say what one tool
+// does. It cannot say which one to reach for: that is a rule about the canvas rather than about a tool,
+// and it has to be in the system prompt, where it is true from the first token.
+//
+// A skill is the other place a rule like this could live, and it is the wrong one here: a skill is
+// activated by reading it, and the moment the agent first touches the canvas is exactly the moment
+// nothing has been read yet.
+
+// canvasInstructions is appended to the agent's own system prompt on every spawn.
+const canvasInstructions = `You work on a canvas the user is looking at. Its nodes hold the content; its connections are how one node's content reaches another. Your tools are the canvas_* tools.
+
+Prefer a connection to a copy. Before you make a node, read what is already there: if a node holds what the target needs — a text node's words, a picture, a LoRA — connect it with canvas_connect. Two copies are two things to keep in step, and the user cannot tell which one you meant. Make a node only when nothing on the canvas would do, and copy content only when the user asked for a separate copy.
+
+The viewport is the user's. canvas_focus_node moves it, so use it to show something that changed or that is out of sight — not to narrate what you are doing.`

@@ -6303,3 +6303,37 @@ then `delete_node` on an unknown id (an `isError` answer naming it), `delete_nod
 
 **Where** `internal/server/routes_mcp.go`, `internal/server/mcp_test.go`,
 `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`, `frontend/src/pages/canvas/project.tsx`.
+
+## 183. The agent is told to connect rather than copy
+
+**Decision** Every spawn carries one `--system` line of the gateway's own (`canvasInstructions` in
+`agent_instructions.go`, passed as `SpawnOptions.System`): the canvas is nodes and connections; before
+making a node, use what is already there and connect it, because two copies are two things to keep in
+step; and the viewport is the user's, so `focus_node` points at something instead of narrating. The two
+descriptions that carry the same choice — `create_node` and `connect` — say it in one clause each.
+
+**Why** A copy is a fork. Two text nodes with the same words drift apart the moment either is edited, and
+two pictures with the same prompt are two generations to pay for and two results to tell apart, while a
+connection keeps one source of truth — the canvas's own idea of reuse, which the user's gestures already
+express. The agent had no reason to prefer it: it had a tool to make nodes and a tool to wire them, and no
+sentence about which one applies. A tool description cannot say it (it explains one tool, not the choice
+between two), and a skill is activated by reading it, which is precisely what has not happened at the
+agent's first canvas move.
+
+**Cost** A paragraph in every session's context, including a node panel's one-question agent that never
+touches the canvas, and it is a default and not a guarantee: a model may still copy. The text is the
+gateway's own and an operator cannot remove it (they can still add to it through `model.conf`), which is
+the price of a rule the canvas tools do not work well without.
+
+**Tested** `make check`, `go test -race`, `make verify-static`, `npm run check`, `npx vitest run`.
+`TestArgsCarryTheSystemPrompt` pins the flag mapping, `TestAgentSpawnCarriesTheCanvasRule` pins that every
+spawn carries the text. In the browser, with the real agent on the test instance: the startup frame
+reported `MCP servers initialized: 1 servers, 9 tools loaded`, the process started and reached ready with
+the flag in place, and asking "when you need what a node holds somewhere else on this canvas, do you
+connect it or copy it, and why?" answered "I connect it rather than copy it, because a connection keeps a
+single source of truth on the canvas — the source node's content flows directly to where it's needed, so
+there's nothing to keep in step and no ambiguity about which version you meant".
+
+**Where** `internal/server/agent_instructions.go`, `internal/server/routes_agent.go`,
+`internal/server/routes_mcp.go`, `internal/agent/spawn.go`, `internal/agent/args_test.go`,
+`internal/server/mcp_test.go`, `docs/gateway.md`.

@@ -61,7 +61,10 @@ func (s *Server) agentOptions() agent.SpawnOptions {
 		ConfigPath: s.cfg.AgentConfigPath,
 		Skills:     s.cfg.AgentSkills,
 		Tools:      "read_file",
-		Log:        s.logger,
+		// The one thing the gateway says on its own account: the rule that chooses between the canvas
+		// tools, which no single tool's description can state (`agent_instructions.go`).
+		System: []string{canvasInstructions},
+		Log:    s.logger,
 	}
 }
 

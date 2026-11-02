@@ -281,6 +281,13 @@ That is a second, **loopback-only** listener, never the address `GATEWAY_HOST` n
 nodes and starts generations has no business being reachable from the network, and requiring a custom
 header means a browser cannot reach it cross-site without a preflight this server never answers.
 
+**One rule rides in the system prompt.** Every spawn also carries the gateway's own `--system` line
+(`canvasInstructions` in `agent_instructions.go`): a connection reuses what is already on the canvas and a copy
+forks it, so wire before you duplicate; and the viewport is the user's, so `focus_node` points at
+something rather than narrating. A tool description explains one tool and cannot state a preference
+between two; a skill would have to be read before it helped, and the first canvas move is exactly when
+nothing has been read (#183).
+
 Media, runs and files:
 
 | Method | Path                              | Purpose                                                                                                    |

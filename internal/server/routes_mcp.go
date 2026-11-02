@@ -117,7 +117,7 @@ func (s *Server) mcpTools() []mcpTool {
 		InputSchema: noArguments,
 	}, {
 		Name:        "create_node",
-		Description: "Make one node on the canvas, the way the user's own button makes one: it appears where the view is looking, selected, with its panel open when that is what pressing the button does. Answers with the new node's id and position.",
+		Description: "Make one node on the canvas, the way the user's own button makes one: it appears where the view is looking, selected, with its panel open when that is what pressing the button does. Answers with the new node's id and position. Make one only when the canvas holds nothing that would do: reusing what is there is a connection, not a copy.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -136,7 +136,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "connect",
-		Description: "Connect two nodes, the way dragging from one handle to the other does: what the source node holds becomes an input to the target — a picture connected into a config node is what makes the next generation a variant of it.",
+		Description: "Connect two nodes, the way dragging from one handle to the other does: what the source node holds becomes an input to the target — a picture connected into a config node is what makes the next generation a variant of it. This is how what is already on the canvas is reused: a node that holds what another needs is connected to it, not copied.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {

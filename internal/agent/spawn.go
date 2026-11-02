@@ -55,6 +55,9 @@ type SpawnOptions struct {
 	// process replay what was said. Empty means the conversation dies with the process, which is what a
 	// node's single question wants: one file per node would outlive the node that asked.
 	Session string
+	// System is text appended to the agent's own system prompt, one entry per `--system` flag. It is for
+	// what a tool description cannot say: the rule that chooses between the tools.
+	System []string
 	// Log records what happened in terms someone who knows AlayaCore can follow: the command line,
 	// every frame in both directions, and how the process ended.
 	Log *logx.Logger
@@ -75,6 +78,9 @@ func (o SpawnOptions) args() []string {
 	// turn as it ends. That file, not this process, is what remembers a conversation.
 	if o.Session != "" {
 		args = append(args, "--session", o.Session)
+	}
+	for _, text := range o.System {
+		args = append(args, "--system", text)
 	}
 	return args
 }
