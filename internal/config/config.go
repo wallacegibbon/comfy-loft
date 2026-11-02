@@ -71,7 +71,6 @@ type Config struct {
 	// so it is orders of magnitude larger than one reference image.
 	MaxImportBytes      int64
 	MaxWorkflowBytes    int64
-	MaxImageCount       int
 	ResourceConcurrency int
 }
 
@@ -171,7 +170,6 @@ func Load(opts ...Option) (*Config, error) {
 		MaxUploadBytes:      int64(intValue(os.Getenv("MAX_UPLOAD_BYTES"), 50*1024*1024)),
 		MaxImportBytes:      int64Value(os.Getenv("MAX_IMPORT_BYTES"), 8<<30),
 		MaxWorkflowBytes:    int64(intValue(os.Getenv("MAX_WORKFLOW_BYTES"), 5*1024*1024)),
-		MaxImageCount:       intValue(os.Getenv("MAX_IMAGE_COUNT"), 15),
 		ResourceConcurrency: intValue(os.Getenv("RESOURCE_CONCURRENCY"), 2),
 		AgentBin:            strings.TrimSpace(os.Getenv("ALAYACORE_BIN")),
 		AgentConfigPath:     strings.TrimSpace(os.Getenv("AGENT_CONFIG_PATH")),

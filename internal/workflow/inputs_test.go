@@ -56,7 +56,6 @@ func TestValidateInputsAcceptsTheDeclaredSurface(t *testing.T) {
 	inputs := map[string]any{
 		"prompt":  "a cat",
 		"size":    "1024x1024",
-		"count":   3,
 		"quality": "high",
 		"seconds": 5,
 		"seed":    0,
@@ -64,7 +63,7 @@ func TestValidateInputsAcceptsTheDeclaredSurface(t *testing.T) {
 		// Advisory: ComfyUI has more samplers than the UI lists, so the list cannot reject.
 		"sampler": "dpmpp_2m_sde_gpu",
 	}
-	if err := ValidateInputs(entry, inputs, InputLimits{MaxCount: 15}); err != nil {
+	if err := ValidateInputs(entry, inputs, InputLimits{}); err != nil {
 		t.Fatalf("valid inputs rejected: %v", err)
 	}
 }
@@ -80,15 +79,12 @@ func TestValidateInputsRejections(t *testing.T) {
 		{"missing prompt", map[string]any{}, "missing_input", "requires a non-empty prompt"},
 		{"blank prompt", map[string]any{"prompt": "   "}, "missing_input", "non-empty prompt"},
 		{"bad size", map[string]any{"prompt": "x", "size": "huge"}, "invalid_input", "size string"},
-		{"count is fractional", map[string]any{"prompt": "x", "count": 1.5}, "invalid_input", "whole number"},
-		{"count below range", map[string]any{"prompt": "x", "count": 0}, "invalid_input", "at least 1"},
-		{"count above range", map[string]any{"prompt": "x", "count": 20}, "invalid_input", "at most 15"},
 		{"steps out of range", map[string]any{"prompt": "x", "steps": 99}, "invalid_input", "at most 30"},
 		{"steps not numeric", map[string]any{"prompt": "x", "steps": "many"}, "invalid_input", "must be a number"},
 		{"unknown quality", map[string]any{"prompt": "x", "quality": "ultra"}, "invalid_input", "must be one of"},
 	}
 	for _, testCase := range cases {
-		err := ValidateInputs(inputEntry(), testCase.inputs, InputLimits{MaxCount: 15})
+		err := ValidateInputs(inputEntry(), testCase.inputs, InputLimits{})
 		if err == nil {
 			t.Errorf("%s: accepted", testCase.name)
 			continue
@@ -142,16 +138,13 @@ func TestSchemaListsTypedInputs(t *testing.T) {
 	for _, spec := range schema.Inputs {
 		byKey[spec.Key] = spec
 	}
-	for _, key := range []string{"prompt", "size", "count", "quality", "seconds", "mode", "steps", "sampler", "seed"} {
+	for _, key := range []string{"prompt", "size", "quality", "seconds", "mode", "steps", "sampler", "seed"} {
 		if _, ok := byKey[key]; !ok {
 			t.Errorf("schema is missing %q", key)
 		}
 	}
 	if !byKey["prompt"].Required {
 		t.Error("prompt must be required")
-	}
-	if byKey["count"].Type != "integer" || byKey["count"].Max == nil || *byKey["count"].Max != 15 {
-		t.Errorf("count spec = %+v", byKey["count"])
 	}
 	if !byKey["quality"].StrictOptions {
 		t.Error("quality must enforce its declared options")
@@ -168,7 +161,7 @@ func TestShippedWorkflowsValidateTheirInputs(t *testing.T) {
 		t.Fatalf("load shipped registry: %v", err)
 	}
 	for _, entry := range registry.Entries() {
-		specs := entry.InputSpecs(InputLimits{MaxCount: 15})
+		specs := entry.InputSpecs(InputLimits{})
 		hasPrompt := false
 		for _, spec := range specs {
 			if spec.Key == "prompt" {
@@ -178,27 +171,26 @@ func TestShippedWorkflowsValidateTheirInputs(t *testing.T) {
 		if !hasPrompt {
 			t.Errorf("%s has no prompt input", entry.ID)
 		}
-		if err := ValidateInputs(entry, map[string]any{"prompt": "a cat"}, InputLimits{MaxCount: 15}); err != nil {
+		if err := ValidateInputs(entry, map[string]any{"prompt": "a cat"}, InputLimits{}); err != nil {
 			t.Errorf("%s rejected a minimal request: %v", entry.ID, err)
 		}
-		if err := ValidateInputs(entry, map[string]any{"prompt": "a cat", "nonsense": 1}, InputLimits{MaxCount: 15}); err == nil {
+		if err := ValidateInputs(entry, map[string]any{"prompt": "a cat", "nonsense": 1}, InputLimits{}); err == nil {
 			t.Errorf("%s accepted an unknown input", entry.ID)
 		}
 	}
 }
 
 // A binding that reads its value from somewhere else is not a knob: accepting the key would mean
-// accepting a value that reaches nothing. `size.width` and `count` are the usual culprits.
+// accepting a value that reaches nothing. `size.width` is the usual culprit.
 func TestDerivedBindingsAreNotInputs(t *testing.T) {
 	entry := inputEntry()
 	entry.RawBindings = bindings(
 		"prompt", map[string]any{"node": "4", "input": "text", "required": true},
 		"width", map[string]any{"node": "8", "input": "width", "from": "size.width"},
-		"batch", map[string]any{"node": "8", "input": "batch_size", "from": "count"},
 		"seed", map[string]any{"node": "8", "input": "seed", "from": "params.seed", "random": true},
 	)
 
-	for _, key := range []string{"width", "batch"} {
+	for _, key := range []string{"width"} {
 		err := ValidateInputs(entry, map[string]any{"prompt": "x", key: 1024}, InputLimits{})
 		if err == nil {
 			t.Errorf("%s was accepted although its binding ignores it", key)

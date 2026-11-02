@@ -98,7 +98,6 @@ export function CanvasImageSettingsPopover({
     const panelRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
-    const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const activeSize = config.size || "auto";
     const qwen = qwenModelInfo(config);
     const editCanvasRatio = canvasRatioOf(String((config.params as Record<string, unknown> | undefined)?.editCanvasSize || ""), String((config.params as Record<string, unknown> | undefined)?.resolution ?? 1024));
@@ -165,7 +164,7 @@ export function CanvasImageSettingsPopover({
                     icon={<Settings2 className="size-3.5" />}
                     onClick={() => updateOpen(!open)}
                 >
-                    <span className="truncate">{qwen ? qwenTriggerLabel : hasReferences ? imageSizeLabel(activeSize) : `${imageSizeLabel(activeSize)} · ${t("canvas.controls.images", { count })}`}</span>
+                    <span className="truncate">{qwen ? qwenTriggerLabel : hasReferences ? imageSizeLabel(activeSize) : imageSizeLabel(activeSize)}</span>
                 </Button>
             </span>
             {panel}
@@ -263,7 +262,7 @@ function ImageSettingsPortal({
                             {modeHints[qwenMode] || modeHints.t2i}
                         </div>
                         {qwenMode === "t2i" ? (
-                            <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" maxCount={10} />
+                            <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" />
                         ) : qwenMode === "edit" ? (
                             <div className="space-y-3">
                                 <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: theme.node.stroke }}>
@@ -305,7 +304,7 @@ function ImageSettingsPortal({
                                         {t("canvas.imagePopover.resolutionHint")}
                                     </div>
                                 </div>
-                                <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" maxCount={10} showSize={false} />
+                                <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" showSize={false} />
                             </div>
                         ) : (
                             <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: theme.node.stroke }}>
@@ -366,7 +365,7 @@ function ImageSettingsPortal({
                             </div>
                         </div>
                     ) : null}
-                    <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" maxCount={10} />
+                    <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" />
                 </div>
             )}
         </div>,

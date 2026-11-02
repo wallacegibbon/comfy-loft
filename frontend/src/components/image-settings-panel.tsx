@@ -14,34 +14,20 @@ export const imageAspectOptions = mediaRatioOptions.map((item) => ({ value: item
 
 type ImageSettingsPanelProps = {
     config: AiConfig;
-    onConfigChange: (key: "quality" | "size" | "count" | "background" | "seedFixed" | "seed", value: string) => void;
+    onConfigChange: (key: "quality" | "size" | "background" | "seedFixed" | "seed", value: string) => void;
     theme: CanvasTheme;
     showTitle?: boolean;
     showSize?: boolean;
     showTransparent?: boolean;
-    showCount?: boolean;
     showSeed?: boolean;
     className?: string;
     maxCount?: number;
     quickCount?: number;
 };
 
-export function ImageSettingsPanel({
-    config,
-    onConfigChange,
-    theme,
-    showTitle = true,
-    showSize = true,
-    showTransparent = true,
-    showCount = true,
-    showSeed = true,
-    className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5",
-    maxCount = 15,
-    quickCount = 10,
-}: ImageSettingsPanelProps) {
+export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = true, showSize = true, showTransparent = true, showSeed = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5" }: ImageSettingsPanelProps) {
     const { t } = useTranslation();
     const [snapDimensionToStep, setSnapDimensionToStep] = useState(true);
-    const count = Math.max(1, Math.min(maxCount, Math.floor(Math.abs(Number(config.count)) || 1)));
     const activeSize = config.size || "auto";
     const transparentBackground = config.background === "transparent";
     const selectedScale = inferMediaScale(activeSize);
@@ -130,19 +116,6 @@ export function ImageSettingsPanel({
                         <span onMouseDown={(event) => event.stopPropagation()}>
                             <Switch size="small" checked={transparentBackground} onChange={(checked) => onConfigChange("background", checked ? "transparent" : "")} />
                         </span>
-                    </div>
-                ) : null}
-                {showCount ? (
-                    <div className="space-y-2.5">
-                        <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.count")}</SettingTitle>
-                        <div className="grid grid-cols-4 gap-2.5">
-                            {Array.from({ length: quickCount }, (_, index) => index + 1).map((value) => (
-                                <OptionPill key={value} selected={count === value} theme={theme} onClick={() => onConfigChange("count", String(value))}>
-                                    {t("settingsPanels.image.images", { count: value })}
-                                </OptionPill>
-                            ))}
-                            <CountInput value={count} max={maxCount} theme={theme} onChange={(value) => onConfigChange("count", String(value || 1))} />
-                        </div>
                     </div>
                 ) : null}
                 {showSeed ? <SeedSetting fixed={config.seedFixed === "true"} seed={config.seed || ""} theme={theme} onChange={onConfigChange} /> : null}
@@ -245,23 +218,6 @@ function DimensionInput({ prefix, value, disabled, theme, alignToStep, onChange 
                 onKeyDown={(event) => {
                     if (event.key === "Enter") event.currentTarget.blur();
                 }}
-                onMouseDown={(event) => event.stopPropagation()}
-            />
-        </label>
-    );
-}
-
-function CountInput({ value, max, theme, onChange }: { value: number; max: number; theme: CanvasTheme; onChange: (value: number | null) => void }) {
-    return (
-        <label className="col-span-2 flex h-9 overflow-hidden rounded-full border text-sm" style={{ borderColor: theme.node.stroke, color: theme.node.text }}>
-            <input
-                type="number"
-                min={1}
-                max={max}
-                className="min-w-0 flex-1 bg-transparent px-3 text-center outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                style={{ color: theme.node.text, WebkitTextFillColor: theme.node.text }}
-                value={value || ""}
-                onChange={(event) => onChange(Number(event.target.value) || null)}
                 onMouseDown={(event) => event.stopPropagation()}
             />
         </label>

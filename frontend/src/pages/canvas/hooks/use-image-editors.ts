@@ -130,7 +130,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
             // take it from the connection instead of the user redrawing the same marks.
             const sentMask = references[1];
             const maskBinding = sentMask.storageKey ? { mask: { storageKey: sentMask.storageKey, mimeType: sentMask.type } } : {};
-            const generationMetadata = buildImageGenerationMetadata("edit", generationConfig, 1, references);
+            const generationMetadata = buildImageGenerationMetadata("edit", generationConfig, references);
             const childMetadata = payload.generate ? { prompt, status: NODE_STATUS_LOADING, ...generationMetadata } : { prompt };
             setNodes((prev) => [
                 ...prev,
@@ -164,7 +164,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
             setRunningNodeId(childId);
             const controller = startGenerationRequest(childId, node.id, childId);
             try {
-                const image = await requestEdit(generationConfig, prompt, references, { signal: controller.signal }).then((items) => items[0]);
+                const image = await requestEdit(generationConfig, prompt, references, { signal: controller.signal });
                 const uploaded = image;
                 const size = fitNodeSize(uploaded.width, uploaded.height, node.width, node.height);
                 setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
@@ -199,7 +199,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
             const childId = nanoid();
             const source = { id: node.id, name: `${node.title || node.id}.png`, type: node.metadata.mimeType || "image/png", dataUrl: node.metadata.content, storageKey: node.metadata.storageKey };
             const references = [source];
-            const generationMetadata = buildImageGenerationMetadata("edit", generationConfig, 1, references);
+            const generationMetadata = buildImageGenerationMetadata("edit", generationConfig, references);
             setNodes((prev) => [
                 ...prev,
                 {
@@ -220,7 +220,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
             setRunningNodeId(childId);
             const controller = startGenerationRequest(childId, node.id, childId);
             try {
-                const image = await requestEdit(generationConfig, payload.prompt, references, { signal: controller.signal }).then((items) => items[0]);
+                const image = await requestEdit(generationConfig, payload.prompt, references, { signal: controller.signal });
                 const uploaded = image;
                 const size = fitNodeSize(uploaded.width, uploaded.height, node.width, node.height);
                 setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt: payload.prompt, ...generationMetadata } } : item)));
@@ -253,7 +253,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
             closeNodeTool();
             setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, imageMode: "layout", layout: payload } } : item)));
             const childId = nanoid();
-            const generationMetadata = buildImageGenerationMetadata("generation", generationConfig, 1, []);
+            const generationMetadata = buildImageGenerationMetadata("generation", generationConfig, []);
             setNodes((prev) => [
                 ...prev,
                 {
@@ -273,7 +273,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
             setRunningNodeId(childId);
             const controller = startGenerationRequest(childId, node.id, childId);
             try {
-                const image = await requestGeneration(generationConfig, payload.summary, { signal: controller.signal }).then((items) => items[0]);
+                const image = await requestGeneration(generationConfig, payload.summary, { signal: controller.signal });
                 if (!image) throw new Error(t("canvas.mossLayout.noImage"));
                 const uploaded = image;
                 const size = fitNodeSize(uploaded.width, uploaded.height, node.width, node.height);
@@ -327,7 +327,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
                         storageKey: node.metadata.storageKey,
                     },
                     { workflowId: params.workflowId, params: params.params, signal: controller.signal },
-                ).then((items) => items[0]);
+                );
                 const uploaded = image;
                 const size = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
                 setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), status: NODE_STATUS_SUCCESS } } : item)));
@@ -364,7 +364,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 dataUrl: node.metadata.content,
                 storageKey: node.metadata.storageKey,
             };
-            const generationMetadata = buildImageGenerationMetadata("edit", generationConfig, 1, [sourceReference]);
+            const generationMetadata = buildImageGenerationMetadata("edit", generationConfig, [sourceReference]);
             closeNodeTool();
             setRunningNodeId(childId);
             setNodes((prev) => [
@@ -384,7 +384,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
             setDialogNodeId(childId);
             const controller = startGenerationRequest(childId, node.id, childId);
             try {
-                const image = await requestImageAngle(generationConfig, prompt, params, [sourceReference], { signal: controller.signal }).then((items) => items[0]);
+                const image = await requestImageAngle(generationConfig, prompt, params, [sourceReference], { signal: controller.signal });
                 const uploaded = image;
                 const size = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
                 setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));

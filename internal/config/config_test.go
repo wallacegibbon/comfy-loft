@@ -18,7 +18,7 @@ func isolateEnv(t *testing.T) {
 		"REQUEST_TIMEOUT_MS", "VIDEO_TIMEOUT_MS", "POLL_INTERVAL_MS",
 		"COMFY_RETRY_ATTEMPTS", "COMFY_RETRY_DELAY_MS", "TASK_RETENTION_DAYS",
 		"MAX_STORED_TASKS", "CLEANUP_INTERVAL_MS",
-		"MAX_UPLOAD_BYTES", "MAX_WORKFLOW_BYTES", "MAX_IMAGE_COUNT",
+		"MAX_UPLOAD_BYTES", "MAX_WORKFLOW_BYTES",
 		"RESOURCE_CONCURRENCY", "GATEWAY_ROOT",
 	} {
 		t.Setenv(name, "")
@@ -100,7 +100,6 @@ func TestInvalidNumbersFallBack(t *testing.T) {
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
 	t.Setenv("GATEWAY_PORT", "not-a-number")
 	t.Setenv("POLL_INTERVAL_MS", "-5")
-	t.Setenv("MAX_IMAGE_COUNT", "abc")
 
 	cfg, err := Load()
 	if err != nil {
@@ -111,9 +110,6 @@ func TestInvalidNumbersFallBack(t *testing.T) {
 	}
 	if cfg.PollIntervalMs != 750 {
 		t.Errorf("PollIntervalMs = %d, want the default", cfg.PollIntervalMs)
-	}
-	if cfg.MaxImageCount != 15 {
-		t.Errorf("MaxImageCount = %d, want the default", cfg.MaxImageCount)
 	}
 }
 

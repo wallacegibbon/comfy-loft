@@ -18,7 +18,7 @@ vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: (...args: un
 vi.mock("@/services/image-storage", () => ({ readImageSize: async () => ({ width: 512, height: 512 }) }));
 
 const { RunFailedError, createRun, gatewayProtocolRoot, outputUrl, waitForRun } = await import("@/services/api/runs");
-const { generatedImages } = await import("@/lib/canvas/generated-media");
+const { generatedImage } = await import("@/lib/canvas/generated-media");
 const { setActiveCanvas } = await import("@/services/canvas-files");
 
 // A run and an upload belong to the canvas on screen (#156), so every case here opens one.
@@ -151,10 +151,10 @@ describe("a run's files", () => {
         expect(outputUrl(config, output)).toBe(`http://gateway.test:8190/api/canvases/${CANVAS}/files/task_1.png`);
     });
 
-    it("names every file the way the document does, in order", async () => {
-        const images = await generatedImages(config, finished());
-        expect(images.map((image) => image.storageKey)).toEqual(["files/task_1.png", "files/task_1-2.png"]);
-        expect(images.map((image) => image.url)).toEqual([`http://gateway.test:8190/api/canvases/${CANVAS}/files/task_1.png`, `http://gateway.test:8190/api/canvases/${CANVAS}/files/task_1-2.png`]);
-        expect(images[0]).toMatchObject({ bytes: 12, mimeType: "image/png", width: 512, height: 512 });
+    it("names the file the way the document does", async () => {
+        const image = await generatedImage(config, finished());
+        expect(image.storageKey).toBe("files/task_1.png");
+        expect(image.url).toBe(`http://gateway.test:8190/api/canvases/${CANVAS}/files/task_1.png`);
+        expect(image).toMatchObject({ bytes: 12, mimeType: "image/png", width: 512, height: 512 });
     });
 });

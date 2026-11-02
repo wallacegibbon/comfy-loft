@@ -9,7 +9,7 @@ import { imageToDataUrl, type UploadedImage } from "@/services/image-storage";
 import { imageSizePresets } from "@/lib/media-size";
 import { apiErrorMessage, throwIfCanceled } from "@/services/api/http";
 import { createRun, uploadMedia, waitForRun, type Run } from "@/services/api/runs";
-import { generatedImages } from "@/lib/canvas/generated-media";
+import { generatedImage } from "@/lib/canvas/generated-media";
 import type { ReferenceImage } from "@/types/image";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
@@ -119,19 +119,9 @@ function withSystemPrompt(config: AiConfig, prompt: string) {
     return systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 }
 
-async function requestGatewayImages(input: {
-    config: AiConfig;
-    prompt: string;
-    references: ReferenceImage[];
-    count: number;
-    size?: string;
-    background?: string;
-    imageMode?: string;
-    params: Record<string, unknown>;
-    options?: RequestOptions;
-}): Promise<UploadedImage[]> {
-    const { config, prompt, references, count, size, background, imageMode, params, options } = input;
-    const inputs: Record<string, unknown> = { prompt, count };
+async function requestGatewayImages(input: { config: AiConfig; prompt: string; references: ReferenceImage[]; size?: string; background?: string; imageMode?: string; params: Record<string, unknown>; options?: RequestOptions }): Promise<UploadedImage> {
+    const { config, prompt, references, size, background, imageMode, params, options } = input;
+    const inputs: Record<string, unknown> = { prompt };
     if (size) inputs.size = size;
     if (background) inputs.background = background;
     // "layout" is a MOSS mode expressed entirely by params.layout, not a workflow variant.
@@ -152,7 +142,7 @@ async function requestGatewayImages(input: {
         options?.onRun?.(run.id);
         const finished = await waitForRun(config, run.id, { signal: options?.signal, onProgress: options?.onProgress, cancelOnAbort: true });
         // The run wrote these files into the canvas; the node references them where they are (#173).
-        return await generatedImages(config, finished, { signal: options?.signal });
+        return await generatedImage(config, finished, { signal: options?.signal });
     } catch (error) {
         throwIfCanceled(error);
         throw new Error(apiErrorMessage(error, apiText("requestFailed"), "imageTimeout"));
@@ -176,7 +166,6 @@ async function mediaId(config: AiConfig, reference: ReferenceImage, filename: st
 
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions) {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
-    const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const requestSize = resolveRequestSize(config.size);
     const background = normalizeBackground(config.background);
     const imageMode = config.imageMode || (channelModelOf(config, requestConfig.model)?.model?.workflowId === "image-qwen21" ? "t2i" : "");
@@ -191,7 +180,6 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
         config: requestConfig,
         prompt: finalPrompt,
         references: [],
-        count: n,
         size: requestSize,
         background,
         imageMode,
@@ -202,7 +190,6 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
 
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], options?: RequestOptions) {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
-    const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const requestPrompt = buildImageReferencePromptText(prompt, references);
     const requestSize = resolveRequestSize(config.size);
     const background = normalizeBackground(config.background);
@@ -224,7 +211,6 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
         config: requestConfig,
         prompt: finalPrompt,
         references,
-        count: n,
         size: requestSize,
         background,
         imageMode,
@@ -249,13 +235,12 @@ type ImageAngleParams = {
  * rejects inputs a workflow does not declare, and a binding that reaches nothing would be worse than
  * leaving the knob out until the model can honour it.
  */
-export async function requestImageAngle(config: AiConfig, prompt: string, params: ImageAngleParams, references: ReferenceImage[], options?: RequestOptions): Promise<UploadedImage[]> {
+export async function requestImageAngle(config: AiConfig, prompt: string, params: ImageAngleParams, references: ReferenceImage[], options?: RequestOptions): Promise<UploadedImage> {
     const requestConfig = { ...resolveModelRequestConfig(config, config.imageModel || config.model), baseUrl: LOCAL_GATEWAY_BASE_URL, model: IMAGE_ANGLE_WORKFLOW };
     return requestGatewayImages({
         config: requestConfig,
         prompt,
         references,
-        count: 1,
         params: {
             horizontalAngle: params.horizontalAngle,
             pitchAngle: params.pitchAngle,
@@ -284,7 +269,7 @@ export async function requestUpscale(config: AiConfig, image: ReferenceImage, op
             media: { image: [await mediaId(requestConfig, image, image.name || `${image.id}.png`, options.signal)] },
         });
         const finished = await waitForRun(requestConfig, run.id, { signal: options.signal, cancelOnAbort: true });
-        return await generatedImages(requestConfig, finished, { signal: options.signal });
+        return await generatedImage(requestConfig, finished, { signal: options.signal });
     } catch (error) {
         throw new Error(apiErrorMessage(error, apiText("requestFailed"), "imageTimeout"));
     }

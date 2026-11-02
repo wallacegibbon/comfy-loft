@@ -33,8 +33,5 @@ function withoutResolvedUrls(node: CanvasNodeData): CanvasNodeData {
     if (!metadata) return node;
     const next = { ...metadata };
     if (metadata.storageKey) next.content = metadata.storageKey;
-    if (Array.isArray(metadata.images)) {
-        next.images = metadata.images.map((image) => (image.storageKey ? { ...image, content: image.storageKey } : image));
-    }
     return { ...node, metadata: next };
 }

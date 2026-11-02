@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -94,14 +93,16 @@ func errorText(payload map[string]any) string {
 	return message
 }
 
-func TestRunImageProducesEveryOutput(t *testing.T) {
+// TestRunImageProducesOnePicture is the contract a node relies on: one run, one image. The route used to
+// fan out on a `count` input; a node holds one result now, so the run answers with one file (#180).
+func TestRunImageProducesOnePicture(t *testing.T) {
 	fake := newFakeComfy(t)
 	gateway := httptest.NewServer(newTestGateway(t, fake).Handler())
 	defer gateway.Close()
 
 	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
-		"inputs":   map[string]any{"prompt": "a cat", "count": 2},
+		"inputs":   map[string]any{"prompt": "a cat"},
 	})
 	if status != http.StatusAccepted {
 		t.Fatalf("submit status = %d, body = %v", status, payload)
@@ -124,29 +125,24 @@ func TestRunImageProducesEveryOutput(t *testing.T) {
 		t.Fatalf("run failed: %v", finished)
 	}
 	outputs := runOutputs(t, finished)
-	if len(outputs) != 2 {
-		t.Fatalf("outputs = %d, want the count the request asked for: %v", len(outputs), finished)
+	if len(outputs) != 1 {
+		t.Fatalf("outputs = %d, want the one picture a run makes: %v", len(outputs), finished)
 	}
-	for index, output := range outputs {
-		if output["kind"] != "image" {
-			t.Errorf("output %d kind = %v", index, output["kind"])
-		}
-		if output["mime"] != "image/png" {
-			t.Errorf("output %d mime = %v", index, output["mime"])
-		}
-		// The artifact is a file in the canvas, named after the run.
-		wantURL := "/api/canvases/" + canvasID(t, gateway.URL) + "/files/" + id
-		if index > 0 {
-			wantURL += "-" + strconv.Itoa(index+1)
-		}
-		wantURL += ".png"
-		if output["url"] != wantURL {
-			t.Errorf("output %d url = %v, want %s", index, output["url"], wantURL)
-		}
-		status, body := getBytes(t, gateway.URL+wantURL)
-		if status != http.StatusOK || string(body) != "PNGDATA" {
-			t.Errorf("output %d = %d %q", index, status, body)
-		}
+	output := outputs[0]
+	if output["kind"] != "image" {
+		t.Errorf("kind = %v", output["kind"])
+	}
+	if output["mime"] != "image/png" {
+		t.Errorf("mime = %v", output["mime"])
+	}
+	// The artifact is a file in the canvas, named after the run.
+	wantURL := "/api/canvases/" + canvasID(t, gateway.URL) + "/files/" + id + ".png"
+	if output["url"] != wantURL {
+		t.Errorf("url = %v, want %s", output["url"], wantURL)
+	}
+	status, body := getBytes(t, gateway.URL+wantURL)
+	if status != http.StatusOK || string(body) != "PNGDATA" {
+		t.Errorf("output = %d %q", status, body)
 	}
 
 	// The list endpoint sees the same run, and completed is reported as succeeded.
@@ -368,7 +364,6 @@ func TestRunValidatesTypedInputs(t *testing.T) {
 		{"unknown key", map[string]any{"prompt": "x", "setps": 4}, "unknown_input"},
 		{"missing prompt", map[string]any{}, "missing_input"},
 		{"bad size", map[string]any{"prompt": "x", "size": "huge"}, "invalid_input"},
-		{"count out of range", map[string]any{"prompt": "x", "count": 0}, "invalid_input"},
 		{"declared range", map[string]any{"prompt": "x", "steps": 0}, "invalid_input"},
 	}
 	for _, testCase := range cases {
@@ -389,7 +384,7 @@ func TestRunValidatesTypedInputs(t *testing.T) {
 	// The same request with valid values is accepted.
 	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
-		"inputs":   map[string]any{"prompt": "x", "size": "1024x1024", "count": 1, "steps": 4},
+		"inputs":   map[string]any{"prompt": "x", "size": "1024x1024", "steps": 4},
 	})
 	if status != http.StatusAccepted {
 		t.Fatalf("valid request rejected: %d %v", status, payload)

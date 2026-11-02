@@ -78,7 +78,6 @@ func TestShippedMusicWorkflowBindsCaptionAndLyrics(t *testing.T) {
 
 	ctx := BuildContext(BuildContextParams{
 		Prompt:  "Upbeat disco funk with brass stabs",
-		Count:   1,
 		Seconds: 45,
 		Params: map[string]any{
 			"lyrics":       "[Verse]\nhello",

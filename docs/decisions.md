@@ -6214,3 +6214,42 @@ load, so the old branch would have resolved — the test fails against the previ
 of rejecting`) and passes now.
 
 **Where** `frontend/src/services/image-storage.ts`, `frontend/tests/image-storage.test.ts`.
+
+## 180. One run is one picture, and a node holds one result
+
+**Decision** Generating several candidates at once is gone, on both sides. A run produces one artifact
+(`Runner.RunImage` returns the first image file, like `RunVideo`/`RunAudio` do for theirs), the gateway no
+longer accepts `count`/`n` as inputs (`semanticInputs`, the typed `InputSpec`, `InputLimits.MaxCount`,
+`MAX_IMAGE_COUNT`, the `BuildContext.Count` plumbing, and the four `count → batch_size` bindings in
+`registry.json`), and a node holds one picture: `metadata.images[]`/`primaryImageId`/`count` are gone from
+the document, so the node's own `content`/`storageKey`/`naturalWidth`/`naturalHeight`/`bytes`/`mimeType`
+*are* the picture. All the UI that existed to manage a group went with it: the expand/collapse badges on the
+card and in the side panel, the group thumbnails, set-primary, duplicate, download-per-image, per-image
+retry and delete, the count control in the image settings popover and in preferences, and the words for
+them in both locales.
+
+**Why** A node was two things at once — an artifact and a set of artifacts — and every surface that pointed
+at a node had to ask which one it meant: the agent's `read_node` could only reach the selected picture, a
+reference taken from the node depended on `primaryImageId`, and "you can see it but you cannot say which"
+is not a state a canvas should have. The feature also bought nothing in exchange: three images in one run
+is one batch through the same GPU, so it costs three times the time of one and returns nothing sooner.
+Candidates are a canvas question anyway — a text node and three image nodes fed from it is the same
+comparison, with each picture a node somebody can point at (#181's other half).
+
+**Cost** Comparing candidates is now several nodes rather than one click, and the text-node batch UI
+(`texts[]`, "N texts") survives as the last of the pattern — it is unreachable from the UI (text generation
+writes one text) and is the next thing to collapse into `content`. An old document that holds `images[]`
+renders its `content`, which is the picture that was primary; the other files become unreferenced and the
+startup collector sweeps them after its grace window.
+
+**Tested** `make check` (the removal reaches `inputs_test.go`, `bindings_test.go`, `config_test.go`,
+`runs_e2e_test.go`: `TestRunImageProducesOnePicture` asserts one output named `<run>.png`), `CGO_ENABLED=1
+go test -race`, `npm run check` (i18n 893/879 keys — 11 dead keys removed), `npx vitest run` (151). In the
+browser: a fresh canvas, an image node generated once, no group badge, no count control anywhere.
+
+**Where** `internal/workflow/{inputs,bindings}.go`, `internal/generate/runner.go`, `internal/config/config.go`,
+`workflows/registry.json`, `internal/server/routes_runs.go`, `frontend/src/lib/canvas/{canvas-node-factory,
+canvas-generation-helpers,generated-media,canvas-document}.ts`, `frontend/src/pages/canvas/{project.tsx,
+hooks/use-generation-runs.ts}`, `frontend/src/components/canvas/{canvas-node,canvas-side-panel,
+canvas-image-settings-popover,canvas-node-hover-toolbar}.tsx`, `frontend/src/components/image-settings-panel.tsx`,
+`frontend/src/stores/use-config-store.ts`, both locales.

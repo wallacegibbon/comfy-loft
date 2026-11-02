@@ -21,10 +21,7 @@ import (
 )
 
 // InputLimits are engine-wide bounds that are not a property of one workflow.
-type InputLimits struct {
-	// MaxCount caps `count`; the canvas generates batches of images up to this size.
-	MaxCount int
-}
+type InputLimits struct{}
 
 // InputSpec is one accepted input field.
 type InputSpec struct {
@@ -43,7 +40,7 @@ type InputSpec struct {
 }
 
 // semanticInputs are the keys that drive the request itself rather than a binding.
-var semanticInputs = []string{"prompt", "negative", "size", "count", "n", "quality", "seconds", "duration", "mode", "background", "editCanvasSize", "layout", "layoutEnabled"}
+var semanticInputs = []string{"prompt", "negative", "size", "quality", "seconds", "duration", "mode", "background", "editCanvasSize", "layout", "layoutEnabled"}
 
 // InputSpecs is the typed contract of a workflow, assembled from three sources: the request-level
 // keys above, the workflow's declared `parameters`, and its non-media binding keys.
@@ -72,14 +69,6 @@ func (e *Entry) InputSpecs(limits InputLimits) []InputSpec {
 	add(InputSpec{Key: "prompt", Type: "string", Required: promptRequired, Label: "Prompt"})
 	add(InputSpec{Key: "negative", Type: "string", Label: "Negative prompt"})
 	add(InputSpec{Key: "size", Type: "size", Label: "Size"})
-	maxCount := limits.MaxCount
-	if maxCount <= 0 {
-		maxCount = 15
-	}
-	maxCountValue := float64(maxCount)
-	minCount := 1.0
-	add(InputSpec{Key: "count", Type: "integer", Min: &minCount, Max: &maxCountValue, Label: "Count"})
-	add(InputSpec{Key: "n", Type: "integer", Min: &minCount, Max: &maxCountValue, Label: "Count"})
 	add(InputSpec{Key: "quality", Type: "string", Options: e.qualityOptions(), StrictOptions: len(e.qualityOptions()) > 0, Label: "Quality"})
 	minimumSeconds := 0.0
 	add(InputSpec{Key: "seconds", Type: "number", Min: &minimumSeconds, Label: "Seconds"})

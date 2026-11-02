@@ -47,23 +47,11 @@ export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
             const metadata = node.metadata;
             const content = metadata?.content;
             if ((node.type === CanvasNodeType.Video || node.type === CanvasNodeType.Audio) && metadata?.storageKey) return { ...node, metadata: { ...metadata, content: await resolveMediaUrl(metadata.storageKey, content) } };
-            if (node.type !== CanvasNodeType.Image || !metadata || !content) return node;
-            const images = await Promise.all(
-                (metadata.images || []).map(async (image) => {
-                    if (!image.content) return image;
-                    void ensureImagePreview(image.storageKey);
-                    return { ...image, content: await resolveImageUrl(image.storageKey, image.content) };
-                }),
-            );
-            if (!metadata.storageKey) return { ...node, metadata: { ...metadata, images } };
+            if (node.type !== CanvasNodeType.Image || !metadata || !metadata.storageKey) return node;
             void ensureImagePreview(metadata.storageKey);
-            return { ...node, metadata: { ...metadata, content: await resolveImageUrl(metadata.storageKey, content), images } };
+            return { ...node, metadata: { ...metadata, content: await resolveImageUrl(metadata.storageKey, content) } };
         }),
     );
-}
-
-export function getGenerationCount(count: string) {
-    return Math.max(1, Math.min(15, Math.floor(Math.abs(Number(count)) || 1)));
 }
 
 export function getInputSummary(inputs: NodeGenerationInput[]) {
@@ -104,7 +92,6 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
         audioFormat: node?.metadata?.audioFormat || config.audioFormat || defaultConfig.audioFormat,
         audioSpeed: node?.metadata?.audioSpeed || config.audioSpeed || defaultConfig.audioSpeed,
         audioInstructions: node?.metadata?.audioInstructions || config.audioInstructions || defaultConfig.audioInstructions,
-        count: String(node?.metadata?.count || (mode === "image" ? config.canvasImageCount || config.count : config.count) || defaultConfig.count),
         params: Object.keys(params).length ? params : undefined,
     };
 }
@@ -144,7 +131,6 @@ export function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
                           ...node.metadata,
                           status: "error" as const,
                           errorDetails: i18n.t("canvas.generation.interrupted"),
-                          images: node.metadata.images?.map((image) => (image.status === "loading" ? { ...image, status: "error" as const, errorDetails: i18n.t("canvas.generation.interrupted") } : image)),
                           texts: node.metadata.texts?.map((text) => (text.status === "loading" ? { ...text, status: "error" as const, errorDetails: i18n.t("canvas.generation.interrupted") } : text)),
                       },
                   }

@@ -38,8 +38,6 @@ type ProgressEvent struct {
 	Phase    string
 	PromptID string
 	Progress float64
-	Attempt  int
-	Attempts int
 }
 
 // RunOptions carries everything one generation needs.
@@ -241,40 +239,32 @@ func (r *Runner) cancelPrompt(promptID string) {
 	r.comfy.Cancel(ctx, promptID)
 }
 
-// RunImage runs a workflow until `count` images have been produced.
+// RunImage runs a workflow and returns the one picture it made.
 //
-// Some graphs honor batch_size and return everything at once; others return one
-// image per run. Looping until the count is satisfied covers both without the
-// canvas silently losing images.
+// One run is one picture: a node holds one result, so there is no count to satisfy and no batch to loop
+// over (#180). A graph that returns more than one image (a batch size baked into the export) is cut down to
+// the first, which is the same rule RunVideo and RunAudio follow for their artifact.
 func (r *Runner) RunImage(ctx context.Context, opts RunOptions) (*RunResult, error) {
-	count := opts.Context.Count
-	if count < 1 {
-		count = 1
+	result, err := r.RunWorkflow(ctx, opts)
+	if err != nil {
+		return nil, err
 	}
-	var all []OutputFile
-	var lastPromptID string
-	for attempt := 0; attempt < count && len(all) < count; attempt++ {
-		attemptIndex := attempt
-		attemptOptions := opts
-		previous := opts.OnProgress
-		attemptOptions.OnProgress = func(event ProgressEvent) {
-			event.Attempt = attemptIndex
-			event.Attempts = count
-			if previous != nil {
-				previous(event)
-			}
+	for _, file := range result.Files {
+		if strings.HasPrefix(strings.ToLower(file.MimeType), "image/") || isImageExtension(file.Filename) {
+			return &RunResult{PromptID: result.PromptID, Files: []OutputFile{file}}, nil
 		}
-		result, err := r.RunWorkflow(ctx, attemptOptions)
-		if err != nil {
-			return nil, err
-		}
-		lastPromptID = result.PromptID
-		all = append(all, result.Files...)
 	}
-	if len(all) > count {
-		all = all[:count]
+	names := make([]string, 0, len(result.Files))
+	for _, file := range result.Files {
+		names = append(names, file.Filename)
 	}
-	return &RunResult{PromptID: lastPromptID, Files: all}, nil
+	encoded, _ := json.Marshal(names)
+	return nil, &httpx.Error{
+		Status:  http.StatusBadGateway,
+		Code:    "no_image_output",
+		Message: "the image workflow produced no image file",
+		Details: string(encoded),
+	}
 }
 
 // RunVideo runs a workflow and returns only the video artifact.
@@ -325,6 +315,14 @@ func (r *Runner) RunAudio(ctx context.Context, opts RunOptions) (*RunResult, err
 		Message: "the audio workflow produced no audio file (only images or videos)",
 		Details: string(encoded),
 	}
+}
+
+func isImageExtension(filename string) bool {
+	switch strings.ToLower(path.Ext(filename)) {
+	case ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".avif":
+		return true
+	}
+	return false
 }
 
 func isVideoExtension(filename string) bool {

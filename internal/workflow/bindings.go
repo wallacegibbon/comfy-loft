@@ -32,7 +32,6 @@ type Context struct {
 	Negative       *string
 	Size           *util.Size
 	OutputSize     *util.Size
-	Count          int
 	Quality        map[string]any
 	Seconds        *float64
 	Mode           string
@@ -61,7 +60,6 @@ type BuildContextParams struct {
 	Prompt         string
 	Negative       *string
 	Size           string
-	Count          float64
 	Quality        string
 	Seconds        float64
 	Mode           string
@@ -90,7 +88,6 @@ func BuildContext(p BuildContextParams) *Context {
 	ctx := &Context{
 		Prompt:         p.Prompt,
 		Negative:       p.Negative,
-		Count:          util.Clamp(int(p.Count), 1, 15),
 		Quality:        quality,
 		Mode:           p.Mode,
 		Background:     p.Background,
@@ -102,9 +99,6 @@ func BuildContext(p BuildContextParams) *Context {
 	}
 	if ctx.Params == nil {
 		ctx.Params = map[string]any{}
-	}
-	if p.Count == 0 {
-		ctx.Count = 1
 	}
 	if parsed := util.ParseSize(p.Size); parsed != nil {
 		ctx.Size = parsed
@@ -137,7 +131,6 @@ func qualityPreset(presets map[string]any, value string) map[string]any {
 func (c *Context) fields() map[string]any {
 	out := map[string]any{
 		"prompt": c.Prompt,
-		"count":  c.Count,
 		"params": c.Params,
 		"images": c.Images,
 	}

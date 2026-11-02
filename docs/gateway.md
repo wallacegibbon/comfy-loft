@@ -110,7 +110,6 @@ authentication; there is no configuration in this gateway that makes an untruste
 | `COMFY_RETRY_ATTEMPTS` | `3` | How many times a **GET** to ComfyUI is retried. A POST is never retried: it can enqueue the same job twice. |
 | `COMFY_RETRY_DELAY_MS` | `500` | Base delay between those retries; it grows linearly with the attempt number. |
 | `CLEANUP_INTERVAL_MS` | `3600000` | How often finished **run records** are pruned. Only runs when `TASK_RETENTION_DAYS` or `MAX_STORED_TASKS` is set. Deleting a record never deletes an artifact: the files belong to the canvas, and its own sweep collects the ones no document refers to. |
-| `MAX_IMAGE_COUNT` | `15` | Cap on `count` for an image run — more than this is refused at submission. |
 | `MAX_WORKFLOW_BYTES` | `5242880` | How large one file under `workflows/` may be; a bigger graph is refused at scan time. |
 | `VIDEO_TIMEOUT_MS` | `0` | Video timeout; `0` means no limit. |
 | `AUDIO_TIMEOUT_MS` | `0` | Audio/music timeout; `0` means no limit. A song is the same order of work as a short video, so it gets the same default. |
@@ -474,7 +473,7 @@ The same request, both ways — one image:
 
 // Gateway POST /api/canvases/{id}/runs
 {"workflow": "image-z-image-turbo",
- "inputs": {"prompt": "a cat", "size": "1024x1024", "count": 1, "quality": "medium"}}
+ "inputs": {"prompt": "a cat", "size": "1024x1024", "quality": "medium"}}
 ```
 
 The resemblance is deliberate where it is: single queue, single GPU, submit → id → poll → fetch is

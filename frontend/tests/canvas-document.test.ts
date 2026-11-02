@@ -30,23 +30,21 @@ describe("a canvas document", () => {
                     metadata: {
                         content: resolved,
                         storageKey: "files/up-a1b2c3d4.png",
-                        images: [{ id: "i1", status: "success", content: resolved, storageKey: "files/up-a1b2c3d4.png", naturalWidth: 1, naturalHeight: 1, bytes: 1, mimeType: "image/png" }],
                     },
                 }),
             ]),
         );
         const metadata = written.nodes[0].metadata;
         expect(metadata?.content).toBe("files/up-a1b2c3d4.png");
-        expect(metadata?.images?.[0].content).toBe("files/up-a1b2c3d4.png");
         expect(JSON.stringify(written)).not.toContain("127.0.0.1");
     });
 
     test("leaves what it does not understand alone", () => {
         const noMetadata = node({ metadata: undefined });
-        const legacyImage = { id: "i2", status: "success" as const, content: "data:image/png;base64,AAAA", naturalWidth: 1, naturalHeight: 1, bytes: 1, mimeType: "image/png" };
-        const written = documentOf(documentWith([noMetadata, node({ metadata: { images: [legacyImage] } })]));
+        const inline = { id: "i2", content: "data:image/png;base64,AAAA", naturalWidth: 1, naturalHeight: 1, bytes: 1, mimeType: "image/png" };
+        const written = documentOf(documentWith([noMetadata, node({ metadata: inline as never })]));
         expect(written.nodes[0]).toBe(noMetadata);
-        expect(written.nodes[1].metadata?.images?.[0].content).toBe("data:image/png;base64,AAAA");
+        expect(written.nodes[1].metadata?.content).toBe("data:image/png;base64,AAAA");
     });
 
     test("is the document and nothing else", () => {

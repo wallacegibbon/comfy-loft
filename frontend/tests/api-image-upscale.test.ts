@@ -117,12 +117,11 @@ describe("requestUpscale", () => {
         // (#156, #174): uploading it first would store the same bytes again under an `up-` name.
         const { calls } = stubGateway();
 
-        const images = await requestUpscale(gateway(), image("source.png", "files/up-abcdef12.png"), {
+        await requestUpscale(gateway(), image("source.png", "files/up-abcdef12.png"), {
             workflowId: "image-esrgan-upscale",
             params: { upscale_model: "RealESRGAN_x4plus.pth" },
         });
 
-        expect(images).toHaveLength(1);
         expect(calls.map((call) => call.url)).toEqual([`${ROOT}/api/canvases/${CANVAS_ID}/runs`, `${ROOT}/api/runs/task_upscale_1`]);
         expect(runBody(calls).media).toEqual({ image: ["up-abcdef12.png"] });
     });
@@ -130,14 +129,13 @@ describe("requestUpscale", () => {
     it("is one run with the source image uploaded by role", async () => {
         const { calls } = stubGateway();
 
-        const images = await requestUpscale(gateway(), image("source.png"), {
+        const upscaled = await requestUpscale(gateway(), image("source.png"), {
             workflowId: "image-esrgan-upscale",
             params: { upscale_model: "RealESRGAN_x4plus.pth" },
         });
 
-        expect(images).toHaveLength(1);
         // The result is a reference to the file the run wrote, not a copy of it.
-        expect(images[0]).toMatchObject({
+        expect(upscaled).toMatchObject({
             storageKey: "files/task_upscale_1.png",
             url: `${ROOT}/api/canvases/${CANVAS_ID}/files/task_upscale_1.png`,
             width: 512,

@@ -163,7 +163,7 @@ func (s *Server) handleRunCreate(ctx *httpx.Ctx) error {
 	// Typed before planning: an unknown key or a wrong value must be a 400 now, not a failed run
 	// minutes from now. The contract comes from the resolved variant, so a mode's own bindings
 	// and parameters apply.
-	if err := workflow.ValidateInputs(entry, inputs, workflow.InputLimits{MaxCount: s.cfg.MaxImageCount}); err != nil {
+	if err := workflow.ValidateInputs(entry, inputs, workflow.InputLimits{}); err != nil {
 		return err
 	}
 
@@ -203,7 +203,6 @@ func (s *Server) handleRunCreate(ctx *httpx.Ctx) error {
 		Prompt:         applyBackgroundPrompt(httpx.String(inputs, "prompt"), background, entry),
 		Negative:       optionalString(inputs, "negative"),
 		Size:           httpx.String(inputs, "size"),
-		Count:          httpx.Number(inputs, "count", httpx.Number(inputs, "n", 0)),
 		Quality:        httpx.String(inputs, "quality"),
 		Seconds:        httpx.Number(inputs, "seconds", httpx.Number(inputs, "duration", 0)),
 		Mode:           plan.Mode,

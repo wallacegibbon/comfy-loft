@@ -32,9 +32,7 @@ type Props = {
     selectedNodeIds: Set<string>;
     onFocusNode: (nodeId: string) => void;
     onPreviewNode: (nodeId: string) => void;
-    onPreviewImage?: (nodeId: string, imageId: string) => void;
     onHoverNode: (nodeId: string | null) => void;
-    onHoverImage?: (nodeId: string, imageId: string | null) => void;
 };
 
 const NODE_TYPE_ICON: Record<string, typeof Square> = {
@@ -53,7 +51,7 @@ const STATUS_COLOR: Record<string, string> = {
     idle: "transparent",
 };
 
-export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, onPreviewImage, onHoverNode, onHoverImage }: Props) {
+export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, onHoverNode }: Props) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const width = useCanvasSidePanelStore((state) => state.width);
@@ -103,7 +101,7 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
             data-canvas-no-zoom
         >
             <div className="min-h-0 flex-1 overflow-hidden">
-                <CanvasNodesTab nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} onPreviewNode={onPreviewNode} onPreviewImage={onPreviewImage} onHoverNode={onHoverNode} onHoverImage={onHoverImage} theme={theme} />
+                <CanvasNodesTab nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} onPreviewNode={onPreviewNode} onHoverNode={onHoverNode} theme={theme} />
             </div>
             <button type="button" className="absolute inset-y-0 right-0 z-40 w-4 translate-x-1/2 cursor-col-resize" onPointerDown={startResize} aria-label={t("canvas.sidePanel.resize")} />
         </aside>
@@ -126,18 +124,14 @@ function CanvasNodesTab({
     selectedNodeIds,
     onFocusNode,
     onPreviewNode,
-    onPreviewImage,
     onHoverNode,
-    onHoverImage,
     theme,
 }: {
     nodes: CanvasNodeData[];
     selectedNodeIds: Set<string>;
     onFocusNode: (nodeId: string) => void;
     onPreviewNode: (nodeId: string) => void;
-    onPreviewImage?: (nodeId: string, imageId: string) => void;
     onHoverNode: (nodeId: string | null) => void;
-    onHoverImage?: (nodeId: string, imageId: string | null) => void;
     theme: CanvasTheme;
 }) {
     const { t } = useTranslation();
@@ -147,7 +141,6 @@ function CanvasNodesTab({
     const [selectMode, setSelectMode] = useState(false);
     const [checked, setChecked] = useState<Set<string>>(new Set());
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-    const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set());
     const [exporting, setExporting] = useState(false);
     const nodeViewMode = useCanvasSidePanelStore((state) => state.nodeViewMode);
     const setNodeViewMode = useCanvasSidePanelStore((state) => state.setNodeViewMode);
@@ -314,15 +307,6 @@ function CanvasNodesTab({
                             const isImage = node.type === CanvasNodeType.Image && node.metadata?.content;
                             const isChecked = checked.has(node.id);
                             const active = selectMode ? isChecked : selectedNodeIds.has(node.id);
-                            const batchImages = node.type === CanvasNodeType.Image ? node.metadata?.images || [] : [];
-                            const hasBatch = batchImages.length > 1;
-                            const batchExpanded = expandedBatches.has(node.id);
-                            const toggleBatch = () =>
-                                setExpandedBatches((prev) => {
-                                    const next = new Set(prev);
-                                    next.has(node.id) ? next.delete(node.id) : next.add(node.id);
-                                    return next;
-                                });
                             return (
                                 <Fragment key={node.id}>
                                     <div
@@ -364,20 +348,6 @@ function CanvasNodesTab({
                                         </button>
                                         {selectMode || !isImage ? null : (
                                             <div className="flex shrink-0 flex-col items-center gap-0.5 pr-1.5">
-                                                {!selectMode && hasBatch ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={(event) => {
-                                                            event.stopPropagation();
-                                                            toggleBatch();
-                                                        }}
-                                                        className="grid size-7 place-items-center rounded-md opacity-55 transition hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
-                                                        aria-label={t("canvas.sidePanel.batchToggle", { count: batchImages.length })}
-                                                        title={t("canvas.sidePanel.batchToggle", { count: batchImages.length })}
-                                                    >
-                                                        <ChevronRight className={cn("size-3.5 transition-transform", batchExpanded && "rotate-90")} />
-                                                    </button>
-                                                ) : null}
                                                 <button
                                                     type="button"
                                                     onClick={() => onPreviewNode(node.id)}
@@ -390,37 +360,6 @@ function CanvasNodesTab({
                                             </div>
                                         )}
                                     </div>
-                                    {!selectMode && hasBatch && batchExpanded ? (
-                                        <div
-                                            data-node-item
-                                            className={cn("mb-1.5 mr-2 grid grid-cols-5 gap-1.5 rounded-lg border p-1.5", depth && "ml-12")}
-                                            style={{ borderColor: theme.toolbar.border, background: theme.toolbar.activeBg }}
-                                            onMouseEnter={() => onHoverNode(node.id)}
-                                            onMouseLeave={(event) => {
-                                                const to = event.relatedTarget as Element | null;
-                                                if (!to || !to.closest("[data-node-item]")) onHoverNode(null);
-                                            }}
-                                        >
-                                            {batchImages.map((image, index) => (
-                                                <button
-                                                    key={image.id}
-                                                    type="button"
-                                                    onMouseEnter={() => onHoverImage?.(node.id, image.id)}
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        onPreviewImage?.(node.id, image.id);
-                                                    }}
-                                                    className="group/batch relative aspect-square overflow-hidden rounded-md border transition hover:opacity-90"
-                                                    style={{ borderColor: theme.toolbar.border }}
-                                                    title={`${node.title || t("canvas.nodeTypes.image")} ${index + 1}/${batchImages.length}`}
-                                                    aria-label={`${node.title || t("canvas.nodeTypes.image")} ${index + 1}/${batchImages.length}`}
-                                                >
-                                                    <img src={previewUrlFor(image.storageKey) || image.content} alt="" className="size-full object-cover" />
-                                                    <span className="absolute bottom-0.5 right-0.5 rounded bg-black/55 px-1 text-[10px] leading-4 text-white">{index + 1}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    ) : null}
                                 </Fragment>
                             );
                         })}

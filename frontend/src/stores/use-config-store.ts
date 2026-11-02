@@ -64,8 +64,6 @@ export type AiConfig = {
     quality: string;
     size: string;
     background: string;
-    count: string;
-    canvasImageCount: string;
     autoFocusOnSelect: boolean;
     progressRingSkin: ProgressRingSkinId;
     seed?: string;
@@ -115,8 +113,6 @@ export const defaultConfig: AiConfig = {
     quality: "auto",
     size: "1:1",
     background: "",
-    count: "1",
-    canvasImageCount: "3",
     autoFocusOnSelect: false,
     progressRingSkin: "cyan",
 };
@@ -276,7 +272,6 @@ function hydrateConfig(stored: Partial<AiConfig>): AiConfig {
         videoWatermark: config.videoWatermark || "false",
         videoMode: config.videoMode === "reference" || config.videoMode === "text" ? config.videoMode : "frames",
         videoSelfLiftMode: config.videoSelfLiftMode === "quality" ? "quality" : "fast",
-        canvasImageCount: config.canvasImageCount || "3",
         autoFocusOnSelect: Boolean(config.autoFocusOnSelect),
         progressRingSkin: normalizeProgressRingSkin(config.progressRingSkin),
     };

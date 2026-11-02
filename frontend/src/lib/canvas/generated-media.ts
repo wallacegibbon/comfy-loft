@@ -27,11 +27,6 @@ type GeneratedFile = {
     bytes: number;
 };
 
-/** Every output of a finished run, in order. */
-function generatedFiles(config: AiConfig, run: Run): GeneratedFile[] {
-    return (run.outputs || []).map((output) => generatedFileOf(config, output));
-}
-
 /** One output of a finished run. Throws when the run has none, which is a failure the caller must report. */
 function generatedFile(config: AiConfig, run: Run, index = 0): GeneratedFile {
     const output = run.outputs?.[index];
@@ -62,9 +57,9 @@ async function imageOf(file: GeneratedFile, options: { signal?: AbortSignal }): 
     };
 }
 
-/** Every generated picture of a run, ready to become a node's content. */
-export async function generatedImages(config: AiConfig, run: Run, options: { signal?: AbortSignal } = {}): Promise<UploadedImage[]> {
-    return Promise.all(generatedFiles(config, run).map((file) => imageOf(file, options)));
+/** The picture a run made, ready to become a node's content. One run, one picture (#180). */
+export async function generatedImage(config: AiConfig, run: Run, options: { signal?: AbortSignal } = {}): Promise<UploadedImage> {
+    return imageOf(generatedFile(config, run), options);
 }
 
 /** A generated clip, with the duration the node shows. */

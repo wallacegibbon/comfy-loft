@@ -80,13 +80,11 @@ func TestApplyBindingsScalarAndSize(t *testing.T) {
 		"prompt", map[string]any{"node": "4", "input": "text"},
 		"width", map[string]any{"node": "7", "input": "width", "from": "size.width", "transform": "snap16", "default": 832},
 		"height", map[string]any{"node": "7", "input": "height", "from": "size.height", "transform": "snap16", "default": 1216},
-		"batch", map[string]any{"node": "7", "input": "batch_size", "from": "count"},
 	)
 
 	ctx := BuildContext(BuildContextParams{
 		Prompt: "a cat",
 		Size:   "1000x1000",
-		Count:  3,
 	})
 
 	bound, err := ApplyBindings(entry.Workflow, entry, ctx)
@@ -104,9 +102,6 @@ func TestApplyBindingsScalarAndSize(t *testing.T) {
 	}
 	if got := latent.Inputs()["height"]; got != 1008 {
 		t.Errorf("height = %v, want 1008", got)
-	}
-	if got := latent.Inputs()["batch_size"]; got != 3 {
-		t.Errorf("batch_size = %v, want 3", got)
 	}
 
 	// The source graph must be untouched: bindings never mutate workflows on disk.
