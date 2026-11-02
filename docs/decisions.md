@@ -6985,3 +6985,33 @@ was.
 
 **Where** `frontend/src/lib/canvas/last-canvas.ts`,
 `frontend/src/components/canvas/canvas-side-panel-canvases.tsx`, `frontend/tests/last-canvas.test.ts`.
+
+## 199. The list's header row has a height of its own
+
+**Decision** Both lists in the column draw their header through one component, `PanelHeaderRow` — 32px of fixed
+height, contents centred inside it — instead of a `div` whose height came from whatever was in it.
+
+**Why** The row's contents change while it is being used, and they are not the same height as each other: the
+type filter's "All" box is `h-7` (28px), the ghost buttons beside it are 24, the count is 16, and pressing
+**Select** takes the "All" box away. So the row was 28px with the box and 24px without it, and everything below
+it — the search box, every row — moved four pixels down and up again with each press. That is the flinch the
+report described. It is also why the two sections' rows are now the same: the canvases list's row was built from
+28px icon buttons, so switching tabs moved the list by the difference.
+
+Keeping the "All" box mounted and hiding it was the other way to stop the movement, and it is worse: it leaves an
+80px hole in a row that select mode needs for nothing, and it fixes only that one control, not the count, not the
+next thing added, and not the difference between the two sections.
+
+**Cost** The row is 32px where it used to be 24–28, so the list starts four pixels lower. A future control taller
+than the row would overflow it rather than stretch it — the row is the fixed thing, and the fix for that is to
+raise the number in one place, which is also the point.
+
+**Tested** In the browser (`/tmp/verify`, 8191/3011, its own data directory), measured with `getBoundingClientRect`:
+the elements list's visible header row is 32px and its search box sits at y=154 in all three states — before
+pressing Select, in select mode with the "All" box gone, and after cancelling — and the canvases list's header is
+also 32px at y=111, so switching tabs no longer moves the list either. The "All" box itself measures 28px, which
+is the four-pixel difference the report was seeing. `npm run check`, `npx vitest run` (156), `npm run build`.
+
+**Where** `frontend/src/components/canvas/canvas-side-panel-parts.tsx`,
+`frontend/src/components/canvas/canvas-side-panel-elements.tsx`,
+`frontend/src/components/canvas/canvas-side-panel-canvases.tsx`.
