@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"comfyui-gateway/internal/httpx"
+	"comfyloft/internal/httpx"
 )
 
 // Without INSTALL_INTO_COMFY=1 no download may start: the dangerous case is not a failed

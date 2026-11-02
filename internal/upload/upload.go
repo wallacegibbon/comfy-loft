@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/util"
 )
 
 // Media kinds. A run's media roles are typed, so an image cannot be passed where a video belongs.

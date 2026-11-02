@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"comfyui-gateway/internal/comfy"
-	"comfyui-gateway/internal/config"
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/comfy"
+	"comfyloft/internal/config"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/workflow"
 )
 
 // fakeComfy answers the three calls a scan makes, so the suite can exercise the real path

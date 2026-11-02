@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/logx"
 )
 
 // Session is one agent process, held for as long as the connection that owns it is open.

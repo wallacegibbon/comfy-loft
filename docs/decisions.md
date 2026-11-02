@@ -4905,3 +4905,53 @@ the image alive; discarding removes the record and the next sweep collects the i
 `legacy` root in `sweepUnusedCanvasFiles`, and `tests/legacy-asset-store.test.ts`.
 
 **Where** `canvas/web/src/{lib/canvas/legacy-asset-store.ts,lib/canvas/canvas-file-cleanup.ts,components/layout/legacy-assets-banner.tsx,layouts/user-layout.tsx,i18n/locales/*}`,`canvas/web/{tests/legacy-asset-store.test.ts,scripts/check-exports.cjs}`.
+
+## 146. The project's machine identity is `comfyloft`
+
+**Decision** Every identifier a machine reads is one word: the Go module is `comfyloft`, the web package
+is `comfyloft`, the plugin SDK is `@comfyloft/plugin-sdk`, the browser keys are `comfyloft:*`, the
+databases are `comfyloft` and `comfyloft-plugins`, the export marker is `app: "comfyloft"` and the JSX
+sentinel is `Symbol.for("comfyloft.jsx.fragment")`. What humans read is unchanged: **Comfy Loft**.
+
+**Why one word, after #138 chose the hyphen** A hyphen is harmless in a filename and harmful everywhere
+a machine wants the name as a token. Environment variables cannot contain one, so the hyphenated form
+forces `COMFY_LOFT_CANVAS` — three words, one of them wrong — where `COMFYLOFT_CANVAS` is just the name.
+The same shape repeats for binary names, domains and anything typed from memory or spoken aloud. #138
+had already measured the one-word handle when it picked the name: `comfyloft` returned zero repositories
+on GitHub. It kept the hyphen only because the product name was written that way, which is a display
+question, not an identifier one.
+
+**Why now and not later** Cost of the change is entirely in the contracts (`@comfy-loft/plugin-sdk`, the
+browser keys, the export marker) and it is at its lowest point today: seven official plugins in this
+repository, no third-party plugin, and #143's standing judgement that this stage has no data worth a
+compatibility shim. After a third-party plugin imports the old scope, the same change becomes a breaking
+release.
+
+**What stayed, on purpose**
+
+- **The display name `Comfy Loft`** — README heading, window title, plugin descriptions. Two words read
+  better than one, and this is the only place the product speaks as a name.
+- **The gateway binary `comfyui-gateway`** and the config directory `~/.config/comfyui-gateway/alayacore`
+  (#138: "that is the binary, not the product"). The binary is named for what it faces; the config
+  directory holds the operator's hand-written `model.conf` with a real API key in it, and moving it would
+  make an agent silently lose its models.
+- **`comfy-loft:asset_store`** — the one-time exit for the deleted asset library (#144, #145) reads that
+  exact key because that is what the old build wrote. Renaming it would have broken the only path that
+  rescues that data.
+
+**What it costs** The old `comfy-loft:*` localStorage entries and the `comfy-loft` / `comfy-loft-plugins`
+databases are orphaned, not deleted — the next load starts empty, which is #143's accepted trade. Nothing
+in the app reads them again. Zips exported by an older build still import: the importer never validated
+`app`, which #143 recorded as the one place the old name survives. If that orphaned data ever has to be
+rescued, the pattern already exists in `legacy-asset-store.ts`.
+
+**Tested** `make check`, `npm run check` (i18n, exports, prettier, `tsc`), 143 canvas tests, `make build`,
+`make web`, and one official plugin (`sticky-note`) installed against `@comfyloft/plugin-sdk` and built
+with esbuild. In a browser: the app boots to an empty canvas, writes `comfyloft:canvas_store` and
+`comfyloft:plugin_store` into a database named `comfyloft`, stores `comfyloft:theme_store` and
+`comfyloft:ai_config_store` in localStorage, leaves the old `comfy-loft` databases and keys untouched, and
+logs no console errors.
+
+**Where** `go.mod`, 61 Go files' import paths, `canvas/plugins/canvas/{sdk,html,markdown,panorama,registry,sticky-note,svg,template}/**`,
+`canvas/web/{package.json,package-lock.json,src/{i18n/index.ts,lib/canvas/canvas-export.ts,services/localforage-databases.ts,stores/**,types/canvas-export.ts}}`,
+`docs/gateway.md`.

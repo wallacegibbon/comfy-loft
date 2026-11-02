@@ -21,7 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"comfyui-gateway/internal/agent"
+	"comfyloft/internal/agent"
 )
 
 // agentWorkspaceKey is the directory (and URL) name for a session: readable, and unique by hash.

@@ -11,7 +11,7 @@ package sysinfo
 import (
 	"encoding/json"
 
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/util"
 )
 
 // GPU is one device as ComfyUI sees it. There is no load or temperature here because ComfyUI does

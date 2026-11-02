@@ -14,8 +14,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"comfyui-gateway/internal/agent"
-	"comfyui-gateway/internal/httpx"
+	"comfyloft/internal/agent"
+	"comfyloft/internal/httpx"
 )
 
 // mcpRequest is one JSON-RPC call.
@@ -77,7 +77,7 @@ func (s *Server) handleMCP(ctx *httpx.Ctx) error {
 		return mcpReply(ctx, request.ID, map[string]any{
 			"protocolVersion": mcpProtocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "comfyui-gateway", "version": "0.1.0"},
+			"serverInfo":      map[string]any{"name": "comfyloft", "version": "0.1.0"},
 		})
 	case "tools/list":
 		return mcpReply(ctx, request.ID, map[string]any{"tools": s.mcpTools()})

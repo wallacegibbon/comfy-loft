@@ -23,7 +23,7 @@ export function getReact(): typeof React {
 }
 
 // --- 类型完整的 hooks 转发:签名取自 @types/react,运行时转发到宿主 React ---
-// 这样插件作者可以直接 `import { useState } from "@comfy-loft/plugin-sdk"`,
+// 这样插件作者可以直接 `import { useState } from "@comfyloft/plugin-sdk"`,
 // 无需再从 runtime 里解构 React。
 
 export const useState: typeof React.useState = ((...args: unknown[]) => (getReact().useState as (...a: unknown[]) => unknown)(...args)) as typeof React.useState;

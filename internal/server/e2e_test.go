@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"comfyui-gateway/internal/config"
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/config"
+	"comfyloft/internal/logx"
 )
 
 // fakeComfy is a minimal ComfyUI stand-in: just enough protocol for the generation

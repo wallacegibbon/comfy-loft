@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"comfyui-gateway/internal/setup"
-	"comfyui-gateway/internal/util"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/setup"
+	"comfyloft/internal/util"
+	"comfyloft/internal/workflow"
 )
 
 // mainModelInfo describes a pack's main-model selector.

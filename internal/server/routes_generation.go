@@ -3,7 +3,7 @@ package server
 import (
 	"net/http"
 
-	"comfyui-gateway/internal/httpx"
+	"comfyloft/internal/httpx"
 )
 
 // routesGeneration registers the file route.

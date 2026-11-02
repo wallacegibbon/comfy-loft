@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"comfyui-gateway/internal/httpx"
+	"comfyloft/internal/httpx"
 )
 
 // containsString reports whether items contains target.

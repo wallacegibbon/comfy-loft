@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/util"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/util"
+	"comfyloft/internal/workflow"
 )
 
 // modelLoaderClasses are the node types that produce a MODEL output, i.e. the

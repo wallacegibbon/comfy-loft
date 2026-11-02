@@ -20,12 +20,12 @@ import (
 	"strconv"
 	"strings"
 
-	"comfyui-gateway/internal/generate"
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/task"
-	"comfyui-gateway/internal/upload"
-	"comfyui-gateway/internal/util"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/generate"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/task"
+	"comfyloft/internal/upload"
+	"comfyloft/internal/util"
+	"comfyloft/internal/workflow"
 )
 
 func (s *Server) routesRuns(mux *http.ServeMux) {

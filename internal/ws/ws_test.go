@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"comfyui-gateway/internal/comfy"
+	"comfyloft/internal/comfy"
 )
 
 // startEcho runs a server whose socket echoes every message back, upper-cased.

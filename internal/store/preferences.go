@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/util"
 )
 
 // Skins records which canvas skins the user has unlocked.

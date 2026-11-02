@@ -18,9 +18,9 @@ import (
 	"syscall"
 	"time"
 
-	"comfyui-gateway/internal/config"
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/server"
+	"comfyloft/internal/config"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/server"
 )
 
 func main() {

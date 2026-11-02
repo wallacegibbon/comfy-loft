@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/logx"
 )
 
 func newStore(t *testing.T) *Store {

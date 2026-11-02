@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/util"
 )
 
 // LoaderOptions maps a node class (e.g. UNETLoader) to the model files ComfyUI

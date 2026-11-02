@@ -4,8 +4,8 @@ import (
 	"io"
 	"testing"
 
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/logx"
 )
 
 // errorCode returns the stable code of an error produced by PlanMedia.

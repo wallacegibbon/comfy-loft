@@ -15,12 +15,12 @@ import (
 	"sync"
 	"time"
 
-	"comfyui-gateway/internal/config"
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/setup"
-	"comfyui-gateway/internal/store"
-	"comfyui-gateway/internal/util"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/config"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/setup"
+	"comfyloft/internal/store"
+	"comfyloft/internal/util"
+	"comfyloft/internal/workflow"
 )
 
 // Source is one place a resource can be downloaded or copied from.

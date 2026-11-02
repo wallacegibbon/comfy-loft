@@ -8,10 +8,10 @@ import (
 	"context"
 	"net/http"
 
-	"comfyui-gateway/internal/generate"
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/task"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/generate"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/task"
+	"comfyloft/internal/workflow"
 )
 
 // runSpec is one validated generation, ready to be queued.

@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/prompt"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/prompt"
+	"comfyloft/internal/workflow"
 )
 
 // optionalString reads a body field as a pointer, so "absent" and "empty" stay different.

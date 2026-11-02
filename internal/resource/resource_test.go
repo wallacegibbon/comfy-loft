@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"comfyui-gateway/internal/config"
+	"comfyloft/internal/config"
 )
 
 func TestTargetParts(t *testing.T) {

@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"comfyui-gateway/internal/config"
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/setup"
+	"comfyloft/internal/config"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/setup"
 )
 
 // comfyLayout stands in for the folder layout a running ComfyUI reports. The gateway no

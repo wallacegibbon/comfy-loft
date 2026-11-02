@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/util"
 )
 
 // sampleGraph is a minimal but realistic ComfyUI API graph: a text encoder, a

@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/logx"
 )
 
 func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {

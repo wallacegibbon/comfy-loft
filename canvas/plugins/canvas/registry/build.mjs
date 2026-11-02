@@ -42,7 +42,7 @@ for (const plugin of OFFICIAL) {
         target: "es2020",
         // automatic JSX → SDK 的 jsx-runtime(内部用宿主 React),react external
         jsx: "automatic",
-        jsxImportSource: "@comfy-loft/plugin-sdk",
+        jsxImportSource: "@comfyloft/plugin-sdk",
         loader: { ".ts": "ts", ".tsx": "tsx", ".css": "text" },
         external: ["react", "react-dom"],
         minify: true,

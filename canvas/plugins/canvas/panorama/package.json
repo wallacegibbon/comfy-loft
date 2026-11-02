@@ -10,7 +10,7 @@
         "typecheck": "tsc --noEmit"
     },
     "devDependencies": {
-        "@comfy-loft/plugin-sdk": "file:../sdk",
+        "@comfyloft/plugin-sdk": "file:../sdk",
         "@types/react": "19.1.12",
         "typescript": "^5"
     }

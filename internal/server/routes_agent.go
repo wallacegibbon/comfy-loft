@@ -9,9 +9,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"comfyui-gateway/internal/agent"
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/ws"
+	"comfyloft/internal/agent"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/ws"
 )
 
 // routesAgent registers the agent routes.

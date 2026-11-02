@@ -6,7 +6,7 @@ import zhCN from "@/i18n/locales/zh-CN";
 
 export type AppLocale = "zh-CN" | "en-US";
 
-const LOCALE_STORAGE_KEY = "comfy-loft:locale";
+const LOCALE_STORAGE_KEY = "comfyloft:locale";
 
 /**
  * The stored language, when there is a place to store it.

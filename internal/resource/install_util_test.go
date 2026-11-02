@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/logx"
 )
 
 func TestHumanBytes(t *testing.T) {

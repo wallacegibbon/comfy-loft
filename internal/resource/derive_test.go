@@ -9,7 +9,7 @@ import (
 	"slices"
 	"testing"
 
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/workflow"
 )
 
 const deriveCatalogue = `{

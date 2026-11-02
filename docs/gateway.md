@@ -4,6 +4,11 @@ The gateway behind Comfy Loft: a local service that runs ComfyUI workflows. It i
 — `main.go`, `internal/`, and the runtime assets (`workflows/`, `resources.json`, `prompts/`) live at the
 top level, while the canvas frontend sits beside them in `canvas/`.
 
+Two names, on purpose (docs/decisions.md #146): the **binary** is `comfyui-gateway`, because what it faces
+is ComfyUI, and its module path and config directory follow that. The **project's** own identity is
+`comfyloft` — the Go module is `comfyloft`, and so are the npm package, the browser storage keys and the
+export marker. Display text says `Comfy Loft`.
+
 It is a **single statically linked binary**: no Node runtime, no `node_modules`, no
 Python virtualenv. Configuration comes from the environment; all mutable state lives
 in `data/`.

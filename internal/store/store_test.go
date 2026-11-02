@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/logx"
 )
 
 func quietLogger() *logx.Logger { return logx.NewWithWriter("test", os.Stderr) }

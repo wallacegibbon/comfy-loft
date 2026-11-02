@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"strings"
 
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/util"
 )
 
 // InputLimits are engine-wide bounds that are not a property of one workflow.

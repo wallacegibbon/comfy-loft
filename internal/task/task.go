@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/util"
 )
 
 // Terminal statuses never change again.

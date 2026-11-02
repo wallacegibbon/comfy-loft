@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"comfyui-gateway/internal/config"
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/sysinfo"
-	"comfyui-gateway/internal/util"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/config"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/sysinfo"
+	"comfyloft/internal/util"
+	"comfyloft/internal/workflow"
 )
 
 // routes registers the full HTTP surface.

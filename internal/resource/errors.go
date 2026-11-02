@@ -3,7 +3,7 @@ package resource
 import (
 	"net/http"
 
-	"comfyui-gateway/internal/httpx"
+	"comfyloft/internal/httpx"
 )
 
 // httpxBadRequest keeps the call sites readable while still using the shared error

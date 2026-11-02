@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"comfyui-gateway/internal/config"
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/config"
+	"comfyloft/internal/logx"
 )
 
 // One rule: the parent of the custom_nodes folder ComfyUI reports. Nothing else is

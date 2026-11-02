@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"comfyui-gateway/internal/util"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/util"
+	"comfyloft/internal/workflow"
 )
 
 // loaderInfo is the resolved option set for one loader node class.

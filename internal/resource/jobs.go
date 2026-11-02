@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/util"
 )
 
 // Install jobs speak the same vocabulary as the canvas resource panel. These strings

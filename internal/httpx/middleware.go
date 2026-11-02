@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"comfyui-gateway/internal/config"
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/config"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/util"
 )
 
 // Middleware is a standard HTTP middleware.

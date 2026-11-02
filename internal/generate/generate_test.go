@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/workflow"
 )
 
 // loraGraph is a UNETLoader feeding a sampler, which is the shape LoRA injection

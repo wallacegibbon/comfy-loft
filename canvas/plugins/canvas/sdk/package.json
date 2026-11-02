@@ -1,5 +1,5 @@
 {
-    "name": "@comfy-loft/plugin-sdk",
+    "name": "@comfyloft/plugin-sdk",
     "version": "0.1.0",
     "private": true,
     "type": "module",

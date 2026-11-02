@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"comfyui-gateway/internal/config"
+	"comfyloft/internal/config"
 )
 
 // startMCPGateway is a gateway whose agent is the fake binary and whose operator configuration has one

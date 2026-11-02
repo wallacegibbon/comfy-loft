@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"comfyui-gateway/internal/comfy"
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/comfy"
+	"comfyloft/internal/logx"
 )
 
 // Events emitted by ComfyUI's /ws that carry information we cannot get from

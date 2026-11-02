@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/workflow"
 )
 
 // pinnedCommitPattern is a full git sha, which is the only thing that cannot move under us.

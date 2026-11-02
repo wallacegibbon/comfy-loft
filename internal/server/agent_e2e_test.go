@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"comfyui-gateway/internal/comfy"
+	"comfyloft/internal/comfy"
 )
 
 // The fake agent speaks AlayaCore's wire, including the part that matters for a reload: `--session <file>`

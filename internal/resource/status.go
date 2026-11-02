@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"comfyui-gateway/internal/setup"
-	"comfyui-gateway/internal/util"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/setup"
+	"comfyloft/internal/util"
+	"comfyloft/internal/workflow"
 )
 
 // matchResult is the outcome of looking for one resource on disk.

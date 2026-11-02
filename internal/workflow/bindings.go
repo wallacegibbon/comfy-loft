@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/util"
 )
 
 // Media is a file that has been uploaded to ComfyUI's input directory.

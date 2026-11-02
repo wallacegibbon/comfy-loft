@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"comfyui-gateway/internal/httpx"
+	"comfyloft/internal/httpx"
 )
 
 // ApplyOutputFormat validates the requested container in `params` and fills the quality value the

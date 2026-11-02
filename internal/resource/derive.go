@@ -19,8 +19,8 @@ import (
 	"sort"
 	"strings"
 
-	"comfyui-gateway/internal/util"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/util"
+	"comfyloft/internal/workflow"
 )
 
 // DerivedDependency is everything one workflow's graphs ask for.

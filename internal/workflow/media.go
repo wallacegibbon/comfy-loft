@@ -11,8 +11,8 @@ package workflow
 import (
 	"net/http"
 
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/util"
 )
 
 // MediaLimit is how much of one media kind a workflow accepts.

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/util"
 )
 
 // ModelDirKeys maps a logical model directory to the on-disk names ComfyUI may use

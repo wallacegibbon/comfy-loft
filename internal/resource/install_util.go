@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/logx"
 )
 
 // fatalInstallError marks a failure that no other mirror can fix, so the caller must

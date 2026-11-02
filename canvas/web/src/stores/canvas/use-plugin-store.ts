@@ -38,7 +38,7 @@ export const usePluginStore = create<PluginStore>()(
             remove: (id) => set((state) => ({ plugins: state.plugins.filter((item) => item.id !== id) })),
         }),
         {
-            name: "comfy-loft:plugin_store",
+            name: "comfyloft:plugin_store",
             storage: createJSONStorage(() => localForageStorage),
         },
     ),

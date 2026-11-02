@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/util"
 )
 
 // manualStepError reports work the user has to run themselves: the summary is the one-line

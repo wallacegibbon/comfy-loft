@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/util"
 )
 
 // registryFileName is the single index file inside the workflow directory.

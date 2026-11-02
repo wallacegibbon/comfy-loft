@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"comfyui-gateway/internal/config"
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/config"
+	"comfyloft/internal/logx"
 )
 
 func testConfig(t *testing.T) *config.Config {

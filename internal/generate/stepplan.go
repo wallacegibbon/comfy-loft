@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/workflow"
 )
 
 // StepPlan describes how to map sampler progress onto one continuous bar.

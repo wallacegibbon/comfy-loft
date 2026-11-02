@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"comfyui-gateway/internal/comfy"
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/util"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/comfy"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/util"
+	"comfyloft/internal/workflow"
 )
 
 // OutputFile is one retrieved artifact.

@@ -14,12 +14,12 @@ import (
 	"sync"
 	"time"
 
-	"comfyui-gateway/internal/comfy"
-	"comfyui-gateway/internal/config"
-	"comfyui-gateway/internal/httpx"
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/util"
-	"comfyui-gateway/internal/workflow"
+	"comfyloft/internal/comfy"
+	"comfyloft/internal/config"
+	"comfyloft/internal/httpx"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/util"
+	"comfyloft/internal/workflow"
 )
 
 // Problem is one reason a workflow is not usable right now.

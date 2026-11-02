@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/logx"
 )
 
 // bindings builds an OrderedMap the way JSON decoding does: keys in order, values by key.

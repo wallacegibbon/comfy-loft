@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"comfyui-gateway/internal/logx"
-	"comfyui-gateway/internal/util"
+	"comfyloft/internal/logx"
+	"comfyloft/internal/util"
 )
 
 func newStoreAt(t *testing.T, dataDir string, retentionDays int) *Store {

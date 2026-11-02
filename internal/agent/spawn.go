@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"comfyui-gateway/internal/logx"
+	"comfyloft/internal/logx"
 )
 
 // Process is one running `alayacore --rawio`, owned by one request.

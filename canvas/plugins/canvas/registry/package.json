@@ -8,7 +8,7 @@
         "build": "node build.mjs"
     },
     "devDependencies": {
-        "@comfy-loft/plugin-sdk": "file:../sdk",
+        "@comfyloft/plugin-sdk": "file:../sdk",
         "esbuild": "^0.25.0"
     }
 }
