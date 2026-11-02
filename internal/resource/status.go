@@ -114,7 +114,7 @@ func (m *Manager) inventoryFor(dir, root string) []inventoryItem {
 	}
 
 	if classType, ok := loaderClassFor(dir); ok {
-		for _, name := range m.setup.LoaderOptions()[classType] {
+		for _, name := range m.loaderOptions()[classType] {
 			add(name, "", 0, true)
 		}
 	}
@@ -318,11 +318,7 @@ func (m *Manager) resourceAliasFor(resource *Resource) (string, bool) {
 			break
 		}
 	}
-	if input == "" {
-		return "", false
-	}
-	// A nil setup means no ComfyUI scan yet (or a unit test): no aliases to resolve.
-	if m.setup == nil {
+	if input == "" || m.setup == nil {
 		return "", false
 	}
 	target := m.setup.ModelAliasFor(classType, input, file)
@@ -523,7 +519,7 @@ func (m *Manager) Status() *Status {
 	m.mu.Unlock()
 
 	installedModels := map[string]bool{}
-	for _, name := range m.setup.LoaderOptions()["UNETLoader"] {
+	for _, name := range m.loaderOptions()["UNETLoader"] {
 		installedModels[name] = true
 	}
 
@@ -650,7 +646,7 @@ func (m *Manager) Status() *Status {
 		IndexVersion:   util.Stringify(index.Version),
 		Channel:        index.Channel,
 		ComfyRoot:      root,
-		ComfyReachable: m.setup.Status().ComfyReachable,
+		ComfyReachable: m.comfyReachable(),
 		ModelInstall:   modelInstall,
 		RuntimeDeps:    runtimeDeps(),
 		ModelRoots:     m.modelRootsView(root),
@@ -744,7 +740,7 @@ func (m *Manager) packStatus(pack *Pack, providers *providerIndex, byID map[stri
 	if mainModel != nil {
 		mainModel.Available = false
 		for _, id := range mainModel.WorkflowIDs {
-			if m.setup.WorkflowStatus(id).Available {
+			if m.workflowAvailable(id) {
 				mainModel.Available = true
 				break
 			}
@@ -827,7 +823,7 @@ func (m *Manager) workflowDependencies(pack *Pack, providers *providerIndex, byI
 			}
 		}
 
-		availability := m.setup.WorkflowStatus(workflowID)
+		availability := m.workflowStatus(workflowID)
 		label := workflowID
 		variantLabels := map[string]string{}
 		modelVisible := true
@@ -925,7 +921,7 @@ func (m *Manager) workflowMainModel(pack *Pack, base *MainModel, workflowID stri
 
 	installed := false
 	if selected != "" {
-		for _, name := range m.setup.LoaderOptions()["UNETLoader"] {
+		for _, name := range m.loaderOptions()["UNETLoader"] {
 			if name == selected {
 				installed = true
 				break

@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -524,7 +525,7 @@ func (m *Manager) installNodeLike(ctx context.Context, resource *Resource, item 
 		if err := os.MkdirAll(customNodes, 0o755); err != nil {
 			return targetError(err)
 		}
-		archive := filepath.Join(os.TempDir(), util.RandomID("node-")+filepath.Ext(reference))
+		archive := filepath.Join(os.TempDir(), util.RandomID("node-")+archiveSuffix(reference))
 		if err := m.downloadFile(ctx, reference, archive, "", item); err != nil {
 			if isFatal(err) || ctx.Err() != nil {
 				return err
@@ -540,7 +541,7 @@ func (m *Manager) installNodeLike(ctx context.Context, resource *Resource, item 
 		extractErr := extractNodeArchive(ctx, archive, destination)
 		_ = os.Remove(archive)
 		if extractErr != nil {
-			return fmt.Errorf("extraction failed: %w", extractErr)
+			return fmt.Errorf("extracting the archive from %s failed: %w", hostOf(reference), extractErr)
 		}
 		return nil
 	}
@@ -791,6 +792,25 @@ func extractNodeArchive(ctx context.Context, archive, destination string) error 
 		return err
 	}
 	return nil
+}
+
+// archiveSuffix is the container extension a node source names.
+//
+// Read from the URL's path rather than from the whole string: `…/pack.zip?download=1` is the same archive
+// as `…/pack.zip`, and `pack.tar.gz` has two suffixes where filepath.Ext answers only the last — which the
+// extractor would refuse as an unsupported format.
+func archiveSuffix(reference string) string {
+	path := reference
+	if parsed, err := url.Parse(reference); err == nil && parsed.Path != "" {
+		path = parsed.Path
+	}
+	lowered := strings.ToLower(path)
+	for _, suffix := range []string{".tar.gz", ".tgz", ".zip"} {
+		if strings.HasSuffix(lowered, suffix) {
+			return suffix
+		}
+	}
+	return filepath.Ext(lowered)
 }
 
 // extractArchive unpacks a .zip or .tar.gz into a directory.

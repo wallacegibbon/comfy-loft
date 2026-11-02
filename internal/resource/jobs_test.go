@@ -349,3 +349,30 @@ func TestInstallJobFinishesWithDoneStatus(t *testing.T) {
 		t.Errorf("bundled node was not installed: %v", err)
 	}
 }
+
+// A manager without a setup has no ComfyUI to ask, and the status projection is what a unit test or a
+// gateway that never scanned sees. It has to answer — an empty catalogue, not a panic.
+func TestStatusWithoutASetupAnswersInsteadOfPanicking(t *testing.T) {
+	manager := &Manager{
+		cfg:       &config.Config{RootDir: t.TempDir()},
+		lock:      map[string]any{"version": 1, "installed": map[string]any{}},
+		jobs:      map[string]*Job{},
+		inventory: map[string]inventoryEntry{},
+	}
+	status := manager.Status()
+	if status == nil {
+		t.Fatal("Status returned nothing")
+	}
+	if status.ComfyReachable {
+		t.Error("a manager with no setup reported ComfyUI as reachable")
+	}
+	if len(status.Resources) != 0 || len(status.Packs) != 0 {
+		t.Errorf("status = %+v, want an empty catalogue", status)
+	}
+	if manager.loaderOptions()["UNETLoader"] != nil {
+		t.Error("loader options came from nowhere")
+	}
+	if manager.workflowAvailable("image-anything") {
+		t.Error("a workflow was available without a scan")
+	}
+}

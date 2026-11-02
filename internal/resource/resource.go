@@ -510,3 +510,34 @@ func normalizeRelName(value string) string {
 	normalized = strings.TrimPrefix(normalized, "/")
 	return strings.TrimSpace(normalized)
 }
+
+// loaderOptions is ComfyUI's option lists, or none when there is no ComfyUI to ask.
+//
+// A manager always has a setup in the gateway; a unit test (or a gateway that never scanned) may not,
+// and every reader of these lists is a status projection rather than a decision, so an empty answer is
+// the honest one instead of a panic.
+func (m *Manager) loaderOptions() workflow.LoaderOptions {
+	if m.setup == nil {
+		return workflow.LoaderOptions{}
+	}
+	return m.setup.LoaderOptions()
+}
+
+// comfyReachable reports what the last scan saw, and false when nothing ever asked.
+func (m *Manager) comfyReachable() bool {
+	if m.setup == nil {
+		return false
+	}
+	return m.setup.Status().ComfyReachable
+}
+
+// workflowStatus is one workflow's availability, and "not available" without a scan to ask.
+func (m *Manager) workflowStatus(id string) setup.Availability {
+	if m.setup == nil {
+		return setup.Availability{}
+	}
+	return m.setup.WorkflowStatus(id)
+}
+
+// workflowAvailable is workflowStatus reduced to the yes/no the pack rows use.
+func (m *Manager) workflowAvailable(id string) bool { return m.workflowStatus(id).Available }
