@@ -1,19 +1,35 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
-import { useSidePanelInset } from "@/stores/canvas/use-canvas-side-panel-store";
+import { CANVAS_ABOVE_DOCK_BOTTOM, CANVAS_CHROME_GUTTER, useCanvasChromeWidth } from "@/stores/canvas/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 
 export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { nodes: CanvasNodeData[]; viewport: ViewportTransform; viewportSize: { width: number; height: number }; onViewportChange: (viewport: ViewportTransform) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    // Same left edge as the zoom dock under it, so the column is one straight line (#191).
-    const left = useSidePanelInset(12);
+    // A popover on the compass button that opens it: the compass is the first button in the dock, and this
+    // sits directly above the dock, on the column's left edge (#191). It used to be pushed out of the
+    // panel's way, which put it in the middle of the board instead of above its own button.
+    // As wide as the column it hangs off, so the minimap is one more box on the same left and right edges
+    // rather than a 240px patch in the corner (#191). The map inside is drawn from the measured box, not from
+    // a constant: the width is a clamped CSS length, so the only place that knows what it came out as is the
+    // element itself.
+    const chromeWidth = useCanvasChromeWidth();
     const containerRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
-    const width = 240;
+    const [width, setWidth] = useState(240);
     const height = 160;
+
+    useLayoutEffect(() => {
+        const element = containerRef.current;
+        if (!element) return;
+        const measure = () => setWidth(Math.round(element.getBoundingClientRect().width));
+        measure();
+        const observer = new ResizeObserver(measure);
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, []);
 
     const { worldBounds, scale, offset } = useMemo(() => {
         if (!nodes.length) {
@@ -48,7 +64,7 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
             scale: nextScale,
             offset: { x: (width - mapContentW) / 2, y: (height - mapContentH) / 2 },
         };
-    }, [nodes]);
+    }, [height, nodes, width]);
 
     const toMinimap = useCallback(
         (worldX: number, worldY: number) => {
@@ -99,7 +115,10 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
     };
 
     return (
-        <div className="absolute bottom-24 z-50 overflow-hidden rounded-lg border shadow-2xl backdrop-blur-sm" style={{ left, width, height, background: theme.toolbar.panel, borderColor: theme.toolbar.border }}>
+        <div
+            className="absolute z-[70] overflow-hidden rounded-lg border shadow-2xl backdrop-blur-sm"
+            style={{ left: CANVAS_CHROME_GUTTER, bottom: CANVAS_ABOVE_DOCK_BOTTOM, width: chromeWidth, height, background: theme.toolbar.panel, borderColor: theme.toolbar.border }}
+        >
             <div
                 ref={containerRef}
                 className="relative h-full w-full cursor-crosshair"

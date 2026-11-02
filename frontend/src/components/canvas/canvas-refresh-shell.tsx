@@ -1,4 +1,4 @@
-import { CANVAS_CHROME_GAP, CANVAS_CHROME_GUTTER, CANVAS_SIDE_PANEL_BOTTOM, CANVAS_TOP_BAR_ROW, CANVAS_ZOOM_DOCK_HEIGHT, useCanvasChromeWidth, useCanvasSidePanelStore } from "@/stores/canvas/use-canvas-side-panel-store";
+import { CANVAS_CHROME_GAP, CANVAS_CHROME_GUTTER, CANVAS_ABOVE_DOCK_BOTTOM, CANVAS_TOP_BAR_ROW, CANVAS_ZOOM_DOCK_HEIGHT, useCanvasChromeWidth, useCanvasSidePanelStore } from "@/stores/canvas/use-canvas-side-panel-store";
 
 /**
  * The board's frame, drawn while the canvas loads.
@@ -32,7 +32,7 @@ export function CanvasRefreshShell() {
             </div>
 
             {panelOpen ? (
-                <div className="absolute z-50 rounded-xl border shadow-2xl backdrop-blur-sm" style={{ ...frame, top: CANVAS_TOP_BAR_ROW, bottom: CANVAS_SIDE_PANEL_BOTTOM }} aria-hidden="true">
+                <div className="absolute z-50 rounded-xl border shadow-2xl backdrop-blur-sm" style={{ ...frame, top: CANVAS_TOP_BAR_ROW, bottom: CANVAS_ABOVE_DOCK_BOTTOM }} aria-hidden="true">
                     <div className="absolute left-4 top-4 h-6 w-24 rounded-sm bg-current opacity-10" />
                     <div className="absolute inset-x-4 top-14 h-8 rounded-md bg-current opacity-10" />
                 </div>

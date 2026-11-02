@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision } from "@/services/image-storage";
 import {
     CANVAS_CHROME_GUTTER,
-    CANVAS_SIDE_PANEL_BOTTOM,
+    CANVAS_ABOVE_DOCK_BOTTOM,
     CANVAS_SIDE_PANEL_MAX_WIDTH,
     CANVAS_SIDE_PANEL_MIN_WIDTH,
     CANVAS_SIDE_PANEL_MOTION_MS,
@@ -107,7 +107,7 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
                 width: chromeWidth,
                 left: CANVAS_CHROME_GUTTER,
                 top: CANVAS_TOP_BAR_ROW,
-                bottom: CANVAS_SIDE_PANEL_BOTTOM,
+                bottom: CANVAS_ABOVE_DOCK_BOTTOM,
                 background: theme.toolbar.panel,
                 borderColor: theme.toolbar.border,
                 color: theme.node.text,

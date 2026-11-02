@@ -20,8 +20,8 @@ export const CANVAS_CHROME_GAP = 8;
 export const CANVAS_ZOOM_DOCK_HEIGHT = 56;
 /** The bar's row: the top bar is this tall and the bar itself is centred in it. */
 export const CANVAS_TOP_BAR_ROW = 64;
-/** Where the panel stops, measured from the bottom of the board: the dock and the gaps around it. */
-export const CANVAS_SIDE_PANEL_BOTTOM = CANVAS_CHROME_GUTTER + CANVAS_ZOOM_DOCK_HEIGHT + CANVAS_CHROME_GAP;
+/** The bottom offset of anything that floats above the dock: the dock itself, the gutter under it, one gap. */
+export const CANVAS_ABOVE_DOCK_BOTTOM = CANVAS_CHROME_GUTTER + CANVAS_ZOOM_DOCK_HEIGHT + CANVAS_CHROME_GAP;
 /**
  * What the bar at the right end of the row needs, gutter and gap included, so the column can stop before
  * it. Measured from the default contents (the system readout and five buttons); a little slack either way
@@ -77,20 +77,6 @@ export const useCanvasSidePanelStore = create<CanvasSidePanelStore>((set, get) =
         set({ panelOpen: open });
     },
 }));
-
-/**
- * Where a floating overlay that is *not* part of the column should sit, measured from the left edge.
- *
- * The minimap is the only user: it is a map the user toggles, not a piece of chrome, so it steps over the
- * column — the gutter when the panel is shut, and the gutter, the panel and `gap` when it is open. The
- * zoom dock does not use this any more: it is the foot of the column and stays where the column is, so
- * opening the panel shortens the panel instead of pushing the dock into the middle of the board.
- */
-export function useSidePanelInset(gap: number) {
-    const open = useCanvasSidePanelStore((state) => state.panelOpen);
-    const width = useCanvasSidePanelStore((state) => state.width);
-    return open ? CANVAS_CHROME_GUTTER + width + gap : CANVAS_CHROME_GUTTER;
-}
 
 /**
  * The width the left-hand chrome shares, as a CSS length.

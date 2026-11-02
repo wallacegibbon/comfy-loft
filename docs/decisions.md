@@ -6595,8 +6595,9 @@ the same frame, no close button, and the skip footer with the new hint.
 
 **Decision** The bar at the top left, the side panel and the zoom dock are one column — same width, same
 left edge, same radius, same shadow — and they are *stacked*: the bar on top, the panel under it, the dock
-at its foot. The panel's bottom edge *is* the dock's height plus the two gaps (`CANVAS_SIDE_PANEL_BOTTOM`),
-so opening the panel shortens the panel and moves nothing else.
+at its foot. The panel's bottom edge *is* the dock's height plus the two gaps (`CANVAS_ABOVE_DOCK_BOTTOM`),
+so opening the panel shortens the panel and moves nothing else. The canvas name and its divider sit at the
+right end of the bar (`ml-auto`), so the column has one left edge *and* one right edge.
 
 The width is the panel's `width` in `use-canvas-side-panel-store` (280 to start, 220–480), so the drag
 handle on its right edge resizes the whole column. `useCanvasChromeWidth()` hands it over as a CSS length,
@@ -6609,8 +6610,15 @@ screen rather than the stored one, so the clamp cannot leave a dead zone under t
 height plus two gaps: a panel that guessed would overlap the dock or leave a hole that moves with the
 window.
 
-The minimap is the one thing that is *not* in the column — it is a map the user toggles, not chrome — so
-`useSidePanelInset` keeps the step-over rule for it alone.
+The minimap hangs off the compass button that opens it: the same left edge, the column's width, and its
+bottom on `CANVAS_ABOVE_DOCK_BOTTOM`, so it appears directly above the dock the way a menu appears above its
+trigger. It used to be pushed out of the panel's way and sized 240×160, which left it floating in the middle
+of the board at a width of its own — a third version of this entry, from the same two screenshots. Its box is
+a clamped CSS length, so the map is drawn from the box it *measured* (`ResizeObserver`), not from a constant:
+the only thing that knows what a `min()` came out as is the element.
+
+`useSidePanelInset` — the step-over rule — is gone with it: nothing on the board sits beside the panel any
+more.
 
 **Why** Three boxes on one edge at three widths read as three unrelated panels. And the first version of
 this got the stacking wrong: it kept the old rule that pushes the dock out of the panel's way (`left =
@@ -6618,17 +6626,20 @@ width + gap`), which on a 740px-wide window left the bottom-left corner empty an
 the middle of the board. That is a staircase, not a column — the screenshot that came back showed it, and
 this entry is the second version.
 
-**Cost** The bar at the top and the dock now take the panel's width, so a wide panel makes them wide: at
-480 the bar has slack and the dock's slider stretches. Below `100vw - 300px` the column stops shrinking the
-way it was dragged: the three boxes stay equal, but they are narrower than the stored number until the
-window grows or the panel is dragged in.
+**Cost** The bar at the top, the dock and the minimap now take the panel's width, so a wide panel makes them
+wide: at 480 the bar has slack and the dock's slider stretches, and the minimap is a wide letterbox rather
+than a map-sized square. Below `100vw - 300px` the column stops shrinking the way it was dragged: the boxes
+stay equal, but they are narrower than the stored number until the window grows or the panel is dragged in.
 
 **Tested** `npm run check`, `npx vitest run` (155), `make check`. In the browser (`/tmp/verify`, 8191/3001),
 measured with `getBoundingClientRect`, three window sizes: 573px viewport with 348 stored — bar, panel and
 dock all 12 → 285 (273 wide, clamped), right bar 297 → 561 inside the window; 709px viewport with 480
 stored — all three 12 → 421 (409 wide, clamped), right bar intact; a 740px viewport at 348 — all three
 12 → 360 (348, unclamped), the panel ending at 574 with the dock at 582 → 638, so one 8px gap, and the dock
-sitting in the bottom-left corner. Dark and light, panel open and shut.
+sitting in the bottom-left corner. The minimap measured 12 → 360 at 348 (348×160), its bottom on the panel's
+(534) and 8px above the dock, and a click at its centre moved the viewport rect (120,80) → (118,30), so the
+hit-testing follows the measured box. Dark and light, panel open and shut, minimap open with the panel open
+and shut.
 
 **Where** `frontend/src/stores/canvas/use-canvas-side-panel-store.ts`,
 `frontend/src/components/canvas/canvas-side-panel.tsx`,
