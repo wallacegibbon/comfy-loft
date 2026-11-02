@@ -19,6 +19,7 @@ package server
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -39,7 +40,7 @@ func (s *Server) writeMCPConf() {
 		return
 	}
 	bridge := s.mcpBridgePath()
-	if _, err := os.Stat(bridge); err != nil {
+	if !bridgeExists(bridge) {
 		// Not fatal: the gateway is still a workflow runner without an agent. Every agent turn will fail,
 		// so say where the file was expected rather than leaving the turn to explain it.
 		s.logger.Warn("agent: %s is missing; every agent session will fail at its MCP handshake (build it with `make build`, or point MCP_BIN at it)", bridge)
@@ -63,17 +64,37 @@ func (s *Server) writeMCPConf() {
 	}
 }
 
-// mcpBridgePath is the bridge binary: `MCP_BIN` when the operator says so, else beside this executable,
-// which is what an installed release looks like.
+// bridgeExists reports whether the bridge a `command` names can be started: a path is a file, a bare name
+// is looked up the way the agent's own spawn will look it up.
+func bridgeExists(bridge string) bool {
+	if strings.ContainsRune(bridge, os.PathSeparator) {
+		_, err := os.Stat(bridge)
+		return err == nil
+	}
+	_, err := exec.LookPath(bridge)
+	return err == nil
+}
+
+// mcpBridgePath is the bridge binary: `MCP_BIN` when the operator says so, else beside this executable —
+// what an installed release looks like — and otherwise what `PATH` offers.
+//
+// The last step is for a gateway that was not installed anywhere: `go run` puts the gateway in a temporary
+// directory that holds no bridge, and writing that directory into `mcp.conf` names a path that is gone the
+// moment the run ends. The same order `agent.findBinary` uses for the agent itself.
 func (s *Server) mcpBridgePath() string {
 	if override := strings.TrimSpace(os.Getenv("MCP_BIN")); override != "" {
 		return override
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return "comfyloft-mcp"
+	if exe, err := os.Executable(); err == nil {
+		beside := filepath.Join(filepath.Dir(exe), "comfyloft-mcp")
+		if info, err := os.Stat(beside); err == nil && info.Size() > 0 {
+			return beside
+		}
 	}
-	return filepath.Join(filepath.Dir(exe), "comfyloft-mcp")
+	if path, err := exec.LookPath("comfyloft-mcp"); err == nil {
+		return path
+	}
+	return "comfyloft-mcp"
 }
 
 // agentOptionsFor is what one session's spawn needs: the shared operator configuration, the two facts

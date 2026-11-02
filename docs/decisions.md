@@ -6503,3 +6503,24 @@ canvas** opened the existing confirmation.
 `frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/components/kit/floating.tsx`,
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/lib/canvas/canvas-node-geometry.ts`,
 `frontend/tests/canvas-focus-viewport.test.ts`, both locales.
+
+## 189. The bridge is found beside the gateway, on PATH, or nowhere honest
+
+**Decision** `mcpBridgePath` looks for `comfyloft-mcp` in the order the agent's own binary is found
+(`agent.findBinary`): `MCP_BIN`, then beside the gateway's executable, then `PATH`, and only then the bare
+name. The startup warning that the bridge is missing asks `bridgeExists`, which treats a path as a file and
+a bare name as something to look up — the same way the spawn will.
+
+**Why** A gateway started with `go run` lives in a temporary directory that holds no bridge, and the
+`mcp.conf` it wrote named a path inside that directory: every agent session after the run ended failed with
+`handshake: EOF`, and the path in the file explained nothing. The beside-the-binary rule is right for a
+release directory and wrong for every other way of starting this thing.
+
+**Cost** A `PATH` hit can be a different build from the gateway's own; the bridge checks the protocol
+version it speaks in every call (`X-Comfyloft-Bridge`), so a mixed pair says so instead of misbehaving.
+
+**Tested** `go test ./internal/server/ -run TestBridgePath`: a `PATH` holding a bridge is found by a test
+binary that has none beside it (which is what `go run` looks like), and `MCP_BIN` still wins. The existing
+MCP tests (which go through `writeMCPConf`) still pass.
+
+**Where** `internal/server/agent_config.go`, `internal/server/agent_config_test.go`.
