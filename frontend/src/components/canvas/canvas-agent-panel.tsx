@@ -227,7 +227,11 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         setDraft("");
         setCitations([]);
         setBusy(true);
-        sendAgentMessage(session, { prompt: context + text });
+        // A message that could not be written would leave the panel on a turn nobody is running.
+        if (!sendAgentMessage(session, { prompt: context + text })) {
+            setBusy(false);
+            setMessages((current) => [...current, { id: nextId(), role: "error", text: t("canvas.agent.sendFailed"), mentions: [], reasoning: "", tools: [], streaming: false }]);
+        }
     };
 
     // --- size -------------------------------------------------------------------------------------------

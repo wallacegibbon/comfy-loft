@@ -44,6 +44,21 @@ export function useContentIngress(deps: ContentIngressDeps) {
     // Which node — if any — the picker was opened to replace. Cleared on every change.
     const uploadTargetRef = useRef<{ nodeId?: string; position?: Position } | null>(null);
 
+    /**
+     * Report a file that could not be added.
+     *
+     * Uploading is a network write, so it can fail (the gateway is down, the file is past the size limit),
+     * and a drop or a paste has no form to show it in: without this the rejection ended in the console and
+     * the person was left wondering why nothing appeared.
+     */
+    const failAdd = useCallback(
+        (error: unknown) => {
+            console.warn("adding a file to the canvas failed", error);
+            toast.error(t("canvas.runtime.addFileFailed"));
+        },
+        [t],
+    );
+
     const createImageFileNode = useCallback(async (file: File, position: Position) => {
         const image = await uploadImage(file);
         const size = fitNodeSize(image.width, image.height);
@@ -135,21 +150,21 @@ export function useContentIngress(deps: ContentIngressDeps) {
             if (!imageType) return;
             const blob = await imageItem.getType(imageType);
             const file = new File([blob], "clipboard-image.png", { type: imageType });
-            void createImageFileNode(file, getCanvasCenter());
+            await createImageFileNode(file, getCanvasCenter()).catch(failAdd);
             toast.success(t("canvas.runtime.clipboardImageAdded"));
             return;
         }
 
         const text = await navigator.clipboard.readText();
         if (createTextNodeFromClipboard(text)) toast.success(t("canvas.runtime.clipboardTextAdded"));
-    }, [createImageFileNode, createTextNodeFromClipboard, getCanvasCenter, t]);
+    }, [createImageFileNode, createTextNodeFromClipboard, failAdd, getCanvasCenter, t]);
 
     const handleUploadRequest = useCallback((nodeId?: string, position?: Position) => {
         uploadTargetRef.current = { nodeId, position };
         imageInputRef.current?.click();
     }, []);
 
-    const handleImageInputChange = useCallback(
+    const addPickedFiles = useCallback(
         async (event: ChangeEvent<HTMLInputElement>) => {
             const files = Array.from(event.target.files || []).filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/") || isAudioFile(f));
             if (!files.length) {
@@ -246,11 +261,11 @@ export function useContentIngress(deps: ContentIngressDeps) {
                     const offsetPos = { x: basePosition.x + (i + 1) * STAGGER, y: basePosition.y + (i + 1) * STAGGER };
                     const f = rest[i];
                     if (isAudioFile(f)) {
-                        void createAudioFileNode(f, offsetPos);
+                        void createAudioFileNode(f, offsetPos).catch(failAdd);
                     } else if (f.type.startsWith("video/")) {
-                        void createVideoFileNode(f, offsetPos);
+                        void createVideoFileNode(f, offsetPos).catch(failAdd);
                     } else {
-                        void createImageFileNode(f, offsetPos);
+                        void createImageFileNode(f, offsetPos).catch(failAdd);
                     }
                 }
             } else {
@@ -259,19 +274,30 @@ export function useContentIngress(deps: ContentIngressDeps) {
                     const offsetPos = { x: basePosition.x + i * STAGGER, y: basePosition.y + i * STAGGER };
                     const f = files[i];
                     if (isAudioFile(f)) {
-                        void createAudioFileNode(f, offsetPos);
+                        void createAudioFileNode(f, offsetPos).catch(failAdd);
                     } else if (f.type.startsWith("video/")) {
-                        void createVideoFileNode(f, offsetPos);
+                        void createVideoFileNode(f, offsetPos).catch(failAdd);
                     } else {
-                        void createImageFileNode(f, offsetPos);
+                        void createImageFileNode(f, offsetPos).catch(failAdd);
                     }
                 }
             }
-
-            uploadTargetRef.current = null;
-            event.target.value = "";
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, screenToCanvas, size.height, size.width],
+        [createAudioFileNode, createImageFileNode, createVideoFileNode, failAdd, screenToCanvas, size.height, size.width],
+    );
+
+    const handleImageInputChange = useCallback(
+        async (event: ChangeEvent<HTMLInputElement>) => {
+            try {
+                await addPickedFiles(event);
+            } catch (error) {
+                failAdd(error);
+            } finally {
+                uploadTargetRef.current = null;
+                event.target.value = "";
+            }
+        },
+        [addPickedFiles, failAdd],
     );
 
     const handleDrop = useCallback(
@@ -286,15 +312,15 @@ export function useContentIngress(deps: ContentIngressDeps) {
                 const pos = { x: basePos.x + i * STAGGER, y: basePos.y + i * STAGGER };
                 const f = files[i];
                 if (isAudioFile(f)) {
-                    void createAudioFileNode(f, pos);
+                    void createAudioFileNode(f, pos).catch(failAdd);
                 } else if (f.type.startsWith("video/")) {
-                    void createVideoFileNode(f, pos);
+                    void createVideoFileNode(f, pos).catch(failAdd);
                 } else {
-                    void createImageFileNode(f, pos);
+                    void createImageFileNode(f, pos).catch(failAdd);
                 }
             }
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, screenToCanvas],
+        [createAudioFileNode, createImageFileNode, createVideoFileNode, failAdd, screenToCanvas],
     );
 
     return { imageInputRef, handleUploadRequest, handleImageInputChange, handleDrop, pasteSystemClipboard };

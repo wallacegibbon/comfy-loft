@@ -163,7 +163,10 @@ function socketUrl(config: AiConfig, name: string, history: boolean): string {
  */
 export function openAgentSession(config: AiConfig, name: string, options?: { history?: boolean }): Promise<AgentSession> {
     const existing = sessions.get(name);
-    if (existing) return existing.opening;
+    // A socket that is open, or still opening, is the session. One that is closing or closed is not: its
+    // `opening` already resolved, so handing it back would report a connected session with nowhere to send.
+    if (existing && (existing.socket.readyState === WebSocket.OPEN || existing.socket.readyState === WebSocket.CONNECTING)) return existing.opening;
+    sessions.delete(name);
 
     let socket: WebSocket;
     try {
@@ -189,6 +192,18 @@ export function openAgentSession(config: AiConfig, name: string, options?: { his
                 return;
             }
             adopt(live, event);
+
+            // `closed` is the gateway saying this socket is no longer the one reading the session: a newer
+            // tab took it over (#160), or the process died. Either way nothing else will arrive here, and a
+            // socket left open would swallow every later question — the panel would sit on a turn that can
+            // never end. Dropping it here means the next send opens a new connection, which is also what
+            // takes the session back.
+            if (event.type === "closed") {
+                if (sessions.get(name) === live) sessions.delete(name);
+                live.opened = false;
+                live.session = blank(name);
+                live.socket.close();
+            }
 
             // The turn a caller is waiting for, whichever surface asked.
             if (event.type === "delta" && live.waiting) live.waiting.answer += event.text || "";

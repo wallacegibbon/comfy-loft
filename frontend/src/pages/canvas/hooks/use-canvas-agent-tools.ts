@@ -220,6 +220,16 @@ function wordsOf(node: CanvasNodeData): string {
     return (node.metadata?.composerContent ?? node.metadata?.prompt ?? node.metadata?.content ?? node.metadata?.texts?.[0]?.content ?? "").trim();
 }
 
+/**
+ * The most base64 this page will put in one socket message.
+ *
+ * The gateway refuses a message over 8 MiB and closes the socket when one arrives, and base64 costs a third
+ * more than the bytes it carries: a 20 MB generated clip read back through `read_node` used to end the whole
+ * conversation, with the agent's next question unanswered and nothing to say why. Above this bound the tool
+ * answers with the file's size instead of its bytes — the file is not lost, it is on the canvas.
+ */
+const MAX_INLINE_MEDIA_BASE64 = 5 * 1024 * 1024;
+
 /** The block a node's media travels in — or nothing, for a node that holds no media. */
 async function mediaOf(node: CanvasNodeData): Promise<ToolContent | undefined> {
     if (!MEDIA_TYPES.includes(node.type)) return undefined;
@@ -229,8 +239,17 @@ async function mediaOf(node: CanvasNodeData): Promise<ToolContent | undefined> {
     if (!parsed) return undefined;
     const mimeType = node.metadata?.mimeType || parsed[1];
     const data = parsed[2];
+    if (data.length > MAX_INLINE_MEDIA_BASE64) {
+        return textBlock(`${node.id} holds a ${mimeType} of about ${formatBytes(Math.round((data.length * 3) / 4))}, which is too large to hand over through this socket; the file itself is on the canvas and the user can open it`);
+    }
     // A film has no block of its own in the protocol; it travels as a resource whose mimeType says what it is.
     return node.type === CanvasNodeType.Video ? { type: "resource", resource: { uri: `canvas://${node.id}`, mimeType, blob: data } } : { type: node.type === CanvasNodeType.Audio ? "audio" : "image", data, mimeType };
+}
+
+function formatBytes(bytes: number): string {
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${Math.round(bytes / 1024)} kB`;
+    return `${bytes} bytes`;
 }
 
 const MEDIA_TYPES: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio];
