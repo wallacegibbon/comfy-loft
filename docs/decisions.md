@@ -7316,3 +7316,36 @@ and the existing one pins "say them twice"), `go test ./internal/server/`. Not e
 path changed, only the text of a description, and the example is read by the model rather than run by the page.
 
 **Where** `internal/server/routes_mcp.go`, `internal/server/mcp_test.go`.
+
+## 207. The agent window is part of the canvas document
+
+**Decision** `CanvasDocument` gained `agent: { open, position, size }`. The agent panel's open state and
+the place and size the user dragged or resized it to are saved in `canvas.json` beside the viewport,
+written through the same save queue, and restored when the canvas opens. The in-memory zustand store is
+keyed by canvas id, so one canvas's window cannot appear on another.
+
+**Why** The panel sits *on* the canvas, but how it was left is how the person left the *canvas*: reopening
+a project should show the conversation where it was, not a closed button in the corner. The viewport has
+always worked this way, and a resize or a collapse is the same kind of fact — "this is the arrangement I
+was working in". A session-only value meant a reload lost the arrangement, and switching canvases carried
+the last canvas's geometry across.
+
+**Why not the history / export separately** The viewport is not in undo either: moving the board is not an
+edit to its content, and undoing a node move must not also un-maximise the panel. The field travels in
+`canvas.json`, so an export carries it, and `documentOf` is still the one place that decides what the
+document is.
+
+**Cost** `canvas.json` has one more field. A document written before this change has no `agent`; it reads
+back as closed at the default corner, which is what those canvases did before. A remembered pixel position
+may be outside a smaller browser window, so drawing clamps it into the canvas, but the stored value is kept
+as written. Geometry is debounced 500 ms (open/closed is written at once), and `pagehide` runs the pending
+write before the page goes, so the debounce is a save-rate choice rather than a hole a refresh falls into.
+
+**Tested** `npm run test` (`tests/canvas-document.test.ts` pins the field in the document and
+`tests/canvas-agent-window.test.ts` pins per-canvas isolation, restore-once and the old-document default),
+`tsc --noEmit`, `node scripts/check-exports.cjs`. Not exercised in a browser in this change.
+
+**Where** `frontend/src/types/canvas.ts`, `frontend/src/services/api/canvases.ts`,
+`frontend/src/lib/canvas/canvas-document.ts`, `frontend/src/stores/canvas/use-canvas-agent-store.ts`,
+`frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/src/pages/canvas/project.tsx`,
+`frontend/tests/canvas-document.test.ts`, `frontend/tests/canvas-agent-window.test.ts`.
