@@ -5661,3 +5661,30 @@ Not clicked in a browser yet: the generate path from the node itself.
 **Where** `frontend/src/services/api/runs.ts`, `frontend/src/lib/canvas/canvas-export.ts`,
 `frontend/tests/api-runs.test.ts`, `frontend/tests/api-video-runs.test.ts`,
 `frontend/tests/api-image-upscale.test.ts`.
+
+## 162. A stub that matches a URL's suffix cannot fail
+
+**Decision** The canvas tests that answer a run route their stubs by the **whole** URL and answer `404` to
+anything else, and the assertions name the whole URL too. `api-image-upscale.test.ts` is the case that made
+this worth doing: it kept a stub branch for `/outputs/0` — a route #156 deleted — so its artifact download fell
+through to the run-status fallback and the test read a run's JSON as if it were a PNG.
+
+**Why** #161 recorded that weakness and left it. A stub matched by suffix (`url.endsWith("/runs")`) accepts a
+request sent to the wrong place: it is written from the client's point of view, so it agrees with the client
+whatever the client does, and the case passes on an address no gateway serves. A `404` for anything unlisted
+turns that into a failure in the one place that is cheap to fix.
+
+**What changed** `api-image-upscale.test.ts` and `api-video-runs.test.ts` gained a `ROOT`, a named upload id
+(an upload's id is its file name, per #156, not `upl_1`), and a stub that routes the four addresses the action
+actually uses: the canvas's uploads, the canvas's runs, the run's status, and the artifact as a file of that
+canvas. The first case asserts the whole list of calls, in order. The interpolate case stopped overriding
+`fetch` for one call and now declares its own upload response, so its media id is a video's name rather than a
+lie about an image.
+
+**Cost** A new call added to an action makes an existing case fail until the stub knows that address. That is
+the point, but it is friction, and it is why the stub lives next to the cases rather than in a shared helper.
+
+**Tested** `npx vitest run` (17 files, 136 tests), `npm run check`, `make check`. The upscale case now fails if
+the artifact is fetched from anywhere but `GET /api/canvases/{id}/files/{name}`.
+
+**Where** `frontend/tests/api-image-upscale.test.ts`, `frontend/tests/api-video-runs.test.ts`.

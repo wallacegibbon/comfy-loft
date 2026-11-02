@@ -64,21 +64,36 @@ const succeeded = () =>
     json(
         run({
             status: "succeeded",
-            outputs: [{ index: 0, kind: "image", mime: "image/png", bytes: 3, filename: "out.png", url: `/api/canvases/${CANVAS_ID}/files/task_upscale_1.png` }],
+            outputs: [{ index: 0, kind: "image", mime: "image/png", bytes: 3, filename: "task_upscale_1.png", url: `/api/canvases/${CANVAS_ID}/files/task_upscale_1.png` }],
         }),
     );
 
 type Call = { url: string; method: string; body: unknown };
 
-/** Route a stubbed fetch by path, so a test names only the calls it cares about. */
+/** Where the gateway is in these cases: `gatewayProtocolRoot` strips the legacy `/v1`, nothing else. */
+const ROOT = "http://127.0.0.1:8190";
+
+/** The name the gateway gives an uploaded file: its id is that name, not a handle of its own (#156). */
+const UPLOAD_ID = "up-9f01ab2c.png";
+
+/**
+ * Route a stubbed fetch by the **whole** URL, and answer `404` to anything else.
+ *
+ * This is deliberate. A stub that matched a path suffix (`url.endsWith("/runs")`) accepts a request sent
+ * to the wrong place, and the test then passes on a URL the gateway does not serve — which is exactly how
+ * `POST /api/runs` survived #156 until a browser click found it (#161). Here an unexpected address is a
+ * failure the caller cannot miss.
+ */
 function stubGateway(handlers: { status?: () => Response } = {}) {
     const calls: Call[] = [];
     const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
         calls.push({ url, method: String(init.method || "GET"), body: init.body });
-        if (url.endsWith("/uploads")) return json({ upload: { id: `upl_${calls.length}`, kind: "image", mime: "image/png", bytes: 3, filename: "source.png" } });
-        if (url.endsWith("/runs")) return json(run({ status: "queued" }), 202);
-        if (url.includes("/outputs/0")) return new Response(new Blob(["PNG"], { type: "image/png" }), { status: 200 });
-        return handlers.status?.() ?? succeeded();
+        if (url === `${ROOT}/api/canvases/${CANVAS_ID}/uploads`) return json({ upload: { id: UPLOAD_ID, kind: "image", mime: "image/png", bytes: 3, filename: "source.png" } });
+        if (url === `${ROOT}/api/canvases/${CANVAS_ID}/runs`) return json(run({ status: "queued" }), 202);
+        if (url === `${ROOT}/api/runs/task_upscale_1`) return handlers.status?.() ?? succeeded();
+        // The artifact is a file of the canvas, and the bytes are the image the node ends up showing.
+        if (url === `${ROOT}/api/canvases/${CANVAS_ID}/files/task_upscale_1.png`) return new Response(new Blob(["PNG"], { type: "image/png" }), { status: 200 });
+        return json({ error: { code: "not_found", message: `no such route: ${init.method || "GET"} ${url}` } }, 404);
     });
     vi.stubGlobal("fetch", fetchMock);
     return { calls, fetchMock };
@@ -86,8 +101,8 @@ function stubGateway(handlers: { status?: () => Response } = {}) {
 
 /** The JSON body of the one run-submission call. */
 function runBody(calls: Call[]) {
-    const call = calls.find((item) => item.url.endsWith("/runs") && item.method === "POST");
-    if (!call) throw new Error("no run was submitted");
+    const call = calls.find((item) => item.url === `${ROOT}/api/canvases/${CANVAS_ID}/runs` && item.method === "POST");
+    if (!call) throw new Error(`no run was submitted; the calls were ${calls.map((item) => `${item.method} ${item.url}`).join(", ")}`);
     return JSON.parse(String(call.body));
 }
 
@@ -106,14 +121,16 @@ describe("requestUpscale", () => {
 
         expect(images).toHaveLength(1);
         expect(images[0].dataUrl).toBe("data:image/png;base64,BBBB");
-        expect(calls[0].url).toBe(`http://127.0.0.1:8190/api/canvases/${CANVAS_ID}/uploads`);
+        // The three addresses this action uses, in full: into the canvas, into its runs, and out of its files.
+        expect(calls.map((call) => call.url)).toEqual([`${ROOT}/api/canvases/${CANVAS_ID}/uploads`, `${ROOT}/api/canvases/${CANVAS_ID}/runs`, `${ROOT}/api/runs/task_upscale_1`, `${ROOT}/api/canvases/${CANVAS_ID}/files/task_upscale_1.png`]);
         // Nothing reaches the OpenAI-shaped surface any more: the id in hand is a run id.
         expect(calls.some((call) => call.url.includes("/v1/"))).toBe(false);
 
         const body = runBody(calls);
         expect(body.workflow).toBe("image-esrgan-upscale");
         expect(body.inputs).toEqual({ upscale_model: "RealESRGAN_x4plus.pth" });
-        expect(body.media).toEqual({ image: ["upl_1"] });
+        // An upload is referenced by the name the gateway gave it, which is its id.
+        expect(body.media).toEqual({ image: [UPLOAD_ID] });
     });
 
     it("sends no prompt: the workflow's own default is the prompt", async () => {

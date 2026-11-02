@@ -70,16 +70,36 @@ const run = (overrides: Record<string, unknown> = {}) => ({
     ...overrides,
 });
 
-/** Route a stubbed fetch by path, so a test names only the calls it cares about. */
-function stubGateway(handlers: { run?: () => Response; status?: () => Response; delete?: () => Response; output?: () => Response }) {
+/** Where the gateway is in these cases: `gatewayProtocolRoot` strips the legacy `/v1`, nothing else. */
+const ROOT = "http://127.0.0.1:8190";
+
+/** The names the gateway gives uploaded files: an id is that name, not a handle of its own (#156). */
+const UPLOAD_ID = "up-2b7788de.png";
+const UPLOAD_ID_2 = "up-5b1c9e3f.png";
+const VIDEO_ID = "up-77aa01bc.mp4";
+
+/**
+ * Route a stubbed fetch by the **whole** URL, and answer `404` to anything else.
+ *
+ * A stub that matched a path suffix (`url.endsWith("/runs")`) accepts a request sent to the wrong place,
+ * and the case then passes on a URL the gateway does not serve (#161). An unexpected address here is a
+ * failure the caller cannot miss, which is what makes the URLs in these cases worth asserting.
+ */
+function stubGateway(handlers: { run?: () => Response; status?: () => Response; delete?: () => Response; output?: () => Response; upload?: (count: number) => Response } = {}) {
     const calls: Array<{ url: string; method: string; body: unknown }> = [];
+    let uploads = 0;
     const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
         calls.push({ url, method: String(init.method || "GET"), body: init.body });
-        if (url.endsWith("/uploads")) return json({ upload: { id: `upl_${calls.length}`, kind: "image", mime: "image/png", bytes: 3, filename: "f" } });
-        if (url.endsWith("/runs")) return handlers.run?.() ?? json(run({ status: "queued" }), 202);
-        if (init.method === "DELETE") return handlers.delete?.() ?? json(run({ status: "cancelled" }));
-        if (url.includes("/files/")) return handlers.output?.() ?? new Response(new Blob(["MP4"], { type: "video/mp4" }), { status: 200 });
-        return handlers.status?.() ?? json(run());
+        if (url === `${ROOT}/api/canvases/${CANVAS_ID}/uploads`) {
+            uploads += 1;
+            // Each upload gets its own name, so a case with two of them can tell them apart.
+            return handlers.upload?.(uploads) ?? json({ upload: { id: uploads === 1 ? UPLOAD_ID : UPLOAD_ID_2, kind: "image", mime: "image/png", bytes: 3, filename: uploads === 1 ? "a.png" : "b.png" } });
+        }
+        if (url === `${ROOT}/api/canvases/${CANVAS_ID}/runs`) return handlers.run?.() ?? json(run({ status: "queued" }), 202);
+        if (url === `${ROOT}/api/canvases/${CANVAS_ID}/files/task_video_1.mp4`) return handlers.output?.() ?? new Response(new Blob(["MP4"], { type: "video/mp4" }), { status: 200 });
+        if (url === `${ROOT}/api/runs/task_video_1` && init.method === "DELETE") return handlers.delete?.() ?? json(run({ status: "cancelled" }));
+        if (url === `${ROOT}/api/runs/task_video_1`) return handlers.status?.() ?? json(run());
+        return json({ error: { code: "not_found", message: `no such route: ${init.method || "GET"} ${url}` } }, 404);
     });
     vi.stubGlobal("fetch", fetchMock);
     return { calls, fetchMock };
@@ -87,8 +107,8 @@ function stubGateway(handlers: { run?: () => Response; status?: () => Response; 
 
 /** The JSON body of the one run-submission call. */
 function runBody(calls: Array<{ url: string; method: string; body: unknown }>) {
-    const call = calls.find((item) => item.url.endsWith("/runs") && item.method === "POST");
-    if (!call) throw new Error("no run was submitted");
+    const call = calls.find((item) => item.url === `${ROOT}/api/canvases/${CANVAS_ID}/runs` && item.method === "POST");
+    if (!call) throw new Error(`no run was submitted; the calls were ${calls.map((item) => `${item.method} ${item.url}`).join(", ")}`);
     return JSON.parse(String(call.body));
 }
 
@@ -108,8 +128,9 @@ describe("createVideoGenerationTask", () => {
         expect(body.workflow).toBe("video-h3-frames");
         expect(body.inputs).toMatchObject({ prompt: "a cat walks", mode: "frames", frameMode: "first", seconds: 5 });
         expect(body.inputs.size).toMatch(/^\d+x\d+$/);
-        expect(body.media).toEqual({ first_frame: "upl_1" });
-        expect(calls[0].url).toBe(`http://127.0.0.1:8190/api/canvases/${CANVAS_ID}/uploads`);
+        expect(body.media).toEqual({ first_frame: UPLOAD_ID });
+        // Both addresses in full: the frame goes into the canvas, and the run is that canvas's run.
+        expect(calls.map((call) => call.url)).toEqual([`${ROOT}/api/canvases/${CANVAS_ID}/uploads`, `${ROOT}/api/canvases/${CANVAS_ID}/runs`]);
     });
 
     it("sends the second image as the last frame when both are asked for", async () => {
@@ -117,7 +138,7 @@ describe("createVideoGenerationTask", () => {
 
         await createVideoGenerationTask(gateway({ frameMode: "both" }), "morph", [image("a.png"), image("b.png")]);
 
-        expect(runBody(calls).media).toEqual({ first_frame: "upl_1", last_frame: "upl_2" });
+        expect(runBody(calls).media).toEqual({ first_frame: UPLOAD_ID, last_frame: UPLOAD_ID_2 });
     });
 
     it("references multi-modal media by role instead of by form field", async () => {
@@ -133,7 +154,7 @@ describe("createVideoGenerationTask", () => {
         expect(body.inputs.mode).toBe("reference");
         expect(body.inputs.frameMode).toBeUndefined();
         expect(Object.keys(body.media).sort()).toEqual(["audio", "reference", "video"]);
-        expect(body.media.reference).toEqual(["upl_1"]);
+        expect(body.media.reference).toEqual([UPLOAD_ID]);
     });
 
     it("sends no interpolation: raising the frame rate is a run of its own", async () => {
@@ -157,11 +178,7 @@ describe("createVideoGenerationTask", () => {
 
 describe("createVideoInterpolateTask", () => {
     it("is one run of the RIFE workflow with the clip and the multiplier", async () => {
-        const { calls, fetchMock } = stubGateway({});
-        fetchMock.mockImplementationOnce(async (url: string, init: RequestInit = {}) => {
-            calls.push({ url, method: String(init.method || "GET"), body: init.body });
-            return json({ upload: { id: "upl_video", kind: "video", mime: "video/mp4", bytes: 3, filename: "source.mp4" } });
-        });
+        const { calls } = stubGateway({ upload: () => json({ upload: { id: VIDEO_ID, kind: "video", mime: "video/mp4", bytes: 3, filename: "source.mp4" } }) });
 
         const task = await createVideoInterpolateTask(gateway(), { name: "clip.mp4", type: "video/mp4", storageKey: "k1" }, { multiplier: 2 });
 
@@ -169,7 +186,7 @@ describe("createVideoInterpolateTask", () => {
         const body = runBody(calls);
         expect(body.workflow).toBe("video-rife");
         expect(body.inputs).toEqual({ multiplier: 2 });
-        expect(body.media).toEqual({ video: "upl_video" });
+        expect(body.media).toEqual({ video: VIDEO_ID });
     });
 });
 
@@ -202,7 +219,7 @@ describe("waitForVideoGenerationTask", () => {
         expect(steps).toEqual([{ step: 8, total: 8 }]);
         expect(previews[0]).toMatchObject({ url: "http://127.0.0.1:8190/api/runs/task_video_1/preview?t=42" });
         expect(previews[previews.length - 1]).toBeNull();
-        expect(calls.some((call) => call.url.endsWith(`/api/canvases/${CANVAS_ID}/files/task_video_1.mp4`))).toBe(true);
+        expect(calls.map((call) => call.url)).toContain(`${ROOT}/api/canvases/${CANVAS_ID}/files/task_video_1.mp4`);
     });
 
     it("turns a failed run into a video task failure so the node stops polling it", async () => {
