@@ -111,6 +111,13 @@ func (r *Registry) loadLocked() error {
 			r.logger.Warn("failed to load workflow %s: %s", header.File, err)
 			continue
 		}
+		// An id is the identity: two rows claiming one would make `Resolve` answer with whichever was read
+		// last and `List` return the workflow twice, which is a hand-edited registry.json being silently
+		// half-honoured. The first row wins and the duplicate is reported.
+		if existing, taken := cache[entry.ID]; taken {
+			r.logger.Warn("workflow id %s is used by both %s and %s; keeping the first", entry.ID, existing.File, entry.File)
+			continue
+		}
 		cache[entry.ID] = entry
 		byName[entry.Name] = entry
 		if entry.ID != entry.Name {
