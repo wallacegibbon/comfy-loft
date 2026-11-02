@@ -34,6 +34,15 @@ const maxMessage = 8 << 20
 // writing to it.
 const pingInterval = 30 * time.Second
 
+// writeTimeout bounds one frame.
+//
+// A write to a peer that stopped reading — a tab that was suspended or a network that went away without a
+// FIN — blocks in the kernel once the send window fills, and nothing on this side can interrupt it: the
+// write holds the connection's mutex, so the ping that would have noticed cannot go out, and whoever is
+// writing (the agent's pump, under the session's lock) waits with it. The deadline is what turns "blocked
+// for ever" into an error, and an error closes the connection.
+const writeTimeout = 30 * time.Second
+
 // Opcodes, as the framing spec numbers them.
 const (
 	opContinuation = 0x0
@@ -208,10 +217,14 @@ func (c *Conn) writeFrame(opcode byte, payload []byte) error {
 		frame = append(frame, 127, 0, 0, 0, 0, 0, 0, 0, 0)
 		binary.BigEndian.PutUint64(frame[2:], uint64(len(payload)))
 	}
+	// The deadline is set per write, under the mutex: a frame that cannot be delivered in this long is a
+	// peer that is not reading, and waiting for it is how a whole session hangs (see writeTimeout).
+	_ = c.net.SetWriteDeadline(time.Now().Add(writeTimeout))
 	if _, err := c.net.Write(append(frame, payload...)); err != nil {
 		c.shutdown(err)
 		return err
 	}
+	_ = c.net.SetWriteDeadline(time.Time{})
 	return nil
 }
 
