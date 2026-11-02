@@ -101,25 +101,6 @@ not exhaustive.
 
 ---
 
-## 6. Chinese prose remains in the canvas plugin subtree
-
-**Where** `canvas/plugins/` — 55 tracked files, 411 Chinese lines: plugin `README.md`s, plugin components,
-the SDK and the build scripts.
-
-**Why it is listed** [`decisions.md`](decisions.md) #17 requires English for documentation and comments.
-These files came in with the upstream canvas subtree and predate the rule. The READMEs and the ~163
-comment/JSDoc lines describe the plugin API — the part a third-party plugin author reads — and the plugins'
-own UI strings are compiled into `web/public/plugins/*.js`, which the canvas dictionaries cannot translate
-because each plugin ships as a standalone bundle.
-
-**Fix** Translate the comments and READMEs first (mechanical). The plugin UI copy needs a decision before code
-moves: either the plugins grow their own copy table (one per bundle, chosen from the canvas locale) or the
-strings become English only.
-
-**Not affected** The LoRA name filter in
-`workflows/registry.json` (`mj风格` and friends are patterns matched against real file names),
-`web/src/i18n/locales/zh-CN.ts` and everything under `internal/prompt`.
-
 ---
 
 ## Fixed, and where the reason is
@@ -138,3 +119,6 @@ import only what it ships — but the pack and the workflow it served are gone a
   `format:check` is a gate; #50.
 - **Thirteen routes with no caller, the one-shot agent path, the heartbeat, the unused locals and
   translation keys** — #107–#109, #114. The gates that let them live (#115) now fail on the next one.
+- **Chinese prose in the plugin subtree** (#6) — the subtree is gone: the plugin mechanism, its SDK and
+  its packages were removed in #148, and the one node it carried is now a built-in with its strings in
+  the dictionaries like everything else.

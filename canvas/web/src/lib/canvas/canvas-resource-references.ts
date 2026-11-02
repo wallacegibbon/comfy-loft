@@ -148,6 +148,6 @@ function resourceKind(node: CanvasNodeData): CanvasResourceKind | null {
     if (node.type === CanvasNodeType.Video && node.metadata?.content) return "video";
     if (node.type === CanvasNodeType.Audio && node.metadata?.content) return "audio";
     if (node.type === CanvasNodeType.Text && (node.metadata?.content || node.metadata?.prompt || node.metadata?.composerContent || node.metadata?.texts?.some((text) => text.content))) return "text";
-    // Plugin nodes declare their input eligibility through definition.resource.
+    // A node declares what it contributes through definition.resource.
     return getNodeDefinition(node.type)?.resource?.(node)?.kind || null;
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { ChevronRight, Copy, Download, Group, Image as ImageIcon, Music2, Puzzle, RefreshCw, Star, Trash2, Video } from "lucide-react";
 
@@ -10,11 +10,10 @@ import { pickImageSource } from "@/lib/image-thumbnail";
 import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision } from "@/services/image-storage";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { nodeTitle } from "@/lib/canvas/node-title";
-import { buildNodeContext } from "@/lib/canvas/plugin-node-context";
+import { LoraNodeContent } from "@/components/canvas/nodes/lora-node";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasNodeProgressRing } from "./canvas-node-progress-ring";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeImage, type CanvasNodeText, type Position } from "@/types/canvas";
-import type { CanvasNodeContext, CanvasPluginHost } from "@/types/canvas-plugin";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { useTranslation } from "react-i18next";
 
@@ -33,8 +32,6 @@ type CanvasNodeProps = {
     showPanel: boolean;
     showImageInfo: boolean;
     mentionReferences?: CanvasResourceReference[];
-    pluginHost?: CanvasPluginHost;
-    registryVersion?: number;
     renderPanel?: (node: CanvasNodeData) => ReactNode;
     renderNodeContent?: (node: CanvasNodeData) => ReactNode;
     groupChildCount?: number;
@@ -73,7 +70,6 @@ type NodeContentRendererProps = {
     batchExpanded: boolean;
     scale: number;
     renderNodeContent?: (node: CanvasNodeData) => ReactNode;
-    pluginContext?: CanvasNodeContext | null;
     onContentChange: (nodeId: string, content: string) => void;
     onVideoDimensions?: (nodeId: string, width: number, height: number) => void;
     onStopEditing: () => void;
@@ -101,7 +97,6 @@ export const CanvasNode = React.memo(function CanvasNode({
     showPanel,
     showImageInfo,
     mentionReferences = [],
-    pluginHost,
     renderPanel,
     renderNodeContent,
     groupChildCount = 0,
@@ -143,7 +138,6 @@ export const CanvasNode = React.memo(function CanvasNode({
     const { t } = useTranslation();
     const [hovered, setHovered] = useState(false);
     const definition = getNodeDefinition(data.type);
-    const pluginContext = useMemo<CanvasNodeContext | null>(() => (pluginHost ? buildNodeContext(pluginHost, data, theme, scale, isSelected) : null), [pluginHost, data, theme, scale, isSelected]);
     const [isEditingContent, setIsEditingContent] = useState(false);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     // Editing starts from what is on screen, which may be a translation of a stored key.
@@ -418,10 +412,6 @@ export const CanvasNode = React.memo(function CanvasNode({
                         event.stopPropagation();
                         return;
                     }
-                    if (definition?.onDoubleClick && pluginContext) {
-                        if (definition.onDoubleClick(pluginContext)) event.stopPropagation();
-                        return;
-                    }
                     if (data.type === CanvasNodeType.Image && hasImageContent) {
                         event.stopPropagation();
                         onViewImage?.(data);
@@ -552,7 +542,6 @@ export const CanvasNode = React.memo(function CanvasNode({
                         batchExpanded={batchExpanded}
                         scale={scale}
                         renderNodeContent={renderNodeContent}
-                        pluginContext={pluginContext}
                         mentionReferences={mentionReferences}
                         onContentChange={onContentChange}
                         onVideoDimensions={onVideoDimensions}
@@ -658,13 +647,9 @@ function NodeContent(props: NodeContentRendererProps) {
     if (props.node.metadata?.status === "loading") return <LoadingContent theme={props.theme} node={props.node} />;
 
     const Renderer = nodeContentRenderers[props.node.type as CanvasNodeType];
-    const definition = getNodeDefinition(props.node.type);
     let content: ReactNode;
     if (Renderer) content = <Renderer {...props} />;
-    else if (definition?.Content && props.pluginContext) {
-        const PluginContent = definition.Content;
-        content = <PluginContent ctx={props.pluginContext} />;
-    } else content = <MissingPluginContent theme={props.theme} type={props.node.type} />;
+    else content = <MissingNodeContent theme={props.theme} type={props.node.type} />;
 
     if (props.node.metadata?.status === "error") {
         return (
@@ -679,6 +664,7 @@ function NodeContent(props: NodeContentRendererProps) {
 
 const nodeContentRenderers = {
     [CanvasNodeType.Text]: TextContent,
+    [CanvasNodeType.Lora]: LoraNodeContent,
     [CanvasNodeType.Image]: ImageNodeContent,
     [CanvasNodeType.Config]: EmptyImageContent,
     [CanvasNodeType.Video]: VideoNodeContent,
@@ -754,13 +740,13 @@ function NodeErrorBanner({ node, onRetry }: Pick<NodeContentRendererProps, "node
     );
 }
 
-function MissingPluginContent({ theme, type }: Pick<NodeContentRendererProps, "theme"> & { type: string }) {
+function MissingNodeContent({ theme, type }: Pick<NodeContentRendererProps, "theme"> & { type: string }) {
     const { t } = useTranslation();
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center" style={{ color: theme.node.placeholder }}>
             <Puzzle className="size-7 opacity-40" />
-            <span className="text-sm">{t("canvas.node.missingPlugin")}</span>
-            <span className="text-[11px] opacity-70">{t("canvas.node.missingPluginDescription", { type })}</span>
+            <span className="text-sm">{t("canvas.node.missingNode")}</span>
+            <span className="text-[11px] opacity-70">{t("canvas.node.missingNodeDescription", { type })}</span>
         </div>
     );
 }

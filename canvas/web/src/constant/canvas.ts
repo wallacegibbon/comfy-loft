@@ -56,6 +56,14 @@ export const NODE_DEFAULT_SIZE = {
         },
         titleKey: "canvas.nodeTypes.audio",
     },
+    [CanvasNodeType.Lora]: {
+        width: 260,
+        height: 120,
+        get title() {
+            return i18n.t("canvas.nodeTypes.lora");
+        },
+        titleKey: "canvas.nodeTypes.lora",
+    },
     [CanvasNodeType.Group]: {
         width: 760,
         height: 480,
@@ -122,6 +130,17 @@ export const NODE_SPECS = {
         },
         metadata: { content: "", status: "idle" },
     },
+    [CanvasNodeType.Lora]: {
+        width: 260,
+        height: 120,
+        get title() {
+            return NODE_DEFAULT_SIZE[CanvasNodeType.Lora].title;
+        },
+        get titleKey() {
+            return NODE_DEFAULT_SIZE[CanvasNodeType.Lora].titleKey;
+        },
+        metadata: { status: "idle", params: { loras: [] } },
+    },
     [CanvasNodeType.Group]: {
         width: 760,
         height: 480,
@@ -135,7 +154,7 @@ export const NODE_SPECS = {
     },
 } satisfies Record<CanvasNodeType, CanvasNodeSpec>;
 
-// Return built-in specs directly and resolve plugin types from the registry.
+// Return the spec a node type was registered with, or a neutral fallback for a type this build lacks.
 export function getNodeSpec(type: string) {
     if ((Object.values(CanvasNodeType) as string[]).includes(type)) return NODE_SPECS[type as CanvasNodeType];
     const spec = getRegistryNodeSpec(type);

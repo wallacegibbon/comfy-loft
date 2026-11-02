@@ -1,19 +1,17 @@
 /**
  * The IndexedDB databases this app owns, and the object stores inside the main one.
  *
- * These names used to be string literals in four files — `localforage.config` in one place,
+ * This name used to be a string literal in four files — `localforage.config` in one place,
  * `createInstance` in three services, and again in the storage-usage reader. Nothing made them
- * agree, and they did not: the reader only knew about the main database, so anything stored by a
- * plugin was invisible in the storage panel while still counting against the browser quota.
+ * agree, and they did not: the reader knew about some of what was stored and not the rest, so the
+ * panel under-reported what the browser held against the quota.
  *
- * Writing them down once makes the reader enumerate what actually exists instead of guessing.
+ * There is one database. A second one existed for plugin storage; the plugin mechanism is gone
+ * (docs/decisions.md #148), and its database is left on disk unread, like the pre-#147 keys.
  */
 
-/** Main database: canvas state, uploaded media, generated images and the logs for both. */
+/** The database: canvas state, uploaded media, generated images and the logs for both. */
 export const APP_DATABASE = "comfyloft";
-
-/** One object store per plugin id, created on demand by the plugin event bus. */
-export const PLUGIN_DATABASE = "comfyloft-plugins";
 
 /**
  * The object stores in {@link APP_DATABASE}, for anyone who needs the list rather than a single

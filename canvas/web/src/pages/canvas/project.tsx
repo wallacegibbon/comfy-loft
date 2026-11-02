@@ -53,6 +53,7 @@ import { CanvasSelectionToolbar } from "@/components/canvas/canvas-selection-too
 import { InfiniteCanvas } from "@/components/canvas/infinite-canvas";
 import { Minimap } from "@/components/canvas/canvas-mini-map";
 import { CanvasNode } from "@/components/canvas/canvas-node";
+import { LoraNodePanel } from "@/components/canvas/nodes/lora-node";
 import { CanvasNodePromptPanel, type CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import { CanvasToolbar } from "@/components/canvas/canvas-toolbar";
 import { CanvasAgentPanel } from "@/components/canvas/canvas-agent-panel";
@@ -60,7 +61,6 @@ import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
-import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
 import { holdsResult } from "@/lib/canvas/node-prompt-field";
 import { useCanvasAgentTools } from "@/pages/canvas/hooks/use-canvas-agent-tools";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
@@ -95,9 +95,8 @@ import {
     resetInterruptedGeneration,
     clearStaleNodeErrors,
 } from "@/lib/canvas/canvas-generation-helpers";
-import { getNodeDefinition, isBuiltinNodeType as isBuiltinType, useNodeRegistryVersion } from "@/lib/canvas/node-registry";
+import { getNodeDefinition, isBuiltinNodeType } from "@/lib/canvas/node-registry";
 import { registerBuiltinNodes } from "@/components/canvas/nodes/builtin-nodes";
-import { CanvasPluginManagerModal } from "@/components/canvas/canvas-plugin-manager-modal";
 import { confirm } from "@/components/kit/confirm";
 import { CanvasRefreshShell } from "@/components/canvas/canvas-refresh-shell";
 import { CanvasTopBar } from "@/components/canvas/canvas-top-bar";
@@ -167,8 +166,6 @@ function measureFocusFrame(container: HTMLDivElement | null, nodeId: string) {
 
 function InfiniteCanvasPage() {
     const { t } = useTranslation();
-    // Subscribe to the registry version so plugin registration changes rerender the canvas.
-    const nodeRegistryVersion = useNodeRegistryVersion((state) => state.version);
     const params = useParams<{ id: string }>();
     const navigate = useNavigate();
     const projectId = params.id || "";
@@ -239,7 +236,6 @@ function InfiniteCanvasPage() {
     const [nodeImageSettingsOpen, setNodeImageSettingsOpen] = useState(false);
     const [dialogNodeId, setDialogNodeId] = useState<string | null>(null);
     const [activeNodeTool, setActiveNodeTool] = useState<CanvasNodeToolState>(null);
-    const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
     const [previewNodeId, setPreviewNodeId] = useState<string | null>(null);
     const [hoverPreviewNodeId, setHoverPreviewNodeId] = useState<string | null>(null);
     const [hoverPreviewImageId, setHoverPreviewImageId] = useState<string | null>(null);
@@ -705,7 +701,7 @@ function InfiniteCanvasPage() {
                     : undefined;
             const newNode = createCanvasNode(type, pending.position, metadata);
             const insertBefore = Boolean(getNodeDefinition(type)?.insertBefore);
-            // Injected plugins (a LoRA card, say) belong upstream of the current node; the current node must not be treated as their upstream.
+            // A node inserted upstream (a LoRA card, say) is created before the current node; the current node must not be treated as its upstream.
             const connection = insertBefore
                 ? normalizeConnection(newNode.id, pending.connection.nodeId, [...nodesRef.current, newNode], "source")
                 : normalizeConnection(pending.connection.nodeId, newNode.id, [...nodesRef.current, newNode], pending.connection.handleType);
@@ -902,17 +898,6 @@ function InfiniteCanvasPage() {
             ),
         [connectedNodesByNodeId, nodes, referencePickerNodeId],
     );
-    const { pluginHost, renderPluginPanel, buildNodeToolbarItems } = usePluginHost({
-        effectiveConfig,
-        isAiConfigReady,
-        openConfigDialog,
-        theme,
-        nodesRef,
-        connectionsRef,
-        viewportRef,
-        setNodes,
-        setDialogNodeId,
-    });
     const createNode = useCallback(
         (type: CanvasNodeTypeId, position?: Position, patch?: CanvasNodeMetadata): CanvasNodeData => {
             const targetPosition = position || getCanvasCenter();
@@ -931,16 +916,15 @@ function InfiniteCanvasPage() {
             setSelectedNodeIds(new Set([newNode.id]));
             setSelectedConnectionId(null);
             const definition = getNodeDefinition(type);
-            // Display-only plugin nodes with hidePanel do not open a panel; custom Panels require autoOpenPanel on creation.
-            // Plugin nodes declaring useBuiltinPanel open the built-in generation panel on creation, like image nodes.
-            // Built-in image, video, and config nodes retain their existing open-on-create behavior.
+            // Display-only nodes (hidePanel) never open a panel; the rest do, except the two whose panel is
+            // their own editing surface (text is edited in place, audio has nothing to configure).
             const wantsPanel = definition?.hidePanel
                 ? false
-                : definition?.Panel
-                  ? Boolean(definition.autoOpenPanel)
-                  : definition?.useBuiltinPanel
+                : definition?.useBuiltinPanel
+                  ? true
+                  : definition?.autoOpenPanel
                     ? true
-                    : isBuiltinType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Group;
+                    : isBuiltinNodeType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Group;
             if (wantsPanel) setDialogNodeId(newNode.id);
             return newNode;
         },
@@ -1473,7 +1457,7 @@ function InfiniteCanvasPage() {
             const clickedNode = nodesRef.current.find((node) => node.id === clickedNodeId);
             const clickedDefinition = clickedNode ? getNodeDefinition(clickedNode.type) : undefined;
             if (clickedDefinition?.hidePanel) {
-                // Clicking a display-only plugin node selects it without opening a lower panel.
+                // Clicking a display-only node selects it without opening a lower panel.
                 setDialogNodeId((current) => (current === clickedNodeId ? current : null));
             } else if (clickedNode?.type !== CanvasNodeType.Group) {
                 setDialogNodeId(clickedNodeId);
@@ -1984,7 +1968,7 @@ function InfiniteCanvasPage() {
                 return;
             }
 
-            // useBuiltinPanel.writeBackToSelf reuses built-in generation while writing the result back to the plugin node.
+            // useBuiltinPanel.writeBackToSelf reuses the built-in generation flow while writing the result back to this node.
             // Image mode currently supports display-only nodes such as panoramas, with a useBuiltinPanel.promptPrefix.
             const builtinPanel = sourceNode ? getNodeDefinition(sourceNode.type)?.useBuiltinPanel : undefined;
             if (sourceNode && builtinPanel?.writeBackToSelf && builtinPanel.mode === "image") {
@@ -2254,8 +2238,8 @@ function InfiniteCanvasPage() {
 
     const renderNodePanel = useCallback(
         (panelNode: CanvasNodeData) =>
-            getNodeDefinition(panelNode.type)?.Panel ? (
-                renderPluginPanel(panelNode)
+            panelNode.type === CanvasNodeType.Lora ? (
+                <LoraNodePanel node={panelNode} theme={theme} onChange={(patch) => handleConfigNodeChange(panelNode.id, patch)} />
             ) : panelNode.type === CanvasNodeType.Config ? (
                 <CanvasConfigComposer
                     nodeId={panelNode.id}
@@ -2291,20 +2275,7 @@ function InfiniteCanvasPage() {
                     }}
                 />
             ),
-        [
-            configInputsById,
-            confirmStopGeneration,
-            connectedNodesByNodeId,
-            disconnectNodeReference,
-            handleConfigNodeChange,
-            handleGenerateNode,
-            handleNodePromptChange,
-            hasActiveGeneration,
-            mentionReferencesByNodeId,
-            nodes,
-            renderPluginPanel,
-            startNodeReferenceSelection,
-        ],
+        [configInputsById, confirmStopGeneration, connectedNodesByNodeId, disconnectNodeReference, handleConfigNodeChange, handleGenerateNode, handleNodePromptChange, hasActiveGeneration, mentionReferencesByNodeId, nodes, startNodeReferenceSelection],
     );
 
     const renderNodeContentPanel = useCallback(
@@ -2393,7 +2364,6 @@ function InfiniteCanvasPage() {
                     onSwitchProject={(id) => navigate(`/canvas/${id}`)}
                     onCreateProject={createAndOpenProject}
                     onDeleteProject={deleteCurrentProject}
-                    onOpenPlugins={() => setPluginManagerOpen(true)}
                 />
 
                 <InfiniteCanvas
@@ -2469,8 +2439,6 @@ function InfiniteCanvasPage() {
                             batchExpanded={expandedBatchNodeIds.has(node.id)}
                             showImageInfo={showImageInfo}
                             mentionReferences={mentionReferencesByNodeId.get(node.id) || EMPTY_REFERENCES}
-                            pluginHost={pluginHost}
-                            registryVersion={nodeRegistryVersion}
                             renderPanel={renderNodePanel}
                             renderNodeContent={renderNodeContentPanel}
                             onMouseDown={handleNodeMouseDown}
@@ -2574,7 +2542,6 @@ function InfiniteCanvasPage() {
                 <CanvasNodeHoverToolbar
                     node={isNodeDragging || isNodeResizing || nodeImageSettingsOpen || Boolean(referencePickerNodeId) || expandedBatchNodeIds.has(toolbarNode?.id || "") ? null : toolbarNode}
                     viewport={viewport}
-                    extraTools={toolbarNode ? buildNodeToolbarItems(toolbarNode) : undefined}
                     onKeep={keepNodeToolbar}
                     onLeave={hideNodeToolbar}
                     onInfo={(node) => openNodeTool("info", node.id)}
@@ -2625,7 +2592,7 @@ function InfiniteCanvasPage() {
                     onAddVideo={() => createNode(CanvasNodeType.Video)}
                     onAddText={() => createNode(CanvasNodeType.Text)}
                     onAddGroup={() => createNode(CanvasNodeType.Group)}
-                    onAddExtensionNode={(type) => createNode(type)}
+                    onAddLora={() => createNode(CanvasNodeType.Lora)}
                     onUndo={undoCanvas}
                     onRedo={redoCanvas}
                     onUpload={() => handleUploadRequest()}
@@ -2673,7 +2640,6 @@ function InfiniteCanvasPage() {
                 <input ref={imageInputRef} type="file" multiple accept="image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" className="hidden" onChange={handleImageInputChange} />
 
                 <CanvasNodeInfoModal node={infoNode} open={Boolean(infoNode)} onClose={() => closeNodeTool()} />
-                <CanvasPluginManagerModal open={pluginManagerOpen} onClose={() => setPluginManagerOpen(false)} />
 
                 {cropNode?.metadata?.content ? <CanvasNodeCropDialog dataUrl={cropNode.metadata.content} open={Boolean(cropNode)} onClose={() => closeNodeTool()} onConfirm={(crop) => void cropImageNode(cropNode!, crop)} /> : null}
 

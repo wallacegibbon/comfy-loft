@@ -12,7 +12,7 @@ import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
 import { useCopyText } from "@/hooks/use-copy-text";
 import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
-import type { CanvasNodeToolbarItem } from "@/types/canvas-plugin";
+import type { CanvasNodeToolbarItem } from "@/types/canvas-node";
 import { ImageToolSettingsModal, type ImageToolbarSettingsTool } from "./canvas-image-toolbar-settings-modal";
 import { IMAGE_QUICK_TOOLS_STORAGE_KEY, buildImageToolbarTools, defaultImageQuickToolIds, readImageQuickToolsConfig, type ImageQuickToolId } from "./canvas-image-toolbar-tools";
 

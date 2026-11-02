@@ -1,42 +1,14 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 
 const webDir = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(webDir, "../..");
 // The version string is optional: without a VERSION file the bundle says "dev".
 const versionPath = [resolve(appRoot, "VERSION"), resolve(webDir, "../VERSION")].find((file) => existsSync(file));
 const localVersion = versionPath ? readFileSync(versionPath, "utf8").trim() || "dev" : "dev";
-
-// Expose /plugins/index.json with local plugin files from public/plugins.
-// The frontend can discover and list them when enabled; development reads the directory live, while builds emit a static registry.
-function localPluginsManifest(): Plugin {
-    const pluginsDir = resolve(webDir, "public/plugins");
-    const listLocalPlugins = () => {
-        try {
-            return readdirSync(pluginsDir)
-                .filter((file) => file.endsWith(".js"))
-                .sort()
-                .map((file) => `/plugins/${file}`);
-        } catch {
-            return [];
-        }
-    };
-    return {
-        name: "local-plugins-manifest",
-        configureServer(server) {
-            server.middlewares.use("/plugins/index.json", (_req, res) => {
-                res.setHeader("Content-Type", "application/json");
-                res.end(JSON.stringify(listLocalPlugins()));
-            });
-        },
-        generateBundle() {
-            this.emitFile({ type: "asset", fileName: "plugins/index.json", source: JSON.stringify(listLocalPlugins()) });
-        },
-    };
-}
 
 // Vendor code is split by library family so the app entry does not have to be re-downloaded
 // when only app code changes, and no single chunk dwarfs the rest. The entries are only a
@@ -51,7 +23,7 @@ function vendorChunk(id: string): string | undefined {
 
 export default defineConfig({
     base: process.env.VITE_BASE || "/",
-    plugins: [react(), localPluginsManifest()],
+    plugins: [react()],
     resolve: {
         alias: {
             "@": resolve(webDir, "src"),

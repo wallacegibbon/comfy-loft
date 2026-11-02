@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
-import { isBuiltinNodeType, listNodeDefinitions, useNodeRegistryVersion } from "@/lib/canvas/node-registry";
+import { listNodeDefinitions } from "@/lib/canvas/node-registry";
 import { getNodeSpec } from "@/constant/canvas";
 import { CanvasNodeType, type ConnectionHandle, type Position } from "@/types/canvas";
 
@@ -16,11 +16,9 @@ export type PendingConnectionCreate = {
 export function ConnectionCreateMenu({ pending, scale = 1, onCreate, onClose }: { pending: PendingConnectionCreate; scale?: number; onCreate: (type: string) => void; onClose: () => void }) {
     const theme = useCanvasTheme();
     const { t } = useTranslation();
-    useNodeRegistryVersion();
-    // Plugin nodes are injected into the connection menu; insertBefore nodes are created upstream and connected into the current node.
-    const pluginDefinitions = listNodeDefinitions()
-        .filter((def) => def.showInCreateMenu !== false && !isBuiltinNodeType(def.type))
-        .sort((a, b) => Number(Boolean(b.insertBefore)) - Number(Boolean(a.insertBefore)));
+    // Nodes that want to live *before* what they feed — a LoRA card is the one that does — are offered
+    // here: dragging out of a node's handle is when you know what you are about to attach.
+    const upstreamDefinitions = listNodeDefinitions().filter((def) => def.showInCreateMenu !== false && def.insertBefore);
     return (
         <div
             className="absolute z-[120] w-[240px] rounded-2xl border p-2 shadow-2xl backdrop-blur"
@@ -42,12 +40,12 @@ export function ConnectionCreateMenu({ pending, scale = 1, onCreate, onClose }: 
                 <ConnectionCreateOption theme={theme} icon={<ImageIcon className="size-4" />} title={t("canvas.createMenu.image")} onClick={() => onCreate(CanvasNodeType.Image)} />
                 <ConnectionCreateOption theme={theme} icon={<Video className="size-4" />} title={t("canvas.createMenu.video")} onClick={() => onCreate(CanvasNodeType.Video)} />
                 <ConnectionCreateOption theme={theme} icon={<Music2 className="size-4" />} title={t("canvas.createMenu.audio")} onClick={() => onCreate(CanvasNodeType.Audio)} />
-                {pluginDefinitions.length ? (
+                {upstreamDefinitions.length ? (
                     <div className="mt-1 border-t pt-1.5" style={{ borderColor: theme.node.stroke }}>
                         <div className="px-2 pb-1 text-xs" style={{ color: theme.node.muted }}>
-                            {t("canvas.createMenu.plugins")}
+                            {t("canvas.createMenu.upstream")}
                         </div>
-                        {pluginDefinitions.map((def) => (
+                        {upstreamDefinitions.map((def) => (
                             <ConnectionCreateOption key={def.type} theme={theme} icon={def.icon} title={getNodeSpec(def.type).title} description={def.description} onClick={() => onCreate(def.type)} />
                         ))}
                     </div>
@@ -86,7 +84,6 @@ function ConnectionCreateOption({ theme, icon, title, description, onClick }: { 
 export function NodeCreateMenu({ position, scale = 1, onCreate, onClose }: { position: Position; scale?: number; onCreate: (type: string) => void; onClose: () => void }) {
     const theme = useCanvasTheme();
     const { t } = useTranslation();
-    useNodeRegistryVersion();
     const menuRef = useRef<HTMLDivElement>(null);
     const definitions = listNodeDefinitions().filter((def) => def.showInCreateMenu !== false);
     // Close automatically when clicking outside the menu.

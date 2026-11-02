@@ -1,4 +1,4 @@
-import { APP_DATABASE, PLUGIN_DATABASE } from "@/services/localforage-databases";
+import { APP_DATABASE } from "@/services/localforage-databases";
 
 type IndexedDbStoreUsage = { name: string; records: number; bytes: number };
 type IndexedDbDatabaseUsage = { name: string; version: number; bytes: number; stores: IndexedDbStoreUsage[] };
@@ -7,11 +7,11 @@ export type LocalStorageUsage = { usage: number; quota: number | null; contentBy
 /**
  * How much this app has put in the browser, broken down by object store.
  *
- * Both databases are measured. The plugin one used to be missing, so a canvas with heavy plugins
- * reported a number far below what the browser was actually holding against the quota.
+ * The plugin database is not measured any more: nothing writes to it, so whatever it holds is not this
+ * app's cost to report. It stays on disk, unread, until the browser evicts it.
  */
 export async function readLocalStorageUsage(): Promise<LocalStorageUsage> {
-    const [estimate, databases] = await Promise.all([readStorageEstimate(), readDatabases([APP_DATABASE, PLUGIN_DATABASE])]);
+    const [estimate, databases] = await Promise.all([readStorageEstimate(), readDatabases([APP_DATABASE])]);
     const bytes = databases.reduce((total, database) => total + database.bytes, 0);
     return { usage: estimate?.usage ?? bytes, quota: estimate?.quota ?? null, contentBytes: bytes, databases };
 }

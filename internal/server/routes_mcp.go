@@ -121,7 +121,7 @@ func (s *Server) mcpTools() []mcpTool {
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"type": {"type": "string", "enum": ["image", "video", "audio", "text", "config"], "description": "What kind of node."},
+				"type": {"type": "string", "enum": ["image", "video", "audio", "text", "config", "lora"], "description": "What kind of node. A lora node carries a LoRA and its strength and must be wired into the node it should apply to."},
 				"prompt": {"type": "string", "description": "What the node starts with: a text node's body, or the prompt the node's own panel shows."},
 				"position": {
 					"type": "object",

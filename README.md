@@ -22,7 +22,7 @@ treat `canvas/` as this project's own code.
 - **Images**: Z-Image Turbo, MOSS SFT (8-step, regional layout), Qwen Image 2.1 (multi-image edit, masked inpaint, outpaint).
 - **Video**: MiniMax-H3 text-to-video, first/last-frame and multi-reference, with sampling preview and LoRA cards.
 - **Upscaling**: ESRGAN for images.
-- **Local plugins**: LoRA strength card, ComfyUI parameter card.
+- **LoRA card**: a node that carries a LoRA and its strength into whatever it is wired to.
 - **Prompts come from AlayaCore**: one `alayacore --rawio` process per request, its frames relayed to the canvas; the model, the skills and the wording are the agent's.
 - **System panel**: VRAM / RAM / GPU / ComfyUI status, one-click VRAM release.
 - **Local-only by construction**: there is no cloud mode and no flag to re-enable one. The image/video/prompt workbenches, the cloud model channels, the prompt library and the prompt-API settings tab are deleted, not hidden: there is one channel, it is the gateway that served the page, and prompts are the agent's (`docs/decisions.md` #71, #76).

@@ -5020,3 +5020,56 @@ then a tool call answered — the model's reply described the empty canvas it ha
 `internal/server/{mcp_server.go,routes_mcp.go,agent_config.go,server.go,routes_agent.go}`,
 `internal/agent/{spawn.go,sessions.go}`, `internal/config/config.go`, `Makefile`, `start.sh`,
 `README.md`, `docs/gateway.md`.
+
+## 148. There is no plugin mechanism; a node type is a built-in
+
+**Decision** The plugin system is gone — loader, runtime, store, manager dialog, the SDK and its eight
+packages, the `public/plugins` directory, the per-plugin IndexedDB database, the event bus the runtime
+handed out, and the "节点插件" button. The one node that was actually reachable, the LoRA card, is now a
+built-in node (`CanvasNodeType.Lora`) rendered by `components/canvas/nodes/lora-node.tsx`. The
+`CanvasPluginDefinition` shape survives as `types/canvas-node.ts`, because it was always the description
+of a node and the registry is what built-ins use.
+
+**Why** The mechanism bought two things: a third-party author could add a node without this repository,
+and a node could be replaced without rebuilding the app. Neither was ever used. The evidence is the whole
+history: no canvas this machine ever saved contained a node type outside the built-in enum; the tracked
+plugin manifest never listed anything but the two hand-written `.js` cards; and the eight SDK packages
+had only ever been touched by rename commits. What it cost was real — a `fetch` + `eval` loader, a
+persisted store, a manager dialog with install/uninstall/update, a version contract, a manifest written by
+a build script into a tracked file, an IndexedDB database per plugin, a curated `runtime` object standing
+in for the imports a plugin could have had, and no type checking or `check-i18n` coverage inside anything
+that was evaluated.
+
+**What "add a feature" means now** A new kind of card is a built-in node, and the cost is the honest one:
+one file with its components, one entry in `BUILTIN_DEFINITIONS`, one `CanvasNodeType` member with its
+`NODE_SPECS` row, its strings in both dictionaries, and a branch in `renderNodePanel` if it has a panel.
+Adding one is a rebuild — for a project that runs from source, that is `make build`.
+
+**The two cards, resolved separately** The LoRA card was converted because it was the only UI that could
+choose a LoRA at all: the native side consumes a `lora` resource (`canvas-node-generation.ts` →
+`params.loras` → `internal/generate/lora.go`), and nothing else produced one. The ComfyUI-parameters card
+was deleted outright: its own source had retired it from the create menu ("与自由卡片重复…保留运行时以兼容
+已有节点"), and there were no such nodes to be compatible with.
+
+**What a canvas written by an older build looks like** A node type this build does not have renders as
+"Unknown node" (`MissingNodeContent`) instead of a plugin-missing message. That is the honest fallback now:
+there is nothing to install that would bring the type back.
+
+**Left on disk, unread** `comfyloft-plugins` (the old IndexedDB database) and any `comfy-loft:plugin_store`
+key are not deleted and not read; the storage panel stops reporting the plugin database, because nothing
+writes to it (#147 chose the same for the pre-rename keys).
+
+**Tested** `npm run check` (i18n, exports, prettier, `tsc`), 143 canvas tests, `make check`, `make build`,
+`make web`, and in a browser: the 节点插件 button is gone, the dock's LoRA button creates the node, its
+panel lists the LoRAs the gateway reports (`GET /api/loras`, with the model-pack-internal file filtered
+out), picking one updates the card and the node's `params.loras`, and the console stays clean.
+
+**Where** deleted: `canvas/plugins/**`, `canvas/web/public/plugins/**`,
+`canvas/web/src/{lib/canvas/{plugin-loader.ts,plugin-runtime.ts,plugin-node-context.ts,canvas-event-bus.ts},stores/canvas/use-plugin-store.ts,components/canvas/canvas-plugin-manager-modal.tsx,pages/canvas/hooks/use-plugin-host.tsx,types/canvas-plugin.ts}`.
+Added: `canvas/web/src/{components/canvas/nodes/lora-node.tsx,types/canvas-node.ts,services/api/loras.ts}`.
+Touched: `node-registry.ts`, `builtin-nodes.tsx`, `canvas-node.tsx`, `project.tsx`, `canvas-toolbar.tsx`,
+`canvas-create-menus.tsx`, `canvas-top-bar.tsx`, `user-status-actions.tsx`,
+`services/{localforage-databases,local-storage-usage}.ts`, `vite.config.ts`, `vite-env.d.ts`,
+`constant/canvas.ts`, `types/canvas.ts`, `services/api/video.ts`, `i18n/locales/*`,
+`internal/server/routes_mcp.go`, `scripts/check-exports.cjs`, `docs/known-issues.md`, `README.md`,
+`.gitignore`.

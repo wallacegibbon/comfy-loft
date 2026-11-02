@@ -16,9 +16,12 @@ export enum CanvasNodeType {
     Video = "video",
     Audio = "audio",
     Group = "group",
+    Lora = "lora",
 }
 
-// Node types are open strings: built-ins use CanvasNodeType and plugins use "<pluginId>:<name>".
+// Open on purpose, though every type this build defines is a CanvasNodeType: a saved canvas is data, and a
+// node whose type this build does not have renders as a missing node rather than being refused. That is
+// what a canvas written by an older build looks like after a node type is removed.
 export type CanvasNodeTypeId = CanvasNodeType | (string & {});
 
 type CanvasNodeStatus = "idle" | "success" | "loading" | "error";
@@ -137,7 +140,7 @@ export type CanvasNodeMetadata = {
     seedFixed?: string;
     aspectRatio?: string;
     groupId?: string;
-    interactive?: boolean; // Plugin node interaction/move state; see CanvasNodeDefinition.interactionToggle.
+    interactive?: boolean; // Node interaction/move state; see CanvasNodeDefinition.interactionToggle.
     params?: Record<string, unknown>; // Per-node model params (e.g. LoRA stack).
 };
 

@@ -12,7 +12,7 @@ export type PromptOptimizeMode = "全参考模式(Reference to Video)" | "文生
  * the one its panel connected on the model the user chose there, and never by the canvas's agent.
  *
  * The session is opened here if it is not open yet, which is the whole of "connect": a caller that
- * reaches this without a panel (a retry, a plugin) still gets an agent, and the one that does have a
+ * reaches this without a panel (a retry, a script) still gets an agent, and the one that does have a
  * panel gets the session it already made — same name, same process. It is released when the answer
  * ends: this is one question, and asking again starts a new agent.
  */

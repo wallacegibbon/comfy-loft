@@ -28,10 +28,6 @@ type WaitOptions = RequestOptions & { onPreview?: (preview: VideoPreview | null)
  */
 const VIDEO_RUN_INTERVAL_MS = 1500;
 
-export async function requestVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[] = [], options?: VideoMediaOptions): Promise<VideoGenerationResult> {
-    return waitForVideoGenerationTask(config, await createVideoGenerationTask(config, prompt, references, options), options);
-}
-
 export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: WaitOptions): Promise<VideoGenerationResult> {
     return waitForVideoRun(config, task, options);
 }

@@ -12,20 +12,15 @@
 // C 是刻意算作问题的：测试不是产品代码，一个只有测试 import 的导出说明这个函数/类型
 // 没有真正的调用者，`agent.Run` 就是这么活了一个版本的（Go 那边，同样的盲点）。
 //
-// 豁免：`src/types/canvas-plugin.ts` 是**发布出去的插件契约**，由
-// `../plugins/canvas/sdk/src/types.ts` 镜像。插件作者会 import 这些类型，
-// "在本仓库没人用"恰恰不是死代码。
-//
-// 用法：npm run check:exports   （有问题时以非零码退出）
+// 豁免：`src/vite-env.d.ts` 是 Vite 的类型声明，里面没有运行时导出。
 
 const fs = require("fs");
 const path = require("path");
 const ts = require("typescript");
 
 const WEB = path.resolve(__dirname, "..");
-const PLUGINS = path.resolve(WEB, "../plugins");
 
-const EXEMPT = new Set([path.join(WEB, "src/types/canvas-plugin.ts"), path.join(WEB, "src/vite-env.d.ts")]);
+const EXEMPT = new Set([path.join(WEB, "src/vite-env.d.ts")]);
 
 // 只被测试引用的导出，逐条写明理由。这里每多一行，就说明产品代码少一个调用者。
 const TEST_ONLY = new Map([
@@ -51,7 +46,7 @@ function walk(dir, out = []) {
 }
 
 const srcFiles = walk(path.join(WEB, "src"));
-const allFiles = [...srcFiles, ...walk(path.join(WEB, "tests")), ...walk(PLUGINS)];
+const allFiles = [...srcFiles, ...walk(path.join(WEB, "tests"))];
 
 const configPath = path.join(WEB, "tsconfig.json");
 const parsed = ts.parseJsonConfigFileContent(ts.readConfigFile(configPath, ts.sys.readFile).config, ts.sys, WEB);

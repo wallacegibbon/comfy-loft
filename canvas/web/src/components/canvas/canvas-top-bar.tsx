@@ -25,7 +25,6 @@ export function CanvasTopBar({
     onSwitchProject,
     onCreateProject,
     onDeleteProject,
-    onOpenPlugins,
 }: {
     title: string;
     titleDraft: string;
@@ -37,7 +36,6 @@ export function CanvasTopBar({
     onSwitchProject: (id: string) => void;
     onCreateProject: () => void;
     onDeleteProject: () => void;
-    onOpenPlugins: () => void;
 }) {
     const colorTheme = useThemeStore((state) => state.theme);
     const { t } = useTranslation();
@@ -141,7 +139,7 @@ export function CanvasTopBar({
                 <div className={barClass} style={barStyle}>
                     <CanvasSystemStatus />
                     <span className="mx-0.5 h-6 w-px shrink-0" style={{ background: theme.toolbar.border }} />
-                    <UserStatusActions variant="canvas" onOpenShortcuts={() => setShortcutsOpen(true)} onOpenPlugins={onOpenPlugins} />
+                    <UserStatusActions variant="canvas" onOpenShortcuts={() => setShortcutsOpen(true)} />
                 </div>
             </div>
             <Dialog title={t("canvas.shortcuts")} open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} size="form">

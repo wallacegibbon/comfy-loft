@@ -80,7 +80,7 @@ type ToolAnswer = { content: ToolContent[]; isError?: boolean };
 
 const textBlock = (text: string): ToolContent => ({ type: "text", text });
 
-/** The node types a tool may make. A group is structure, not content, and plugins are the user's. */
+/** The node types a tool may make. A group is structure, not content. */
 const CREATE_TYPES: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text, CanvasNodeType.Config];
 
 async function runTool(name: string, args: unknown, hands: CanvasHands): Promise<ToolAnswer> {
