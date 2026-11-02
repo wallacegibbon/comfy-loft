@@ -3277,6 +3277,10 @@ node in the list lost the view they were looking at. A list of what is on the ca
 looking should not move the thing you are looking at. The floating board keeps the function and drops the
 consequence.
 
+**Amended by #195** It no longer slides out sideways: it opens and closes by height, growing down from the
+column's top edge. Everything else here stands — it is still a board over the canvas, still shut by default,
+still the same top-left button.
+
 The bottom dock's `left: 300` was **not** room for the side panel, which is what this change first assumed: it
 is the width the zoom dock and minimap occupy in the bottom-left corner. Changing it to 16 made the dock
 overlap the zoom dock as soon as the board was wide, which the browser showed immediately. It is
@@ -6593,6 +6597,10 @@ the same frame, no close button, and the skip footer with the new hint.
 
 ## 191. The left column: one width, three stacked boxes
 
+**Amended by #195** The middle box holds two lists now — the canvases in the workspace and the nodes in this
+one — behind a switch at its top, and the height it opens to is `CANVAS_COLUMN_HEIGHT`, the same three
+numbers this entry declares. The widths, the gutters and the one-client-of-the-number rule are unchanged.
+
 **Decision** The bar at the top left, the side panel and the zoom dock are one column — same width, same
 left edge, same radius, same shadow — and they are *stacked*: the bar on top, the panel under it, the dock
 at its foot. The panel's bottom edge *is* the dock's height plus the two gaps (`CANVAS_ABOVE_DOCK_BOTTOM`),
@@ -6797,3 +6805,90 @@ and `npm run build` all pass.
 
 **Where** `frontend/src/components/kit/select-primitive.tsx`, `frontend/src/components/kit/select.tsx`,
 `frontend/src/components/model-picker.tsx`, `frontend/src/components/canvas/agent-settings-controls.tsx`.
+
+## 195. The left column has two lists, and the panel opens downward
+
+**Decision** The canvases in the workspace and the nodes in this one are two sections of the left column
+(`CanvasSidePanel`), one at a time, behind a switch at the top of the box. The 1000×760 window that held the
+canvas list (`canvas-manager-dialog.tsx`), its tall card (`canvas-project-card.tsx`) and its one-boolean store
+(`use-canvas-panel-store.ts`) are gone; the column is where a list lives now.
+
+- **One column, one surface.** The top bar's grid button opens the column on `canvases`
+  (`openSection`), the panel button opens and shuts it, and the switch inside moves between the two lists. The
+  section is stored (`canvas-side-panel-section`) beside the width and the open flag, so the column comes back
+  the way it was left.
+- **Both lists stay mounted**, the inactive one `hidden`. Switching back finds its search box, its filter and
+  its selection where they were — cheaper and more honest than lifting seven pieces of list state into a store.
+- **A row, not a card.** The list is 220–480px wide: a title, the updated time, a tick for the canvas you are
+  in, and a `⋯` menu with export / rename / delete. The card's three icon buttons became named menu items for
+  the reason the bottom dock became a menu (#188) — at this width, three 12px glyphs was all that fitted.
+- **Delete all became select-all.** The canvases list now has the bar the elements list has: select-all, a
+  count, one action. One button that deletes the whole workspace, in a 280px column, is a trap; the same place
+  is still reached through the same confirmation.
+- **It opens by height, from its top edge.** `height: 0 → calc(100dvh - 140px)` on the box, with the content
+  inside pinned to that full height (`CANVAS_COLUMN_HEIGHT`) so the reveal clips it instead of squashing it.
+  This replaces #98's sideways `translateX` slide, by request. `transform` and `scaleY` are both wrong here,
+  for different reasons: a translate keeps the list's own top edge still and moves the box *through* it, and a
+  scale squashes every row on the way down. `height` also costs nothing outside the box — the panel floats over
+  the canvas (#98), so the board does not reflow.
+- **Nothing paints while it is shut.** At `height: 0` the box's own border and shadow still drew a two-pixel
+  line across the canvas at the top of the column — measured in the browser, 1.6px of it. `overflow: hidden`
+  cannot clip a border, so the box leaves with `visibility: hidden` on a transition *delayed by the animation's
+  own duration*; on the way in the delay is zero, or there would be nothing to grow. `inert` covers the
+  collapsing frames, when the content is still focusable.
+- **The element list's search reads the words a node holds.** It searched `title`, `content` and `prompt`, which
+  was wrong in both directions: it could not find the text in the prompt box the panel shows (`composerContent`,
+  where a node that holds a result keeps its words) while it *did* search `content`, which for a picture is a
+  file name — so "png" matched every image on the canvas. `nodeWords()` sits next to `holdsResult()` in
+  `lib/canvas/node-prompt-field.ts`, which is the module that already knows which field a node's prompt is in. A
+  search that finds nothing now says so: it used to say "no nodes on this canvas", which reads as if the list had
+  lost its contents.
+
+**Why** The window was the last surface that had to be summoned and dismissed, and it was the only list that
+lived outside the column that exists for lists. The two questions it answered are not the same question: "which
+canvas am I in" is a place, "which node is this" is a thing, and merging them into one *surface* with two
+sections keeps both answers one click away without giving either half a column — at 220px, stacked, the elements
+list would lose the room its hover preview needs.
+
+Replacing the elements list instead — the first shape of this request — was the one thing not to do. That list is
+the only name-based navigation on a board bigger than the window, the only multi-select export, and its hover
+preview is how you tell four similar pictures apart before jumping to one. Keeping the preview was the
+requirement; the column is what both lists needed.
+
+**Cost** The canvas list lost its 1000px frame: titles truncate where they used to wrap, and deleting everything
+is two clicks instead of one. Picking a canvas also switches the column to Elements (you just answered "which
+canvas?"), so managing several in a row means going back to the Canvases tab each time. `height` is a layout
+animation — the rows relayout on each frame for 240ms — which is the price of a reveal that does not distort
+anything; it is confined to this box because the panel floats. And the section is a stored preference: a second
+browser opening the same workspace starts on Elements.
+
+**Tested** `npm run check` (i18n 824/810, no dead or missing keys — `canvas.sidePanel.elements`,
+`canvas.deleteAll`, `canvas.project.saveName` and `canvas.project.cancelRename` went with the card, and
+`canvas.sidePanel.tab.*`, `canvas.sidePanel.noMatch` and `canvas.project.more` are new), `npx vitest run` (155),
+`npm run build`, `make check`. In the browser (`/tmp/verify`, 8191/3001, its own data directory, a copy of the
+workspace's one canvas):
+
+- The animation, measured frame by frame with `getBoundingClientRect`: opening, `top` 64 on every frame and
+  `bottom` 66 → 1402, `height` 2 → 1338 = `100dvh - 140`; closing, `top` 64 and `bottom` 1402 → 66, finished in
+  200ms of a 240ms transition. Settled shut: `height` 1.6 (two 0.8px borders) and `visibility: hidden`, so
+  nothing paints.
+- The switch: both tabs render, clicking Canvases shows New / Import / Select and the row "Canvas 1 — Updated
+  11/03, 03:25 AM" with its "More actions" menu (Export / Rename / Delete items). The section and the open flag
+  were written to `data/settings.json` (`canvas-side-panel-section: "canvases"`), and the top bar's grid button
+  re-opened the column on that list.
+- Select mode: the header's Select became Cancel, the row grew a "Select Canvas 1" tick, and the bar showed
+  "Select all", "0 selected" with Delete disabled — "1 selected" with Delete enabled after ticking it.
+- The search: `zzz` now says "No nodes match" (it said "No nodes on this canvas"), and `森林` brings the four
+  rows back. Hovering a row put the preview overlay at `opacity: 1` with that node's image, which is the
+  behaviour the whole column had to keep.
+
+**Where** `frontend/src/components/canvas/canvas-side-panel.tsx`,
+`frontend/src/components/canvas/canvas-side-panel-canvases.tsx` (new),
+`frontend/src/components/canvas/canvas-side-panel-elements.tsx` (the old `CanvasNodesTab`),
+`frontend/src/components/canvas/canvas-side-panel-parts.tsx` (new),
+`frontend/src/components/canvas/canvas-manager-dialog.tsx` (deleted),
+`frontend/src/components/canvas/canvas-project-card.tsx` (deleted),
+`frontend/src/stores/canvas/use-canvas-panel-store.ts` (deleted),
+`frontend/src/stores/canvas/use-canvas-side-panel-store.ts`,
+`frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/pages/canvas/project.tsx`,
+`frontend/src/lib/canvas/node-prompt-field.ts`, both locales, `frontend/scripts/check-i18n.cjs`.
