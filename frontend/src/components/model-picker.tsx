@@ -69,7 +69,7 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
             </SelectTrigger>
             <SelectContent
                 data-canvas-no-zoom
-                className="z-[1200] w-80 max-w-[calc(100vw-24px)] rounded-xl border border-border/70 bg-popover p-1 shadow-xl"
+                className="w-80 max-w-[calc(100vw-24px)] rounded-xl border border-border/70 bg-popover p-1 shadow-xl"
                 position="popper"
                 align="start"
                 side="bottom"
@@ -222,7 +222,7 @@ function LevelSelect({
             </SelectTrigger>
             <SelectContent
                 data-canvas-no-zoom
-                className={cn("z-[1200] max-w-[calc(100vw-24px)] rounded-xl border border-border/70 bg-popover p-1 shadow-xl", width)}
+                className={cn("max-w-[calc(100vw-24px)] rounded-xl border border-border/70 bg-popover p-1 shadow-xl", width)}
                 position="popper"
                 align="start"
                 side="bottom"

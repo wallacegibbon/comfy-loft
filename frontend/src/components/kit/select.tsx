@@ -81,13 +81,7 @@ export function Select<T extends string = string>({
                 <SelectValue className="min-w-0 flex-1 truncate text-left" placeholder={<span className="text-stone-400 dark:text-stone-500">{placeholder}</span>} />
                 {loading ? <LoaderCircle className="size-3.5 shrink-0 animate-spin text-stone-400" /> : <ChevronDown className="size-3.5 shrink-0 text-stone-400" />}
             </SelectTrigger>
-            <SelectContent
-                data-canvas-overlay
-                position="popper"
-                align="start"
-                sideOffset={4}
-                className="z-[1500] max-h-72 min-w-(--radix-select-trigger-width) rounded-lg border border-stone-200 bg-white p-1 shadow-xl dark:border-stone-700 dark:bg-stone-900"
-            >
+            <SelectContent data-canvas-overlay position="popper" align="start" sideOffset={4} className="max-h-72 min-w-(--radix-select-trigger-width) rounded-lg border border-stone-200 bg-white p-1 shadow-xl dark:border-stone-700 dark:bg-stone-900">
                 {options.length ? (
                     options.map((option) => (
                         <SelectItem
