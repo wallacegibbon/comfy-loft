@@ -97,15 +97,15 @@ func Run(in io.Reader, out io.Writer, cfg Config) error {
 // forward hands one message to the gateway and returns its answer.
 func forward(client *http.Client, cfg Config, message []byte) ([]byte, error) {
 	if cfg.Endpoint == "" {
-		return nil, errors.New("COMFY_LOFT_MCP is not set, so this bridge has nowhere to send the call")
+		return nil, errors.New("COMFYLOFT_MCP is not set, so this bridge has nowhere to send the call")
 	}
 	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(cfg.Endpoint, "/")+"/mcp", bytes.NewReader(message))
 	if err != nil {
 		return nil, err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Comfy-Loft-Session", cfg.Session)
-	request.Header.Set("X-Comfy-Loft-Bridge", cfg.Version)
+	request.Header.Set("X-Comfyloft-Session", cfg.Session)
+	request.Header.Set("X-Comfyloft-Bridge", cfg.Version)
 
 	response, err := client.Do(request)
 	if err != nil {

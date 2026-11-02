@@ -41,8 +41,8 @@ func newFakeGateway(t *testing.T) *fakeGateway {
 		body, _ := io.ReadAll(r.Body)
 		fake.mu.Lock()
 		fake.requests++
-		fake.sessions = append(fake.sessions, r.Header.Get("X-Comfy-Loft-Session"))
-		fake.bridges = append(fake.bridges, r.Header.Get("X-Comfy-Loft-Bridge"))
+		fake.sessions = append(fake.sessions, r.Header.Get("X-Comfyloft-Session"))
+		fake.bridges = append(fake.bridges, r.Header.Get("X-Comfyloft-Bridge"))
 		fake.bodies = append(fake.bodies, string(body))
 		fake.mu.Unlock()
 		fake.reply(w, string(body))
@@ -80,10 +80,10 @@ func TestRunForwardsTheSessionAndTheBridgeVersion(t *testing.T) {
 		t.Fatalf("wrote %d lines, want exactly one answer: %v", len(lines), lines)
 	}
 	if fake.sessions[0] != "canvas:abc" {
-		t.Fatalf("X-Comfy-Loft-Session = %q, want the session the bridge was given", fake.sessions[0])
+		t.Fatalf("X-Comfyloft-Session = %q, want the session the bridge was given", fake.sessions[0])
 	}
 	if fake.bridges[0] != Version {
-		t.Fatalf("X-Comfy-Loft-Bridge = %q, want %q", fake.bridges[0], Version)
+		t.Fatalf("X-Comfyloft-Bridge = %q, want %q", fake.bridges[0], Version)
 	}
 	if !strings.Contains(fake.bodies[0], "tools/list") {
 		t.Fatalf("gateway was sent %q, want the request unchanged", fake.bodies[0])

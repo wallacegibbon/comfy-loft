@@ -23,7 +23,7 @@ import (
 const fakeAgentScript = `#!/bin/sh
 printf '%s\n' "$$" >> "$FAKE_SPAWN_LOG"
 if [ -n "$FAKE_ENV_LOG" ]; then
-  printf '%s|%s\n' "$COMFY_LOFT_MCP" "$COMFY_LOFT_SESSION" >> "$FAKE_ENV_LOG"
+  printf '%s|%s\n' "$COMFYLOFT_MCP" "$COMFYLOFT_SESSION" >> "$FAKE_ENV_LOG"
 fi
 SESSION=""
 while [ $# -gt 0 ]; do

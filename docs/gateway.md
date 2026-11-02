@@ -260,12 +260,12 @@ directory, and a stale one fails as `handshake: EOF`, which names the symptom ra
 **The session travels in the environment, not in the address.** The gateway spawns AlayaCore with
 
 ```
-COMFY_LOFT_MCP=http://127.0.0.1:<ephemeral>
-COMFY_LOFT_SESSION=<session name>
+COMFYLOFT_MCP=http://127.0.0.1:<ephemeral>
+COMFYLOFT_SESSION=<session name>
 ```
 
 and AlayaCore hands its environment to the bridge it starts. The bridge puts the session in
-`X-Comfy-Loft-Session` and its own version in `X-Comfy-Loft-Bridge`; the gateway refuses a version it does
+`X-Comfyloft-Session` and its own version in `X-Comfyloft-Bridge`; the gateway refuses a version it does
 not speak, because two binaries can come from two builds — and says which half to rebuild.
 
 That is a second, **loopback-only** listener, never the address `GATEWAY_HOST` names: a tool that creates

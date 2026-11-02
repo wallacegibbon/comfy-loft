@@ -72,12 +72,12 @@ func (s *Server) closeMCP() {
 // not been restarted. Without this the failure is a JSON-RPC parse error somewhere inside AlayaCore,
 // which tells a reader nothing about which half to replace.
 func (s *Server) checkBridge(r *http.Request) error {
-	version := r.Header.Get("X-Comfy-Loft-Bridge")
+	version := r.Header.Get("X-Comfyloft-Bridge")
 	if version == mcpstdio.Version {
 		return nil
 	}
 	if version == "" {
-		return httpx.BadRequest("bridge_version_missing", "this endpoint is for comfyloft-mcp, which sends X-Comfy-Loft-Bridge; the gateway is not an MCP server for anything else")
+		return httpx.BadRequest("bridge_version_missing", "this endpoint is for comfyloft-mcp, which sends X-Comfyloft-Bridge; the gateway is not an MCP server for anything else")
 	}
 	return httpx.BadRequest("bridge_version_mismatch", fmt.Sprintf("comfyloft-mcp speaks bridge %s and this gateway speaks %s; rebuild both from the same source", version, mcpstdio.Version))
 }
@@ -88,9 +88,9 @@ func (s *Server) checkBridge(r *http.Request) error {
 // a session that is gone — its browser tab closed, or its process was released. They are different
 // failures and they read differently, because the fix is different.
 func (s *Server) sessionOf(r *http.Request) (string, error) {
-	session := r.Header.Get("X-Comfy-Loft-Session")
+	session := r.Header.Get("X-Comfyloft-Session")
 	if session == "" {
-		return "", httpx.BadRequest("bridge_session_missing", "the bridge sent no X-Comfy-Loft-Session; it was not spawned by this gateway")
+		return "", httpx.BadRequest("bridge_session_missing", "the bridge sent no X-Comfyloft-Session; it was not spawned by this gateway")
 	}
 	return session, nil
 }

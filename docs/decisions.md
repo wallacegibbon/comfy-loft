@@ -4960,10 +4960,14 @@ logs no console errors.
 
 **Decision** AlayaCore reaches the canvas tools through `bin/comfyloft-mcp`, a second small binary that
 speaks JSON-RPC on stdin/stdout and forwards each call to the gateway on a **loopback-only** listener.
-The session is not in any address: the gateway spawns AlayaCore with `COMFY_LOFT_MCP` and
-`COMFY_LOFT_SESSION` in its environment, AlayaCore hands that environment to the bridge it starts, and the
-bridge puts the session in `X-Comfy-Loft-Session`. `mcp.conf` is one static file for every session, and the
+The session is not in any address: the gateway spawns AlayaCore with `COMFYLOFT_MCP` and
+`COMFYLOFT_SESSION` in its environment, AlayaCore hands that environment to the bridge it starts, and the
+bridge puts the session in `X-Comfyloft-Session`. `mcp.conf` is one static file for every session, and the
 agent's configuration lives in one directory per host, `~/.config/comfyui-gateway/<host>/alayacore/`.
+
+**Why the names are one word** `COMFYLOFT_*` and `X-Comfyloft-*`, not `COMFY_LOFT_*`: an environment
+variable cannot contain a hyphen, so the hyphenated spelling would force three words with one of them
+wrong — which is #146's whole argument, and these are the first identifiers written since it was made.
 
 **Why the URL had to carry identity, and why it no longer does** MCP carries no identity of its own and
 the bridge is configured with one URL per server, so with an HTTP-only endpoint the URL was the only place
@@ -4981,7 +4985,7 @@ cross-site without a CORS preflight this server never answers.
 **Two binaries, and the rule that went with them** `make build` produces `comfyui-gateway` and
 `comfyloft-mcp`. The old "one self-contained binary" rule is retired: it was never true of the *release*
 (the canvas bundle, `workflows/`, `resources.json` and the external AlayaCore were always beside it), and
-with two binaries a mixed install is possible — so the bridge sends `X-Comfy-Loft-Bridge` and the gateway
+with two binaries a mixed install is possible — so the bridge sends `X-Comfyloft-Bridge` and the gateway
 refuses a version it does not speak, naming which half to rebuild. What must stay true is what the rule was
 actually protecting: both are static, cgo-free, and need no runtime.
 

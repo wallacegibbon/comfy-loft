@@ -62,9 +62,9 @@ func postMCP(t *testing.T, server *Server, session string, call map[string]any) 
 	}
 	request.Header.Set("Content-Type", "application/json")
 	if session != "" {
-		request.Header.Set("X-Comfy-Loft-Session", session)
+		request.Header.Set("X-Comfyloft-Session", session)
 	}
-	request.Header.Set("X-Comfy-Loft-Bridge", mcpstdio.Version)
+	request.Header.Set("X-Comfyloft-Bridge", mcpstdio.Version)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return 0, nil, err
@@ -367,10 +367,10 @@ func TestMCPOneStaticConfigServesEverySession(t *testing.T) {
 
 	// And the session, in the process's environment, pointing at the listener that is running now.
 	if first.session != "canvas-1" {
-		t.Fatalf("COMFY_LOFT_SESSION = %q, want the canvas that opened the socket", first.session)
+		t.Fatalf("COMFYLOFT_SESSION = %q, want the canvas that opened the socket", first.session)
 	}
 	if first.endpoint != server.mcpURL {
-		t.Fatalf("COMFY_LOFT_MCP = %q, want %q", first.endpoint, server.mcpURL)
+		t.Fatalf("COMFYLOFT_MCP = %q, want %q", first.endpoint, server.mcpURL)
 	}
 
 	// A second session gets its own environment and the same file.
@@ -399,10 +399,10 @@ func TestMCPRefusesABridgeItDoesNotSpeak(t *testing.T) {
 			t.Fatalf("request: %v", err)
 		}
 		if bridge != "" {
-			request.Header.Set("X-Comfy-Loft-Bridge", bridge)
+			request.Header.Set("X-Comfyloft-Bridge", bridge)
 		}
 		if session != "" {
-			request.Header.Set("X-Comfy-Loft-Session", session)
+			request.Header.Set("X-Comfyloft-Session", session)
 		}
 		response, err := http.DefaultClient.Do(request)
 		if err != nil {
@@ -420,7 +420,7 @@ func TestMCPRefusesABridgeItDoesNotSpeak(t *testing.T) {
 	if status, body := post("", "canvas-1"); status != http.StatusBadRequest || !strings.Contains(body, "comfyloft-mcp") {
 		t.Fatalf("a bridge with no version answered %d %q, want a 400 naming the bridge", status, body)
 	}
-	if status, body := post(mcpstdio.Version, ""); status != http.StatusBadRequest || !strings.Contains(body, "X-Comfy-Loft-Session") {
+	if status, body := post(mcpstdio.Version, ""); status != http.StatusBadRequest || !strings.Contains(body, "X-Comfyloft-Session") {
 		t.Fatalf("a bridge with no session answered %d %q, want a 400 naming the missing header", status, body)
 	}
 }

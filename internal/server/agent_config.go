@@ -8,7 +8,7 @@ package server
 // dials, and a machine reachable at two addresses needs two answers.
 //
 // The session is not in the path any more. It arrives in the spawned process's environment
-// (`COMFY_LOFT_SESSION`), which AlayaCore hands to the bridge it starts from the static `mcp.conf`. That
+// (`COMFYLOFT_SESSION`), which AlayaCore hands to the bridge it starts from the static `mcp.conf`. That
 // is what lets one file serve every session: before this, each session needed its own copy because the
 // MCP URL named it.
 //
@@ -148,11 +148,11 @@ func sessionKey(session string) string {
 func (s *Server) agentOptionsFor(session string, history bool) (agent.SpawnOptions, error) {
 	opts := s.agentOptions()
 	opts.Env = append(opts.Env,
-		"COMFY_LOFT_MCP="+s.mcpEndpoint(),
-		"COMFY_LOFT_SESSION="+session,
+		"COMFYLOFT_MCP="+s.mcpEndpoint(),
+		"COMFYLOFT_SESSION="+session,
 		// The bridge version travels beside the session so a mixed install fails with a sentence that
 		// names both sides instead of a handshake EOF.
-		"COMFY_LOFT_BRIDGE="+mcpstdio.Version,
+		"COMFYLOFT_BRIDGE="+mcpstdio.Version,
 	)
 	if !history {
 		return opts, nil

@@ -18,12 +18,12 @@ import (
 )
 
 func main() {
-	endpoint := os.Getenv("COMFY_LOFT_MCP")
-	session := os.Getenv("COMFY_LOFT_SESSION")
+	endpoint := os.Getenv("COMFYLOFT_MCP")
+	session := os.Getenv("COMFYLOFT_SESSION")
 	if endpoint == "" || session == "" {
 		// No protocol answer is possible: this is not a request, it is a bridge that cannot work. The
 		// parent sees the exit status and its own handshake fail, and stderr says why.
-		fmt.Fprintln(os.Stderr, "comfyloft-mcp: COMFY_LOFT_MCP and COMFY_LOFT_SESSION must both be set; this process is spawned by the gateway's agent, not by hand")
+		fmt.Fprintln(os.Stderr, "comfyloft-mcp: COMFYLOFT_MCP and COMFYLOFT_SESSION must both be set; this process is spawned by the gateway's agent, not by hand")
 		os.Exit(2)
 	}
 
