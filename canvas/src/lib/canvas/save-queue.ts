@@ -16,9 +16,10 @@ import { CanvasConflictError, CanvasMissingError, type CanvasDocument, type Canv
  *     next one when it finishes. That is what keeps `rev` meaningful — two saves racing each other
  *     would hand the gateway a stale `If-Match` on purpose.
  *   - **Deciding what a failure means.** A network error is temporary: retry with backoff and keep the
- *     canvas dirty. A 409 is not temporary and not a failure of the network: someone else wrote this
- *     canvas, so the caller is told, adopts the new rev, and the save is retried — the content on
- *     screen is still unsaved, and losing it silently is the one outcome worth avoiding.
+ *     canvas dirty. A 409 is neither temporary nor a network failure: the copy on disk moved on, which
+ *     in a single-user build means another tab is editing the same canvas. Retrying with the new version
+ *     would overwrite that tab's work with this one's older document, so the queue **stops** and hands
+ *     the decision to the user (#158).
  *
  * Timers and the save function are injected so the whole thing is testable without a browser, which is
  * the only reason this is a module rather than twenty lines inside the store.
@@ -39,8 +40,6 @@ type SaveQueueOptions = {
     debounceMs?: number;
     /** Delays for retrying a failed save. Running out does not drop the change; the next edit retries. */
     retryDelaysMs?: number[];
-    /** How many times one canvas may lose the version race before the queue stops trying. */
-    maxConflicts?: number;
     timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
 };
 
@@ -68,7 +67,6 @@ type Entry = {
 export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
     const debounceMs = options.debounceMs ?? 400;
     const retryDelaysMs = options.retryDelaysMs ?? [1000, 2000, 5000];
-    const maxConflicts = options.maxConflicts ?? 3;
     const timers = options.timers ?? globalThis;
     const entries = new Map<string, Entry>();
 
@@ -136,15 +134,13 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
                 entry.dirty = false;
                 options.onMissing(id);
             } else if (isConflict(error)) {
+                // Stop here, with the change still in memory and on screen. Overwriting is a decision for
+                // the person, not a retry policy: the other copy is not stale, it is someone's work.
                 entry.conflicts += 1;
+                entry.dirty = false;
+                cancel(entry.retry);
+                entry.retry = undefined;
                 options.onConflict(id, error.current);
-                if (entry.conflicts >= maxConflicts) {
-                    // Stop: a loop of conflicting saves would hammer the gateway and still lose.
-                    entry.dirty = false;
-                    options.onError(id, error);
-                } else {
-                    entry.dirty = true;
-                }
             } else {
                 options.onError(id, error);
                 entry.dirty = true;

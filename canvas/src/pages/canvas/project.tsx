@@ -31,6 +31,7 @@ import { captureVideoFrame, type VideoFramePosition } from "@/lib/canvas/canvas-
 
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
 import { ActiveConnectionPath, ConnectionPath } from "@/components/canvas/canvas-connections";
+import { CanvasConflictDialog } from "@/components/canvas/canvas-conflict-dialog";
 import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
 import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
 import { CanvasManagerDialog } from "@/components/canvas/canvas-manager-dialog";
@@ -207,6 +208,7 @@ function InfiniteCanvasPage() {
     const renameCanvas = useCanvasStore((state) => state.renameCanvas);
     const deleteCanvases = useCanvasStore((state) => state.deleteCanvases);
     const clearSaveError = useCanvasStore((state) => state.clearSaveError);
+    const checkForNewerCopy = useCanvasStore((state) => state.checkForNewerCopy);
     const currentProject = useCanvasStore((state) => state.projects.find((project) => project.id === projectId));
     const saveError = useCanvasStore((state) => state.saveErrors[projectId]);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -606,6 +608,21 @@ function InfiniteCanvasPage() {
             if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
         };
     }, [projectId, projectLoaded, updateProject, viewport]);
+
+    // The tab coming back is exactly when the mistake shows up: somebody opened a second tab, worked
+    // there, and switched to this one. One GET of the entry says whether the file moved on (#158).
+    useEffect(() => {
+        if (!projectLoaded) return;
+        const check = () => {
+            if (document.visibilityState === "visible") void checkForNewerCopy(projectId);
+        };
+        window.addEventListener("focus", check);
+        document.addEventListener("visibilitychange", check);
+        return () => {
+            window.removeEventListener("focus", check);
+            document.removeEventListener("visibilitychange", check);
+        };
+    }, [checkForNewerCopy, projectId, projectLoaded]);
 
     // A save that failed, or lost the version race, is said out loud once. Silence here would mean
     // edits disappearing while the canvas looks perfectly saved.
@@ -2377,6 +2394,7 @@ function InfiniteCanvasPage() {
                     </button>
                 )}
                 <CanvasAgentPanel canvasId={projectId} nodes={nodes} onFocusNode={focusNode} onPickNode={pickNodeForAgent} />
+                <CanvasConflictDialog projectId={projectId} />
                 <CanvasManagerDialog />
                 <CanvasTopBar
                     title={currentProject?.title || t("canvas.runtime.untitledCanvas")}

@@ -45,7 +45,6 @@ function harness(overrides: { save?: (id: string, snapshot: SaveSnapshot) => Pro
         onError: (id, error) => state.errors.push({ id, error }),
         debounceMs: DEBOUNCE_MS,
         retryDelaysMs: [1000, 2000],
-        maxConflicts: 3,
     });
     return { queue, state };
 }
@@ -143,47 +142,50 @@ describe("ordering", () => {
 });
 
 describe("a lost version race", () => {
-    test("is reported with the current summary, then retried against it", async () => {
+    test("stops instead of retrying over the other copy", async () => {
         const current = summary("c1", "rev-server");
         let attempt = 0;
         const { queue, state } = harness({
             save: async (id, snapshot) => {
                 attempt += 1;
                 state.saved.push({ id, snapshot });
-                if (attempt === 1) throw new CanvasConflictError(current);
-                return summary(id, "rev-after");
+                throw new CanvasConflictError(current);
             },
         });
         state.snapshots.set("c1", snapshotOf("mine", "rev-stale"));
 
         queue.schedule("c1");
         await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+        // Nothing else may happen on its own: the other copy is somebody's work, not a stale read.
+        await vi.advanceTimersByTimeAsync(60_000);
 
+        expect(attempt).toBe(1);
         expect(state.conflicts).toEqual([{ id: "c1", current }]);
-        // The caller adopts the new rev, as the store does, and the retry carries it.
-        state.snapshots.set("c1", snapshotOf("mine", current.rev));
-        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-
-        expect(state.saved).toHaveLength(2);
-        expect(state.saved[1].snapshot.rev).toBe("rev-server");
-        expect(state.summaries.at(-1)?.rev).toBe("rev-after");
+        expect(state.errors).toHaveLength(0);
+        expect(state.saved).toHaveLength(1);
+        expect(queue.isDirty("c1")).toBe(false);
     });
 
-    test("gives up after the configured number of races instead of looping", async () => {
+    test("a later edit does not silently start overwriting again", async () => {
+        let attempt = 0;
         const { queue, state } = harness({
             save: async () => {
+                attempt += 1;
                 throw new CanvasConflictError(summary("c1", "rev-server"));
             },
         });
         state.snapshots.set("c1", snapshotOf("mine"));
 
         queue.schedule("c1");
-        for (let i = 0; i < 6; i += 1) await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+        state.snapshots.set("c1", snapshotOf("more edits"));
+        queue.schedule("c1");
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
 
-        expect(state.conflicts).toHaveLength(3);
-        expect(state.errors).toHaveLength(1);
-        expect(state.saved).toHaveLength(0);
-        expect(queue.isDirty("c1")).toBe(false);
+        // The user has to answer the question first; until then every attempt is refused, not merged.
+        expect(attempt).toBe(2);
+        expect(state.conflicts).toHaveLength(2);
+        expect(state.summaries).toHaveLength(0);
     });
 });
 

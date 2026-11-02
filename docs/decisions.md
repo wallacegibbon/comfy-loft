@@ -5486,3 +5486,49 @@ cleared on the next poll, `window.__noReload` survived (no reload), and the new 
 
 **Where** `canvas/src/services/api/{gateway-status.ts,http.ts}`, `canvas/src/hooks/use-local-gateway-sync.ts`,
 `canvas/src/i18n/locales/*`, `canvas/tests/api-*.test.ts` (the stubs).
+
+## 158. A tab that is out of date says so instead of winning
+
+**Decision** A save that names a version older than the one on disk is **refused and handed to the
+person**, never retried over it. And a tab checks whether it is still current when it comes back into
+focus, so the mistake is caught at the moment it is made rather than at the next save.
+
+**The scenario** One person, one workspace, no collaboration — and two tabs of the same canvas, because
+a link was opened twice or the session was restored. Both hold a copy. A save replaces the whole
+document (#152), so the second tab to save erased the first one's work, and the only trace was a toast
+that said "changed elsewhere, saving this version" *after* the damage.
+
+**Why the retry was the bug** The queue's conflict path adopted the new `rev` and retried, on the
+reasoning that the content on screen was still unsaved and losing it would be worse. That reasoning is
+right about *not discarding* the edit and wrong about the retry: with whole-document saves, a retry is
+an overwrite. `rev` stops two saves from interleaving; it cannot stop one document replacing another,
+because the gateway is not allowed to know what a node is.
+
+**What the tab checks, and when** On `focus` and on `visibilitychange` → visible, the canvas page asks
+for its own entry (`GET /api/canvases/{id}`, metadata only) and compares `rev` with the one it last saw.
+Switching to a tab is exactly the moment the person is about to continue working in a stale buffer, so
+it is the moment worth one request. No `BroadcastChannel`, no cross-tab protocol: the gateway already
+holds the answer, and the check works across browsers and machines too.
+
+**What the dialog offers** "Keep this" saves over the other copy — the one save in the app that names no
+version, and only after the person was shown what it replaces. "Use the disk copy" reloads the page: the
+nodes, the undo stack and the selection are all derived from the document read at load, and a reload is
+how all three are made to agree with the file. That is the one reload in this app that somebody asked for
+(#157 removed the automatic one).
+
+**Not built, on purpose** No editing lock, no read-only second tab, no takeover, no polling leader. Those
+solve *co-existing* tabs, which this workspace does not have; the requirement is a failsafe for a
+mistake, and a failsafe that asks one question is smaller than one that forbids a layout.
+
+**Tested** The queue's conflict tests now assert the opposite of before: one attempt, no retry, no save
+on the other copy's version, and a later edit does not silently start overwriting again. `npm run check`,
+127 canvas tests, `make check`, `make web`.
+
+**In the browser** Two tabs on one canvas; a save from the first (`PUT` with its rev); focus moved to the
+second — the dialog appeared by itself, naming when the disk copy was written — and "keep this" advanced
+the `rev` with a forced save and closed the dialog with a toast. Nothing was overwritten before the
+answer.
+
+**Where** `canvas/src/lib/canvas/save-queue.ts`, `canvas/src/stores/canvas/use-canvas-store.ts`,
+`canvas/src/components/canvas/canvas-conflict-dialog.tsx` (new), `canvas/src/pages/canvas/project.tsx`,
+`canvas/src/i18n/locales/*`, `canvas/tests/canvas-save-queue.test.ts`.

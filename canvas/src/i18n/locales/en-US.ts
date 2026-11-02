@@ -647,8 +647,16 @@ export default {
             choose: "Choose a LoRA",
             strength: "Strength",
         },
+        conflict: {
+            title: "This canvas was changed somewhere else",
+            description: "Another tab saved this canvas, so what is here is no longer the copy on disk. Nothing here has been lost, and nothing has been overwritten yet. Pick which one to keep.",
+            hint: 'The copy on disk was written at {{time}}. "Keep this" overwrites it with what is on screen; "Use the disk copy" discards this tab\'s changes and reopens the canvas.',
+            useMine: "Keep this",
+            useDisk: "Use the disk copy",
+            kept: "Saved over the other copy",
+        },
         save: {
-            conflict: "This canvas changed elsewhere. Saving what is on screen now.",
+            failed: "The save failed. Try again.",
             missing: "This canvas no longer exists, so changes cannot be saved. Export it to keep the work.",
         },
         editors: {

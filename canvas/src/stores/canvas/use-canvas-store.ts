@@ -29,16 +29,26 @@ type CanvasStore = {
     canvases: CanvasSummary[];
     /** Documents loaded this session, at most one per canvas. */
     projects: CanvasProject[];
-    /** The last save failure or version race per canvas, as a message the UI can show. */
+    /** The last save failure per canvas, as a message the UI can show. */
     saveErrors: Record<string, string>;
+    /**
+     * Canvases whose copy on disk is not the one this tab holds: another tab saved, and this store
+     * refused to overwrite it. The value is the summary the gateway reported, so the dialog can say
+     * when it changed. Nothing on screen is lost until the person answers.
+     */
+    conflicts: Record<string, CanvasSummary>;
     refresh: () => Promise<void>;
-    loadCanvas: (id: string) => Promise<CanvasProject | null>;
+    loadCanvas: (id: string, options?: { force?: boolean }) => Promise<CanvasProject | null>;
     createCanvas: (title?: string) => Promise<string>;
     importCanvas: (source: Partial<CanvasDocument> & { title?: string }) => Promise<string>;
     renameCanvas: (id: string, title: string) => Promise<void>;
     deleteCanvases: (ids: string[]) => Promise<void>;
     updateProject: (id: string, patch: Partial<CanvasDocument>) => void;
     clearSaveError: (id: string) => void;
+    /** Keep what is on screen: save over the copy on disk, deliberately, with no version precondition. */
+    resolveConflictWithMine: (id: string) => Promise<void>;
+    /** Re-read the canvas list entry and mark the canvas if the disk moved on without us. */
+    checkForNewerCopy: (id: string) => Promise<void>;
 };
 
 /** The document half of a project: what belongs in `canvas.json`, without the gateway's own fields. */
@@ -106,13 +116,9 @@ const queue: SaveQueue = createSaveQueue({
         }));
     },
     onConflict: (id, current) => {
-        // The content on screen is still unsaved, so the queue retries; what has to change first is
-        // the version the retry names. The user is told, because their edit replaced someone else's.
-        useCanvasStore.setState((state) => ({
-            canvases: upsertSummary(state.canvases, current),
-            projects: state.projects.map((project) => (project.id === id ? { ...project, ...current } : project)),
-            saveErrors: { ...state.saveErrors, [id]: i18n.t("canvas.save.conflict") },
-        }));
+        // The document on disk moved on and this tab's copy did not. Nothing is overwritten and nothing
+        // is retried: the canvas is marked and the person decides which copy wins (#158).
+        useCanvasStore.setState((state) => ({ conflicts: { ...state.conflicts, [id]: current } }));
     },
     onMissing: (id) => {
         useCanvasStore.setState((state) => ({
@@ -128,7 +134,7 @@ const queue: SaveQueue = createSaveQueue({
     },
 });
 
-function withoutKey(record: Record<string, string>, key: string): Record<string, string> {
+function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
     if (!(key in record)) return record;
     const next = { ...record };
     delete next[key];
@@ -140,6 +146,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
     canvases: [],
     projects: [],
     saveErrors: {},
+    conflicts: {},
 
     // `ready` flips even when the list cannot be read: the canvas page has its own reconnect banner,
     // and a list that never becomes ready would hold the app on a blank screen while the gateway
@@ -153,9 +160,9 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
         }
     },
 
-    loadCanvas: async (id) => {
+    loadCanvas: async (id, options) => {
         const cached = get().projects.find((project) => project.id === id);
-        if (cached) return cached;
+        if (cached && !options?.force) return cached;
         const record = await requestCanvas(id);
         if (!record) return null;
         const project = projectOf(record.summary, record.document);
@@ -226,6 +233,31 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
     },
 
     clearSaveError: (id) => set((state) => ({ saveErrors: withoutKey(state.saveErrors, id) })),
+
+    // The one save that names no version, on purpose: the person was shown what it replaces and said to
+    // go ahead. Everything else keeps its `If-Match`.
+    resolveConflictWithMine: async (id) => {
+        const project = get().projects.find((item) => item.id === id);
+        if (!project) return;
+        queue.forget(id);
+        const saved = await requestCanvasSave(id, "", documentOf(project), project.title);
+        set((state) => ({
+            canvases: state.canvases.map((item) => (item.id === id ? saved : item)),
+            projects: state.projects.map((item) => (item.id === id ? { ...item, ...saved } : item)),
+            conflicts: withoutKey(state.conflicts, id),
+        }));
+    },
+
+    // Cheaper than a subscription and it fires exactly when the mistake happens: the moment the person
+    // switches to the tab. One GET of the entry; no document.
+    checkForNewerCopy: async (id) => {
+        if (get().conflicts[id]) return;
+        const known = get().canvases.find((item) => item.id === id);
+        if (!known) return;
+        const record = await requestCanvas(id).catch(() => null);
+        if (!record || record.summary.rev === known.rev) return;
+        set((state) => ({ conflicts: { ...state.conflicts, [id]: record.summary } }));
+    },
 }));
 
 /**
