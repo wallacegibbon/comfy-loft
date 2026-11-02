@@ -451,7 +451,7 @@ Two things stay Chinese on purpose, because they are _data_ rather than messagin
 make check        # gofmt check + go vet + the suite
 make test-race    # the same suite under the race detector (needs a C toolchain)
 make verify-static
-cd canvas/web && npm run check && npx vitest run   # the canvas
+cd canvas && npm run check && npx vitest run       # the canvas
 ```
 
 The suite covers binding application, LoRA injection, prompt sanitising, registry

@@ -60,7 +60,7 @@ describe("resource-copy-zh", () => {
 describe("resources.json", () => {
     it("carries no Chinese copy, only real paths", async () => {
         const { readFile } = await import("node:fs/promises");
-        const raw = await readFile(new URL("../../../resources.json", import.meta.url), "utf8");
+        const raw = await readFile(new URL("../../resources.json", import.meta.url), "utf8");
         const doc = JSON.parse(raw) as {
             packs: Array<Record<string, unknown>>;
             resources: Array<Record<string, unknown>>;

@@ -75,10 +75,10 @@ Everything written for a human is **English**: documentation, code comments, log
 messages and commit messages. Two kinds of text do not follow the rule, and only because they
 are data or user-facing copy rather than prose:
 
-- **UI copy** lives in the i18n dictionaries (`canvas/web/src/i18n`), never inline in
+- **UI copy** lives in the i18n dictionaries (`canvas/src/i18n`), never inline in
   a component, so the same screen can be read in Chinese and English. That includes workflow
   metadata: `workflows/registry.json` is English (it is data the gateway serves) and the canvas
-  translates the labels it displays by model id — `web/src/lib/gateway-labels.ts`, decisions
+  translates the labels it displays by model id — `canvas/src/lib/gateway-labels.ts`, decisions
   #20.
 - **Model-facing and protocol Chinese** — H3 writing instructions in `internal/prompt`, the
   Chinese-matching regexes, and ComfyUI mode strings such as `文生视频(T2VA)` — stays Chinese
@@ -92,7 +92,7 @@ Chinese prose that still predates the rule is listed in
 
 ```bash
 # Dependencies (first run)
-make web               # installs canvas/web deps if needed, then vite build
+make web               # installs canvas deps if needed, then vite build
 make build             # Go gateway, static binary; start.sh builds it too if missing
 
 # Configure and start
@@ -104,8 +104,8 @@ cp .env.example .env   # adjust COMFY_URL / GATEWAY_HOST for this machine
 Canvas `http://127.0.0.1:3000` · gateway `http://127.0.0.1:8190`
 ComfyUI `http://127.0.0.1:8188` must already be running; the workbench only connects, never starts it.
 
-> The canvas bundle `canvas/web/dist/` is build output and is not tracked. After changing
-> `web/src/` run `make web` again (`make web-check` typechecks without emitting); `./start.sh`
+> The canvas bundle `canvas/dist/` is build output and is not tracked. After changing
+> `canvas/src/` run `make web` again (`make web-check` typechecks without emitting); `./start.sh`
 > refuses to start without a bundle and says so.
 
 ### Reaching the workbench from another device

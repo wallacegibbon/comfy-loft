@@ -16,7 +16,7 @@ node_modules/
 # build output
 canvas/.next/
 canvas/out/
-canvas/web/dist/
+canvas/dist/
 
 # python bytecode (a py_compile check, or ComfyUI itself, drops these into the vendored packs)
 __pycache__/

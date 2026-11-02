@@ -16,14 +16,14 @@ MCP_BIN := $(BIN_DIR)/comfyloft-mcp
 GATEWAY_PKG := ./cmd/comfyui-gateway
 MCP_PKG     := ./cmd/comfyloft-mcp
 
-# The canvas is a separate npm project under canvas/web. `build` stays
+# The canvas is a separate npm project under canvas/. `build` stays
 # Go-only on purpose, so the bundle has its own entry points:
 # `web-deps` installs, `web` builds, `web-check` typechecks.
-WEB_DIR   := canvas/web
+WEB_DIR   := canvas
 NPM       ?= npm
 WEB_STAMP := $(WEB_DIR)/node_modules/.package-lock.json
 # Every Go package lives under cmd/ or internal/. Listing them keeps the gates
-# off the vendored frontend: `./...` would walk canvas/web/node_modules, and a
+# off the vendored frontend: `./...` would walk canvas/node_modules, and a
 # stray .go file in a future npm package would then break `make check`.
 PKGS    := ./cmd/... ./internal/...
 GO_DIRS := cmd internal
@@ -53,7 +53,7 @@ web-deps: ## Install canvas dependencies when node_modules is missing or stale
 		echo "canvas dependencies up to date"; \
 	fi
 
-web: ## Build the canvas bundle into canvas/web/dist
+web: ## Build the canvas bundle into canvas/dist
 	@$(MAKE) --no-print-directory web-deps
 	cd $(WEB_DIR) && $(NPM) run build
 	@test -f $(WEB_DIR)/dist/index.html || { echo "ERROR: canvas build produced no dist/index.html"; exit 1; }

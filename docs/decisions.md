@@ -5073,3 +5073,32 @@ Touched: `node-registry.ts`, `builtin-nodes.tsx`, `canvas-node.tsx`, `project.ts
 `constant/canvas.ts`, `types/canvas.ts`, `services/api/video.ts`, `i18n/locales/*`,
 `internal/server/routes_mcp.go`, `scripts/check-exports.cjs`, `docs/known-issues.md`, `README.md`,
 `.gitignore`.
+
+## 149. The canvas frontend is `canvas/`, not `canvas/web/`
+
+**Decision** Every file under `canvas/web/` moved up one level and `canvas/web/` is gone. `canvas/` is the
+frontend: `src/`, `public/`, `scripts/`, `tests/`, its `package.json` and its build output in
+`canvas/dist/`. `canvas/LICENSE` — the upstream MIT text the credits point at — stays where it was, beside
+the app it covers.
+
+**Why** `web/` was upstream's layout, and it made sense there: the subtree held `web/` (the app) next to
+`plugins/` (the SDK and the official plugins). The plugin mechanism is gone (#148), so `canvas/` had exactly
+one child left, and a directory that contains a single directory is a level of indirection that no reader
+needs. Nothing about the boundary changed — `canvas/` is still the self-contained npm project, still
+separate from the Go module at the root — only the path got shorter.
+
+**What moved with it** `make web` now builds into `canvas/dist/`, `start.sh` finds `vite` and the bundle one
+directory higher, `vite.config.ts` reaches the repository root with `..` instead of `../..`, and the
+one test that reads `resources.json` through `import.meta.url` counted one `..` too many until the move.
+
+**Not changed on purpose** `canvas/vercel.json` and `canvas/components.json` are upstream leftovers that
+still describe a deployment nobody runs and a stylesheet path that does not exist. They are as dead after
+this move as before it; removing them is a separate decision about the credits, not about the layout.
+
+**Tested** `make web-deps` (a fresh `npm ci` in the new location), `npm run check`, 143 canvas tests,
+`make web`, `make check`, and `./start.sh` serving the bundle: the canvas loads from
+`http://127.0.0.1:3000/`, `config.js` is injected at the new path, the public assets resolve, and the
+console is clean.
+
+**Where** `canvas/**` (moved), `Makefile`, `start.sh`, `.gitignore`, `canvas/vite.config.ts`,
+`canvas/tests/resource-copy-zh.test.ts`, `README.md`, `docs/gateway.md`.
