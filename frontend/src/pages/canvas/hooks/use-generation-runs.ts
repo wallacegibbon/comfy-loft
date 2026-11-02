@@ -177,7 +177,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             const rootNode: CanvasNodeData = {
                 id: rootId,
                 type: CanvasNodeType.Image,
-                title: effectivePrompt.slice(0, 32) || "Generated Image",
+                title: prompt.slice(0, 32) || "Generated Image",
                 position: {
                     x: isImageNode ? parentPosition.x : parentPosition.x + parentConfig.width + 96,
                     y: parentPosition.y + parentConfig.height / 2 - imageConfig.height / 2,
@@ -185,7 +185,11 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                 width: isImageNode ? sourceNode?.width || imageConfig.width : imageConfig.width,
                 height: isImageNode ? sourceNode?.height || imageConfig.height : imageConfig.height,
                 metadata: {
-                    prompt: effectivePrompt,
+                    prompt,
+                    // What actually went out. The box holds what the user typed and the request is that
+                    // plus whatever is connected to it, so the difference is the panel's to show
+                    // (docs/decisions.md #185) — never the node's prompt, which stays the user's words.
+                    sentPrompt: effectivePrompt,
                     status: NODE_STATUS_LOADING,
                     ...generationMetadata,
                 },
@@ -205,7 +209,10 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                                     position: rootNode.position,
                                     width: rootNode.width,
                                     height: rootNode.height,
-                                    title: rootNode.title,
+                                    // A node regenerated in place keeps its name when the box has no words to
+                                    // name it by: the request was the connected text, and "【Text 1】…" is
+                                    // not a title.
+                                    ...(prompt ? { title: rootNode.title } : {}),
                                     metadata: { ...node.metadata, ...rootNode.metadata, content: undefined, storageKey: undefined, naturalWidth: undefined, naturalHeight: undefined, bytes: undefined, mimeType: undefined, errorDetails: undefined },
                                 }
                               : {
@@ -288,7 +295,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
 
     const runVideoGeneration = useCallback(
         async (run: GenerationRun) => {
-            const { nodeId, sourceNode, effectivePrompt, generationConfig, generationContext, runController } = run;
+            const { nodeId, prompt, sourceNode, effectivePrompt, generationConfig, generationContext, runController } = run;
             const spec = nodeSizeFromRatio(generationConfig.size, NODE_DEFAULT_SIZE[CanvasNodeType.Video].width, NODE_DEFAULT_SIZE[CanvasNodeType.Video].height) || NODE_DEFAULT_SIZE[CanvasNodeType.Video];
             const reuseVideoNode = sourceNode?.type === CanvasNodeType.Video;
             const videoId = reuseVideoNode ? nodeId : nanoid();
@@ -296,12 +303,13 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             const videoNode: CanvasNodeData = {
                 id: videoId,
                 type: CanvasNodeType.Video,
-                title: effectivePrompt.slice(0, 32) || "Generated Video",
+                title: prompt.slice(0, 32) || "Generated Video",
                 position: reuseVideoNode ? sourceNode.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y },
                 width: reuseVideoNode ? sourceNode.width : spec.width,
                 height: reuseVideoNode ? sourceNode.height : spec.height,
                 metadata: {
-                    prompt: effectivePrompt,
+                    prompt,
+                    sentPrompt: effectivePrompt,
                     status: NODE_STATUS_LOADING,
                     model: generationConfig.model,
                     size: generationConfig.size,
@@ -315,7 +323,9 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             };
             run.pendingChildIds = [videoId];
             setNodes((prev) =>
-                reuseVideoNode ? prev.map((node) => (node.id === nodeId ? { ...node, ...videoNode } : node)) : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), videoNode],
+                reuseVideoNode
+                    ? prev.map((node) => (node.id === nodeId ? { ...node, ...videoNode, title: prompt ? videoNode.title : node.title } : node))
+                    : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), videoNode],
             );
             if (!reuseVideoNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: videoId }]);
             const controller = startGenerationRequest(videoId, nodeId, nodeId, runController);
@@ -348,7 +358,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
 
     const runAudioGeneration = useCallback(
         async (run: GenerationRun) => {
-            const { nodeId, sourceNode, effectivePrompt, generationConfig, runController } = run;
+            const { nodeId, prompt, sourceNode, effectivePrompt, generationConfig, runController } = run;
             const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
             const reuseAudioNode = sourceNode?.type === CanvasNodeType.Audio;
             const audioId = reuseAudioNode ? nodeId : nanoid();
@@ -356,15 +366,17 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             const audioNode: CanvasNodeData = {
                 id: audioId,
                 type: CanvasNodeType.Audio,
-                title: effectivePrompt.slice(0, 32) || "Generated Audio",
+                title: prompt.slice(0, 32) || "Generated Audio",
                 position: reuseAudioNode ? sourceNode.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y + ((sourceNode?.height || spec.height) - spec.height) / 2 },
                 width: reuseAudioNode ? sourceNode.width : spec.width,
                 height: reuseAudioNode ? sourceNode.height : spec.height,
-                metadata: { prompt: effectivePrompt, status: NODE_STATUS_LOADING, ...buildAudioGenerationMetadata(generationConfig) },
+                metadata: { prompt, sentPrompt: effectivePrompt, status: NODE_STATUS_LOADING, ...buildAudioGenerationMetadata(generationConfig) },
             };
             run.pendingChildIds = [audioId];
             setNodes((prev) =>
-                reuseAudioNode ? prev.map((node) => (node.id === nodeId ? { ...node, ...audioNode } : node)) : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), audioNode],
+                reuseAudioNode
+                    ? prev.map((node) => (node.id === nodeId ? { ...node, ...audioNode, title: prompt ? audioNode.title : node.title } : node))
+                    : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), audioNode],
             );
             if (!reuseAudioNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: audioId }]);
             const controller = startGenerationRequest(audioId, nodeId, nodeId, runController);
@@ -376,9 +388,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                     onProgress: (run) => setRunStepProgress(audioId, run.progress),
                 });
                 setNodes((prev) =>
-                    prev.map((node) =>
-                        node.id === audioId ? { ...node, metadata: { ...node.metadata, ...audioMetadata(audio), prompt: effectivePrompt, ...buildAudioGenerationMetadata(generationConfig), audioRunId: undefined, stepProgress: undefined } } : node,
-                    ),
+                    prev.map((node) => (node.id === audioId ? { ...node, metadata: { ...node.metadata, ...audioMetadata(audio), prompt, ...buildAudioGenerationMetadata(generationConfig), audioRunId: undefined, stepProgress: undefined } } : node)),
                 );
             } finally {
                 finishGenerationRequest(audioId, controller);
@@ -390,7 +400,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
 
     const runTextGeneration = useCallback(
         async (run: GenerationRun) => {
-            const { nodeId, sourceNode, effectivePrompt, generationConfig, generationContext, runController } = run;
+            const { nodeId, prompt, sourceNode, effectivePrompt, generationConfig, generationContext, runController } = run;
             const isConfigNode = sourceNode?.type === CanvasNodeType.Config;
             // One prompt, one answer: a connected agent answers exactly one question, so a batch of texts
             // is no longer a thing (the count control went with the old text settings).
@@ -407,12 +417,12 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             const rootNode: CanvasNodeData = {
                 id: rootId,
                 type: CanvasNodeType.Text,
-                title: effectivePrompt.slice(0, 32) || "Generated Text",
+                title: prompt.slice(0, 32) || "Generated Text",
                 position: reuseTextNode ? sourceNode.position : { x: parentPosition.x + parentConfig.width + 96, y: parentPosition.y + parentConfig.height / 2 - textConfig.height / 2 },
                 width: reuseTextNode ? sourceNode.width : textConfig.width,
                 height: reuseTextNode ? sourceNode.height : textConfig.height,
                 metadata: {
-                    prompt: effectivePrompt,
+                    prompt,
                     status: NODE_STATUS_LOADING,
                     fontSize: 14,
                     model: generationConfig.model,

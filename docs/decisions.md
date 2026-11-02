@@ -6361,3 +6361,42 @@ and the DOM transform (`translate(640px, -260px)`) and the saved `canvas.json` a
 `position` answered `move_node needs a position: {x, y} in canvas coordinates` as an error, an unknown id
 answered with the node lookup's own message, moving the node onto an empty group node set
 `metadata.groupId` to it, and moving it back out cleared it.
+
+## 185. The prompt box holds the user's words; the request is composed when it is sent
+
+**Decision** Connecting a text node to an image (or video, or audio) node no longer copies its words into
+that node's prompt box. The box holds only what the user typed. The connected text reaches the model where
+it is an input: at send time, appended to the box as a labelled block (`【Text 1】\n…`, #78's labelling).
+Nothing composed is stored back into a node — an in-place run keeps `prompt` as the user's words and
+records the request in `sentPrompt`, which the panel shows on demand ("Sent 29 chars · show"). Generate is
+enabled when there is anything to send: words in the box, or a text node connected to it.
+
+**Why** Three mechanisms were adding the same sentence: the panel copied a connected text into the box, the
+request appended every connected text, and an in-place run wrote the composed prompt back into the node —
+which the panel then showed, and which the next run appended to again (the block grew by one per press). A
+copy in the box is also the wrong idea about the line on the canvas: if the words appear in the box, the
+connection is decoration, and editing them there forks them away from the text node the user is keeping.
+The box is the node's own content, the connection is an input, and the disclosure is the honest place to
+say that the two differ.
+
+**Cost** An image node with an empty box made by a text node sends `【Text 1】…` to a model that did not need
+the label — the label exists because there can be several texts, and dropping it for the single case would
+be a second rule. The box is no longer a place to edit a copy of the connected text: editing happens in the
+text node, which is the point. A document written before this keeps whatever a run used to write into its
+`prompt`; nothing migrates it, so the box has to be cleared once by hand — the node's own title is left
+alone in that case rather than being renamed after a request nobody typed.
+
+**Tested** `npm run check` (i18n 897/883), `npx vitest run` (156, including five new cases in
+`tests/canvas-generation-context.test.ts`: appended once after the box's words, whole request when the box
+is empty, still appended when the box repeats the words, one block per text in connection order, nothing
+when no text is connected), `make check`, `go test -race`. In the browser (a `/tmp/verify` copy on
+8191/3001 with its own `AGENT_CONFIG_PATH`): `create_node` text + image, `connect` — the image node's box
+stayed empty (`prompt` absent in `canvas.json`), References showed 1, Generate was enabled, and pressing it
+submitted exactly `【Text 1】\na red ceramic teapot` (read back from the run's own request) and produced a
+picture; the saved node then held `prompt: ""`, `sentPrompt: "【Text 1】\na red ceramic teapot"`, `title:
+"Image"` (not renamed), and the panel offered "Sent 29 chars · show".
+
+**Where** `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`,
+`frontend/src/pages/canvas/hooks/use-generation-runs.ts`,
+`frontend/src/components/canvas/canvas-node-generation.ts` (unchanged by this: it already appended),
+`frontend/tests/canvas-generation-context.test.ts`.

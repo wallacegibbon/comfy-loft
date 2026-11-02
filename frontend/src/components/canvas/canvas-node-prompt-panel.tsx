@@ -88,12 +88,10 @@ export function CanvasNodePromptPanel({
     draftRef.current = draft;
     promptRef.current = prompt;
     const [expanded, setExpanded] = useState(false);
-    const lastAutoPromptRef = useRef("");
     const imageReferences = mentionReferences.filter((reference) => reference.kind === "image");
-    const referencePrompt = mentionReferences
-        .filter((reference) => reference.kind === "text" && reference.text?.trim())
-        .map((reference) => reference.text!.trim())
-        .join("\n\n");
+    // What a connected text node will add to the request. The box does not hold it — nothing copies it
+    // there — so it is the request, not the panel, that carries these words (docs/decisions.md #185).
+    const connectedText = mentionReferences.some((reference) => reference.kind === "text" && reference.text?.trim());
     const rawWorkflowId = channelModelOf(config, config.model)?.model.workflowId || modelOptionName(config.model);
     const workflowId = rawWorkflowId;
     const isH3T2V = mode === "video" && workflowId === "video-h3-t2v";
@@ -179,13 +177,6 @@ export function CanvasNodePromptPanel({
         return () => document.removeEventListener("pointerdown", commitOnOutsidePointer, true);
     }, []);
 
-    const updatePrompt = (value: string) => {
-        setDraft(value);
-        setPrompt(value);
-        if (isEditingExistingContent) onConfigChange(node.id, { composerContent: value });
-        else onPromptChange(node.id, value);
-    };
-
     const applyPromptResult = (value: string) => {
         setDraft(value);
         setPrompt(value);
@@ -200,30 +191,10 @@ export function CanvasNodePromptPanel({
         else onPromptChange(node.id, value);
     };
 
-    useEffect(() => {
-        if (mode !== "image" && mode !== "video") return;
-        const next = referencePrompt.trim();
-        if (!next) return;
-        const previous = lastAutoPromptRef.current;
-        if (next === previous) return;
-        const current = draftRef.current.trim();
-        lastAutoPromptRef.current = next;
-        if (!current) {
-            updatePrompt(next);
-            return;
-        }
-        if (previous && current.includes(previous)) {
-            updatePrompt(current.replace(previous, next));
-            return;
-        }
-        if (!current.includes(next)) updatePrompt(`${current}\n\n${next}`);
-        // Sync on connection and when the source text changes, without dropping manual additions.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mode, referencePrompt]);
-
     const submit = () => {
         const text = draft.trim();
-        if (!text || isRunning) return;
+        if (isRunning) return;
+        if (!text && !connectedText) return;
         if (textVideoHasReferences) {
             toast.warning(t("canvas.promptPanel.videoTextRefsWarning"));
             return;
@@ -566,7 +537,7 @@ export function CanvasNodePromptPanel({
                     type="primary"
                     className={`${mode === "text" ? "" : "ml-auto"} !h-10 shrink-0 !rounded-full ${isRunning || connecting ? "!min-w-10 !px-2" : "!min-w-16 !px-3"}`}
                     danger={isRunning}
-                    disabled={!isRunning && !connecting && (mode === "text" && !agentConnected ? false : !draft.trim())}
+                    disabled={!isRunning && !connecting && (mode === "text" && !agentConnected ? false : !draft.trim() && !connectedText)}
                     title={isRunning ? t("canvas.promptPanel.stop") : undefined}
                     onClick={() => {
                         if (isRunning) return onStop(node.id);
