@@ -19,6 +19,11 @@ vi.mock("@/lib/image-utils", () => ({
 }));
 
 const { requestUpscale } = await import("@/services/api/image");
+
+// A run belongs to a canvas (#156): these cases post into one.
+const { setActiveCanvas } = await import("@/services/canvas-files");
+const CANVAS_ID = "40e8afb47f10";
+setActiveCanvas(CANVAS_ID);
 type Config = Parameters<typeof requestUpscale>[0];
 
 const gateway = () =>
@@ -59,7 +64,7 @@ const succeeded = () =>
     json(
         run({
             status: "succeeded",
-            outputs: [{ index: 0, kind: "image", mime: "image/png", bytes: 3, filename: "out.png", url: "/api/runs/task_upscale_1/outputs/0" }],
+            outputs: [{ index: 0, kind: "image", mime: "image/png", bytes: 3, filename: "out.png", url: `/api/canvases/${CANVAS_ID}/files/task_upscale_1.png` }],
         }),
     );
 
@@ -70,8 +75,8 @@ function stubGateway(handlers: { status?: () => Response } = {}) {
     const calls: Call[] = [];
     const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
         calls.push({ url, method: String(init.method || "GET"), body: init.body });
-        if (url.endsWith("/api/uploads")) return json({ upload: { id: `upl_${calls.length}`, kind: "image", mime: "image/png", bytes: 3, filename: "source.png" } });
-        if (url.endsWith("/api/runs")) return json(run({ status: "queued" }), 202);
+        if (url.endsWith("/uploads")) return json({ upload: { id: `upl_${calls.length}`, kind: "image", mime: "image/png", bytes: 3, filename: "source.png" } });
+        if (url.endsWith("/runs")) return json(run({ status: "queued" }), 202);
         if (url.includes("/outputs/0")) return new Response(new Blob(["PNG"], { type: "image/png" }), { status: 200 });
         return handlers.status?.() ?? succeeded();
     });
@@ -79,10 +84,10 @@ function stubGateway(handlers: { status?: () => Response } = {}) {
     return { calls, fetchMock };
 }
 
-/** The JSON body of the one POST /api/runs call. */
+/** The JSON body of the one run-submission call. */
 function runBody(calls: Call[]) {
-    const call = calls.find((item) => item.url.endsWith("/api/runs") && item.method === "POST");
-    if (!call) throw new Error("no POST /api/runs");
+    const call = calls.find((item) => item.url.endsWith("/runs") && item.method === "POST");
+    if (!call) throw new Error("no run was submitted");
     return JSON.parse(String(call.body));
 }
 
@@ -101,7 +106,7 @@ describe("requestUpscale", () => {
 
         expect(images).toHaveLength(1);
         expect(images[0].dataUrl).toBe("data:image/png;base64,BBBB");
-        expect(calls[0].url).toBe("http://127.0.0.1:8190/api/uploads");
+        expect(calls[0].url).toBe(`http://127.0.0.1:8190/api/canvases/${CANVAS_ID}/uploads`);
         // Nothing reaches the OpenAI-shaped surface any more: the id in hand is a run id.
         expect(calls.some((call) => call.url.includes("/v1/"))).toBe(false);
 

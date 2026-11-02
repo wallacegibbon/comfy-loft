@@ -21,7 +21,7 @@ export async function exportCanvasProjects(projects: CanvasProject[], fileName =
                     // name back and the document's references still resolve.
                     const blob = await (await fetch(url)).blob().catch(() => null);
                     if (!blob) return;
-                    const path = `projects/\${project.id}/files/\${name}`;
+                    const path = `projects/${project.id}/files/${name}`;
                     files.push({ storageKey, path, mimeType: blob.type || "application/octet-stream", bytes: blob.size });
                     zipFiles.push({ name: path, data: blob });
                 }),

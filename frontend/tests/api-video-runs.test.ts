@@ -27,6 +27,11 @@ vi.mock("@/services/file-storage", () => ({
 
 const { createVideoGenerationTask, createVideoInterpolateTask, waitForVideoGenerationTask } = await import("@/services/api/video");
 
+// A run belongs to a canvas (#156): these cases post into one.
+const { setActiveCanvas } = await import("@/services/canvas-files");
+const CANVAS_ID = "40e8afb47f10";
+setActiveCanvas(CANVAS_ID);
+
 type Config = Parameters<typeof createVideoGenerationTask>[0];
 const gateway = (overrides: Record<string, unknown> = {}) =>
     ({
@@ -70,20 +75,20 @@ function stubGateway(handlers: { run?: () => Response; status?: () => Response; 
     const calls: Array<{ url: string; method: string; body: unknown }> = [];
     const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
         calls.push({ url, method: String(init.method || "GET"), body: init.body });
-        if (url.endsWith("/api/uploads")) return json({ upload: { id: `upl_${calls.length}`, kind: "image", mime: "image/png", bytes: 3, filename: "f" } });
-        if (url.endsWith("/api/runs")) return handlers.run?.() ?? json(run({ status: "queued" }), 202);
+        if (url.endsWith("/uploads")) return json({ upload: { id: `upl_${calls.length}`, kind: "image", mime: "image/png", bytes: 3, filename: "f" } });
+        if (url.endsWith("/runs")) return handlers.run?.() ?? json(run({ status: "queued" }), 202);
         if (init.method === "DELETE") return handlers.delete?.() ?? json(run({ status: "cancelled" }));
-        if (url.includes("/outputs/0")) return handlers.output?.() ?? new Response(new Blob(["MP4"], { type: "video/mp4" }), { status: 200 });
+        if (url.includes("/files/")) return handlers.output?.() ?? new Response(new Blob(["MP4"], { type: "video/mp4" }), { status: 200 });
         return handlers.status?.() ?? json(run());
     });
     vi.stubGlobal("fetch", fetchMock);
     return { calls, fetchMock };
 }
 
-/** The JSON body of the one POST /api/runs call. */
+/** The JSON body of the one run-submission call. */
 function runBody(calls: Array<{ url: string; method: string; body: unknown }>) {
-    const call = calls.find((item) => item.url.endsWith("/api/runs") && item.method === "POST");
-    if (!call) throw new Error("no POST /api/runs");
+    const call = calls.find((item) => item.url.endsWith("/runs") && item.method === "POST");
+    if (!call) throw new Error("no run was submitted");
     return JSON.parse(String(call.body));
 }
 
@@ -104,7 +109,7 @@ describe("createVideoGenerationTask", () => {
         expect(body.inputs).toMatchObject({ prompt: "a cat walks", mode: "frames", frameMode: "first", seconds: 5 });
         expect(body.inputs.size).toMatch(/^\d+x\d+$/);
         expect(body.media).toEqual({ first_frame: "upl_1" });
-        expect(calls[0].url).toBe("http://127.0.0.1:8190/api/uploads");
+        expect(calls[0].url).toBe(`http://127.0.0.1:8190/api/canvases/${CANVAS_ID}/uploads`);
     });
 
     it("sends the second image as the last frame when both are asked for", async () => {
@@ -177,7 +182,7 @@ describe("waitForVideoGenerationTask", () => {
                         status: "succeeded",
                         progress: { step: 8, total: 8 },
                         preview: { url: "/api/runs/task_video_1/preview?t=42", mime: "image/jpeg" },
-                        outputs: [{ index: 0, kind: "video", mime: "video/mp4", bytes: 3, filename: "v.mp4", url: "/api/runs/task_video_1/outputs/0" }],
+                        outputs: [{ index: 0, kind: "video", mime: "video/mp4", bytes: 3, filename: "v.mp4", url: `/api/canvases/${CANVAS_ID}/files/task_video_1.mp4` }],
                     }),
                 ),
         });
@@ -197,7 +202,7 @@ describe("waitForVideoGenerationTask", () => {
         expect(steps).toEqual([{ step: 8, total: 8 }]);
         expect(previews[0]).toMatchObject({ url: "http://127.0.0.1:8190/api/runs/task_video_1/preview?t=42" });
         expect(previews[previews.length - 1]).toBeNull();
-        expect(calls.some((call) => call.url.endsWith("/outputs/0"))).toBe(true);
+        expect(calls.some((call) => call.url.endsWith(`/api/canvases/${CANVAS_ID}/files/task_video_1.mp4`))).toBe(true);
     });
 
     it("turns a failed run into a video task failure so the node stops polling it", async () => {

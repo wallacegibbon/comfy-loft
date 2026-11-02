@@ -17,6 +17,10 @@ const noteGatewayError = vi.fn();
 vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: (...args: unknown[]) => noteGatewayError(...args), noteGatewayResponse: () => undefined }));
 
 const { RunFailedError, createRun, downloadRunOutput, gatewayProtocolRoot, waitForRun } = await import("@/services/api/runs");
+const { setActiveCanvas } = await import("@/services/canvas-files");
+
+// A run and an upload belong to the canvas on screen (#156), so every case here opens one.
+const CANVAS = "40e8afb47f10";
 
 type Config = Parameters<typeof createRun>[0];
 const config = { baseUrl: "http://gateway.test:8190/v1", apiKey: "local" } as unknown as Config;
@@ -52,7 +56,9 @@ describe("gatewayProtocolRoot", () => {
 });
 
 describe("createRun", () => {
-    it("posts the workflow and inputs to /api/runs", async () => {
+    beforeEach(() => setActiveCanvas(CANVAS));
+
+    it("posts the workflow and inputs into the canvas", async () => {
         const fetchMock = vi.fn(async () => json(run({ status: "queued" })));
         vi.stubGlobal("fetch", fetchMock);
 
@@ -63,7 +69,7 @@ describe("createRun", () => {
 
         expect(created.id).toBe("task_1");
         const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-        expect(url).toBe("http://gateway.test:8190/api/runs");
+        expect(url).toBe(`http://gateway.test:8190/api/canvases/${CANVAS}/runs`);
         expect(init.method).toBe("POST");
         expect(JSON.parse(String(init.body))).toEqual({
             workflow: "audio-minimax-music-3",
@@ -77,7 +83,7 @@ describe("waitForRun", () => {
         const fetchMock = vi
             .fn()
             .mockResolvedValueOnce(json(run({ progress: { step: 3, total: 10 } })))
-            .mockResolvedValueOnce(json(run({ status: "succeeded", progress: { step: 10, total: 10 }, outputs: [{ index: 0, kind: "audio", mime: "audio/mpeg", bytes: 3, filename: "t.mp3", url: "/api/runs/task_1/outputs/0" }] })));
+            .mockResolvedValueOnce(json(run({ status: "succeeded", progress: { step: 10, total: 10 }, outputs: [{ index: 0, kind: "audio", mime: "audio/mpeg", bytes: 3, filename: "t.mp3", url: `/api/canvases/${CANVAS}/files/task_1.mp3` }] })));
         vi.stubGlobal("fetch", fetchMock);
 
         const steps: Array<{ step: number; total: number }> = [];
@@ -131,11 +137,11 @@ describe("downloadRunOutput", () => {
         const fetchMock = vi.fn(async () => new Response(new Blob(["MP3"], { type: "audio/mpeg" }), { status: 200 }));
         vi.stubGlobal("fetch", fetchMock);
 
-        const blob = await downloadRunOutput(config, run({ status: "succeeded", outputs: [{ index: 0, kind: "audio", mime: "audio/mpeg", bytes: 3, filename: "t.mp3", url: "/api/runs/task_1/outputs/0" }] }));
+        const blob = await downloadRunOutput(config, run({ status: "succeeded", outputs: [{ index: 0, kind: "audio", mime: "audio/mpeg", bytes: 3, filename: "t.mp3", url: `/api/canvases/${CANVAS}/files/task_1.mp3` }] }));
 
         expect(await blob.text()).toBe("MP3");
         const [url] = fetchMock.mock.calls[0] as unknown as [string];
-        expect(url).toBe("http://gateway.test:8190/api/runs/task_1/outputs/0");
+        expect(url).toBe(`http://gateway.test:8190/api/canvases/${CANVAS}/files/task_1.mp3`);
     });
 
     it("fails when the run has no such output", async () => {

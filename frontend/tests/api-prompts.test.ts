@@ -127,7 +127,7 @@ describe("requestPromptChat", () => {
 
         const pending = requestPromptChat("node:empty", config(), { prompt: "say nothing" });
         await settle();
-        FakeSocket.last.emit({ type: "done" });
+        FakeSocket.last?.emit({ type: "done" });
 
         await expect(pending).rejects.toThrow();
     });

@@ -1,4 +1,5 @@
 import i18n from "@/i18n";
+import { activeCanvasId } from "@/services/canvas-files";
 import { gatewayRoot } from "@/constant/app-mode";
 import { apiErrorMessage, httpBlob, httpJson } from "@/services/api/http";
 import type { AiConfig } from "@/stores/use-config-store";
@@ -78,12 +79,25 @@ function runUrl(config: AiConfig, path: string) {
     return `${gatewayProtocolRoot(config.baseUrl)}${path}`;
 }
 
+/**
+ * Where a run is submitted and where its media goes in: inside the canvas being edited.
+ *
+ * Since #156 a run belongs to a canvas — its artifacts are written into that canvas's `files/` and served
+ * from there — so both endpoints are canvas-scoped. The canvas is the one on screen; there is no such
+ * thing as a run that does not belong to one.
+ */
+function canvasApiUrl(config: AiConfig, path: string) {
+    const canvas = activeCanvasId();
+    if (!canvas) throw new Error(apiText("noCanvas"));
+    return `${gatewayProtocolRoot(config.baseUrl)}/api/canvases/${encodeURIComponent(canvas)}${path}`;
+}
+
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
 /** Submit a run. Always answers with the run, never with its result: the id is the handle. */
 export async function createRun(config: AiConfig, request: RunRequest): Promise<Run> {
     try {
-        const run = await httpJson<Run>(runUrl(config, "/api/runs"), {
+        const run = await httpJson<Run>(canvasApiUrl(config, "/runs"), {
             method: "POST",
             headers: JSON_HEADERS,
             body: JSON.stringify(request),
@@ -108,7 +122,7 @@ export async function uploadMedia(config: AiConfig, file: Blob, filename: string
     const body = new FormData();
     body.append("file", file, filename);
     try {
-        const payload = await httpJson<{ upload?: UploadedMedia }>(runUrl(config, "/api/uploads"), {
+        const payload = await httpJson<{ upload?: UploadedMedia }>(canvasApiUrl(config, "/uploads"), {
             method: "POST",
             body,
             signal: options.signal,
