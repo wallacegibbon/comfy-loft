@@ -2,6 +2,7 @@ import i18n from "@/i18n";
 import { LOCAL_GATEWAY_BASE_URL, isLocalGatewayUrl } from "@/constant/app-mode";
 import { channelModelOf, modelImageInputs, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import { dataUrlToFile } from "@/lib/image-utils";
+import { mediaIdOf } from "@/services/canvas-files";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { IMAGE_ANGLE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 import { imageToDataUrl, type UploadedImage } from "@/services/image-storage";
@@ -142,11 +143,8 @@ async function requestGatewayImages(input: {
     const usable = typeof capacity === "number" ? references.slice(0, Math.max(0, capacity)) : references;
     const media: Record<string, string[]> = {};
     for (const [index, reference] of usable.entries()) {
-        const dataUrl = await imageToDataUrl(reference, { signal: options?.signal });
-        if (!dataUrl) continue;
-        const uploaded = await uploadMedia(config, dataUrlToFile({ ...reference, dataUrl }), reference.name || `reference-${index + 1}.png`, { signal: options?.signal });
         const role = imageMode === "inpaint" ? (index === 0 ? "source" : "mask") : imageMode === "outpaint" ? "source" : "reference";
-        media[role] = [...(media[role] || []), uploaded.id];
+        media[role] = [...(media[role] || []), await mediaId(config, reference, `reference-${index + 1}.png`, options?.signal)];
     }
 
     try {
@@ -158,6 +156,21 @@ async function requestGatewayImages(input: {
     } catch (error) {
         throw new Error(apiErrorMessage(error, apiText("requestFailed"), "imageTimeout"));
     }
+}
+
+/**
+ * The id a run's media map takes for this reference.
+ *
+ * A reference that is already a canvas file (a node's picture, a mask, an upscale source) is named where it
+ * is: a run looks media up by name inside its own canvas, so copying it first would store the same bytes again
+ * for nothing (#174). Only a reference with no file yet — a paste, a crop, a data URL — is uploaded.
+ */
+async function mediaId(config: AiConfig, reference: ReferenceImage, filename: string, signal?: AbortSignal): Promise<string> {
+    const existing = mediaIdOf(reference);
+    if (existing) return existing;
+    const dataUrl = await imageToDataUrl(reference, { signal });
+    const uploaded = await uploadMedia(config, dataUrlToFile({ ...reference, dataUrl }), filename, { signal });
+    return uploaded.id;
 }
 
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions) {
@@ -264,12 +277,10 @@ type UpscaleOptions = { workflowId: string; params?: Record<string, unknown>; si
 export async function requestUpscale(config: AiConfig, image: ReferenceImage, options: UpscaleOptions) {
     const requestConfig = { ...resolveModelRequestConfig(config, config.imageModel || config.model), baseUrl: LOCAL_GATEWAY_BASE_URL, model: options.workflowId };
     try {
-        const dataUrl = await imageToDataUrl(image);
-        const uploaded = await uploadMedia(requestConfig, dataUrlToFile({ ...image, dataUrl }), image.name || `${image.id}.png`, { signal: options.signal });
         const run = await createRun(requestConfig, {
             workflow: options.workflowId,
             inputs: { ...(options.params ?? {}) },
-            media: { image: [uploaded.id] },
+            media: { image: [await mediaId(requestConfig, image, image.name || `${image.id}.png`, options.signal)] },
         });
         const finished = await waitForRun(requestConfig, run.id, { signal: options.signal, cancelOnAbort: true });
         return await generatedImages(requestConfig, finished, { signal: options.signal });

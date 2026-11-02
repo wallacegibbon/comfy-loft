@@ -3,6 +3,7 @@ import { apiErrorMessage, isCancelled } from "@/services/api/http";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio } from "@/lib/media-size";
 import { VIDEO_INTERPOLATE_WORKFLOW } from "@/lib/canvas/tool-workflows";
+import { mediaIdOf } from "@/services/canvas-files";
 import { getMediaBlob, resolveMediaUrl, type UploadedFile } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
 import { cancelRun, createRun, uploadMedia, waitForRun, RunFailedError, type Run } from "@/services/api/runs";
@@ -57,13 +58,16 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
  */
 export async function createVideoInterpolateTask(config: AiConfig, source: VideoInterpolateSource, params: VideoInterpolateParams, options?: RequestOptions): Promise<VideoGenerationTask> {
     const requestConfig = resolveModelRequestConfig(config, VIDEO_INTERPOLATE_WORKFLOW);
-    const file = await referenceMediaToFile(source, "source.mp4", "invalidReferenceVideo", options);
+    let sourceId = mediaIdOf(source);
+    if (!sourceId) {
+        const file = await referenceMediaToFile(source, "source.mp4", "invalidReferenceVideo", options);
+        sourceId = (await uploadMedia(requestConfig, file, file.name, { signal: options?.signal })).id;
+    }
     try {
-        const uploaded = await uploadMedia(requestConfig, file, file.name, { signal: options?.signal });
         const run = await createRun(requestConfig, {
             workflow: VIDEO_INTERPOLATE_WORKFLOW,
             inputs: { multiplier: params.multiplier },
-            media: { video: uploaded.id },
+            media: { video: sourceId },
         });
         return { id: run.id, model: VIDEO_INTERPOLATE_WORKFLOW };
     } catch (error) {
@@ -125,12 +129,18 @@ async function createGatewayVideoTask(config: AiConfig, prompt: string, referenc
 async function gatewayVideoMedia(config: AiConfig, plan: GatewayVideoPlan, options?: VideoMediaOptions): Promise<Record<string, string | string[]>> {
     const signal = options?.signal;
     const media: Record<string, string | string[]> = {};
+    // A reference that is already a canvas file is named, not copied: the run reads media by name inside its
+    // own canvas (#174). Only a reference with no file yet is uploaded to give it one.
     const uploadImage = async (image: ReferenceImage, index: number) => {
+        const existing = mediaIdOf(image);
+        if (existing) return existing;
         const dataUrl = await imageToDataUrl(image, { signal });
         if (!dataUrl) throw new Error(apiText("referenceImageReadFailed"));
         return (await uploadMedia(config, dataUrlToFile({ ...image, dataUrl }), image.name || `reference-${index + 1}.png`, { signal })).id;
     };
     const uploadClip = async (item: ReferenceVideo | ReferenceAudio, name: string, errorKey: "invalidReferenceVideo" | "invalidReferenceAudio") => {
+        const existing = mediaIdOf(item);
+        if (existing) return existing;
         const file = await referenceMediaToFile(item, name, errorKey, options);
         return (await uploadMedia(config, file, file.name, { signal })).id;
     };

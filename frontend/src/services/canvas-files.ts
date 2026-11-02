@@ -37,6 +37,17 @@ export function fileNameOf(key: string | undefined): string {
     return key.slice("files/".length);
 }
 
+/**
+ * The id a run's `media` map takes for a reference that is already a canvas file: the file's own name.
+ *
+ * A run looks its media up by name inside the canvas it belongs to, so a node's picture or clip is referenced
+ * where it is instead of being copied under a new `up-` name (#174). Empty when the reference has no file yet
+ * — a paste, a crop, a data URL — which is the case an upload exists for.
+ */
+export function mediaIdOf(reference: { storageKey?: string }): string {
+    return fileNameOf(reference.storageKey);
+}
+
 /** The URL one file of a canvas is served from. */
 export function canvasFileUrl(canvasId: string, key: string | undefined): string {
     const name = fileNameOf(key);

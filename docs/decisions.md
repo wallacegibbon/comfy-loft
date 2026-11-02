@@ -6060,3 +6060,35 @@ afterwards.
 **Where** `frontend/src/lib/canvas/generated-media.ts` (new), `frontend/src/services/api/{runs,image,video,audio}.ts`,
 `frontend/src/pages/canvas/hooks/{use-generation-runs,use-image-editors,use-video-editors}.ts`,
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/services/{image-storage,file-storage}.ts`.
+
+## 174. A reference is named, not copied
+
+**Decision** A run's media map takes the file a reference already is. A node's picture, a mask, an upscale
+source, a reference clip — if it is a canvas file, its name goes into the request (`media: {image:
+["task_<id>.png"]}`) and the run reads it from the same canvas. An upload happens only when the reference has
+no file yet: a paste, a crop, a split piece, a data URL.
+
+**What it replaced** Every reference was converted to a data URL and posted to `/uploads` before the run, so a
+generation with one reference stored a second copy of it under an `up-<8 hex>` name — and again on the next
+generation from the same node, once per run. The same bytes, once per attempt.
+
+**Why it was there** The upload route is the canvas's "give these bytes a name" primitive, and it was the only
+way media entered a run when the browser held the pictures. Since #156 a run's media is looked up *by name in
+the canvas it belongs to* (`uploads.Get(canvasID, id)` reads `files/<name>`), so a name that already exists is
+all a run needs. Nothing in the request changes shape: the id was already a file name.
+
+**Cost** A reference whose file was collected (or deleted by hand) now fails as `upload_not_found` naming the
+file, instead of silently being re-uploaded from whatever the page still had in memory. That is the honest
+answer either way — the node was showing a picture whose file is gone — and the message names the file that is
+missing.
+
+**Tested** `tests/api-image-upscale.test.ts`: a source with a `storageKey` produces exactly two calls (submit,
+poll) and `media: {image: ["up-abcdef12.png"]}`, while a source with none still uploads first. Gates:
+`npm run check`, `npx vitest run` (148).
+
+**In the browser** Generated one picture, then upscaled it from the image toolbar: the canvas grew by one file
+(the upscale's own output) and no `up-*` copy of the source appeared — the run's record shows
+`media: {image: ["task_afa1632b-….png"]}`, the file the node was already showing.
+
+**Where** `frontend/src/services/canvas-files.ts` (`mediaIdOf`), `frontend/src/services/api/image.ts`,
+`frontend/src/services/api/video.ts`.
