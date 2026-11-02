@@ -5743,3 +5743,138 @@ it made two `canvas_read_node` calls and wrote its answer as a table of `text-aa
 
 **Where** `frontend/src/lib/canvas/agent-references.ts`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/tests/agent-references.test.ts`.
+
+## 164. A replaced socket reconnects, and it does not release the agent
+
+**Decision** Only the connection that is still reading a session may release it, and a browser told `closed`
+reopens on its next send instead of writing into a socket another tab now owns.
+
+**What broke** #160 lets the newest connection read a session and tells the one it replaced. Two things around
+that handover were wrong, and both ended in a conversation that looked alive and was not.
+
+On the gateway, the replaced connection's handler ended with `session.Cancel()` and
+`sessions.Close(...)` — unconditionally. So when the tab that lost the session was closed (the ordinary end of
+a socket nobody is reading), it released the process the *newer* tab was using. That tab's next question went
+into a pipe that was gone.
+
+In the browser, `closed` only changed the label in the header. The socket and its session entry stayed, so the
+next send went to a socket whose events now belong to another tab: no answer, no error, no end of turn, and a
+panel stuck on "thinking" for ever. `openAgentSession` had the same shape from the other side — a live entry
+whose socket was closing was handed back as if it were connected, because its `opening` promise had already
+resolved.
+
+**The fix** `Session.Watch` returns whether the connection detaching was still the reader, and only then does
+the handler cancel and release; the call is idempotent, so the early returns and the `defer` cannot release
+twice. The client treats `closed` as the end of *this socket*: it drops the entry, closes the socket, and the
+next send opens a new connection — which takes the session back. `openAgentSession` refuses to return an entry
+whose socket is not open or opening. Submitting a message now checks whether it was written and says so when
+it was not.
+
+**Cost** A replaced tab that sends again steals the session back from the tab it lost it to, so two tabs can
+alternate rather than one being permanently second class. That is the price of "the newest connection reads
+the session" being the only rule; the alternative was a refusal, which #160 already rejected.
+
+**Tested** `TestTheReplacedSocketDoesNotTakeTheAgentWithIt` (Go, e2e): two sockets, the first closed, the
+second still answered by the same process — it fails without the fix with EOF on the second socket.
+`TestTheNewestSocketTakesTheSessionOver` still passes. Frontend gates: `npx vitest run` (138), `npm run check`.
+
+**In the browser** Two tabs on one canvas, both open the panel. Tab B becomes the reader (the gateway logs
+`spawned=false`, so it is the same process) and tab A shows "未连接" with its transcript intact. Sending from
+tab A reconnects and answers "我还在。"; the gateway logs a third `socket open` with `spawned=false` and no
+`released` line, which is the fix: closing the replaced socket no longer ends the conversation.
+
+**Where** `internal/agent/sessions.go`, `internal/server/routes_agent.go`, `frontend/src/services/api/agent.ts`,
+`frontend/src/components/canvas/canvas-agent-panel.tsx`, `internal/server/agent_e2e_test.go`.
+
+## 165. A save that ran out of retries waits for the next edit
+
+**Decision** A save whose retry schedule is spent stops; the next edit is what starts a new one.
+
+**What broke** The save queue's "try again" path armed the debounce from the failure handler, and the
+settle step re-armed it whenever the canvas was still dirty. With the retry schedule spent, nothing cleared
+the flag, so a document the gateway kept refusing was re-sent every 400 ms for as long as the tab lived. The
+new test counted 153 attempts where the schedule allows three, and `onError` fired with each one.
+
+**The fix** An entry remembers that its retry schedule is spent. `settle` does not re-arm a spent entry; a new
+edit (which is new information) calls `schedule`, which clears the flag and starts a fresh schedule.
+
+**Cost** A permanent failure now needs a user action to be retried at all. That is what the comment always
+said and the code did not do; the alternative is a loop that fills the console and gains nothing.
+
+**Tested** `canvas-save-queue.test.ts`: "stops once the retry schedule runs out, and a new edit starts it
+again" — 3 attempts, 3 errors, still dirty, and a fourth attempt after a new edit.
+
+**Where** `frontend/src/lib/canvas/save-queue.ts`, `frontend/tests/canvas-save-queue.test.ts`.
+
+## 166. Preferences are written one at a time
+
+**Decision** One settings document on the wire at a time, in the order it was edited.
+
+**What broke** The settings document is replaced whole, and `save()` set its `pending` flag and awaited the
+request. A change arriving while that request was in flight started a second one, and two whole documents in
+flight can land out of order — the older one winning. It needs a slow gateway and a quick edit to happen, and
+then preferences look like they did not change.
+
+**The fix** One write on the wire at a time. A change that arrives during a write is written by the next
+request, in order; a failure is retried by the next change rather than from the write's own end.
+
+**Cost** A save queued behind a slow request waits for it. The debounce is what kept this rare, and the
+alternative is a lost edit rather than a late one.
+
+**Where** `frontend/src/stores/use-settings-store.ts`.
+
+## 167. The upload ceiling is the one that was configured
+
+**Decision** The multipart parser reads `MAX_UPLOAD_BYTES` from the configuration; it has no ceiling of its own.
+
+**What broke** `MAX_UPLOAD_BYTES` is documented as the per-file limit, but the multipart parser capped every
+file at 50 MiB of its own: the knob could be lowered and not raised, and a deployment that raised it got
+"uploaded file is too large" from the parser before the upload store saw the request.
+
+**The fix** The ceiling travels from the configuration into `ParseMultipart` (through `httpx.Ctx`), and zero
+still means the package default for callers that have no configuration.
+
+**Cost** One more field on `Ctx`, and the parser no longer has an opinion of its own — which is the point.
+
+**Tested** `TestParseMultipartHonoursAConfiguredCeiling`: a limit below the file size refuses it, a limit above
+accepts it.
+
+**Where** `internal/httpx/form.go`, `internal/httpx/httpx.go`, `internal/server/server.go`.
+
+## 168. Shutdown stops the task cleaner instead of waiting for its next tick
+
+**Decision** Shutdown signals the cleaner and then waits for it: `stop` and `done` are two channels.
+
+**What broke** The cleaner took one channel and closed it itself on the way out, and the shutdown path waited
+on that same channel. There was nothing that could tell it to stop, so with `TASK_RETENTION_DAYS` set a
+Ctrl-C blocked until the next cleanup tick — an hour by default. Measured on the built binary: six seconds
+after SIGTERM it was still running.
+
+**The fix** Two channels: `stop` is closed by the shutdown path, `done` is closed by the loop.
+
+**Cost** One more argument to a ten-line function.
+
+**Tested/measured** The fixed binary exits immediately on SIGTERM with `TASK_RETENTION_DAYS=1`; the previous
+build was still running six seconds later.
+
+**Where** `cmd/comfyui-gateway/main.go`.
+
+## 169. A file that could not be added says so, and media too big to hand over is not sent
+
+**Decision** An add that fails reports it, and a tool result larger than one socket message is refused in
+favour of its size.
+
+**What broke** Two silent failures around media. Dropping, pasting or picking a file ran the upload with no
+failure path: a gateway that was down left the rejection in the console and nothing on the canvas. And
+`read_node` inlined a node's media as base64 with no bound — the gateway closes a socket that sends a message
+over 8 MiB, so reading back a large clip ended the whole agent conversation.
+
+**The fix** Every ingress path reports a failure with a toast (one new key, both languages). `read_node` refuses
+to inline more than 5 MiB of base64 and answers with the file's size instead — the file stays on the canvas,
+which is where the user can open it.
+
+**Cost** A 6 MB picture cannot be handed to the agent at all. The alternative is a socket that dies, which
+loses the whole conversation rather than one read.
+
+**Where** `frontend/src/pages/canvas/hooks/use-content-ingress.ts`,
+`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`, `frontend/src/i18n/locales/*.ts`.

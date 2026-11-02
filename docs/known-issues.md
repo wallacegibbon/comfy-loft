@@ -78,13 +78,13 @@ list, and each line is data the gateway or the agent parses rather than text a u
 | Lines | File | What it is |
 | --- | --- | --- |
 | 10 | `components/canvas/canvas-node-prompt-panel.tsx` | the `PromptOptimizeMode` values sent to the agent |
-| 3 | `lib/canvas/agent-references.ts` | the `【画布引用】` marker the citation block is built from |
+| 5 | `lib/canvas/agent-references.ts` | the `【画布引用】` marker the citation block is built from, and the Chinese examples the comment quotes |
 | 2 | `components/canvas/canvas-node.tsx` | mascot slogans, printed beside their own English line |
 | 2 | `components/canvas/canvas-node-moss-layout-dialog.tsx` | the caption prefix/regex the MOSS workflow parses |
-| 2 | `lib/canvas/node-title.ts` | old default titles the migration recognises (`图片`, `音频`, …) |
+| 1 | `lib/canvas/node-title.ts` | the old default titles the migration recognises (`图片`, `音频`, …), quoted in the comment that explains it |
 | 1 | `services/api/prompts.ts` | the same `PromptOptimizeMode` union, as a type |
 | 1 | `components/layout/user-status-actions.tsx` | the endonym on the language switcher |
-| 56 | `lib/resource-copy-zh.ts` | the resource panel's **Chinese copy**, kept beside the panel by #67 |
+| 45 | `lib/resource-copy-zh.ts` | the resource panel's **Chinese copy**, kept beside the panel by #67 |
 
 **Why these are not a violation** #17 asks for user-visible copy to live in the dictionaries. The protocol
 values are fields the gateway matches or feeds to a workflow (#9); the MOSS regex and prefix are an
