@@ -3,7 +3,7 @@ import { create } from "zustand";
 import i18n from "@/i18n";
 import { documentOf } from "@/lib/canvas/canvas-document";
 import { createSaveQueue, type SaveQueue } from "@/lib/canvas/save-queue";
-import { emptyCanvasDocument, requestCanvas, requestCanvasCreate, requestCanvasDelete, requestCanvasSave, requestCanvases, type CanvasDocument, type CanvasSummary } from "@/services/api/canvases";
+import { emptyCanvasDocument, requestCanvas, requestCanvasCreate, requestCanvasDelete, requestCanvasImport, requestCanvasSave, requestCanvases, type CanvasDocument, type CanvasSummary } from "@/services/api/canvases";
 
 /**
  * The canvases, as a cache over the directories the gateway owns.
@@ -45,6 +45,11 @@ type CanvasStore = {
      * and reading it disagree — and an import is one request, not a create plus a save.
      */
     createCanvas: (title?: string, document?: CanvasDocument) => Promise<string>;
+    /**
+     * Restore an exported canvas from its archive. The gateway unpacks it into a new canvas directory and
+     * answers with that canvas, so this is one request: no files to rename here (decisions #172).
+     */
+    importCanvas: (archive: Blob) => Promise<string>;
     renameCanvas: (id: string, title: string) => Promise<void>;
     deleteCanvases: (ids: string[]) => Promise<void>;
     updateProject: (id: string, patch: Partial<CanvasDocument>) => void;
@@ -152,6 +157,15 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
     // created is worse than an error message.
     createCanvas: async (title = i18n.t("canvas.project.untitled"), document = emptyCanvasDocument()) => {
         const record = await requestCanvasCreate(title, document);
+        const project = projectOf(record.summary, record.document);
+        set((state) => ({ canvases: upsertSummary(state.canvases, record.summary), projects: [project, ...state.projects] }));
+        return record.summary.id;
+    },
+
+    // An archive is one canvas. Nothing in it names a canvas id, so the gateway picks a new one and the
+    // document is stored as it came out of the zip.
+    importCanvas: async (archive) => {
+        const record = await requestCanvasImport(archive);
         const project = projectOf(record.summary, record.document);
         set((state) => ({ canvases: upsertSummary(state.canvases, record.summary), projects: [project, ...state.projects] }));
         return record.summary.id;

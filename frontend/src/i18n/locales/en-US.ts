@@ -339,7 +339,7 @@ export default {
         defaultTitle: "Canvas {{count}}",
         title: "Canvas",
         fishWhip: { bubble: "I will guard your process." },
-        imported: "Imported {{count}} canvases",
+        imported: "Canvas imported",
         importFailed: "Import failed. Select a valid canvas package.",
         loading: "Loading canvases...",
         exportSelected: "Export selected",
@@ -393,7 +393,6 @@ export default {
         },
         project: {
             untitled: "Untitled canvas",
-            imported: "Imported canvas",
             select: "Select {{name}}",
             updated: "Updated {{date}}",
             saveName: "Save name",

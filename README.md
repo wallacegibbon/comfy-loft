@@ -170,7 +170,8 @@ among its endpoints. `/v1/...` in this repository belongs to the model provider 
 | `/api/canvases*` | The workspace: list, create, read, save and delete a canvas, and serve its files |
 | `/api/canvases/{id}/runs`, `/api/runs*` | Produce media into a canvas (submit, poll, download, cancel) |
 | `/api/canvases/{id}/uploads` | Stage one media file inside that canvas |
-| `/api/canvases/{id}/files/{name}` | One file of that canvas: read it, or (import) write it under the name the document uses |
+| `/api/canvases/{id}/files/{name}` | One file of that canvas |
+| `/api/canvases/import` | One exported canvas zip in, one canvas out |
 | `/api/settings` | The workspace preferences: one document the canvas defines |
 | `/api/workflows/*` | Workflow metadata, schemas, and the ComfyUI availability scan |
 | `/api/agent/socket/{session}`, `/api/agent/session/{session}` | The agent: one WebSocket per session, named by the surface that owns it |

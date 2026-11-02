@@ -1,11 +1,14 @@
 package server
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -280,91 +283,170 @@ func mustCreateCanvas(t *testing.T, client *http.Client, base, title string) map
 	return payload
 }
 
-// Importing an exported canvas writes files whose names the document already uses, so there is one route
-// that takes the name from the URL instead of inventing it (decisions #171). It refuses a name that is
-// taken, because a file's URL is its own ETag.
-func TestAFileCanBeWrittenUnderANameTheDocumentUses(t *testing.T) {
+// Importing is one archive in, one canvas out: the files keep the names the document uses, the document is
+// stored as it came out of the zip, and a failed import leaves nothing behind (decisions #172).
+func TestImportingAnArchiveRestoresTheCanvasAsItWasExported(t *testing.T) {
 	gateway := canvasGateway(t)
 	client := gateway.Client()
 
-	_, payload := doJSON(t, client, http.MethodPost, gateway.URL+"/api/canvases", map[string]any{"title": "imported"})
-	canvasID, _, _ := canvasOf(t, payload)
-	fileURL := gateway.URL + "/api/canvases/" + canvasID + "/files/task_abc-2.png"
+	document := map[string]any{
+		"nodes": []any{map[string]any{
+			"id": "n1", "type": "image", "title": "red",
+			"metadata": map[string]any{"content": "files/up-a1b2c3d4.png", "storageKey": "files/up-a1b2c3d4.png"},
+		}},
+		"connections":    []any{},
+		"backgroundMode": "lines",
+		"showImageInfo":  false,
+		"viewport":       map[string]any{"x": 0, "y": 0, "k": 1},
+	}
+	archive := buildImportArchive(t, map[string][]byte{
+		"manifest.json":         []byte(`{"app":"comfyloft","version":1,"title":"restored"}`),
+		"canvas.json":           mustMarshal(t, document),
+		"files/up-a1b2c3d4.png": []byte("PNG-bytes"),
+	})
 
-	put := func(body []byte) (*http.Response, map[string]any) {
-		t.Helper()
-		request, err := http.NewRequest(http.MethodPut, fileURL, bytes.NewReader(body))
-		if err != nil {
-			t.Fatalf("new request: %v", err)
-		}
-		request.Header.Set("Content-Type", "image/png")
-		response, err := client.Do(request)
-		if err != nil {
-			t.Fatalf("put: %v", err)
-		}
-		defer response.Body.Close()
-		raw, _ := io.ReadAll(response.Body)
-		var decoded map[string]any
-		_ = json.Unmarshal(raw, &decoded)
-		return response, decoded
+	status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", archive)
+	if status != http.StatusOK {
+		t.Fatalf("import = %d: %v", status, payload)
 	}
-
-	sent := []byte("PNG-bytes")
-	response, body := put(sent)
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("put = %d: %v", response.StatusCode, body)
+	id, _, restoredDocument := canvasOf(t, payload)
+	if title, _ := payload["canvas"].(map[string]any)["title"].(string); title != "restored" {
+		t.Errorf("title = %q, want the manifest's", title)
 	}
-	file, _ := body["file"].(map[string]any)
-	if name, _ := file["name"].(string); name != "task_abc-2.png" {
-		t.Errorf("file = %v, want the name that was asked for", file)
-	}
-	if mime, _ := file["mime"].(string); mime != "image/png" {
-		t.Errorf("mime = %q, want it read from the name", mime)
+	var got, want any
+	_ = json.Unmarshal([]byte(restoredDocument), &got)
+	_ = json.Unmarshal(mustMarshal(t, document), &want)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("document = %s, want the exported one", restoredDocument)
 	}
 
-	// The bytes are there, under that name, served by the same route the canvas reads.
-	read, err := client.Get(fileURL)
+	// The file is there under the name the document uses, byte for byte.
+	response, err := client.Get(gateway.URL + "/api/canvases/" + id + "/files/up-a1b2c3d4.png")
 	if err != nil {
-		t.Fatalf("get: %v", err)
+		t.Fatalf("get file: %v", err)
 	}
-	defer read.Body.Close()
-	got, _ := io.ReadAll(read.Body)
-	if read.StatusCode != http.StatusOK || !bytes.Equal(got, sent) {
-		t.Errorf("read = %d %q, want %q", read.StatusCode, got, sent)
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusOK || string(body) != "PNG-bytes" {
+		t.Errorf("file = %d %q", response.StatusCode, body)
+	}
+}
+
+func TestAnArchiveThatIsNotOneCanvasIsRefused(t *testing.T) {
+	gateway := canvasGateway(t)
+	client := gateway.Client()
+
+	old := buildImportArchive(t, map[string][]byte{
+		"projects.json":                      []byte(`{"app":"comfyloft","version":3,"projects":[]}`),
+		"projects/abc/files/up-a1b2c3d4.png": []byte("PNG"),
+	})
+	if status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", old); status != http.StatusUnprocessableEntity || codeOf(payload) != "import_old_format" {
+		t.Errorf("old format = %d %v, want 422 import_old_format", status, payload)
 	}
 
-	// Writing it again is refused: the name is cached as immutable, so its bytes must not change.
-	response, body = put([]byte("different"))
-	if response.StatusCode != http.StatusConflict {
-		t.Errorf("second put = %d (%v), want 409", response.StatusCode, body)
+	noDocument := buildImportArchive(t, map[string][]byte{"manifest.json": []byte(`{"title":"x"}`)})
+	if status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", noDocument); status != http.StatusBadRequest || codeOf(payload) != "import_no_document" {
+		t.Errorf("no document = %d %v, want 400 import_no_document", status, payload)
 	}
 
-	// A name that could leave the directory, or a canvas that is not there, is not a write.
-	if response, _ = put([]byte("x")); response.StatusCode == http.StatusOK {
-		t.Error("a second write under the same name was accepted")
+	escaping := buildImportArchive(t, map[string][]byte{
+		"canvas.json":         []byte(`{"nodes":[]}`),
+		"files/../escape.png": []byte("x"),
+	})
+	if status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", escaping); status != http.StatusUnprocessableEntity || codeOf(payload) != "import_invalid_entry" {
+		t.Errorf("escaping entry = %d %v, want 422 import_invalid_entry", status, payload)
 	}
-	bad, err := http.NewRequest(http.MethodPut, gateway.URL+"/api/canvases/"+canvasID+"/files/..%2Fescape.png", bytes.NewReader([]byte("x")))
+
+	if status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", []byte("not a zip")); status != http.StatusBadRequest || codeOf(payload) != "import_not_a_zip" {
+		t.Errorf("not a zip = %d %v, want 400 import_not_a_zip", status, payload)
+	}
+
+	// Nothing was created by any of that.
+	if _, payload := doJSON(t, client, http.MethodGet, gateway.URL+"/api/canvases", nil); len(payload["canvases"].([]any)) != 0 {
+		t.Errorf("a refused import left a canvas behind: %v", payload)
+	}
+}
+
+// mustCreateCanvas creates a canvas over HTTP and returns its id.
+func buildImportArchive(t *testing.T, entries map[string][]byte) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	names := make([]string, 0, len(entries))
+	for name := range entries {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		// Stored, not deflated: these tests are about the layout, and a tiny archive is quicker to read.
+		file, err := writer.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store})
+		if err != nil {
+			t.Fatalf("zip entry %s: %v", name, err)
+		}
+		if _, err := file.Write(entries[name]); err != nil {
+			t.Fatalf("zip write %s: %v", name, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close zip: %v", err)
+	}
+	return buffer.Bytes()
+}
+
+// postArchive sends a body as-is, which is how an import is submitted.
+func postArchive(t *testing.T, client *http.Client, url string, body []byte) (int, map[string]any) {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	response, err = client.Do(bad)
+	request.Header.Set("Content-Type", "application/zip")
+	response, err := client.Do(request)
 	if err != nil {
-		t.Fatalf("put bad name: %v", err)
+		t.Fatalf("post archive: %v", err)
 	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusBadRequest {
-		t.Errorf("bad name = %d, want 400", response.StatusCode)
-	}
-	missing, err := http.NewRequest(http.MethodPut, gateway.URL+"/api/canvases/0123456789ab/files/a.png", bytes.NewReader([]byte("x")))
+	defer response.Body.Close()
+	raw, _ := io.ReadAll(response.Body)
+	var decoded map[string]any
+	_ = json.Unmarshal(raw, &decoded)
+	return response.StatusCode, decoded
+}
+
+// codeOf reads the stable error code out of a failure envelope.
+func codeOf(payload map[string]any) string {
+	failure, _ := payload["error"].(map[string]any)
+	code, _ := failure["code"].(string)
+	return code
+}
+
+// mustMarshal encodes a fixture, failing the test rather than returning nothing.
+func mustMarshal(t *testing.T, value any) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(value)
 	if err != nil {
-		t.Fatalf("new request: %v", err)
+		t.Fatalf("marshal: %v", err)
 	}
-	response, err = client.Do(missing)
-	if err != nil {
-		t.Fatalf("put unknown canvas: %v", err)
+	return encoded
+}
+
+// An import is bounded by its own number, and a refused one leaves no canvas behind: the archive is read
+// before anything is created, and the body is capped while it is still being copied.
+func TestAnImportPastTheLimitIsRefusedAndLeavesNothing(t *testing.T) {
+	gatewayServer := newTestGateway(t, newFakeComfy(t))
+	// A ceiling a real export could never fit under, so the limit is what refuses it.
+	gatewayServer.cfg.MaxImportBytes = 32
+	gateway := httptest.NewServer(gatewayServer.Handler())
+	t.Cleanup(gateway.Close)
+	client := gateway.Client()
+
+	archive := buildImportArchive(t, map[string][]byte{
+		"canvas.json":           []byte(`{"nodes":[]}`),
+		"files/up-a1b2c3d4.png": []byte("more than thirty-two bytes of picture, certainly"),
+	})
+	if status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", archive); status != http.StatusRequestEntityTooLarge || codeOf(payload) != "import_too_large" {
+		t.Errorf("oversized archive = %d %v, want 413 import_too_large", status, payload)
 	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusNotFound {
-		t.Errorf("unknown canvas = %d, want 404", response.StatusCode)
+	if _, payload := doJSON(t, client, http.MethodGet, gateway.URL+"/api/canvases", nil); len(payload["canvases"].([]any)) != 0 {
+		t.Errorf("a refused import left a canvas behind: %v", payload)
 	}
 }

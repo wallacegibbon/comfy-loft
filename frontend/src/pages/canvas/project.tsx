@@ -66,7 +66,7 @@ import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { holdsResult } from "@/lib/canvas/node-prompt-field";
 import { useCanvasAgentTools } from "@/pages/canvas/hooks/use-canvas-agent-tools";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
-import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
+import { exportCanvas } from "@/lib/canvas/canvas-export";
 import { applyNodeConfigPatch, createCanvasNode, imageMetadata } from "@/lib/canvas/canvas-node-factory";
 import { recallNodeSettings } from "@/lib/canvas/node-settings-memory";
 import {
@@ -1353,7 +1353,7 @@ function InfiniteCanvasPage() {
         if (!project) return toast.error(t("canvas.runtime.notFound"));
         const hide = toast.loading(t("canvas.runtime.exporting"));
         try {
-            await exportCanvasProjects([project], project.title || t("canvas.title"));
+            await exportCanvas(project, project.title || t("canvas.title"));
             toast.success(t("canvas.runtime.exported"));
         } catch (error) {
             console.error(error);

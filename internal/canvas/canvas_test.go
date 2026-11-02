@@ -52,7 +52,7 @@ func TestCreateWritesTheWholeLayout(t *testing.T) {
 		t.Errorf("bytes = %d, want %d", summary.Bytes, len(emptyDocument))
 	}
 
-	for _, name := range []string{documentName, metaName, filesName} {
+	for _, name := range []string{DocumentName, metaName, FilesName} {
 		if _, err := os.Stat(filepath.Join(store.Root(), summary.ID, name)); err != nil {
 			t.Errorf("%s missing: %v", name, err)
 		}
@@ -248,7 +248,7 @@ func TestDeleteRemovesTheDirectoryAndTheSecondOneIsNotFound(t *testing.T) {
 	if _, err := store.FilesPath(created.ID); err != nil {
 		t.Fatalf("FilesPath: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(store.Root(), created.ID, filesName, "a.png"), []byte("png"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(store.Root(), created.ID, FilesName, "a.png"), []byte("png"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

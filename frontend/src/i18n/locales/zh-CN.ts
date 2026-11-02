@@ -353,7 +353,7 @@ export default {
         defaultTitle: "画布 {{count}}",
         title: "画布",
         fishWhip: { bubble: "我将守护你的进程" },
-        imported: "已导入 {{count}} 个画布",
+        imported: "画布已导入",
         importFailed: "导入失败，请选择有效的画布压缩包",
         loading: "正在加载画布...",
         exportSelected: "导出选中",
@@ -407,7 +407,6 @@ export default {
         },
         project: {
             untitled: "未命名画布",
-            imported: "导入画布",
             select: "选择 {{name}}",
             updated: "更新于 {{date}}",
             saveName: "保存名称",

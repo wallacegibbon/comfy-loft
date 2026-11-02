@@ -107,6 +107,24 @@ export async function requestCanvasCreate(title: string, document: CanvasDocumen
 }
 
 /**
+ * Restore an exported canvas from its archive.
+ *
+ * The body is the zip itself: the gateway unpacks `canvas.json`, `manifest.json` and `files/<name>` into a new
+ * canvas directory and keeps the names the document uses, so the client has nothing to rename or repair
+ * (decisions #172). It answers with the canvas it created, exactly like a create.
+ */
+export async function requestCanvasImport(archive: Blob, signal?: AbortSignal): Promise<CanvasRecord> {
+    const payload = await httpJson<{ canvas?: unknown }>(`${BASE}/import`, {
+        method: "POST",
+        headers: { "Content-Type": archive.type || "application/zip" },
+        body: archive,
+        signal,
+        timeout: 10 * 60_000,
+    });
+    return readRecord(payload);
+}
+
+/**
  * Save the document.
  *
  * `rev` is the version this save was made against, sent as `If-Match`. A gateway that has moved on

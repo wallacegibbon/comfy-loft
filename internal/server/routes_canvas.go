@@ -3,16 +3,13 @@ package server
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"comfyloft/internal/canvas"
 	"comfyloft/internal/httpx"
-	"comfyloft/internal/util"
 )
 
 // routesCanvas registers the canvas documents.
@@ -26,8 +23,8 @@ func (s *Server) routesCanvas(mux *http.ServeMux) {
 	s.route(mux, "GET /api/canvases/{id}", s.handleCanvasGet)
 	s.route(mux, "PUT /api/canvases/{id}", s.handleCanvasSave)
 	s.route(mux, "DELETE /api/canvases/{id}", s.handleCanvasDelete)
+	s.route(mux, "POST /api/canvases/import", s.handleCanvasImport)
 	s.route(mux, "GET /api/canvases/{id}/files/{name}", s.handleCanvasFile)
-	s.route(mux, "PUT /api/canvases/{id}/files/{name}", s.handleCanvasFileWrite)
 }
 
 // handleCanvasList implements GET /api/canvases.
@@ -140,44 +137,6 @@ func (s *Server) handleCanvasFile(ctx *httpx.Ctx) error {
 	return nil
 }
 
-// handleCanvasFileWrite implements PUT /api/canvases/{id}/files/{name}: put bytes at a name the caller chose.
-//
-// This is the import path, and the only caller. Importing an exported canvas means writing files whose names
-// the document already contains (`files/<name>`), so the name has to survive the trip — the upload route
-// names files itself, and renaming here would mean rewriting every reference in the document afterwards.
-// The body is the file, not a multipart form: there is exactly one file and its name is in the URL.
-//
-// A name that is taken is refused (409): a file's URL is its own ETag, so overwriting one would leave every
-// cache that has seen it showing the old bytes. Import always writes into a canvas that was just created.
-func (s *Server) handleCanvasFileWrite(ctx *httpx.Ctx) error {
-	id := ctx.R.PathValue("id")
-	name := ctx.R.PathValue("name")
-
-	limit := s.cfg.MaxUploadBytes
-	if limit <= 0 {
-		limit = httpx.MaxFileBytes
-	}
-	data, err := io.ReadAll(io.LimitReader(ctx.R.Body, limit+1))
-	if err != nil {
-		return httpx.BadRequest("file_read_failed", "failed to read the request body")
-	}
-	if int64(len(data)) > limit {
-		return httpx.Errorf(http.StatusRequestEntityTooLarge, "upload_too_large",
-			"the file exceeds the configured limit (%d bytes)", limit)
-	}
-
-	if err := s.canvases.WriteFile(id, name, data); err != nil {
-		return canvasError(err)
-	}
-	okJSON(ctx.W, map[string]any{"file": map[string]any{
-		"name":  name,
-		"bytes": len(data),
-		"mime":  util.MimeFromFilename(name),
-		"url":   "/api/canvases/" + url.PathEscape(id) + "/files/" + url.PathEscape(name),
-	}})
-	return nil
-}
-
 // canvasFileGrace is how long an unreferenced file survives.
 //
 // It covers the gap between a file appearing and the document naming it: a run writes its output, the
@@ -245,8 +204,6 @@ func canvasError(err error) error {
 		return httpx.BadRequest("canvas_invalid_id", "that is not a canvas id")
 	case errors.Is(err, canvas.ErrInvalidFileName):
 		return httpx.BadRequest("canvas_invalid_file_name", "that is not a file name a canvas may hold")
-	case errors.Is(err, canvas.ErrFileExists):
-		return httpx.NewError(http.StatusConflict, "file_exists", "a file with that name is already in this canvas")
 	case errors.Is(err, canvas.ErrInvalidDocument):
 		return httpx.BadRequest("canvas_invalid_document", canvas.ErrInvalidDocument.Error())
 	}

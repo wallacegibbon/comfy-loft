@@ -27,9 +27,12 @@ import (
 )
 
 const (
-	metaName     = "canvas.meta.json"
-	documentName = "canvas.json"
-	filesName    = "files"
+	metaName = "canvas.meta.json"
+	// DocumentName is the document's file name inside a canvas directory, and FilesName is the directory its
+	// media lives in. Both are part of the workspace layout (`import/export` writes and reads them), so they
+	// are exported rather than repeated as strings.
+	DocumentName = "canvas.json"
+	FilesName    = "files"
 
 	// MaxDocumentBytes caps one canvas.json. Media lives in files/, so a document that needs more
 	// than this is a document that inlined something it should have referenced.
@@ -150,7 +153,7 @@ func (s *Store) Read(id string) (Canvas, error) {
 	if err != nil {
 		return Canvas{}, err
 	}
-	document, err := os.ReadFile(filepath.Join(s.root, id, documentName))
+	document, err := os.ReadFile(filepath.Join(s.root, id, DocumentName))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Canvas{}, ErrNotFound
@@ -187,11 +190,11 @@ func (s *Store) Create(title string, document []byte) (Summary, error) {
 			return Summary{}, fmt.Errorf("canvas: cannot create %s: %w", id, err)
 		}
 		loaded.ID = id
-		if err := os.MkdirAll(filepath.Join(dir, filesName), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(dir, FilesName), 0o755); err != nil {
 			_ = os.RemoveAll(dir)
 			return Summary{}, fmt.Errorf("canvas: cannot create %s: %w", id, err)
 		}
-		if err := writeFile(filepath.Join(dir, documentName), document); err != nil {
+		if err := writeFile(filepath.Join(dir, DocumentName), document); err != nil {
 			_ = os.RemoveAll(dir)
 			return Summary{}, err
 		}
@@ -222,7 +225,7 @@ func (s *Store) Write(id, rev string, title *string, document []byte) (Summary, 
 	if rev != "" && rev != loaded.Rev {
 		return Summary{}, &ConflictError{Current: s.summaryOf(loaded)}
 	}
-	if err := writeFile(filepath.Join(s.root, id, documentName), document); err != nil {
+	if err := writeFile(filepath.Join(s.root, id, DocumentName), document); err != nil {
 		return Summary{}, err
 	}
 	if title != nil {
@@ -256,7 +259,7 @@ func (s *Store) FilesPath(id string) (string, error) {
 	if _, err := s.readMeta(id); err != nil {
 		return "", err
 	}
-	dir := filepath.Join(s.root, id, filesName)
+	dir := filepath.Join(s.root, id, FilesName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("canvas: cannot create %s: %w", dir, err)
 	}
@@ -302,7 +305,7 @@ func (s *Store) summaryOf(loaded meta) Summary {
 		UpdatedAt: loaded.UpdatedAt,
 		Rev:       loaded.Rev,
 	}
-	if info, err := os.Stat(filepath.Join(s.root, loaded.ID, documentName)); err == nil {
+	if info, err := os.Stat(filepath.Join(s.root, loaded.ID, DocumentName)); err == nil {
 		summary.Bytes = info.Size()
 	}
 	return summary

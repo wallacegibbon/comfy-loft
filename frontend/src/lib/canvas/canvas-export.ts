@@ -4,39 +4,35 @@ import i18n from "@/i18n";
 import { documentOf } from "@/lib/canvas/canvas-document";
 import { createZip } from "@/lib/zip";
 import { activeFileUrl, canvasFileUrl, fileNameOf } from "@/services/canvas-files";
-import type { CanvasExportProjectFile, CanvasExportFile } from "@/types/canvas-export";
+import type { CanvasExportManifest } from "@/types/canvas-export";
 import type { CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
-export async function exportCanvasProjects(projects: CanvasProject[], fileName = i18n.t("canvas.export.defaultProjectName")) {
-    const zipFiles: { name: string; data: BlobPart }[] = [];
-    const exportedProjects = await Promise.all(
-        projects.map(async (project) => {
-            const files: CanvasExportProjectFile[] = [];
-            await Promise.all(
-                collectStorageKeys(project).map(async (storageKey) => {
-                    const name = fileNameOf(storageKey);
-                    const url = canvasFileUrl(project.id, storageKey);
-                    if (!name || !url) return;
-                    // The file already has a name on disk; the zip keeps it, so an import can put the same
-                    // name back and the document's references still resolve.
-                    const blob = await (await fetch(url)).blob().catch(() => null);
-                    if (!blob) return;
-                    const path = `projects/${project.id}/files/${name}`;
-                    files.push({ storageKey, path, mimeType: blob.type || "application/octet-stream", bytes: blob.size });
-                    zipFiles.push({ name: path, data: blob });
-                }),
-            );
-            // The document as the gateway would have stored it, plus the title the list shows: a zip carries
-            // no id and no rev, because importing it makes a new canvas (decisions #171). A node's media is
-            // named by `files/<name>`, never by the URL this browser happened to render it from.
-            return { project: { ...documentOf(project), title: project.title }, files };
-        }),
-    );
-
-    const data: CanvasExportFile = { app: "comfyloft", version: 3, exportedAt: new Date().toISOString(), projects: exportedProjects };
-    const zip = await createZip([{ name: "projects.json", data: JSON.stringify(data, null, 2) }, ...zipFiles]);
-    saveAs(zip, `${safeFileName(fileName)}.zip`);
+/**
+ * Export one canvas as a zip.
+ *
+ * The archive is the canvas directory, without its id: `canvas.json` (the document), `manifest.json` (the
+ * format and the title) and `files/<name>`. Importing it is that directory unpacked into a new canvas, so
+ * nothing in here has to be renamed or rewritten later (decisions #172).
+ */
+export async function exportCanvas(project: CanvasProject, fileName = i18n.t("canvas.export.defaultProjectName")) {
+    const document = documentOf(project);
+    const manifest: CanvasExportManifest = { app: "comfyloft", version: 1, title: project.title, exportedAt: new Date().toISOString() };
+    const entries: { name: string; data: BlobPart }[] = [
+        { name: "manifest.json", data: JSON.stringify(manifest, null, 2) },
+        { name: "canvas.json", data: JSON.stringify(document, null, 2) },
+    ];
+    for (const storageKey of collectStorageKeys(document)) {
+        const name = fileNameOf(storageKey);
+        const url = canvasFileUrl(project.id, storageKey);
+        if (!name || !url) continue;
+        // The file already has a name on disk; the zip keeps it, which is what lets an import put the same
+        // name back and leave the document's references alone.
+        const blob = await (await fetch(url)).blob().catch(() => null);
+        if (!blob) continue;
+        entries.push({ name: `files/${name}`, data: blob });
+    }
+    saveAs(await createZip(entries), `${safeFileName(fileName)}.zip`);
 }
 
 export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n.t("canvas.export.defaultNodesName")) {

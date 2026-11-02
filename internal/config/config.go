@@ -65,7 +65,11 @@ type Config struct {
 	// agent so it can read them itself. The wording is the agent's business, not the gateway's.
 	AgentSkills string
 
-	MaxUploadBytes      int64
+	MaxUploadBytes int64
+	// MaxImportBytes bounds one imported canvas archive, body and unpacked bytes alike. It is its own
+	// number rather than MaxUploadBytes: a canvas archive carries every picture and clip a canvas shows,
+	// so it is orders of magnitude larger than one reference image.
+	MaxImportBytes      int64
 	MaxWorkflowBytes    int64
 	MaxImageCount       int
 	ResourceConcurrency int
@@ -111,6 +115,9 @@ func AgentHostDir(host string) string {
 	}
 	return safe
 }
+
+// WithMaxImportBytes overrides the ceiling for one imported canvas archive.
+func WithMaxImportBytes(bytes int64) Option { return func(c *Config) { c.MaxImportBytes = bytes } }
 
 // WithDataDir overrides the data directory.
 func WithDataDir(dir string) Option { return func(c *Config) { c.DataDir = dir } }
@@ -162,6 +169,7 @@ func Load(opts ...Option) (*Config, error) {
 		MaxStoredTasks:      countValue(os.Getenv("MAX_STORED_TASKS")),
 		CleanupIntervalMs:   intValue(os.Getenv("CLEANUP_INTERVAL_MS"), 60*60*1000),
 		MaxUploadBytes:      int64(intValue(os.Getenv("MAX_UPLOAD_BYTES"), 50*1024*1024)),
+		MaxImportBytes:      int64Value(os.Getenv("MAX_IMPORT_BYTES"), 8<<30),
 		MaxWorkflowBytes:    int64(intValue(os.Getenv("MAX_WORKFLOW_BYTES"), 5*1024*1024)),
 		MaxImageCount:       intValue(os.Getenv("MAX_IMAGE_COUNT"), 15),
 		ResourceConcurrency: intValue(os.Getenv("RESOURCE_CONCURRENCY"), 2),
@@ -307,6 +315,16 @@ func stringOr(value, fallback string) string {
 // intValue mirrors the old num(): a positive integer, otherwise the fallback.
 func intValue(value string, fallback int) int {
 	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+// int64Value reads a byte count that does not fit an int on every build (a canvas archive can be
+// gigabytes), falling back when the value is unusable.
+func int64Value(value string, fallback int64) int64 {
+	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
 	if err != nil || parsed <= 0 {
 		return fallback
 	}

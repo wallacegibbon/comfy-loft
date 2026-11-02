@@ -119,6 +119,7 @@ authentication; there is no configuration in this gateway that makes an untruste
 | `TASK_RETENTION_DAYS` | `0` | Prune finished run records older than this; `0` keeps everything. Artifacts are not yours to prune here — they belong to a canvas. |
 | `MAX_STORED_TASKS` | `0` | Cap on stored tasks; `0` is unlimited. |
 | `MAX_UPLOAD_BYTES` | `52428800` | Per-file upload limit. |
+| `MAX_IMPORT_BYTES` | `8589934592` | Ceiling for one imported canvas archive: the body and the bytes it unpacks to. Its own number because a canvas archive carries every clip that canvas shows. |
 | `RESOURCE_CONCURRENCY` | `2` | Parallel downloads during a resource install. |
 | `ALAYACORE_BIN` | _(found)_ | The agent binary. Empty looks on `PATH`, then beside the gateway. |
 | `AGENT_CONFIG_PATH` | `UserConfigDir()/comfyui-gateway/<host>/alayacore` | The agent's own config directory (`model.conf`, and the `mcp.conf` the gateway writes). One per host, because `mcp.conf` names the address the agent dials back to; a pre-#147 `model.conf` is copied into it once. |
@@ -280,7 +281,7 @@ Media, runs and files:
 | Method | Path                              | Purpose                                                                                                    |
 | ------ | --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `POST` | `/api/canvases/{id}/uploads`      | Upload one media file into that canvas. Returns its file name and URL.                                     |
-| `PUT`  | `/api/canvases/{id}/files/{name}` | Write bytes at a name the caller chooses — the import path, where the document already names the file. A name that is taken is refused (`409`), because a file's URL is its own ETag. |
+| `POST` | `/api/canvases/import`            | One exported canvas archive in, one canvas out: the gateway unpacks `canvas.json`, `manifest.json` and `files/` into a new canvas directory. |
 | `POST` | `/api/canvases/{id}/runs`         | Submit a run into that canvas. Always `202` with the run, never blocks.                                     |
 | `GET`  | `/api/runs`                       | Runs, newest first; `?status=` and `?workflow=` filter.                                                     |
 | `GET`  | `/api/runs/{id}`                  | Status, progress, preview frame, outputs, error.                                                            |

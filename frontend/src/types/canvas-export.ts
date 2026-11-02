@@ -1,28 +1,15 @@
-import type { CanvasDocument } from "@/services/api/canvases";
-
-export type CanvasExportFile = {
-    app: "comfyloft";
-    version: 3;
-    exportedAt: string;
-    projects: CanvasProjectExportItem[];
-};
-
 /**
- * One canvas in a zip: its document and the title the list shows.
+ * What an exported canvas zip is.
  *
- * No id and no rev: an import creates a new canvas, and nothing inside a document names a canvas. The files
- * keep the names the document uses, so importing this needs no rewriting at all (decisions #171).
+ * One canvas, one zip (decisions #172): `canvas.json` is the document exactly as the gateway stores it,
+ * `manifest.json` describes the archive (and carries the title, which is not part of the document), and
+ * `files/<name>` are the media under the names the document already uses. There is no id and no rev — an
+ * import is a new canvas — and no URL anywhere, so the zip can be opened in another workspace.
  */
-type CanvasExportProject = CanvasDocument & { title: string };
-
-type CanvasProjectExportItem = {
-    project: CanvasExportProject;
-    files: CanvasExportProjectFile[];
-};
-
-export type CanvasExportProjectFile = {
-    storageKey: string;
-    path: string;
-    mimeType: string;
-    bytes: number;
+export type CanvasExportManifest = {
+    app: "comfyloft";
+    /** Archive format, not the app's version. 1 is "canvas.json + manifest.json + files/". */
+    version: 1;
+    title: string;
+    exportedAt: string;
 };

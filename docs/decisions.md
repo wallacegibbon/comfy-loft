@@ -5953,7 +5953,62 @@ the same node, the file in `files/` kept the name the document names (`files/imp
 the bytes were identical, and `canvas.json` on disk contains no `http` at all. The zip itself is the check that
 matters: `projects.json` carries five document fields plus the title — no id, no rev, no URL.
 
+**Superseded in part by #172** The route this entry introduced (`PUT /api/canvases/{id}/files/{name}`) is gone:
+the gateway unpacks the archive itself now, so no client ever writes a file at a chosen name. What stays is the
+finding — a file's name is the document's, and an import must not rewrite it.
+
 **Where** `internal/canvas/files.go`, `internal/canvas/canvas.go`, `internal/server/routes_canvas.go`,
 `frontend/src/services/canvas-files.ts`, `frontend/src/lib/canvas/canvas-document.ts`,
 `frontend/src/lib/canvas/canvas-export.ts`, `frontend/src/components/canvas/canvas-manager-dialog.tsx`,
 `frontend/src/stores/canvas/use-canvas-store.ts`.
+
+## 172. One canvas, one zip, and the gateway unpacks it
+
+**Decision** An export is one canvas: a zip holding `canvas.json` (the document), `manifest.json` (format and
+title) and `files/<name>` (its media). An import is that zip POSTed to `/api/canvases/import`, and the gateway
+creates a canvas, unpacks the archive into it and answers with the canvas. No id, no rev and no URL travel in
+the archive, and the files keep the names the document uses.
+
+**Why one canvas per archive** The previous format packed *several* canvases into one zip
+(`projects.json` + `projects/<id>/files/…`), because the canvas list had a "export selected" button. That is a
+batch format for a product whose unit is a canvas: it made the import dialog ask the gateway for N canvases, it
+made "what does this file on disk belong to" answerable only by reading a JSON index, and it is why the word
+"projects" leaked into a workspace that has only canvases. A zip that is exactly one canvas directory is also
+the thing a person can unzip by hand and read.
+
+**Why the gateway unpacks it** The client used to unzip (`fflate`) and PUT each file, and before that it wrote
+the bytes back into IndexedDB — import has always been "put these bytes where the document says they are". Once
+the media moved into the canvas directory (#156) the only write route named files itself, so the client had to
+collect the new names and rewrite the document (#171). With the archive in one request the operation is what it
+always was: unpack into the canvas. The client keeps no archive parser, and three consequences come with that:
+
+- **The title comes from the manifest.** It is not part of the document (the gateway owns titles), so the
+  archive has to say it somewhere.
+- **The id is new.** The zip carries none; the exported canvas usually still exists in the same workspace, and
+  a canvas id is a directory name.
+- **Limits have to exist**, because this is user input: the body and the unpacked bytes are bounded by
+  `MAX_IMPORT_BYTES` (8 GiB by default — a canvas archive carries every clip it shows), an archive holds at
+  most 20 000 entries, and a `..` segment in an entry name is refused *before* cleaning — `files/../x.png`
+  cleans to `x.png`, which no longer looks like a traversal.
+
+**Cost** A failed import can leave nothing behind but also cannot be resumed: it is one request, so it is
+either the canvas or an error (the canvas is deleted if a file fails to write). Old archives — the multi-canvas
+format — are refused with a message saying to export them again, rather than carried forever. And unpacking
+user archives is the one place this gateway parses a container it did not produce: `archive/zip` only, with the
+rules above, no symlinks and no modes taken from the archive.
+
+**Tested** Go: `TestImportingAnArchiveRestoresTheCanvasAsItWasExported` (document, title, file bytes and name),
+`TestAnArchiveThatIsNotOneCanvasIsRefused` (old format, no document, `..` entry, not a zip — and no canvas left
+behind), `TestAnImportPastTheLimitIsRefusedAndLeavesNothing` (413 with a 32-byte ceiling). Frontend:
+`tests/canvas-document.test.ts` still pins the document that goes into `canvas.json`. Gates: `make check`,
+`go test -race`, `npm run check`, `npx vitest run` (149).
+
+**In the browser** Exported a canvas holding an image: the zip holds `manifest.json`, `canvas.json`,
+`files/import-test.png`. Deleted the canvas, imported the zip: one request, the canvas came back with the same
+node and title, the file kept its name and its bytes, and `canvas.json` on disk contains no `http`.
+
+**Where** `internal/server/canvas_import.go`, `internal/server/routes_canvas.go`, `internal/canvas/files.go`,
+`internal/canvas/canvas.go`, `internal/config/config.go`, `frontend/src/lib/canvas/canvas-export.ts`,
+`frontend/src/services/api/canvases.ts`, `frontend/src/stores/canvas/use-canvas-store.ts`,
+`frontend/src/components/canvas/canvas-manager-dialog.tsx`, `frontend/src/types/canvas-export.ts`,
+`frontend/src/lib/canvas/canvas-document.ts`.

@@ -101,7 +101,7 @@ func TestFilePathRefusesNamesThatCouldLeaveTheDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FilePath: %v", err)
 	}
-	if filepath.Dir(path) != filepath.Join(store.Root(), created.ID, filesName) {
+	if filepath.Dir(path) != filepath.Join(store.Root(), created.ID, FilesName) {
 		t.Errorf("path = %s", path)
 	}
 }

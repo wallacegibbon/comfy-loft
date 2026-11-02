@@ -9,7 +9,7 @@ import type { CanvasSummary } from "@/services/api/canvases";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasListStore } from "@/stores/canvas/use-canvas-list-store";
 import { useCanvasPanelStore } from "@/stores/canvas/use-canvas-panel-store";
-import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
+import { exportCanvas } from "@/lib/canvas/canvas-export";
 
 export function CanvasProjectCard({ project }: { project: CanvasSummary }) {
     const { i18n, t } = useTranslation();
@@ -82,7 +82,7 @@ export function CanvasProjectCard({ project }: { project: CanvasSummary }) {
                                 onClick={() =>
                                     void (async () => {
                                         const loaded = await loadCanvas(project.id);
-                                        if (loaded) await exportCanvasProjects([loaded], loaded.title || t("canvas.title"));
+                                        if (loaded) await exportCanvas(loaded, loaded.title || t("canvas.title"));
                                     })()
                                 }
                                 aria-label={t("canvas.project.export")}

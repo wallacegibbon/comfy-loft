@@ -46,7 +46,7 @@ func (s *Store) Files(id string) ([]os.FileInfo, error) {
 	if _, err := s.readMeta(id); err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(filepath.Join(s.root, id, filesName))
+	entries, err := os.ReadDir(filepath.Join(s.root, id, FilesName))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -79,7 +79,7 @@ func (s *Store) FilePath(id, name string) (string, error) {
 	if !ValidFileName(name) {
 		return "", ErrInvalidFileName
 	}
-	return filepath.Join(s.root, id, filesName, name), nil
+	return filepath.Join(s.root, id, FilesName, name), nil
 }
 
 // WriteFile puts bytes into a canvas under a name the caller chose.
@@ -129,7 +129,7 @@ func (s *Store) Sweep(id string, extra []string, grace time.Duration) (SweepResu
 	if err != nil {
 		return result, err
 	}
-	document, err := os.ReadFile(filepath.Join(s.root, id, documentName))
+	document, err := os.ReadFile(filepath.Join(s.root, id, DocumentName))
 	if err != nil && !os.IsNotExist(err) {
 		return result, err
 	}
@@ -155,7 +155,7 @@ func (s *Store) Sweep(id string, extra []string, grace time.Duration) (SweepResu
 			result.Kept = append(result.Kept, file.Name())
 			continue
 		}
-		if err := os.Remove(filepath.Join(s.root, loaded.ID, filesName, file.Name())); err != nil {
+		if err := os.Remove(filepath.Join(s.root, loaded.ID, FilesName, file.Name())); err != nil {
 			return result, err
 		}
 		result.Removed = append(result.Removed, file.Name())
