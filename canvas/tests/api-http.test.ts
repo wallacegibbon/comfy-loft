@@ -13,7 +13,7 @@ const t = vi.fn((key: string) => key);
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => t(key) } }));
 
 const noteGatewayError = vi.fn();
-vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: (...args: unknown[]) => noteGatewayError(...args) }));
+vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: (...args: unknown[]) => noteGatewayError(...args), noteGatewayResponse: () => undefined }));
 
 const { ApiError, apiErrorMessage, httpBlob, httpJson, isCancelled, readApiErrorMessage } = await import("@/services/api/http");
 

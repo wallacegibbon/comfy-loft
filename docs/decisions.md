@@ -5449,3 +5449,40 @@ empty console.
 `canvas/src/stores/canvas/use-canvas-store.ts`, `canvas/src/lib/canvas/{canvas-export.ts,canvas-node-factory.ts,image-thumbnail.ts}`,
 `canvas/src/components/canvas/canvas-manager-dialog.tsx`, `canvas/src/pages/canvas/project.tsx`,
 `canvas/src/i18n/locales/*`, `canvas/package.json`, `docs/gateway.md`.
+
+## 157. The gateway's liveness is learnt from the traffic, not probed
+
+**Decision** The heartbeat is gone. `services/api/gateway-status.ts` no longer has a timer, a
+`GET /health` probe, or a reload: a gateway request that fails at the network layer marks the gateway
+down, **any** response from it marks it up, and the banner follows. `/health` stays as an endpoint —
+what it answers (ComfyUI's reachability, workflow counts) is a question for an operator with `curl`.
+
+**What the old loop did** After the first failure it probed `/health` every 2s, and when the probe
+answered it cleared the banner and reloaded the page 600ms later. It cost nothing while healthy (the
+probe only ran while down), so this is not a performance entry; it is an entry about a mechanism that
+had stopped being the only way to know either thing.
+
+**Why the probe was unnecessary** Recovery was already in the traffic: the model list is fetched every
+8 seconds and the system chip every 5, and the first of those to succeed is the same news, a few seconds
+later and for free. The probe's only real contribution was making the banner disappear up to ~6 seconds
+sooner.
+
+**Why the reload was worse than useless** Its stated reason was that model lists, resource status and
+in-flight requests had gone stale while disconnected. The polls now refresh all of that on their own
+(#153 made the model list self-syncing), so what the reload still did was throw away what the tab held:
+the undo stack, the selection, the node being dragged. A page that reloads itself because the backend
+came back is a page that interrupts the person using it.
+
+**The new rule, in one line** Reachability is derived from requests we make anyway: `noteGatewayError`
+on a network failure, `noteGatewayResponse` on any answer — including a 4xx, because a 400 from the
+gateway is a gateway that is answering. The synchronous hook that used to call `markGatewayUp()` after
+its own fetch no longer has to, because its fetch goes through the HTTP layer like everything else.
+
+**Tested** `npm run check`, 127 canvas tests (the API tests mock the status module, which gained the
+`noteGatewayResponse` export they now stub), `make web`. In the browser: the gateway was killed under an
+open canvas — the banner appeared with its new wording within one poll — and brought back: the banner
+cleared on the next poll, `window.__noReload` survived (no reload), and the new build logged **zero**
+`GET /health` requests across the whole cycle.
+
+**Where** `canvas/src/services/api/{gateway-status.ts,http.ts}`, `canvas/src/hooks/use-local-gateway-sync.ts`,
+`canvas/src/i18n/locales/*`, `canvas/tests/api-*.test.ts` (the stubs).

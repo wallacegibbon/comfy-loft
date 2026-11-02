@@ -5,7 +5,7 @@ export default {
     },
     theme: { toggle: "Toggle theme" },
     gateway: {
-        reconnecting: "Local gateway disconnected. Reconnecting…",
+        reconnecting: "The local gateway is not answering. The first request to succeed will clear this.",
     },
     common: {
         cancel: "Cancel",

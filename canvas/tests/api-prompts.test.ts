@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * process, and nothing that could reach the canvas's own agent.
  */
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
-vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: () => undefined }));
+vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: () => undefined, noteGatewayResponse: () => undefined }));
 vi.mock("@/services/image-storage", () => ({ imageToDataUrl: async () => "data:image/png;base64,AAAA" }));
 
 const { openAgentSession, agentSession } = await import("@/services/api/agent");

@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const t = vi.fn((key: string) => key);
 
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => t(key) } }));
-vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: () => undefined }));
+vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: () => undefined, noteGatewayResponse: () => undefined }));
 
 // Media conversion is a browser concern; these tests are about the request the canvas builds.
 vi.mock("@/services/image-storage", () => ({ imageToDataUrl: async () => "data:image/png;base64,AAAA" }));

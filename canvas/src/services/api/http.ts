@@ -1,5 +1,5 @@
 import i18n from "@/i18n";
-import { noteGatewayError } from "@/services/api/gateway-status";
+import { noteGatewayError, noteGatewayResponse } from "@/services/api/gateway-status";
 
 /**
  * The app's HTTP layer.
@@ -64,7 +64,11 @@ async function send(url: string, init: HttpInit): Promise<Response> {
     signal?.addEventListener("abort", relay, { once: true });
 
     try {
-        return await fetch(url, { ...rest, signal: timeoutController ? timeoutController.signal : signal });
+        const response = await fetch(url, { ...rest, signal: timeoutController ? timeoutController.signal : signal });
+        // Any answer — including a 4xx — means the gateway is back. This is the whole recovery check:
+        // no probe, no timer (#157).
+        noteGatewayResponse(url);
+        return response;
     } catch (error) {
         // This is what an axios response interceptor used to do in `image.ts`: one failing
         // request to the local gateway flips the shared "reconnecting" banner instead of

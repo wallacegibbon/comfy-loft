@@ -1,18 +1,29 @@
 import { LOCAL_GATEWAY_ORIGIN } from "@/constant/app-mode";
 
-// When the gateway restarts or changes port, every in-flight request fails at once. They are
-// folded into a single "reconnecting" state: one notice, one automatic refresh on recovery,
-// instead of one error per request.
+/**
+ * The gateway's reachability, as the page learns it from its own traffic.
+ *
+ * There used to be a heartbeat here: after the first failure a timer probed `GET /health` every two
+ * seconds until it answered, and then reloaded the page. Two things made that unnecessary (#157):
+ *
+ *   - **Recovery is already in the traffic.** The model list is refreshed every few seconds and the
+ *     system chip is polled; the first one of those to succeed is the same news a probe would bring,
+ *     a few seconds later and for free.
+ *   - **The reload existed to refresh stale state** — model lists, resource status — that the polls
+ *     now refresh on their own. All it still did was throw away what the tab held: the undo stack,
+ *     the selection, whatever was being dragged.
+ *
+ * So there is no timer, no probe and no reload. The state is derived: a gateway request that fails at
+ * the network layer marks it down, any gateway response marks it up, and the banner follows. The
+ * `/health` endpoint still exists — it reports ComfyUI's reachability and the workflow count, which is
+ * a question for an operator with `curl`, not for a page to ask itself over and over.
+ */
 
 type Listener = (down: boolean) => void;
 
 const listeners = new Set<Listener>();
-const HEALTH_INTERVAL_MS = 2000;
-const HEALTH_TIMEOUT_MS = 2000;
 
 let down = false;
-let pollTimer: number | null = null;
-let reloadTimer: number | null = null;
 
 function emit() {
     for (const listener of listeners) listener(down);
@@ -30,53 +41,17 @@ export function subscribeGatewayStatus(listener: Listener) {
     };
 }
 
-async function probeHealth() {
-    if (!LOCAL_GATEWAY_ORIGIN) return false;
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
-    try {
-        const response = await fetch(`${LOCAL_GATEWAY_ORIGIN}/health`, { cache: "no-store", signal: controller.signal });
-        return response.ok;
-    } catch {
-        return false;
-    } finally {
-        window.clearTimeout(timer);
-    }
-}
-
-function startPolling() {
-    if (pollTimer !== null) return;
-    const tick = async () => {
-        pollTimer = null;
-        if (!down) return;
-        if (await probeHealth()) {
-            markGatewayUp();
-            return;
-        }
-        pollTimer = window.setTimeout(() => void tick(), HEALTH_INTERVAL_MS);
-    };
-    pollTimer = window.setTimeout(() => void tick(), HEALTH_INTERVAL_MS);
-}
-
 function markGatewayDown() {
     if (down) return;
     down = true;
     emit();
-    startPolling();
 }
 
-export function markGatewayUp() {
+/** The gateway answered something. Called from the HTTP layer, so every successful request counts. */
+function markGatewayUp() {
     if (!down) return;
     down = false;
-    if (pollTimer !== null) {
-        window.clearTimeout(pollTimer);
-        pollTimer = null;
-    }
     emit();
-    // Model lists, resource state and in-flight requests all went stale while disconnected; refresh once on recovery.
-    if (reloadTimer === null) {
-        reloadTimer = window.setTimeout(() => window.location.reload(), 600);
-    }
 }
 
 function isGatewayRequest(url: string) {
@@ -87,6 +62,15 @@ function isGatewayRequest(url: string) {
     } catch {
         return false;
     }
+}
+
+/**
+ * Record what a response means for reachability.
+ *
+ * Any status counts, including an error one: a 400 from the gateway is a gateway that is answering.
+ */
+export function noteGatewayResponse(url: string) {
+    if (isGatewayRequest(url)) markGatewayUp();
 }
 
 export function noteGatewayError(error: unknown, url = "") {
@@ -100,7 +84,9 @@ export function noteGatewayError(error: unknown, url = "") {
 
 export async function gatewayFetch(input: RequestInfo | URL, init?: RequestInit) {
     try {
-        return await fetch(input, init);
+        const response = await fetch(input, init);
+        noteGatewayResponse(String(input));
+        return response;
     } catch (error) {
         noteGatewayError(error, String(input));
         throw error;

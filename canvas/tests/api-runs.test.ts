@@ -14,7 +14,7 @@ const t = vi.fn((key: string) => key);
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => t(key) } }));
 
 const noteGatewayError = vi.fn();
-vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: (...args: unknown[]) => noteGatewayError(...args) }));
+vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: (...args: unknown[]) => noteGatewayError(...args), noteGatewayResponse: () => undefined }));
 
 const { RunFailedError, createRun, downloadRunOutput, gatewayProtocolRoot, waitForRun } = await import("@/services/api/runs");
 

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 
 import { isLocalGatewayUrl, LOCAL_GATEWAY_BASE_URL } from "@/constant/app-mode";
 import { gatewayModels, modelSignature, pickModelOption } from "@/lib/gateway-models";
-import { markGatewayUp, noteGatewayError } from "@/services/api/gateway-status";
+import { noteGatewayError } from "@/services/api/gateway-status";
 import { requestWorkflows } from "@/services/api/workflows";
 import { encodeChannelModel, modelOptionsFromChannels, useConfigStore, type ChannelModel, type ModelCapability } from "@/stores/use-config-store";
 
@@ -57,7 +57,6 @@ export function useLocalGatewaySync() {
                 const controller = new AbortController();
                 const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
                 const workflows = await requestWorkflows(SYNC_CONFIG, { signal: controller.signal }).finally(() => window.clearTimeout(timeout));
-                markGatewayUp();
                 applyModels(gatewayModels(workflows));
             } catch (error) {
                 // Retry silently while the gateway is still starting so the canvas stays usable; the shared banner reports disconnects.

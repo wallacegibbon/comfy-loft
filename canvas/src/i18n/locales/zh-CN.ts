@@ -5,7 +5,7 @@ export default {
     },
     theme: { toggle: "切换主题" },
     gateway: {
-        reconnecting: "本地网关连接断开，正在自动重连…",
+        reconnecting: "本地网关没有回应。恢复后的第一条请求会自动撤掉这条提示。",
         // Workflow metadata arrives in English from workflows/registry.json; these are the
         // Chinese labels for the workflows that ship here, keyed by the model id and variant
         // mode the gateway sends. Unknown ids fall back to the English text — see
