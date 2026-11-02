@@ -13,7 +13,8 @@ package server
 // MCP URL named it.
 //
 // What is deliberately NOT here: the conversation. It is the user's words, it survives restarts, and it
-// belongs beside the canvas it belongs to — `data/agent/sessions/` until canvases become directories.
+// is kept under `data/agent/sessions/`, named after the session — which is named after the canvas that
+// owns it, so a canvas and its conversation are found by the same id even though they live apart.
 
 import (
 	"crypto/sha1"

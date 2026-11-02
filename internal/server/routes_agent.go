@@ -140,7 +140,21 @@ func (s *Server) handleAgentSocket(ctx *httpx.Ctx) error {
 	// new one meant a second tab — or a socket somebody forgot to close — left every later question
 	// unanswered, with only `closed` in the log to show for it.
 	stopWatching := session.Watch(send)
-	defer stopWatching()
+	// release ends the conversation, but only if this connection is still the one reading it. A socket
+	// that was replaced by a newer tab has nothing to release: the agent belongs to that tab now, and its
+	// process must not die because the tab it replaced was closed.
+	release := func() bool {
+		if !stopWatching() {
+			return false
+		}
+		_ = session.Cancel()
+		s.agentSessions.Close(session.ID, "socket closed")
+		if s.logger != nil {
+			s.logger.Info("agent: socket closed session=%s", session.ID)
+		}
+		return true
+	}
+	defer release()
 	if s.logger != nil {
 		s.logger.Info("agent: socket open session=%s spawned=%t", session.ID, connected.Spawned)
 	}
@@ -166,11 +180,7 @@ func (s *Server) handleAgentSocket(ctx *httpx.Ctx) error {
 	// The conversation is not lost with it: AlayaCore keeps it in the session file, and the next connect
 	// starts a process that replays it. That is why the process may be this short-lived: a page that was
 	// reloaded is a new reader of the same file, not a stranger.
-	_ = session.Cancel()
-	s.agentSessions.Close(session.ID, "socket closed")
-	if s.logger != nil {
-		s.logger.Info("agent: socket closed session=%s", session.ID)
-	}
+	release()
 	return nil
 }
 
@@ -183,7 +193,7 @@ func (s *Server) readSocket(conn *ws.Conn, session *agent.Session, send func(age
 		}
 		var message socketMessage
 		if err := json.Unmarshal(raw, &message); err != nil {
-			_ = send(agent.Event{Type: "error", Message: "无法解析这条消息"})
+			_ = send(agent.Event{Type: "error", Message: "the canvas sent a message that is not JSON"})
 			continue
 		}
 		switch {
@@ -206,7 +216,7 @@ func (s *Server) readSocket(conn *ws.Conn, session *agent.Session, send func(age
 				s.logger.Info("agent: socket in session=%s command=%q prompt=%q images=%d", session.ID, request.Command, truncateText(request.Prompt, 120), len(request.Images))
 			}
 			if err := session.Send(request); err != nil {
-				_ = send(agent.Event{Type: "error", Message: "连接已经断开"})
+				_ = send(agent.Event{Type: "error", Message: "the agent process is gone; reconnect to start a new one"})
 				return
 			}
 		}

@@ -68,7 +68,8 @@ type Connected struct {
 
 // Sessions holds the connected agents, one per client-chosen name.
 type Sessions struct {
-	mu   sync.Mutex
+	// Readers are the common case — every MCP tool call looks its session up — so the lock is shared.
+	mu   sync.RWMutex
 	list map[string]*Session
 	Log  *logx.Logger
 }
@@ -80,11 +81,6 @@ func NewSessions(log *logx.Logger) *Sessions {
 // Connect returns the agent filed under this name, starting one if there is none. Connecting twice is
 // the same as connecting once: a canvas has one agent. A page that comes back after its socket went
 // away does not find the same process — it finds the same conversation file, replayed into a new one.
-//
-// The spawn happens under the same lock as the lookup. It is the only way two simultaneous connects
-// cannot both decide the name is free and start two processes — and the cost is that a canvas waiting
-// on its spawn delays another canvas's connect, which is a handful of milliseconds against a bug that
-// would leave an orphan process holding half a conversation.
 func (s *Sessions) Connect(ctx context.Context, id string, opts SpawnOptions) (Connected, error) {
 	if id == "" {
 		id = newSessionID()
@@ -136,8 +132,8 @@ func (s *Sessions) Connect(ctx context.Context, id string, opts SpawnOptions) (C
 // This is how an MCP call says who it is: the bridge carries the session name it inherited, and the
 // name is the whole identity — no derivation, nothing to keep in step with a directory name.
 func (s *Sessions) Lookup(id string) (*Session, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	session, ok := s.list[id]
 	return session, ok
 }
@@ -145,8 +141,8 @@ func (s *Sessions) Lookup(id string) (*Session, bool) {
 // List is every connected session. The MCP route uses it to find the session that owns a workspace,
 // which is a name derived from the session rather than a registry kept beside it.
 func (s *Sessions) List() []*Session {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	all := make([]*Session, 0, len(s.list))
 	for _, session := range s.list {
 		all = append(all, session)
@@ -171,16 +167,18 @@ func (s *Sessions) Close(id, reason string) {
 	}
 }
 
-// Watch attaches the one connection that draws what this agent says, and reports whether it got the
-// seat. One conversation has one set of eyes: two watchers would each half-produce the same answer, and
-// the events carry no addressee to tell them apart.
 // Watch makes this connection the session's reader, replacing whoever had it.
 //
 // The newest connection wins, and the one it replaces is told: the alternative — refusing the new one —
 // is what a second tab on the same canvas used to hit, and the tab that gets refused is the one the
 // person is looking at. Deltas are still never split: exactly one sink receives them, and the old one
 // hears `closed` and can reconnect.
-func (s *Session) Watch(sink func(Event) error) func() {
+//
+// The returned function detaches this connection and reports whether it was still the reader. Only the
+// connection that is still the reader may release the agent — a replaced connection's socket closing is
+// not the end of the conversation, and the tab that took the session over must not lose its process
+// because the tab it replaced was closed (#160). The call is idempotent: the second call reports false.
+func (s *Session) Watch(sink func(Event) error) (stop func() bool) {
 	s.mu.Lock()
 	previous := s.sink
 	s.watchGeneration++
@@ -190,15 +188,22 @@ func (s *Session) Watch(sink func(Event) error) func() {
 	if previous != nil {
 		_ = previous(Event{Type: "closed"})
 	}
-	return func() {
+	released := false
+	return func() bool {
 		s.mu.Lock()
-		// Only the current watcher may clear the sink: a replaced connection closing late must not
-		// silence the one that took over.
-		still := s.watchGeneration == generation
-		s.mu.Unlock()
-		if still {
-			s.Unwatch()
+		if released {
+			s.mu.Unlock()
+			return false
 		}
+		released = true
+		if s.watchGeneration != generation {
+			s.mu.Unlock()
+			return false
+		}
+		pending := s.detachLocked()
+		s.mu.Unlock()
+		answerDropped(pending)
+		return true
 	}
 }
 
@@ -223,10 +228,24 @@ func (s *Session) snapshot() startup {
 // run it is gone, and that is the answer.
 func (s *Session) Unwatch() {
 	s.mu.Lock()
+	pending := s.detachLocked()
+	s.mu.Unlock()
+	answerDropped(pending)
+}
+
+// detachLocked drops the reader and hands back the tool calls that were waiting on it, which the caller
+// answers outside the lock. One implementation, because a detached session answers the same question
+// whether it was replaced or released.
+func (s *Session) detachLocked() map[string]chan toolAnswer {
 	s.sink = nil
 	pending := s.pending
 	s.pending = map[string]chan toolAnswer{}
-	s.mu.Unlock()
+	return pending
+}
+
+// answerDropped tells every waiting tool call that the canvas went away. Delivering does not block: the
+// channel holds one answer and nothing may wait on a call that is already lost.
+func answerDropped(pending map[string]chan toolAnswer) {
 	for _, waiting := range pending {
 		deliver(waiting, toolAnswer{content: TextContent("the canvas went away"), isError: true})
 	}

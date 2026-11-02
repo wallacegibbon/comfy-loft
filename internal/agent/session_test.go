@@ -109,7 +109,7 @@ func openFakeSession(t *testing.T) fakeSession {
 	if stopWatching == nil {
 		t.Fatal("Watch returned nothing to stop it with")
 	}
-	t.Cleanup(stopWatching)
+	t.Cleanup(func() { stopWatching() })
 	return fakeSession{sessions: sessions, session: connected.Session, watcher: watcher, log: log}
 }
 
@@ -217,7 +217,7 @@ func TestSessionWithoutAWatcherDropsTheEvents(t *testing.T) {
 	if stopWatching == nil {
 		t.Fatal("Watch returned nothing to stop it with")
 	}
-	t.Cleanup(stopWatching)
+	t.Cleanup(func() { stopWatching() })
 	connected.Session.Unwatch()
 
 	if err := connected.Session.Send(Request{Prompt: "hi"}); err != nil {

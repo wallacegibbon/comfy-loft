@@ -264,6 +264,45 @@ func TestTheNewestSocketTakesTheSessionOver(t *testing.T) {
 	}
 }
 
+// TestTheReplacedSocketDoesNotTakeTheAgentWithIt: losing the session is not the same as ending it. When
+// the replaced tab is closed — the ordinary end of a socket nobody is reading any more — the agent has to
+// keep running for the tab that took over, or closing an old tab silently kills the conversation the
+// person is looking at.
+func TestTheReplacedSocketDoesNotTakeTheAgentWithIt(t *testing.T) {
+	gateway, spawnLog := startAgentGateway(t)
+	first := openSocket(t, gateway, "canvas-1")
+
+	url := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/api/agent/socket/canvas-1"
+	second, err := comfy.DialWS(context.Background(), url)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer second.Close()
+	for _, want := range []string{"models", "history"} {
+		if event := nextEvent(t, second); event["type"] != want {
+			t.Fatalf("second socket got %v, want %s", event, want)
+		}
+	}
+	if event := nextEvent(t, first); event["type"] != "closed" {
+		t.Fatalf("the replaced socket got %v, want closed", event)
+	}
+
+	// The replaced connection goes away, which is the moment the session used to be released.
+	if err := first.Close(); err != nil {
+		t.Fatalf("close the replaced socket: %v", err)
+	}
+	time.Sleep(200 * time.Millisecond)
+
+	// The agent still answers the tab that owns it now, and it is the same process.
+	send(t, second, map[string]any{"prompt": "hi"})
+	if seen := until(t, second, "done"); textOf(seen) != "hello world" {
+		t.Fatalf("the agent stopped when the replaced socket closed: %v", seen)
+	}
+	if got := spawns(t, spawnLog); got != 1 {
+		t.Fatalf("spawned %d agents, want the one the session already had", got)
+	}
+}
+
 // TestSocketRelaysTheUsersWordsOnce: the agent echoes what the canvas sent, and that echo — not a copy the
 // panel made — is what a user message is drawn from. Live and replayed arrive the same way.
 func TestSocketRelaysTheUsersWordsOnce(t *testing.T) {
