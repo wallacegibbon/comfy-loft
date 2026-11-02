@@ -325,27 +325,3 @@
     animation: none;
     mix-blend-mode: normal;
 }
-
-@keyframes workflow-active-glow {
-    0%,
-    100% {
-        box-shadow:
-            0 0 0 1px rgba(16, 185, 129, 0.08),
-            0 0 10px rgba(16, 185, 129, 0.05);
-    }
-    50% {
-        box-shadow:
-            0 0 0 1px rgba(16, 185, 129, 0.26),
-            0 0 18px rgba(16, 185, 129, 0.16);
-    }
-}
-
-.workflow-active {
-    animation: workflow-active-glow 3.2s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .workflow-active {
-        animation: none;
-    }
-}

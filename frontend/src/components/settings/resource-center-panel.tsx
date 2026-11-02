@@ -130,7 +130,7 @@ function ResourceCard({
     const license = resourceZh(item.id, "license") || item.license;
     const note = resourceZh(item.id, "note") || item.note;
     return (
-        <div className="rounded-lg border border-stone-200 bg-white/60 p-2 dark:border-stone-800 dark:bg-white/[.02]">
+        <div className="rounded-lg bg-stone-100/70 p-2 dark:bg-white/[.04]">
             <div className="flex items-start gap-2">
                 {optional ? (
                     <WithHint hint={item.type === "bake" ? copy.manualOnlyHint : item.status === "present" ? copy.presentHint : copy.optionalToggleHint}>
@@ -178,7 +178,7 @@ function ResourceCard({
                         </div>
                     ) : null}
                     {item.manualCommand ? (
-                        <div className="mt-1 rounded-md border border-stone-200 bg-stone-50/80 px-2 py-1 dark:border-stone-800 dark:bg-white/[.03]">
+                        <div className="mt-1 rounded-md bg-stone-100/80 px-2 py-1 dark:bg-white/[.04]">
                             <div className="flex items-center justify-between gap-2">
                                 <span className="text-[10px] text-stone-500 dark:text-stone-400">{copy.manualStep}</span>
                                 <Button size="small" type="text" onClick={() => onCopy?.(item.manualCommand || "")}>
@@ -256,7 +256,7 @@ function WorkflowResourceRow({
                     </div>
                 ) : null}
                 {item.manualCommand ? (
-                    <div className="mt-1 rounded-md border border-stone-200 bg-stone-50/80 px-2 py-1 dark:border-stone-800 dark:bg-white/[.03]">
+                    <div className="mt-1 rounded-md bg-stone-100/80 px-2 py-1 dark:bg-white/[.04]">
                         <div className="flex items-center justify-between gap-2">
                             <span className="text-[10px] text-stone-500 dark:text-stone-400">{copy.manualStep}</span>
                             <Button size="small" type="text" onClick={() => onCopy?.(item.manualCommand || "")}>
@@ -854,7 +854,7 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
                                                 <span className="text-stone-400 dark:text-stone-500">{copy.workflowHint}</span>
                                             </div>
                                             <div className="space-y-2">
-                                                {workflowDependencies.map((workflow, index) => {
+                                                {workflowDependencies.map((workflow) => {
                                                     const workflowExpanded = expandedWorkflows.has(workflow.id);
                                                     // "Restart needed" used to be the fallback for every unavailable workflow,
                                                     // so one blocked by an uninstalled custom node promised a restart that would
@@ -886,15 +886,7 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
                                                         )
                                                         .join("；");
                                                     return (
-                                                        <div
-                                                            key={workflow.id}
-                                                            className={`rounded-lg border transition-colors ${
-                                                                workflow.enabled === false
-                                                                    ? "border-stone-200 bg-stone-50/40 dark:border-stone-800 dark:bg-white/[.01]"
-                                                                    : "workflow-active border-emerald-300/70 bg-emerald-50/30 dark:border-emerald-800/60 dark:bg-emerald-950/15"
-                                                            }`}
-                                                            style={{ animationDelay: `${index * 0.28}s` }}
-                                                        >
+                                                        <div key={workflow.id} className={`rounded-lg transition-colors ${workflow.enabled === false ? "bg-stone-50/60 dark:bg-white/[.01]" : "bg-emerald-50/40 dark:bg-emerald-950/40"}`}>
                                                             <div className="flex items-start gap-2 p-2">
                                                                 <button type="button" className="min-w-0 flex-1 text-left" onClick={() => toggleWorkflow(workflow.id)} aria-expanded={workflowExpanded}>
                                                                     <div className="flex flex-wrap items-center gap-2">
@@ -947,7 +939,7 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
                                                             </div>
                                                             {workflowExpanded ? (
                                                                 <div className="border-t border-stone-100 px-2 pb-2 pt-1 dark:border-stone-800/70">
-                                                                    <div className="divide-y divide-stone-100 rounded-md bg-stone-50/60 dark:divide-stone-800/70 dark:bg-white/[.02]">
+                                                                    <div className="divide-y divide-stone-200/70 dark:divide-stone-800/60">
                                                                         {workflow.resources.map((item) => (
                                                                             <WorkflowResourceRow
                                                                                 key={item.id}
