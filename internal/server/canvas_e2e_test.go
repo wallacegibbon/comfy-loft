@@ -279,3 +279,92 @@ func mustCreateCanvas(t *testing.T, client *http.Client, base, title string) map
 	}
 	return payload
 }
+
+// Importing an exported canvas writes files whose names the document already uses, so there is one route
+// that takes the name from the URL instead of inventing it (decisions #171). It refuses a name that is
+// taken, because a file's URL is its own ETag.
+func TestAFileCanBeWrittenUnderANameTheDocumentUses(t *testing.T) {
+	gateway := canvasGateway(t)
+	client := gateway.Client()
+
+	_, payload := doJSON(t, client, http.MethodPost, gateway.URL+"/api/canvases", map[string]any{"title": "imported"})
+	canvasID, _, _ := canvasOf(t, payload)
+	fileURL := gateway.URL + "/api/canvases/" + canvasID + "/files/task_abc-2.png"
+
+	put := func(body []byte) (*http.Response, map[string]any) {
+		t.Helper()
+		request, err := http.NewRequest(http.MethodPut, fileURL, bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
+		request.Header.Set("Content-Type", "image/png")
+		response, err := client.Do(request)
+		if err != nil {
+			t.Fatalf("put: %v", err)
+		}
+		defer response.Body.Close()
+		raw, _ := io.ReadAll(response.Body)
+		var decoded map[string]any
+		_ = json.Unmarshal(raw, &decoded)
+		return response, decoded
+	}
+
+	sent := []byte("PNG-bytes")
+	response, body := put(sent)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("put = %d: %v", response.StatusCode, body)
+	}
+	file, _ := body["file"].(map[string]any)
+	if name, _ := file["name"].(string); name != "task_abc-2.png" {
+		t.Errorf("file = %v, want the name that was asked for", file)
+	}
+	if mime, _ := file["mime"].(string); mime != "image/png" {
+		t.Errorf("mime = %q, want it read from the name", mime)
+	}
+
+	// The bytes are there, under that name, served by the same route the canvas reads.
+	read, err := client.Get(fileURL)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer read.Body.Close()
+	got, _ := io.ReadAll(read.Body)
+	if read.StatusCode != http.StatusOK || !bytes.Equal(got, sent) {
+		t.Errorf("read = %d %q, want %q", read.StatusCode, got, sent)
+	}
+
+	// Writing it again is refused: the name is cached as immutable, so its bytes must not change.
+	response, body = put([]byte("different"))
+	if response.StatusCode != http.StatusConflict {
+		t.Errorf("second put = %d (%v), want 409", response.StatusCode, body)
+	}
+
+	// A name that could leave the directory, or a canvas that is not there, is not a write.
+	if response, _ = put([]byte("x")); response.StatusCode == http.StatusOK {
+		t.Error("a second write under the same name was accepted")
+	}
+	bad, err := http.NewRequest(http.MethodPut, gateway.URL+"/api/canvases/"+canvasID+"/files/..%2Fescape.png", bytes.NewReader([]byte("x")))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	response, err = client.Do(bad)
+	if err != nil {
+		t.Fatalf("put bad name: %v", err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Errorf("bad name = %d, want 400", response.StatusCode)
+	}
+	missing, err := http.NewRequest(http.MethodPut, gateway.URL+"/api/canvases/0123456789ab/files/a.png", bytes.NewReader([]byte("x")))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	response, err = client.Do(missing)
+	if err != nil {
+		t.Fatalf("put unknown canvas: %v", err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Errorf("unknown canvas = %d, want 404", response.StatusCode)
+	}
+}

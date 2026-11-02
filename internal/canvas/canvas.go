@@ -46,6 +46,17 @@ var ErrNotFound = errors.New("canvas: not found")
 // built, so `../` cannot be one no matter what a request says.
 var ErrInvalidID = errors.New("canvas: invalid id")
 
+// ErrInvalidFileName is a file name this store would never have written: a separator, a leading dot, or
+// something that is not a plain name. A file name is not an id, so it gets its own error — the fix a caller
+// needs to hear is different.
+var ErrInvalidFileName = errors.New("canvas: invalid file name")
+
+// ErrFileExists is a write to a name that is already taken.
+//
+// Names are immutable: a file's URL is its own ETag (the route answers `immutable`), so overwriting one
+// would leave every cache that has seen it showing the old bytes.
+var ErrFileExists = errors.New("canvas: the file already exists")
+
 // ErrInvalidDocument is a document that is not a JSON object, or is too large to be one.
 var ErrInvalidDocument = errors.New("canvas: document must be a JSON object under 16 MiB")
 

@@ -1,6 +1,7 @@
 package canvas
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -109,5 +110,35 @@ func TestSweepOfAMissingCanvasIsNotFound(t *testing.T) {
 	store := openTestStore(t)
 	if _, err := store.Sweep("0123456789ab", nil, time.Hour); err == nil {
 		t.Error("Sweep of an unknown canvas returned no error")
+	}
+}
+
+// A file written under a name the caller chose — the import path. The name is the document's, so it has to
+// survive; and a name already in the canvas is refused, because a file's URL is its own ETag.
+func TestWriteFileKeepsTheNameAndRefusesATakenOne(t *testing.T) {
+	store := openTestStore(t)
+	created := mustCreate(t, store, "import")
+
+	if err := store.WriteFile(created.ID, "task_abc-2.png", []byte("PNG")); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	path, err := store.FilePath(created.ID, "task_abc-2.png")
+	if err != nil {
+		t.Fatalf("FilePath: %v", err)
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "PNG" {
+		t.Errorf("read back = %q, %v", got, err)
+	}
+
+	if err := store.WriteFile(created.ID, "task_abc-2.png", []byte("other")); !errors.Is(err, ErrFileExists) {
+		t.Errorf("second write = %v, want ErrFileExists", err)
+	}
+	for _, name := range []string{"../outside.png", "sub/dir.png", ".hidden", ""} {
+		if err := store.WriteFile(created.ID, name, []byte("x")); !errors.Is(err, ErrInvalidFileName) {
+			t.Errorf("WriteFile(%q) = %v, want ErrInvalidFileName", name, err)
+		}
+	}
+	if err := store.WriteFile("0123456789ab", "a.png", []byte("x")); !errors.Is(err, ErrNotFound) {
+		t.Errorf("WriteFile into an unknown canvas = %v, want ErrNotFound", err)
 	}
 }

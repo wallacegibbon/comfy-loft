@@ -91,6 +91,7 @@ Every write names its canvas, and the two read paths for bytes are files of that
 | `DELETE` | `/api/runs/{id}` | Cancel. Idempotent; also interrupts ComfyUI. |
 | `GET` | `/api/runs` | List/filter runs (`status`, `workflow`), newest first. |
 | `GET` | `/api/canvases/{id}/files/{name}` | The bytes of one file: an upload, or a finished run's artifact. Cacheable for good — a name is written once. |
+| `PUT` | `/api/canvases/{id}/files/{name}` | Write bytes under a name the caller chooses. Only for import, where the document already names the file; a taken name is refused, so a name's bytes never change. |
 
 `/health`, `/api/canvases*`, `/api/settings`, `/api/resources/*`, `/api/system/*` are the rest of the
 surface; they manage the gateway and the workspace, they do not run workflows

@@ -1,6 +1,7 @@
 package canvas
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -76,9 +77,34 @@ func (s *Store) FilePath(id, name string) (string, error) {
 		return "", err
 	}
 	if !ValidFileName(name) {
-		return "", ErrInvalidID
+		return "", ErrInvalidFileName
 	}
 	return filepath.Join(s.root, id, filesName, name), nil
+}
+
+// WriteFile puts bytes into a canvas under a name the caller chose.
+//
+// This exists for the one case where the name is not the gateway's to pick: importing an exported canvas.
+// An export is the canvas directory, and its document already names every file (`files/<name>`), so a
+// restore has to keep those names. The upload endpoint cannot serve that — it names files itself to keep
+// them unique inside a canvas — and renaming on import would mean rewriting every reference in the
+// document, which is the document learning about the gateway's naming (decisions #171).
+//
+// The write is atomic, like every other write here, and it refuses a name that is taken: see ErrFileExists.
+func (s *Store) WriteFile(id, name string, data []byte) error {
+	path, err := s.FilePath(id, name)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(path); err == nil {
+		return ErrFileExists
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("canvas: cannot read %s: %w", path, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("canvas: cannot create %s: %w", filepath.Dir(path), err)
+	}
+	return writeFile(path, data)
 }
 
 // SweepResult is what one sweep did.

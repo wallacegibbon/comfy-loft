@@ -275,14 +275,18 @@ That is a second, **loopback-only** listener, never the address `GATEWAY_HOST` n
 nodes and starts generations has no business being reachable from the network, and requiring a custom
 header means a browser cannot reach it cross-site without a preflight this server never answers.
 
--------- | -------------------------------- | ----------------------------------------------------------------- |
-| `POST`   | `/api/canvases/{id}/uploads`     | Upload one media file into that canvas. Returns its file name and URL. |
-| `POST`   | `/api/canvases/{id}/runs`        | Submit a run into that canvas. Always `202` with the run, never blocks. |
-| `GET`    | `/api/runs`                      | Runs, newest first; `?status=` and `?workflow=` filter.           |
-| `GET`    | `/api/runs/{id}`                 | Status, progress, preview frame, outputs, error.                  |
-| `GET`    | `/api/runs/{id}/preview`         | In-flight preview frame, when one exists.                         |
-| `DELETE` | `/api/runs/{id}`                 | Cancel (idempotent; also interrupts ComfyUI).                     |
-| `GET`    | `/api/canvases/{id}/files/{name}` | One file of a canvas: an upload or a finished run's artifact. Cacheable for good — a name is written once. |
+Media, runs and files:
+
+| Method | Path                              | Purpose                                                                                                    |
+| ------ | --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `POST` | `/api/canvases/{id}/uploads`      | Upload one media file into that canvas. Returns its file name and URL.                                     |
+| `PUT`  | `/api/canvases/{id}/files/{name}` | Write bytes at a name the caller chooses — the import path, where the document already names the file. A name that is taken is refused (`409`), because a file's URL is its own ETag. |
+| `POST` | `/api/canvases/{id}/runs`         | Submit a run into that canvas. Always `202` with the run, never blocks.                                     |
+| `GET`  | `/api/runs`                       | Runs, newest first; `?status=` and `?workflow=` filter.                                                     |
+| `GET`  | `/api/runs/{id}`                  | Status, progress, preview frame, outputs, error.                                                            |
+| `GET`  | `/api/runs/{id}/preview`          | In-flight preview frame, when one exists.                                                                   |
+| `DELETE` | `/api/runs/{id}`                | Cancel (idempotent; also interrupts ComfyUI).                                                               |
+| `GET`  | `/api/canvases/{id}/files/{name}` | One file of a canvas: an upload or a finished run's artifact. Cacheable for good — a name is written once.  |
 
 Metadata and management:
 
