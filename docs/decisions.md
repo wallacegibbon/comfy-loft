@@ -6663,10 +6663,22 @@ to:
 | 40 | the selection lasso |
 | 45 | the node hover toolbar and the selection's group/sync bar |
 | 50 | the top bar, the zoom dock |
+| 58 | a generating node's charge ring |
 | 60 | the side panel |
 | 70 | the minimap — a popover on the dock button, and the one thing above the panel |
-| 80–120 | context menus, create menus, the hover preview |
-| 1300+ | dialogs (`kit/dialog.tsx`) |
+| 80–120 | context menus, create menus, the hover preview, the mention list |
+| 1200 | a node's image / video / audio settings popover — a canvas layer, the last one below the frame |
+| 1300–1301 | dialogs (`kit/dialog.tsx`): overlay, then frame |
+| 1400–1401 | confirmations (`kit/confirm.tsx`) |
+| 1500 | everything portalled *out* of a popup: select lists, menus, tooltips, the brush ring |
+| 3000 | the gateway reconnect banner |
+
+The rule that makes the table usable: **a layer the user opens from another layer has to outrank it.** A
+list portalled to `body` is a sibling of the dialog that opened it, not a child, so it cannot inherit the
+dialog's number — which is why 1500 is one number shared by every portalled popup instead of a choice per
+call site (#194). The 1200 row is the exception that proves it: those three popovers are opened from a node
+panel and never from a dialog, and a sweep of every `<Dialog` in the tree found no portal below 1300 inside
+one — the prompt editor's dialog is a textarea and a reference bar.
 
 The two node toolbars were at 70 and the lasso at 65, so a node slid under the side panel while its white
 toolbar stayed on top of it: a tool floating in the middle of the panel, attached to nothing.

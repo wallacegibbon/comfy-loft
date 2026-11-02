@@ -2,7 +2,7 @@
 
 The gateway behind Comfy Loft: a local service that runs ComfyUI workflows. It is the repository root
 — `cmd/`, `internal/`, and the runtime assets (`workflows/`, `resources.json`, `prompts/`) live at the top
-level, while the canvas frontend sits beside them in `canvas/`.
+level, while the canvas frontend sits beside them in `frontend/`.
 
 Two names, on purpose (docs/decisions.md #146): the **binary** is `comfyui-gateway`, because what it faces
 is ComfyUI, and its module path and config directory follow that. The **project's** own identity is
