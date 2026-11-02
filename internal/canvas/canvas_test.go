@@ -3,9 +3,11 @@ package canvas
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -184,6 +186,70 @@ func TestWriteWithoutARevIsAllowed(t *testing.T) {
 	created := mustCreate(t, store, "no rev")
 	if _, err := store.Write(created.ID, "", nil, []byte(`{"forced":true}`)); err != nil {
 		t.Fatalf("Write with an empty rev: %v", err)
+	}
+}
+
+// Two saves against one rev: exactly one may win, and the other has to hear that it lost.
+//
+// The check and the write are one step (Store.writeMu). Without that, both saves read the same rev, both
+// pass the check, and the later rename silently replaces the earlier document — a lost edit that no client
+// is ever told about. The count is what makes this fail rather than the flakiness of the interleaving.
+func TestTwoSavesAgainstOneRevHaveExactlyOneWinner(t *testing.T) {
+	store := openTestStore(t)
+	created := mustCreate(t, store, "contended")
+
+	const writers = 8
+	var (
+		wait    sync.WaitGroup
+		lock    sync.Mutex
+		wins    int
+		conflic int
+		other   []error
+	)
+	start := make(chan struct{})
+	for index := 0; index < writers; index++ {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			<-start
+			document := []byte(fmt.Sprintf(`{"writer":%d}`, index))
+			_, err := store.Write(created.ID, created.Rev, nil, document)
+			lock.Lock()
+			defer lock.Unlock()
+			var conflict *ConflictError
+			switch {
+			case err == nil:
+				wins++
+			case errors.As(err, &conflict):
+				conflic++
+			default:
+				other = append(other, err)
+			}
+		}(index)
+	}
+	close(start)
+	wait.Wait()
+
+	if len(other) > 0 {
+		t.Fatalf("unexpected failures: %v", other)
+	}
+	if wins != 1 {
+		t.Errorf("%d saves won, want exactly one", wins)
+	}
+	if conflic != writers-1 {
+		t.Errorf("%d conflicts, want %d", conflic, writers-1)
+	}
+
+	// What landed is the winner's document, and it is a whole one.
+	loaded, err := store.Read(created.ID)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	var decoded struct {
+		Writer *int `json:"writer"`
+	}
+	if err := json.Unmarshal(loaded.Document, &decoded); err != nil || decoded.Writer == nil {
+		t.Fatalf("document = %s (%v), want one writer's object", loaded.Document, err)
 	}
 }
 

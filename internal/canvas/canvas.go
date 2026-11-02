@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -106,6 +107,13 @@ type meta struct {
 type Store struct {
 	root string
 	now  func() time.Time
+	// writeMu serialises a save's version check and the write that follows it.
+	//
+	// Without it two saves that read the same rev both pass the check and both write: the later rename wins,
+	// and the earlier caller is told its document was stored under a rev that no longer describes it. That is
+	// a lost edit with no conflict reported, which is the one outcome this design exists to prevent. A save is
+	// milliseconds of local I/O, so one lock for every canvas costs nothing.
+	writeMu sync.Mutex
 }
 
 // New opens (creating if needed) the canvas root.
@@ -220,6 +228,10 @@ func (s *Store) Create(title string, document []byte) (Summary, error) {
 // title is left alone when nil — renaming is a separate thing a person does, and a save must not
 // undo it.
 func (s *Store) Write(id, rev string, title *string, document []byte) (Summary, error) {
+	// The check and the write are one step: see writeMu.
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	loaded, err := s.readMeta(id)
 	if err != nil {
 		return Summary{}, err
