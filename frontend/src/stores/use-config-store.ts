@@ -357,8 +357,8 @@ function defaultChannelNameKey(name: string): string | undefined {
     const value = name.trim();
     if (!value) return undefined;
     for (const language of ["zh-CN", "en-US"] as const) {
-        // `lng` rather than `getFixedT`: the fallback dictionary is zh-CN, so a plain `t()` would answer
-        // in Chinese for both languages and never recognise an English snapshot.
+        // The language is named on every call rather than taken from the active one: the stored snapshot could
+        // have been written in either language, and this has to recognise both.
         if (i18n.t("config.channels.localName", { lng: language }) === value) return "config.channels.localName";
     }
     return undefined;

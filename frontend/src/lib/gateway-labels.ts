@@ -6,8 +6,8 @@ import i18n from "@/i18n";
 // sends — a model id, a variant mode — and anything the dictionary does not know falls back to
 // the English text, so a hand-written workflow still renders instead of showing a raw key.
 //
-// The lookup is explicit about the language: the i18n setup falls back to `zh-CN`, so a plain
-// `t()` would answer with Chinese in the English UI too.
+// The lookup names the language instead of reading the active one: this helper exists to answer with the
+// Chinese label, and it is only asked in the Chinese UI.
 function chinese(key: string): string {
     if (i18n.resolvedLanguage !== "zh-CN") return "";
     const text = i18n.getFixedT("zh-CN")(key, { defaultValue: "" });

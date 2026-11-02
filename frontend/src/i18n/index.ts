@@ -15,6 +15,9 @@ const LOCALE_SETTING_KEY = "locale";
  * It comes from `window.__RUNTIME_CONFIG__.SETTINGS` rather than a store, because i18next is
  * initialised at import time — before any React tree exists. The gateway puts the document in the
  * script the page loads first (#155), so this is a synchronous read with nothing to wait for.
+ *
+ * A workspace that has never chosen a language opens in English, and English is also the fallback: a key
+ * the Chinese dictionary is missing renders its English sentence rather than a raw key (decisions #170).
  */
 function bootLocale(): AppLocale | null {
     const value = RUNTIME_SETTINGS[LOCALE_SETTING_KEY];
@@ -26,8 +29,8 @@ i18n.use(initReactI18next).init({
         "zh-CN": { translation: zhCN },
         "en-US": { translation: enUS },
     },
-    lng: bootLocale() || "zh-CN",
-    fallbackLng: "zh-CN",
+    lng: bootLocale() || "en-US",
+    fallbackLng: "en-US",
     supportedLngs: ["zh-CN", "en-US"],
     initAsync: false,
     interpolation: { escapeValue: false },

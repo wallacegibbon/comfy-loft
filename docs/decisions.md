@@ -353,9 +353,9 @@ metadata that only the canvas displays. Ids (`image-moss-sft-8step`, `inpaint`) 
 the response and cannot change without breaking stored channel configs, which makes them the
 natural dictionary key.
 
-**Why the lookup names the language explicitly** `src/i18n/index.ts` sets
-`fallbackLng: "zh-CN"`, so a plain `t()` answers with Chinese in the English UI as well. The
-helper asks `getFixedT("zh-CN")` and only when `resolvedLanguage` is `zh-CN`.
+**Why the lookup names the language explicitly** The helper exists to answer with the *Chinese* label, so it
+asks the Chinese dictionary by name (`getFixedT("zh-CN")`) and only when `resolvedLanguage` is `zh-CN` — a
+plain `t()` would answer in whichever language is being read, which is the one thing it must not do.
 
 **Cost** Two places describe one workflow: the registry (English, API consumers) and the
 dictionary (Chinese, this UI). A workflow added by hand shows English in both languages until
@@ -1121,9 +1121,9 @@ switching used to mean leaving the canvas for the list page), `components/canvas
 **Why they exist** Both catch a class of bug that type-checks, builds, and passes tests while
 being visibly broken:
 
-- **A missing translation key.** `fallbackLng` is `zh-CN`, so an absent English key renders
-  Chinese — no error, no warning, just a sentence in the wrong language. The inverse is worse:
-  deleting a key that is still asked for prints the key itself on screen. This has happened
+- **A missing translation key.** A key absent from one dictionary renders the other language's
+  text through `fallbackLng` — no error, no warning, just a sentence in the wrong language. The
+  inverse is worse: deleting a key that is still asked for prints the key itself on screen. This has happened
   three times in this repository — `assets.kinds.audio` (the built-in Audio node's title, wrong
   since audio nodes existed), `agent.composer.mentions.*` (two error paths), and
   `navigation.config` (the settings button's aria-label, deleted as a dead key by the very commit
@@ -5878,3 +5878,79 @@ loses the whole conversation rather than one read.
 
 **Where** `frontend/src/pages/canvas/hooks/use-content-ingress.ts`,
 `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`, `frontend/src/i18n/locales/*.ts`.
+
+## 170. The default language is English
+
+**Decision** A workspace that has never chosen a language opens in `en-US`, and `en-US` is also the
+dictionary fallback: a key the Chinese dictionary is missing renders its English sentence rather than the
+other way round. A workspace that has chosen a language keeps it — the preference is `locale` in
+`data/settings.json` (#155), read before the first paint.
+
+**Why** The project's written language is English (README, "Language"), so the product's own default should
+not be the one language its documentation is not in. It also puts the `fallbackLng` on the side with the
+larger dictionary: an untranslated string is then an English sentence in a Chinese screen, which is the
+failure the check script reports (§#41), rather than Chinese text in an English one.
+
+**What did not change** The Chinese labels for workflow metadata (`gateway.models`, `gateway.variants`) —
+`chinese()` asks the `zh-CN` dictionary by name (#20), so it does not depend on which language is being read.
+The Chinese copy the resource panel keeps beside itself (#67), the model-facing Chinese in
+`internal/prompt` (#9), and the protocol values such as `文生视频(T2VA)` are untouched: they are data, not
+UI copy.
+
+**Cost** An operator who wanted Chinese by default now says so once per workspace, and the first screen of a
+fresh install is English. Existing workspaces are unaffected — their `locale` was written the first time
+anyone switched the language, and the read is what runs first.
+
+**Tested** `npm run check` (i18n keys still agree: 905 / 891), `npx vitest run` (146 — no test depended on the
+Chinese default; the ones that need a language name it), `npx tsc --noEmit`. In the browser: a fresh
+workspace with no `locale` opens in English with `document.documentElement.lang === "en-US"`, and the switcher
+writes `locale: "zh-CN"` into the workspace's settings when the person asks for it.
+
+**Where** `frontend/src/i18n/index.ts`, `frontend/index.html`, `frontend/scripts/check-i18n.cjs`,
+`docs/decisions.md` #20 and #41 (their wording no longer rests on the fallback being Chinese).
+
+## 171. A file's name is the document's, so an import keeps it
+
+**Decision** Restoring an exported canvas writes every file under the name the document already uses
+(`files/<name>`), through one route that takes the name from the URL — `PUT /api/canvases/{id}/files/{name}` —
+and the document is then stored exactly as it came out of the zip. Nothing is renamed and nothing is rewritten.
+
+**What was wrong** Import went through the upload route. That route names files itself (`up-<8 hex>.<ext>`,
+unique inside a canvas, chosen by the gateway so a client cannot collide with, or walk out of, a directory),
+so every imported file came back under a different name, and the document had to be repaired afterwards by
+replacing `files/<old>` with `files/<new>` — over the whole JSON, as text. Two costs came with that: the
+document briefly named files that did not exist, and the rename was a string substitution over a document the
+gateway is not supposed to understand.
+
+**Why it was wrong, more precisely** An export already is the canvas directory: `projects/<id>/files/<name>`,
+named by the document. The only thing an import has to change is the canvas id, because directory names are
+ids and the exported one still exists. A file name is not an id — it is the reference the document holds — so
+preserving it is the whole job. The "gateway picks file names" rule belongs to *new* bytes (an upload, a run's
+artifact), where no name exists yet.
+
+**What else had to agree** The export carried the in-memory project, whose `metadata.content` is the absolute
+URL an `<img>` needs, so a zip contained `http://127.0.0.1:8190/api/canvases/…` — the exact thing #152 forbids
+in a document, and the reason an imported canvas displayed the *exporting* workspace's URLs until the next save
+stripped them. The document is now built in one place (`lib/canvas/canvas-document.ts`) by both the save queue
+and the export, and a zip carries no id, no rev and no URL.
+
+**Cost** The gateway now accepts bytes at a name a client chose, guarded by the same name validation the read
+route uses. A name that is taken is refused (`409`) rather than overwritten: a file's URL is its own ETag
+(`immutable`), so overwriting one would leave every cache that has seen it showing the old bytes. Import is
+unaffected — it always writes into a canvas it just created — but a "restore over an existing canvas" is not
+something this route can do, and is not something the canvas offers.
+
+**Tested** Go: `TestWriteFileKeepsTheNameAndRefusesATakenOne` (store) and
+`TestAFileCanBeWrittenUnderANameTheDocumentUses` (route: write, read back the same bytes, second write 409,
+escaping name 400, unknown canvas 404). Frontend: `tests/canvas-document.test.ts` — media named by reference,
+nodes without metadata untouched, and only the five document fields in the result. Gates: `make check`,
+`go test -race`, `npm run check`, `npx vitest run` (149).
+
+**In the browser** Exported the canvas that has a generated image, deleted it, imported the zip: the canvas came
+back with the same node, the file in `files/` kept the name the document names, no `up-` copy was created, and
+`canvas.json` on disk contains no `http` at all.
+
+**Where** `internal/canvas/files.go`, `internal/canvas/canvas.go`, `internal/server/routes_canvas.go`,
+`frontend/src/services/canvas-files.ts`, `frontend/src/lib/canvas/canvas-document.ts`,
+`frontend/src/lib/canvas/canvas-export.ts`, `frontend/src/components/canvas/canvas-manager-dialog.tsx`,
+`frontend/src/stores/canvas/use-canvas-store.ts`.

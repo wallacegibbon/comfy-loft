@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Two rulers for the dictionaries: a key nothing uses, and a key something uses that no longer exists.
 //
-// Why it is needed: `fallbackLng` is zh-CN, so a key missing from the English dictionary is **silently
-// shown in Chinese** — no error, no warning. In the other direction, deleting a key that is still
-// referenced prints **the key itself** on the screen (`canvas.nodeTypes.audio`). Neither is a type error;
-// only running the comparison finds them.
+// Why it is needed: `fallbackLng` is en-US, so a key missing from the Chinese dictionary is **silently shown
+// in English** — no error, no warning. In the other direction, deleting a key that is still referenced (or
+// with no entry in either dictionary) prints **the key itself** on the screen (`canvas.nodeTypes.audio`).
+// Neither is a type error; only running the comparison finds them.
 //
 // Usage: npm run check:i18n   (exits non-zero when a dictionary or a call site is wrong)
 

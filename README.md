@@ -77,7 +77,8 @@ messages and commit messages. Two kinds of text do not follow the rule, and only
 are data or user-facing copy rather than prose:
 
 - **UI copy** lives in the i18n dictionaries (`frontend/src/i18n`), never inline in
-  a component, so the same screen can be read in Chinese and English. That includes workflow
+  a component, so the same screen can be read in Chinese and English. A workspace that has never
+  chosen a language opens in English, and English is the fallback (decisions #170). That includes workflow
   metadata: `workflows/registry.json` is English (it is data the gateway serves) and the canvas
   translates the labels it displays by model id — `frontend/src/lib/gateway-labels.ts`, decisions
   #20.
@@ -169,6 +170,7 @@ among its endpoints. `/v1/...` in this repository belongs to the model provider 
 | `/api/canvases*` | The workspace: list, create, read, save and delete a canvas, and serve its files |
 | `/api/canvases/{id}/runs`, `/api/runs*` | Produce media into a canvas (submit, poll, download, cancel) |
 | `/api/canvases/{id}/uploads` | Stage one media file inside that canvas |
+| `/api/canvases/{id}/files/{name}` | One file of that canvas: read it, or (import) write it under the name the document uses |
 | `/api/settings` | The workspace preferences: one document the canvas defines |
 | `/api/workflows/*` | Workflow metadata, schemas, and the ComfyUI availability scan |
 | `/api/agent/socket/{session}`, `/api/agent/session/{session}` | The agent: one WebSocket per session, named by the surface that owns it |
