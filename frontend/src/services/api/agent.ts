@@ -7,8 +7,14 @@ import type { ReferenceImage } from "@/types/image";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
-/** One entry of the agent's own model list (`SM model_list`). */
-type AgentModel = { id: number; name: string; protocolType?: string; contextLimit?: number };
+/**
+ * One entry of the agent's own model list (`SM model_list`).
+ *
+ * `hasKey` rather than a key: the frame carries every `api_key` from `model.conf`, the gateway strips them,
+ * and what is left is whether there is one. `baseUrl` and `modelName` do travel — they are where a model
+ * points, which is how two entries called the same thing are told apart.
+ */
+export type AgentModel = { id: number; name: string; protocolType?: string; baseUrl?: string; modelName?: string; contextLimit?: number; hasKey?: boolean };
 
 /**
  * The agent, as sessions.
@@ -148,6 +154,15 @@ export function agentSession(name: string): AgentSession {
  */
 export const canvasAgent = (canvasId: string) => `canvas:${canvasId}`;
 export const nodeAgent = (nodeId: string) => `node:${nodeId}`;
+
+/**
+ * The models editor's session.
+ *
+ * The list of models is the agent's — announced at startup and restated after a change — so editing it
+ * needs one. It is not a canvas and keeps no conversation: the preferences window opens it while it is on
+ * screen and drops it when it closes, and the only thing it is ever asked is `model_sync`.
+ */
+export const settingsAgent = "settings";
 
 function socketUrl(config: AiConfig, name: string, history: boolean): string {
     const root = gatewayProtocolRoot(config.baseUrl);

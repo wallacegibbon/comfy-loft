@@ -8,6 +8,7 @@ import { Select } from "@/components/kit/select";
 import { WorkflowModelPicker } from "@/components/model-picker";
 import { imageAspectOptions } from "@/components/image-settings-panel";
 import { videoResolutionOptions } from "@/components/video-settings-panel";
+import { AgentModelsSection } from "@/components/settings/agent-models-section";
 import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaScaleOptions, parseVideoResolution } from "@/lib/media-size";
 import { useConfigStore, type ModelCapability } from "@/stores/use-config-store";
 
@@ -83,6 +84,7 @@ export function PreferencesDialog() {
                     <Switch checked={config.autoFocusOnSelect} onChange={(checked) => updateConfig("autoFocusOnSelect", checked)} />
                 </div>
             </Field>
+            <AgentModelsSection />
             <Field label={t("config.preferences.systemPrompt")} className="mb-0">
                 <Input.TextArea rows={4} value={config.systemPrompt} placeholder={t("config.preferences.systemPromptPlaceholder")} onChange={(event) => updateConfig("systemPrompt", event.target.value)} />
             </Field>
