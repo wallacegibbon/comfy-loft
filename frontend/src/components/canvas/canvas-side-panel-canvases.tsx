@@ -11,11 +11,10 @@ import { Input } from "@/components/kit/input";
 import { toast } from "@/components/kit/toast";
 import { Tooltip } from "@/components/kit/tooltip";
 import { exportCanvas } from "@/lib/canvas/canvas-export";
-import { byUpdatedAtDesc } from "@/lib/canvas/last-canvas";
+import { byCreatedAtDesc } from "@/lib/canvas/last-canvas";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { apiErrorMessage } from "@/services/api/http";
 import { useCanvasListStore } from "@/stores/canvas/use-canvas-list-store";
-import { useCanvasSidePanelStore } from "@/stores/canvas/use-canvas-side-panel-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 
 /**
@@ -52,21 +51,23 @@ export function CanvasCanvasesSection({ projectId }: { projectId: string }) {
     const startEditing = useCanvasListStore((state) => state.startEditingProject);
     const setEditingTitle = useCanvasListStore((state) => state.setEditingProjectTitle);
     const stopEditing = useCanvasListStore((state) => state.stopEditingProject);
-    const setSection = useCanvasSidePanelStore((state) => state.setSection);
     const [selectMode, setSelectMode] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-    const ordered = useMemo(() => [...canvases].sort(byUpdatedAtDesc), [canvases]);
+    // Sorted once, by when each canvas was made (#198): this list must not reorder itself while you work in
+    // it, and "most recently saved" changes on every edit to the canvas you are looking at.
+    const ordered = useMemo(() => [...canvases].sort(byCreatedAtDesc), [canvases]);
 
     /**
      * Go to a canvas.
      *
-     * The column follows you to the elements list: the question "which canvas?" has just been answered, and
-     * the next one is about that canvas. It is also what the window did — it closed on the way in.
+     * The column stays on this list (#198): the board behind is what changes, and watching it change is how
+     * you check you picked the right one before going back to work — jumping to the elements list hid that,
+     * and made a second pick a trip back to this tab. Only the selection mode is dropped, since a row that
+     * was ticked for deletion is no longer being looked at.
      */
     const enterCanvas = (id: string) => {
         setSelectMode(false);
-        setSection("elements");
         navigate(`/canvas/${id}`);
     };
 
@@ -248,7 +249,7 @@ export function CanvasCanvasesSection({ projectId }: { projectId: string }) {
             ) : null}
 
             <input ref={fileInputRef} type="file" accept="application/zip,.zip" className="hidden" onChange={(event) => void importArchive(event.target.files?.[0])} />
-            <CanvasDeleteProjectsDialog />
+            <CanvasDeleteProjectsDialog currentId={projectId} />
         </div>
     );
 }

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown, LayoutGrid, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Trash2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ChevronDown, PanelTopClose, PanelTopOpen } from "lucide-react";
 
 import { useTranslation } from "react-i18next";
 
@@ -9,38 +9,16 @@ import { Tooltip } from "@/components/kit/tooltip";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { CanvasSystemStatus } from "@/components/canvas/canvas-system-status";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
-import { byUpdatedAtDesc } from "@/lib/canvas/last-canvas";
 import { CANVAS_TOP_BAR_ROW, useCanvasChromeWidth } from "@/stores/canvas/use-canvas-side-panel-store";
-import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasSidePanelStore } from "@/stores/canvas/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 export function CanvasTopBar({
-    projectId,
     title,
-    titleDraft,
-    isTitleEditing,
-    onTitleDraftChange,
-    onStartTitleEditing,
-    onFinishTitleEditing,
-    onCancelTitleEditing,
-    onSwitchProject,
-    onCreateProject,
-    onDeleteProject,
     menuItems,
 }: {
-    /** The canvas on screen. The id, not the title: two canvases may be called the same thing. */
-    projectId: string;
+    /** The canvas on screen. Its name is the menu's label, so it is also how you tell two of them apart. */
     title: string;
-    titleDraft: string;
-    isTitleEditing: boolean;
-    onTitleDraftChange: (value: string) => void;
-    onStartTitleEditing: () => void;
-    onFinishTitleEditing: () => void;
-    onCancelTitleEditing: () => void;
-    onSwitchProject: (id: string) => void;
-    onCreateProject: () => void;
-    onDeleteProject: () => void;
     /** The canvas's own commands — creating nodes, undo, the grid, export, clear (`canvas-menu.tsx`). */
     menuItems: DropdownItem[];
 }) {
@@ -57,7 +35,6 @@ export function CanvasTopBar({
         boxShadow: colorTheme === "dark" ? "0 12px 30px rgba(0,0,0,.32)" : "0 10px 28px rgba(28,25,23,.12)",
     };
     const barClass = "pointer-events-auto flex h-12 min-w-0 items-center gap-1.5 rounded-xl border px-2 shadow-lg backdrop-blur";
-    const titleRef = useRef<HTMLDivElement>(null);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     // The same width as the panel below it and the zoom dock at the foot of the column (#191).
     const chromeWidth = useCanvasChromeWidth();
@@ -67,91 +44,36 @@ export function CanvasTopBar({
     const columnBarStyle = { ...barStyle, width: chromeWidth, flexShrink: 0 };
     const sidePanelOpen = useCanvasSidePanelStore((state) => state.panelOpen);
     const toggleSidePanel = useCanvasSidePanelStore((state) => state.togglePanel);
-    const canvases = useCanvasStore((state) => state.canvases);
-    // The canvas list is the column's other section: this button opens the column on it, which is what the
-    // window it used to open answered in one click (#195).
-    const openCanvases = useCanvasSidePanelStore((state) => state.openSection);
-    // Current canvas first, the rest most-recent-first: switching is a "where am I" question,
-    // so the answer you are most likely looking for should not be buried.
-    const orderedProjects = useMemo(() => {
-        const current = canvases.find((canvas) => canvas.id === projectId);
-        const rest = canvases.filter((canvas) => canvas !== current).sort(byUpdatedAtDesc);
-        return current ? [current, ...rest] : rest;
-    }, [canvases, projectId]);
-
-    useEffect(() => {
-        if (!isTitleEditing) return;
-        const close = (event: PointerEvent) => {
-            if (!titleRef.current?.contains(event.target as Node)) onFinishTitleEditing();
-        };
-        document.addEventListener("pointerdown", close, true);
-        return () => document.removeEventListener("pointerdown", close, true);
-    }, [isTitleEditing, onFinishTitleEditing]);
 
     return (
         <>
             <div className="pointer-events-none absolute left-0 right-0 top-0 z-50 flex items-center justify-between gap-3 pl-3 pr-3" style={{ height: CANVAS_TOP_BAR_ROW }}>
                 <div className={barClass} style={columnBarStyle}>
+                    {/* One button for one column (#197). The icon is the geometry, not the address: the panel's top
+                        edge is its hinge, so it folds up into this bar and unfolds down from it — a left arrow
+                        described the sideways slide the panel no longer does. The grid button that stood beside
+                        it opened the same column on the canvas list; with the switch inside the box, that was a
+                        second way to open one thing, so it is gone. */}
                     <TopBarButton label={sidePanelOpen ? t("canvas.collapsePanel") : t("canvas.expandPanel")} onClick={toggleSidePanel}>
-                        {sidePanelOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
-                    </TopBarButton>
-                    <TopBarButton label={t("canvas.projects")} onClick={() => openCanvases("canvases")}>
-                        <LayoutGrid className="size-4" />
+                        {sidePanelOpen ? <PanelTopClose className="size-4" /> : <PanelTopOpen className="size-4" />}
                     </TopBarButton>
                     {/* The name is the right end of the bar, sharing the column's right edge with the panel and the
                         dock below (#191). `ml-auto` does the pushing; the title has no `flex-1` for that reason,
                         and shrinks instead of pushing the buttons. No divider in front of it: it used to separate
                         the name from the icons it sat against, and now there is nothing between them to split.
                         A hover dims it — no box, no underline: a filled pill on the translucent bar reads as a
-                        border, and this is the bar's title before it is a button. */}
-                    <div ref={titleRef} className="ml-auto flex min-w-0 items-center gap-2">
-                        {isTitleEditing ? (
-                            <input
-                                autoFocus
-                                value={titleDraft}
-                                onChange={(event) => onTitleDraftChange(event.target.value)}
-                                onBlur={onFinishTitleEditing}
-                                onKeyDown={(event) => {
-                                    if (event.key === "Enter") onFinishTitleEditing();
-                                    if (event.key === "Escape") onCancelTitleEditing();
-                                }}
-                                className="min-w-0 w-full bg-transparent p-0 text-left text-lg font-semibold tracking-normal outline-none"
-                                style={{ color: theme.node.text }}
-                            />
-                        ) : (
-                            <Dropdown
-                                className="max-h-[60vh] overflow-y-auto"
-                                menu={{
-                                    items: [
-                                        ...orderedProjects.map((project) => ({
-                                            key: project.id,
-                                            icon: project.title === title ? <Check className="size-4" /> : undefined,
-                                            label: <span className="max-w-[200px] truncate">{project.title}</span>,
-                                            onClick: () => onSwitchProject(project.id),
-                                        })),
-                                        { type: "divider" as const },
-                                        { key: "rename", icon: <Pencil className="size-4" />, label: t("canvas.project.rename"), onClick: onStartTitleEditing },
-                                        { key: "new", icon: <Plus className="size-4" />, label: t("canvas.create"), onClick: onCreateProject },
-                                        { key: "delete", danger: true, icon: <Trash2 className="size-4" />, label: t("canvas.deleteCurrent"), onClick: onDeleteProject },
-                                        { type: "divider" as const },
-                                        ...menuItems,
-                                    ],
-                                }}
-                            >
-                                {/* The same hover as the buttons beside it: a background, not the dashed
-                                    underline this used to draw under the name — a second way of saying
-                                    "clickable" inside one bar, and the uglier one. */}
-                                <button
-                                    type="button"
-                                    className="flex min-w-0 items-center gap-1.5 text-left text-lg font-semibold tracking-normal transition-opacity hover:opacity-70"
-                                    title={t("canvas.switchProject")}
-                                    aria-label={t("canvas.switchProject")}
-                                >
-                                    <span className="truncate">{title}</span>
-                                    <ChevronDown className="size-4 shrink-0 opacity-50" />
-                                </button>
-                            </Dropdown>
-                        )}
+                        border, and this is the bar's title before it is a button.
+
+                        The menu under it is this canvas's, and only this canvas's (#196): renaming, creating and
+                        deleting a canvas are the column's business now, where the list of them lives, and the
+                        name is no longer a switcher — it is the label of one canvas's commands. */}
+                    <div className="ml-auto flex min-w-0 items-center gap-2">
+                        <Dropdown className="max-h-[60vh] overflow-y-auto" menu={{ items: menuItems }}>
+                            <button type="button" className="flex min-w-0 items-center gap-1.5 text-left text-lg font-semibold tracking-normal transition-opacity hover:opacity-70" title={t("canvas.menu.title")} aria-label={t("canvas.menu.title")}>
+                                <span className="truncate">{title}</span>
+                                <ChevronDown className="size-4 shrink-0 opacity-50" />
+                            </button>
+                        </Dropdown>
                     </div>
                 </div>
 

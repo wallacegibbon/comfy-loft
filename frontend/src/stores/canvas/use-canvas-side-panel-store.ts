@@ -53,7 +53,8 @@ type CanvasNodeViewMode = "list" | "grid";
  * click that takes you there — but they answer different questions ("which canvas?" and "which node?"),
  * and the column is 220–480px wide: stacked, each would get half a column and the elements list would lose
  * the room its hover preview needs (#195). The section is remembered, so the column comes back the way it
- * was left, and `openSection` is how a button outside the column asks for one of them.
+ * was left. Nothing outside the column asks for a section any more: one button opens it, and the switch
+ * inside picks the list (#197).
  */
 export type CanvasPanelSection = "canvases" | "elements";
 
@@ -88,8 +89,6 @@ type CanvasSidePanelStore = {
     setNodeViewMode: (mode: CanvasNodeViewMode) => void;
     togglePanel: () => void;
     setSection: (section: CanvasPanelSection) => void;
-    /** Show one section, opening the column if it was shut — one click from a button outside it. */
-    openSection: (section: CanvasPanelSection) => void;
 };
 
 export const useCanvasSidePanelStore = create<CanvasSidePanelStore>((set, get) => ({
@@ -111,11 +110,6 @@ export const useCanvasSidePanelStore = create<CanvasSidePanelStore>((set, get) =
     setSection: (section) => {
         writeSetting(SECTION_KEY, section);
         set({ section });
-    },
-    openSection: (section) => {
-        writeSetting(SECTION_KEY, section);
-        writeSetting(OPEN_KEY, true);
-        set({ section, panelOpen: true });
     },
 }));
 

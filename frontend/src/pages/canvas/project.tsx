@@ -8,7 +8,6 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/kit/button";
 import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
-import { forgetCanvasConversation } from "@/services/api/agent";
 import { requestEdit, requestGeneration } from "@/services/api/image";
 import { createVideoGenerationTask, isVideoTaskFailed, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
 import { useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
@@ -58,7 +57,7 @@ import { CanvasAgentPanel } from "@/components/canvas/canvas-agent-panel";
 import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
-import { forgetLastCanvas, rememberLastCanvas } from "@/lib/canvas/last-canvas";
+import { rememberLastCanvas } from "@/lib/canvas/last-canvas";
 import { setActiveCanvas } from "@/services/canvas-files";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { holdsResult } from "@/lib/canvas/node-prompt-field";
@@ -199,11 +198,8 @@ function InfiniteCanvasPage() {
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
     const openPreferences = useConfigStore((state) => state.openPreferences);
     const ready = useCanvasStore((state) => state.ready);
-    const createCanvas = useCanvasStore((state) => state.createCanvas);
     const loadCanvas = useCanvasStore((state) => state.loadCanvas);
     const updateProject = useCanvasStore((state) => state.updateProject);
-    const renameCanvas = useCanvasStore((state) => state.renameCanvas);
-    const deleteCanvases = useCanvasStore((state) => state.deleteCanvases);
     const clearSaveError = useCanvasStore((state) => state.clearSaveError);
     const checkForNewerCopy = useCanvasStore((state) => state.checkForNewerCopy);
     const currentProject = useCanvasStore((state) => state.projects.find((project) => project.id === projectId));
@@ -239,8 +235,6 @@ function InfiniteCanvasPage() {
     const [activeNodeTool, setActiveNodeTool] = useState<CanvasNodeToolState>(null);
     const [previewNodeId, setPreviewNodeId] = useState<string | null>(null);
     const [hoverPreviewNodeId, setHoverPreviewNodeId] = useState<string | null>(null);
-    const [titleEditing, setTitleEditing] = useState(false);
-    const [titleDraft, setTitleDraft] = useState("");
     const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
     const [isNodeDragging, setIsNodeDragging] = useState(false);
     const [isNodeResizing, setIsNodeResizing] = useState(false);
@@ -1317,42 +1311,6 @@ function InfiniteCanvasPage() {
         applyHistory(next);
     }, [applyHistory]);
 
-    const createAndOpenProject = useCallback(async () => {
-        try {
-            const id = await createCanvas(t("canvas.defaultTitle", { count: useCanvasStore.getState().canvases.length + 1 }));
-            navigate(`/canvas/${id}`);
-        } catch (error) {
-            console.error(error);
-            toast.error(t("canvas.createFailed"));
-        }
-    }, [createCanvas, navigate, t]);
-
-    // Deleting the canvas you are standing on throws away the view as well as the record, and nothing
-    // brings it back. A red menu entry one click deep is not enough of a warning for that.
-    const deleteCurrentProject = useCallback(() => {
-        const title = useCanvasStore.getState().canvases.find((item) => item.id === projectId)?.title || t("canvas.runtime.untitledCanvas");
-        confirm({
-            title: t("canvas.deleteCurrentTitle"),
-            content: t("canvas.deleteCurrentDescription", { name: title }),
-            okText: t("canvas.project.delete"),
-            cancelText: t("common.cancel"),
-            danger: true,
-            onOk: async () => {
-                try {
-                    await deleteCanvases([projectId]);
-                } catch (error) {
-                    console.error(error);
-                    toast.error(t("canvas.deleteFailed"));
-                    return;
-                }
-                forgetLastCanvas(projectId);
-                // The canvas's agent conversation is a file on the gateway; deleting the canvas ends it.
-                void forgetCanvasConversation(effectiveConfig, projectId);
-                navigate("/canvas");
-            },
-        });
-    }, [deleteCanvases, effectiveConfig, navigate, projectId, t]);
-
     const exportCurrentProject = useCallback(async () => {
         const project = useCanvasStore.getState().projects.find((item) => item.id === projectId);
         if (!project) return toast.error(t("canvas.runtime.notFound"));
@@ -1876,17 +1834,6 @@ function InfiniteCanvasPage() {
         };
     }, [currentProject?.title, t]);
 
-    const startTitleEditing = useCallback(() => {
-        setTitleDraft(currentProject?.title || t("canvas.runtime.untitledCanvas"));
-        setTitleEditing(true);
-    }, [currentProject?.title, t]);
-
-    const finishTitleEditing = useCallback(() => {
-        const nextTitle = titleDraft.trim();
-        if (nextTitle) void renameCanvas(projectId, nextTitle);
-        setTitleEditing(false);
-    }, [projectId, renameCanvas, titleDraft]);
-
     const preventCanvasContextMenu = useCallback((event: ReactMouseEvent) => {
         if ((event.target as HTMLElement).closest("[data-node-id]")) return;
         event.preventDefault();
@@ -2285,17 +2232,7 @@ function InfiniteCanvasPage() {
                 <CanvasAgentPanel canvasId={projectId} nodes={nodes} onFocusNode={focusNode} onPickNode={pickNodeForAgent} />
                 <CanvasConflictDialog projectId={projectId} />
                 <CanvasTopBar
-                    projectId={projectId}
                     title={currentProject?.title || t("canvas.runtime.untitledCanvas")}
-                    titleDraft={titleDraft}
-                    isTitleEditing={titleEditing}
-                    onTitleDraftChange={setTitleDraft}
-                    onStartTitleEditing={startTitleEditing}
-                    onFinishTitleEditing={finishTitleEditing}
-                    onCancelTitleEditing={() => setTitleEditing(false)}
-                    onSwitchProject={(id) => navigate(`/canvas/${id}`)}
-                    onCreateProject={createAndOpenProject}
-                    onDeleteProject={deleteCurrentProject}
                     menuItems={canvasMenuItems({
                         t,
                         canvasTool,

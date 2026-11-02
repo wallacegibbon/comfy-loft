@@ -48,15 +48,20 @@ export function newestCanvasId(canvases: Array<{ id: string; updatedAt: string }
 }
 
 /**
- * Most recently written first, for any list of canvases.
+ * Newest canvas first, for the list in the left column.
  *
- * The same parse as `newestCanvasId`, for the same reason: `updatedAt` is an instant written as text, and
- * the text does not sort like the instant. Ties fall back to the id so the order of two canvases saved in
- * the same millisecond is stable rather than whichever the server happened to send first.
+ * By *creation*, not by the last write, and that is the whole point (#198): the list sits under the pointer
+ * while you work, and a canvas that jumps to the top because it was just saved — which happens on every
+ * edit, to the canvas you are looking at — is a list that moves under the cursor and can be misclicked.
+ * Creation order never changes for a canvas, so switching between them only changes which row is
+ * highlighted.
+ *
+ * The same parse as `newestCanvasId`, for the same reason: the timestamp is an instant written as text, and
+ * two canvases made in the same second do not sort like text. Ties fall back to the id.
  */
-export function byUpdatedAtDesc(left: { id: string; updatedAt: string }, right: { id: string; updatedAt: string }): number {
-    const leftAt = Date.parse(left.updatedAt);
-    const rightAt = Date.parse(right.updatedAt);
+export function byCreatedAtDesc(left: { id: string; createdAt: string }, right: { id: string; createdAt: string }): number {
+    const leftAt = Date.parse(left.createdAt);
+    const rightAt = Date.parse(right.createdAt);
     const leftStamp = Number.isFinite(leftAt) ? leftAt : Number.NEGATIVE_INFINITY;
     const rightStamp = Number.isFinite(rightAt) ? rightAt : Number.NEGATIVE_INFINITY;
     if (leftStamp !== rightStamp) return rightStamp - leftStamp;

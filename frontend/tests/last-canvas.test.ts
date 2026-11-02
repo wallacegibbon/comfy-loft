@@ -7,7 +7,7 @@ vi.mock("@/stores/use-settings-store", () => ({
     writeSetting: () => undefined,
 }));
 
-const { byUpdatedAtDesc, newestCanvasId } = await import("../src/lib/canvas/last-canvas");
+const { byCreatedAtDesc, newestCanvasId } = await import("../src/lib/canvas/last-canvas");
 
 /**
  * Which canvas a bare visit opens.
@@ -59,20 +59,35 @@ describe("the canvas to open", () => {
     });
 });
 
+/**
+ * The order the list in the left column draws in (#198).
+ *
+ * It is the order the canvases were *made* in, so it does not move while you work: a canvas is saved on
+ * every edit, and sorting by `updatedAt` put the canvas you were looking at back on top after each save.
+ */
 describe("the canvas list order", () => {
-    test("newest first, by instant", () => {
+    test("newest canvas first", () => {
         const canvases = [
-            { id: "a", updatedAt: "2026-11-02T11:00:00.900Z" },
-            { id: "b", updatedAt: "2026-11-02T11:00:00.916503133Z" },
-            { id: "c", updatedAt: "2026-11-02T10:59:59.000Z" },
+            { id: "a", createdAt: "2026-11-02T11:00:00.900Z" },
+            { id: "b", createdAt: "2026-11-02T11:00:00.916503133Z" },
+            { id: "c", createdAt: "2026-11-02T10:59:59.000Z" },
         ];
-        expect(canvases.sort(byUpdatedAtDesc).map((canvas) => canvas.id)).toEqual(["b", "a", "c"]);
+        expect(canvases.sort(byCreatedAtDesc).map((canvas) => canvas.id)).toEqual(["b", "a", "c"]);
     });
 
-    test("two canvases written in the same millisecond keep a stable order", () => {
-        const first = { id: "aaa", updatedAt: "2026-11-02T11:00:00.000Z" };
-        const second = { id: "bbb", updatedAt: "2026-11-02T11:00:00.000Z" };
-        expect([second, first].sort(byUpdatedAtDesc).map((canvas) => canvas.id)).toEqual(["aaa", "bbb"]);
-        expect([first, second].sort(byUpdatedAtDesc).map((canvas) => canvas.id)).toEqual(["aaa", "bbb"]);
+    test("two canvases made in the same millisecond keep a stable order", () => {
+        const first = { id: "aaa", createdAt: "2026-11-02T11:00:00.000Z" };
+        const second = { id: "bbb", createdAt: "2026-11-02T11:00:00.000Z" };
+        expect([second, first].sort(byCreatedAtDesc).map((canvas) => canvas.id)).toEqual(["aaa", "bbb"]);
+        expect([first, second].sort(byCreatedAtDesc).map((canvas) => canvas.id)).toEqual(["aaa", "bbb"]);
+    });
+
+    test("the last write does not move a canvas", () => {
+        // `updatedAt` is what the store bumps on every save; the comparator must not read it.
+        const canvases = [
+            { id: "old", createdAt: "2026-11-01T10:00:00.000Z", updatedAt: "2026-11-02T11:59:00.000Z" },
+            { id: "new", createdAt: "2026-11-02T10:00:00.000Z", updatedAt: "2026-11-02T10:00:00.000Z" },
+        ];
+        expect(canvases.sort(byCreatedAtDesc).map((canvas) => canvas.id)).toEqual(["new", "old"]);
     });
 });
