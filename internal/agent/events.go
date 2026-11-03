@@ -18,6 +18,18 @@ type Event struct {
 	// done
 	ElapsedMs int64 `json:"elapsedMs,omitempty"`
 
+	// usage: the agent's own telemetry for the task it is running — SM `task`'s `context_tokens`,
+	// `step_tps` and `ttft_ms`: how full the context is, and how fast the last step went, latency
+	// included. Relayed as the agent restates it, never computed here, because the numbers are a
+	// measurement only the agent can take (`docs/speed-tracking.md` in AlayaCore is where they come from).
+	//
+	// `models` carries the same three when the agent restored a count from a session file at startup, so a
+	// reloaded page knows how full the context is before it asks anything: the frame is the agent's own
+	// startup broadcast, and this is part of what it broadcasts.
+	ContextTokens int64   `json:"contextTokens,omitempty"`
+	StepTps       float64 `json:"stepTps,omitempty"`
+	TtftMs        int64   `json:"ttftMs,omitempty"`
+
 	// models: the startup broadcast of the spawn that produced this stream
 	Models         []Model `json:"models,omitempty"`
 	Active         *Model  `json:"active,omitempty"`
@@ -134,13 +146,15 @@ func (o modelObject) clone() modelObject {
 // Startup is the model information the agent broadcasts before it accepts input.
 type Startup = startup
 
-// startup is the model information the agent broadcasts before it accepts input.
+// startup is the model information the agent broadcasts before it accepts input, and the telemetry that
+// comes with it: a session started on a file announces the context it restored before it says `ready`.
 type startup struct {
 	models         []modelObject
 	active         *Model
 	level          *int
 	coreVersion    string
 	messageVersion int
+	usage          *usage
 }
 
 func (s *startup) collect(kind string, data json.RawMessage) {
@@ -179,6 +193,12 @@ func (s *startup) collect(kind string, data json.RawMessage) {
 			s.messageVersion = payload.MessageVersion
 			s.coreVersion = payload.CoreVersion
 		}
+	case "task":
+		// The count the agent restored from the session file. A page that reconnects is drawing a
+		// conversation that has one, and the number is only in this frame.
+		if reported, ok := taskUsage(data); ok {
+			s.usage = &reported
+		}
 	}
 }
 
@@ -187,7 +207,13 @@ func (s *startup) event() Event {
 	for _, object := range s.models {
 		models = append(models, object.info())
 	}
-	return Event{Type: "models", Models: models, Active: s.active, Level: s.level, CoreVersion: s.coreVersion, MessageVersion: s.messageVersion}
+	event := Event{Type: "models", Models: models, Active: s.active, Level: s.level, CoreVersion: s.coreVersion, MessageVersion: s.messageVersion}
+	if s.usage != nil {
+		event.ContextTokens = s.usage.contextTokens
+		event.StepTps = s.usage.stepTps
+		event.TtftMs = s.usage.ttftMs
+	}
+	return event
 }
 
 // modelByID is the entry with this id, or nil. Ids are positions (`model.conf` order, restated by every
@@ -245,6 +271,39 @@ func taskInProgress(data json.RawMessage) (done bool, known bool) {
 		return false, false
 	}
 	return !*payload.InProgress, true
+}
+
+// usage is what the agent reports about the work it is doing: how full the model's context is, and how
+// the last step went. Both are the agent's measurements — `context_tokens` is what it counted, `step_tps`
+// is output tokens over the whole round trip and `ttft_ms` is the wait for the first one — so this side
+// only carries them (`docs/speed-tracking.md` in AlayaCore, decisions #224).
+type usage struct {
+	contextTokens int64
+	stepTps       float64
+	ttftMs        int64
+}
+
+// taskUsage is SM `task`'s telemetry. A frame that reports no context tokens is the start of a step
+// before anything has been counted, and there is nothing to draw: the canvas shows the context and the
+// speed the agent last stated rather than a zero it did not mean.
+//
+// `step_tps` is absent until a step produces output tokens and 0 for a step that produces none, which is
+// the same thing to a reader — no speed to show — so both collapse to 0 here.
+func taskUsage(data json.RawMessage) (usage, bool) {
+	var payload struct {
+		ContextTokens int64   `json:"context_tokens"`
+		StepTPS       float64 `json:"step_tps"`
+		TTFTMs        int64   `json:"ttft_ms"`
+	}
+	if json.Unmarshal(data, &payload) != nil || payload.ContextTokens <= 0 {
+		return usage{}, false
+	}
+	return usage{contextTokens: payload.ContextTokens, stepTps: payload.StepTPS, ttftMs: payload.TTFTMs}, true
+}
+
+// event is this telemetry as the canvas draws it.
+func (u usage) event() Event {
+	return Event{Type: "usage", ContextTokens: u.contextTokens, StepTps: u.stepTps, TtftMs: u.ttftMs}
 }
 
 // commandOutput is the CO body.

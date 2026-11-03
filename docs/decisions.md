@@ -7808,3 +7808,48 @@ run` (198), `npm run check`, `npm run build`.
 **Where** `internal/agent/events.go` (`Event.History`, `replayed`), `internal/agent/sessions.go`
 (`Connected.History`), `internal/server/routes_agent.go`, `internal/server/agent_e2e_test.go`,
 `frontend/src/services/api/agent.ts`, `frontend/src/lib/canvas/agent-transcript.ts`.
+
+## 224. The panel draws the agent's own numbers: how full the context is, and how fast it is going
+
+**Decision** The canvas agent panel shows the agent's telemetry in a small row at the foot of the
+conversation — `22K/1M 2.2% | 129.5 tok/s (ttft 0.8s)` — from a new `usage` event carrying SM `task`'s
+`context_tokens`, `step_tps` and `ttft_ms`, and from the startup broadcast, which carries the count the
+agent restored from its session file. The numbers are written the way AlayaCore's own status bar writes them
+(`formatTokenCount` and the two segments in its `internal/adapters/terminal/tui_status.go`), so the panel and
+the terminal never disagree about the same session. Nothing is measured, estimated or counted on this side:
+the three values are relayed and printed.
+
+**Why** Both facts already existed and neither was shown. `context_tokens` was read only to decide whether a
+task had ended, and `step_tps`/`ttft_ms` were dropped with the rest of the payload. Someone waiting two
+minutes on a video wants to know whether the model is working or stuck, and how close the conversation is to
+the model's ceiling; the agent already answers both, in the frame it sends at every step.
+
+The shape stays the agent's. `step_tps` is end-to-end throughput with latency included — deliberately not a
+decode rate, for the reason AlayaCore's `speed-tracking.md` gives — so the panel prints it rather than
+recomputing anything from the deltas it happens to see. `ttft_ms` qualifies that figure and rides in
+parentheses. A step that produced no output tokens reports no speed, and `0.0 tok/s` on screen would read as
+a stalled model, so nothing is drawn for it. The context cell is `used/limit share` only when the model says
+how much it holds; a percentage of an unknown limit is not a number worth inventing.
+
+**Cost** One more event type, three fields on it, and one field's worth of state on the session
+(`AgentSession.usage`). The row is hidden until the agent has said something, so a fresh conversation shows
+no numbers rather than zeros. The restored count arrives only for a session started on a file — a box opened
+on nothing has nothing to report until its first step ends. The format is fixed English-ish by nature
+(`tok/s`, `ttft`): it is the agent's own vocabulary, and translating it would put the panel and the terminal
+at odds over the same number.
+
+**Tested** `internal/agent/session_test.go`'s `TestSessionRelaysTheContextAndTheStepSpeed`: the count the
+agent restored rides on the startup broadcast (and carries no step figures), a step frame mid-turn is relayed
+as `12.5 tok/s` with a 1200 ms first token, the frame that ends the turn is relayed *before* `done`, and a
+step that has counted nothing (`context_tokens: 0`) is not drawn as a zero. `frontend/tests/agent-usage.test.ts`
+(6): the token-count format in both units, the share, the count alone when the limit is unknown, the speed
+with and without a first-token time, the blank for a step with no output, and the whole line. In the browser:
+not exercised against a live AlayaCore — the row was read off a replayed transcript. `go test
+./internal/...`, `npx vitest run` (206), `npm run check`, `npm run build`.
+
+**Where** `internal/agent/events.go` (`usage`, `taskUsage`, `ContextTokens`/`StepTps`/`TtftMs`),
+`internal/agent/run.go` (`task`), `internal/agent/session_test.go`,
+`frontend/src/lib/canvas/agent-usage.ts`, `frontend/tests/agent-usage.test.ts`,
+`frontend/src/services/api/agent.ts` (`AgentUsage`, `adopt`),
+`frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
+`docs/gateway.md`.

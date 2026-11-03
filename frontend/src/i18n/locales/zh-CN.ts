@@ -734,6 +734,7 @@ export default {
             toolFailed: "调用失败",
             toolUnsettled: "这一轮结束前没有拿到结果",
             reasoningTitle: "思考",
+            usageHint: "agent 自己报告的数字：上下文占用了多少，以及上一步有多快",
             contextMarker: "【画布引用】",
             pickingNode: "点击一个节点来引用 · ESC 取消",
             reasoningOff: "不思考",

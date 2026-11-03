@@ -135,6 +135,12 @@ func turnStep(state *startup, frame *Frame, hasPrompt bool, emit func(Event)) (e
 			state.collect(kind, data)
 			emit(state.event())
 		case "task":
+			// The agent's own account of the step it is running: how full the context is and how fast the
+			// last one went. Relayed before the end of the turn is decided, because the frame that ends it
+			// carries the final count and nothing is said afterwards.
+			if reported, ok := taskUsage(data); ok {
+				emit(reported.event())
+			}
 			if over, known := taskInProgress(data); known && over && hasPrompt {
 				return true
 			}

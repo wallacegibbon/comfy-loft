@@ -29,7 +29,7 @@ export type AgentModel = { id: number; name: string; protocolType?: string; base
  * because the list of models comes from the agent itself.
  */
 export type AgentEvent = {
-    type: "models" | "user" | "steering" | "delta" | "reasoning" | "model" | "reasoning_level" | "command" | "tool_call" | "tool_result" | "notice" | "tool" | "history" | "done" | "error" | "closed";
+    type: "models" | "user" | "steering" | "delta" | "reasoning" | "model" | "reasoning_level" | "command" | "tool_call" | "tool_result" | "notice" | "usage" | "tool" | "history" | "done" | "error" | "closed";
     text?: string;
     elapsedMs?: number;
     models?: AgentModel[];
@@ -53,7 +53,20 @@ export type AgentEvent = {
     /** `steering`: `queued` when a message sent into a running task was taken into the queue, `delivered`
      *  when the agent has worked it into the conversation. */
     phase?: string;
+    /** `usage`: the agent's own measurement of the work it is doing — how full the context is, and how
+     *  fast the last step went. `models` carries the same three when the agent restored a count from a
+     *  session file at startup. */
+    contextTokens?: number;
+    stepTps?: number;
+    ttftMs?: number;
 };
+
+/**
+ * What the agent reports about its own work: the tokens its context holds, and the speed of the last
+ * step (`step_tps` — output tokens over the whole round trip, latency included) with the wait for its
+ * first token. All three are measurements this side cannot take, so they are kept as reported (#224).
+ */
+export type AgentUsage = { contextTokens: number; stepTps: number; ttftMs: number };
 
 /**
  * One content block of a tool result, in the protocol's own shape.
@@ -82,6 +95,8 @@ export type AgentSession = {
     models: AgentModel[];
     active?: AgentModel;
     level?: number;
+    /** How full the active model's context is and how fast it is going, as the agent last said. */
+    usage?: AgentUsage;
 };
 
 type Turn = { answer: string; resolve: () => void; reject: (error: Error) => void };
@@ -282,7 +297,9 @@ export function openAgentSession(config: AiConfig, name: string, options?: { his
 function adopt(live: Live, event: AgentEvent) {
     switch (event.type) {
         case "models":
-            live.session = { ...live.session, connected: true, models: event.models || [], active: event.active, level: event.level };
+            // The startup broadcast, which carries the context count when the agent restored one from a
+            // session file — a reloaded page knows how full the conversation is before it asks anything.
+            live.session = { ...live.session, connected: true, models: event.models || [], active: event.active, level: event.level, usage: usageOf(event) || live.session.usage };
             break;
         case "model":
             if (event.active) live.session = { ...live.session, active: event.active };
@@ -290,7 +307,23 @@ function adopt(live: Live, event: AgentEvent) {
         case "reasoning_level":
             if (typeof event.level === "number") live.session = { ...live.session, level: event.level };
             break;
+        case "usage": {
+            const usage = usageOf(event);
+            if (usage) live.session = { ...live.session, usage };
+            break;
+        }
     }
+}
+
+/**
+ * The telemetry an event carries, or nothing.
+ *
+ * No context tokens means the agent has counted nothing yet — a step's first frame says `0` before it
+ * knows — and that is not a number to draw, so the session keeps whatever it last reported.
+ */
+function usageOf(event: AgentEvent): AgentUsage | undefined {
+    if (!event.contextTokens) return undefined;
+    return { contextTokens: event.contextTokens, stepTps: event.stepTps || 0, ttftMs: event.ttftMs || 0 };
 }
 
 /** Subscribe to one session's events. Works before the session exists, which is the point. */

@@ -13,12 +13,14 @@ import (
 
 // fakeAgent is a stand-in for the real binary that speaks the same wire, so these tests describe the
 // gateway's translation rather than a model's behaviour. The protocol facts it encodes (an api key in
-// model_list, a CO per command, a task that ends the prompt) were observed on the real agent.
+// model_list, a CO per command, a task that ends the prompt, a task that reports tokens and speed) were
+// observed on the real agent.
 const fakeAgent = `#!/bin/sh
 printf 'SM{"type":"version","data":{"message_version":18,"core_version":"fake-1"}}\n'
 printf 'SM{"type":"model_list","data":{"models":[{"id":1,"name":"Fake / one","protocol_type":"openai","base_url":"http://127.0.0.1:1/v1","api_key":"secret-key","model_name":"m","context_limit":1000},{"id":2,"name":"Fake / two","protocol_type":"openai","base_url":"http://127.0.0.1:1/v1","api_key":"secret-key-2","model_name":"m2","context_limit":2000}]}}\n'
 printf 'SM{"type":"model","data":{"active_id":1,"active_name":"Fake / one","context_limit":1000}}\n'
 printf 'SM{"type":"reasoning_level","data":{"level":1}}\n'
+printf 'SM{"type":"task","data":{"in_progress":false,"context_tokens":1500}}\n'
 printf 'SM{"type":"session","data":{"state":"ready"}}\n'
 while IFS= read -r line; do
   [ -n "$FAKE_LOG" ] && printf '%s\n' "$line" >> "$FAKE_LOG"
@@ -35,8 +37,9 @@ while IFS= read -r line; do
       printf 'SM{"type":"reasoning_level","data":{"level":2}}\n'
       printf 'CO{"command_id":"1","result":{"level":2}}\n' ;;
     UE)
-      printf 'SM{"type":"task","data":{"in_progress":true,"current_step":1,"context_tokens":5}}\n'
+      printf 'SM{"type":"task","data":{"in_progress":true,"current_step":1,"context_tokens":0}}\n'
       printf 'Ax{"id":"2","type":"text","text":"hello "}\n'
+      printf 'SM{"type":"task","data":{"in_progress":true,"current_step":1,"context_tokens":5,"step_tps":12.5,"ttft_ms":1200}}\n'
       printf 'Ax{"id":"2","type":"text","text":"world"}\n'
       printf 'SM{"type":"task","data":{"in_progress":false,"context_tokens":9}}\n' ;;
   esac
@@ -82,6 +85,7 @@ func (r *recorder) waitFor(t *testing.T, what string, match func(Event) bool) Ev
 type fakeSession struct {
 	sessions *Sessions
 	session  *Session
+	startup  Event
 	watcher  *recorder
 	log      string
 }
@@ -110,7 +114,7 @@ func openFakeSession(t *testing.T) fakeSession {
 		t.Fatal("Watch returned nothing to stop it with")
 	}
 	t.Cleanup(func() { stopWatching() })
-	return fakeSession{sessions: sessions, session: connected.Session, watcher: watcher, log: log}
+	return fakeSession{sessions: sessions, session: connected.Session, startup: connected.Startup, watcher: watcher, log: log}
 }
 
 func TestSessionStreamsTheAnswerAndKeepsKeysHome(t *testing.T) {
@@ -151,6 +155,56 @@ func TestSessionStreamsTheAnswerAndKeepsKeysHome(t *testing.T) {
 	encoded, _ := json.Marshal(watcher.all())
 	if strings.Contains(string(encoded), "secret-key") || strings.Contains(string(encoded), "127.0.0.1:1") {
 		t.Errorf("the agent's credentials reached the events: %s", encoded)
+	}
+}
+
+// The numbers the agent takes of itself — how full the context is, how fast the last step went — are
+// relayed as it restates them, and the count it restored from a session file arrives with the startup
+// broadcast, so a page that reconnects knows it before it asks anything.
+func TestSessionRelaysTheContextAndTheStepSpeed(t *testing.T) {
+	fs := openFakeSession(t)
+	if fs.startup.ContextTokens != 1500 {
+		t.Errorf("startup contextTokens = %d, want the count the agent restored (1500)", fs.startup.ContextTokens)
+	}
+	if fs.startup.StepTps != 0 || fs.startup.TtftMs != 0 {
+		t.Errorf("a conversation that was just reloaded has no step to report: %+v", fs.startup)
+	}
+
+	if err := fs.session.Send(Request{Prompt: "hi"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	step := fs.watcher.waitFor(t, "the step's speed", func(event Event) bool {
+		return event.Type == "usage" && event.StepTps > 0
+	})
+	if step.StepTps != 12.5 || step.TtftMs != 1200 || step.ContextTokens != 5 {
+		t.Errorf("usage = %+v, want 12.5 tok/s, a 1200 ms ttft and 5 tokens", step)
+	}
+
+	fs.watcher.waitFor(t, "the end of the turn", func(event Event) bool { return event.Type == "done" })
+	events := fs.watcher.all()
+	// The frame that ends a turn still carries the count, and it is relayed before `done` — the canvas is
+	// told how full the context is one last time rather than one frame too late.
+	final, ended := -1, -1
+	for index, event := range events {
+		if event.Type == "usage" && event.ContextTokens == 9 {
+			final = index
+		}
+		if event.Type == "done" {
+			ended = index
+		}
+	}
+	if final < 0 {
+		t.Fatalf("the count the turn ended on was dropped; events: %+v", events)
+	}
+	if final > ended {
+		t.Errorf("the last usage arrived after done (%d > %d); events: %+v", final, ended, events)
+	}
+	// A step that has counted nothing yet says nothing: a `0` on screen would be a number the agent never
+	// reported (it sends `context_tokens: 0` as the step starts, before anything is counted).
+	for _, event := range events {
+		if event.Type == "usage" && event.ContextTokens == 0 {
+			t.Errorf("an uncounted step was drawn as 0: %+v", event)
+		}
 	}
 }
 

@@ -730,6 +730,7 @@ export default {
             toolFailed: "The call failed",
             toolUnsettled: "The turn ended before the call did",
             reasoningTitle: "Thinking",
+            usageHint: "What the agent reports about its own work: how full the context is, and how fast the last step went",
             contextMarker: "[Canvas references]",
             pickingNode: "Click a node to cite · ESC to cancel",
             reasoningOff: "No thinking",

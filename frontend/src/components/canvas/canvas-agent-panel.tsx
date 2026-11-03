@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, Bot, ChevronRight, CircleCheck, CircleDashed, CircleX, Eraser, Info, LoaderCircle, Square, Wrench, X } from "lucide-react";
 
 import { citationLabel, mentionSegments, referenceBlock, referenceLine, type Citation } from "@/lib/canvas/agent-references";
 import { textOf, transcriptEvent, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
+import { contextSegment, speedSegment } from "@/lib/canvas/agent-usage";
 import { nodeTitle } from "@/lib/canvas/node-title";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { confirm } from "@/components/kit/confirm";
 import { apiErrorMessage } from "@/services/api/http";
 import { AgentSettingsControls } from "./agent-settings-controls";
-import { cancelAgentSession, canvasAgent, clearAgentConversation, closeAgentSession, onAgentEvent, openAgentSession, sendAgentMessage, type AgentEvent } from "@/services/api/agent";
+import { agentSession, cancelAgentSession, canvasAgent, clearAgentConversation, closeAgentSession, onAgentEvent, openAgentSession, sendAgentMessage, subscribeAgentSessions, type AgentEvent } from "@/services/api/agent";
 import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
 import { useEffectiveConfig } from "@/stores/use-config-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
@@ -58,6 +59,19 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
 
     /** This canvas's conversation, by name. It is also the name of the file the agent keeps it in. */
     const session = useMemo(() => canvasAgent(canvasId), [canvasId]);
+
+    /**
+     * How full the context is and how fast the agent is going, as it last reported — plus the size of the
+     * context, which is the active model's and not a measurement of anything.
+     *
+     * Both are read from the session's own state rather than kept here: the agent announces them, this
+     * side draws them, and a second copy is a second thing to keep in step. Two subscriptions because a
+     * snapshot has to be one value with a stable identity, and the pair is not.
+     */
+    const usage = useSyncExternalStore(subscribeAgentSessions, () => agentSession(session).usage);
+    const contextLimit = useSyncExternalStore(subscribeAgentSessions, () => agentSession(session).active?.contextLimit || 0);
+    const context = usage ? contextSegment(usage.contextTokens, contextLimit) : "";
+    const speed = usage ? speedSegment(usage) : "";
 
     const [messages, setMessages] = useState<TranscriptMessage[]>([]);
     const [draft, setDraft] = useState("");
@@ -493,23 +507,38 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                     className="w-full resize-none bg-transparent px-1 text-sm outline-none placeholder:opacity-40"
                     style={{ color: theme.node.text }}
                 />
-                <div className="flex items-center justify-end gap-1">
-                    {busy ? (
-                        <button type="button" className="rounded-full p-2 hover:opacity-80" onClick={() => cancelAgentSession(session)} title={t("canvas.agent.stop")} aria-label={t("canvas.agent.stop")}>
-                            <Square className="size-3.5" />
-                        </button>
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                    {/* The agent's own two numbers, in the shape its status bar writes them:
+                        "22K/1M 2.2% | 129.5 tok/s (ttft 0.8s)". Nothing here is measured on this side. */}
+                    {context || speed ? (
+                        <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 px-1 text-[11px] tabular-nums opacity-60" title={t("canvas.agent.usageHint")}>
+                            {context ? <span>{context}</span> : null}
+                            {context && speed ? (
+                                <span className="opacity-40" aria-hidden>
+                                    |
+                                </span>
+                            ) : null}
+                            {speed ? <span>{speed}</span> : null}
+                        </p>
                     ) : null}
-                    <button
-                        type="button"
-                        className="rounded-full p-2 hover:opacity-80 disabled:opacity-30"
-                        style={{ background: theme.node.fill, border: `1px solid ${theme.node.stroke}` }}
-                        disabled={!draft.trim()}
-                        onClick={() => void submit()}
-                        title={t("canvas.agent.send")}
-                        aria-label={t("canvas.agent.send")}
-                    >
-                        <ArrowUp className="size-4" />
-                    </button>
+                    <div className="ml-auto flex items-center gap-1">
+                        {busy ? (
+                            <button type="button" className="rounded-full p-2 hover:opacity-80" onClick={() => cancelAgentSession(session)} title={t("canvas.agent.stop")} aria-label={t("canvas.agent.stop")}>
+                                <Square className="size-3.5" />
+                            </button>
+                        ) : null}
+                        <button
+                            type="button"
+                            className="rounded-full p-2 hover:opacity-80 disabled:opacity-30"
+                            style={{ background: theme.node.fill, border: `1px solid ${theme.node.stroke}` }}
+                            disabled={!draft.trim()}
+                            onClick={() => void submit()}
+                            title={t("canvas.agent.send")}
+                            aria-label={t("canvas.agent.send")}
+                        >
+                            <ArrowUp className="size-4" />
+                        </button>
+                    </div>
                 </div>
             </div>
 

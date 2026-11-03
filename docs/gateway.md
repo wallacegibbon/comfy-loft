@@ -237,7 +237,7 @@ so a node nobody is working on holds no process. Nothing expires on the gateway'
 [`decisions.md`](decisions.md) #80 for the cost of that.
 
 Down the socket: `models`, `history`, `user`, `delta`, `reasoning`, `model`, `reasoning_level`, `command`,
-`tool_call`, `tool_result`, `notice`, `steering`, `tool`, `done`, `error`, `closed`. The first message is the
+`tool_call`, `tool_result`, `notice`, `usage`, `steering`, `tool`, `done`, `error`, `closed`. The first message is the
 agent's startup broadcast, which is where the model list comes from; `history` follows it, carrying the
 conversation the agent just replayed. Up: `{"prompt":…}` (with optional `images` as data URLs),
 `{"command":…,"args":…}` for one of AlayaCore's own settings, `{"cancel":true}`, `{"toolResult":…}` for a
@@ -247,6 +247,12 @@ tool the agent asked for, and `{"close":true}`.
 conversation…", "retrying in 5s (retry 1/3)"). It is not conversation, so it is not in the session file, and
 it is not a failure, so it is not an `error`; `tool_result` carries `isError` from the UF frame's `is_error`,
 which is the one thing a result adds to the step the canvas has already drawn (decisions #222).
+
+`usage` is SM `task`'s telemetry — `context_tokens`, `step_tps` and `ttft_ms`: how full the context is, and
+how fast the last step went with the wait for its first token. The numbers are the agent's measurements,
+relayed as it restates them and never computed here; `models` carries the same three when the agent restored
+a count from a session file at startup, so a reloaded panel knows the context before it asks anything
+(decisions #224).
 
 `done` marks the end of a turn and carries the elapsed time only: the answer is what the deltas built,
 and a second copy of it would be a second truth.
