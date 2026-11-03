@@ -8213,9 +8213,10 @@ The first `set_text` had been refused by a page older than its tool list, so it 
 worked, and then the thing that was right. Both landed, and the card and the box ended up saying the same
 sentence: no longer a lie about what the node holds, but a question nobody asked.
 
-**Cost** `readNodeTextInput` deleted; two exports added (`inputsHoldingNothing`, `describeEmptyInputs`); the
-`EmptyInput` type stays internal. One i18n key pair (`connectionHoldsNothing`) and one more
-(`nothingToSend`). A stale page now says what it is instead of what it is not.
+**Cost** `readNodeTextInput` deleted; three exports added (`inputsHoldingNothing`, `describeEmptyInputs`,
+`generationInputCandidates`), all with a caller; the `EmptyInput` type stays internal. One i18n key pair
+(`connectionHoldsNothing`) and one more (`nothingToSend`). A stale page now says what it is instead of what it
+is not.
 
 **What this does not do** It does not collapse a text node to one field. The card and the question stay two
 fields, for the reason #229 gave: a card needs the question it answered to stand beside it, and
