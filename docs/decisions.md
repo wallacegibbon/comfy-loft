@@ -8232,6 +8232,10 @@ box must not pretend to be one.
 labelled the field as the question it will be asked next so the agent can use it deliberately. `read_node`,
 which is how the agent *reads a node*, still answers with content only.
 
+`retryNode` composes its own request and keeps the old quiet behaviour: a retry of a node whose upstream has
+been emptied runs with what is there. It is a recovery gesture on a node that already ran, and refusing it is
+a different decision from refusing a first press — one to make on purpose, not by inheritance.
+
 **Tested** `npx vitest run` (265: 13 new — a wire from an unwritten card carries nothing, a picture carries
 itself and not its words, a wired node that holds nothing is named with its state, a group is read by what is
 inside it, a config node is never a source, a wire through a config hub is followed, `generate` refuses
