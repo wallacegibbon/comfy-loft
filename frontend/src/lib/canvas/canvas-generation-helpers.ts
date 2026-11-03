@@ -6,7 +6,7 @@ import { referenceUrl } from "@/lib/canvas/canvas-node-factory";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import type { CanvasImageAngleParams } from "@/components/canvas/canvas-node-angle-dialog";
 import type { ReferenceImage } from "@/types/image";
-import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata } from "@/types/canvas";
+import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
 export function imageExtension(dataUrl: string) {
     return dataUrl.match(/^data:image[/]([^;]+)/)?.[1] || dataUrl.match(/image[/]([^;]+)/)?.[1] || "png";
@@ -27,17 +27,6 @@ export function generationReferenceUrls(context: { referenceImages: ReferenceIma
         ...context.referenceVideos.map((video) => video.storageKey || video.url).filter((url): url is string => Boolean(url)),
         ...(context.referenceAudios || []).map((audio) => audio.storageKey || audio.url).filter((url): url is string => Boolean(url)),
     ];
-}
-
-export function resolveMetadataReferences(metadata: CanvasNodeMetadata) {
-    if (metadata.generationType !== "edit") return [];
-    if (!metadata.references?.length) return null;
-    // A reference this build wrote is a file of the canvas (`files/<name>`); anything else is a URL or an
-    // inline image, which is the reference itself (#173 removed the branch that resolved blob-era keys).
-    return metadata.references.map((reference, index) => {
-        const storageKey = reference.startsWith("files/") ? reference : undefined;
-        return { id: `${index}`, name: `reference-${index}.png`, type: "image/png", dataUrl: storageKey ? "" : reference, storageKey };
-    });
 }
 
 export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
@@ -140,19 +129,6 @@ export function clearStaleNodeErrors(nodes: CanvasNodeData[]) {
  */
 export function isGenerationCanceled(error: unknown) {
     return error instanceof Error && error.name === "AbortError";
-}
-
-export function sourceNodeReferenceImages(node: CanvasNodeData | null) {
-    if (!node || node.type !== CanvasNodeType.Image || !node.metadata?.content) return [];
-    return [
-        {
-            id: node.id,
-            name: `${node.title || node.id}.png`,
-            type: node.metadata.mimeType || "image/png",
-            dataUrl: node.metadata.content,
-            storageKey: node.metadata.storageKey,
-        },
-    ];
 }
 
 export function isAudioFile(file: File) {

@@ -2,9 +2,15 @@ package generate
 
 import (
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
+	"comfyloft/internal/comfy"
 	"comfyloft/internal/httpx"
+	"comfyloft/internal/logx"
 	"comfyloft/internal/workflow"
 )
 
@@ -241,4 +247,71 @@ func TestIsAudioExtension(t *testing.T) {
 			t.Errorf("isAudioExtension(%q) = %v, want %v", name, got, want)
 		}
 	}
+}
+
+// A poll that could not be made is not an answer: ComfyUI going away for a moment leaves the render where it
+// was, so the watch waits for it to come back instead of failing the task (#234).
+func TestWaitForHistoryOutlivesAnOutage(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) <= 2 {
+			// Down: no answer at all, which is what a restart looks like from here.
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"p1":{"status":{"completed":true,"status_str":"success"},"outputs":{"9":{"images":[{"filename":"a.png","subfolder":"","type":"output"}]}}}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := newComfyClient(t, server.URL)
+	runner := NewRunner(client, nil, logx.NewWithWriter("test", io.Discard), 5000, 1)
+
+	history, err := runner.waitForHistory(t.Context(), "p1", 5000, 1)
+	if err != nil {
+		t.Fatalf("waitForHistory: %v", err)
+	}
+	if history == nil {
+		t.Fatal("history is nil: the completed answer was not passed on")
+	}
+	if calls.Load() < 3 {
+		t.Fatalf("asked %d times, want at least 3: the outage was not waited through", calls.Load())
+	}
+}
+
+// A refusal will get the same answer next time, so it ends the task at once rather than burning the timeout.
+func TestWaitForHistoryFailsFastOnARefusal(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"bad graph"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := newComfyClient(t, server.URL)
+	runner := NewRunner(client, nil, logx.NewWithWriter("test", io.Discard), 5000, 1)
+
+	if _, err := runner.waitForHistory(t.Context(), "p1", 5000, 1); err == nil {
+		t.Fatal("waitForHistory: want an error for a refusal, got nil")
+	}
+	// The client retries a GET a few times on a 5xx, but a 400 is not retried at all.
+	if got := calls.Load(); got > 3 {
+		t.Fatalf("asked %d times for a refusal, want at most 3", got)
+	}
+}
+
+func newComfyClient(t *testing.T, url string) *comfy.Client {
+	t.Helper()
+	client, err := comfy.New(comfy.Options{
+		BaseURL:       url,
+		TimeoutMs:     5000,
+		RetryAttempts: 1,
+		RetryDelayMs:  1,
+		Logger:        logx.NewWithWriter("test", io.Discard),
+	})
+	if err != nil {
+		t.Fatalf("comfy.New: %v", err)
+	}
+	return client
 }

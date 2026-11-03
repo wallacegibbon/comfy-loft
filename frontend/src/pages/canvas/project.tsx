@@ -1896,7 +1896,7 @@ function InfiniteCanvasPage() {
         }),
         [completeVideoNodeTask, finishGenerationRequest, pollVideoNodeTask, setDialogNodeId, setNodes, setSelectedConnectionId, setSelectedNodeIds, startGenerationRequest],
     );
-    const { runImageGeneration, runVideoGeneration, runAudioGeneration, runTextGeneration, retryNode, pollAudioRun, pollImageRun } = useGenerationRuns(generationRunDeps);
+    const { runImageGeneration, runVideoGeneration, runAudioGeneration, runTextGeneration, pollAudioRun, pollImageRun } = useGenerationRuns(generationRunDeps);
 
     // Audio and image runs live on the gateway, so a reload reattaches instead of losing the work.
     // The effect runs once per opened project, like the video one above, and never cancels the run.
@@ -2096,12 +2096,6 @@ function InfiniteCanvasPage() {
     const handleSidebarHoverNode = useCallback((nodeId: string | null) => {
         setHoverPreviewNodeId(nodeId);
     }, []);
-    const handleNodeRetry = useCallback(
-        (node: CanvasNodeData) => {
-            void retryNode(node);
-        },
-        [retryNode],
-    );
     const handleNodeContextMenu = useCallback((event: ReactMouseEvent, nodeId: string) => {
         event.preventDefault();
         event.stopPropagation();
@@ -2302,7 +2296,6 @@ function InfiniteCanvasPage() {
                             onContentChange={handleNodeContentChange}
                             onVideoDimensions={handleVideoDimensions}
                             onTitleChange={handleNodeTitleChange}
-                            onRetry={handleNodeRetry}
                             onViewImage={handleNodeViewImage}
                             onSelectReference={pickingForAgent ? finishAgentPick : selectNodeReference}
                             onContextMenu={handleNodeContextMenu}
@@ -2402,7 +2395,6 @@ function InfiniteCanvasPage() {
                     onAngle={(node) => openNodeTool("angle", node.id)}
                     onViewImage={handleNodeViewImage}
                     onReversePrompt={createImageReversePromptNodes}
-                    onRetry={(node) => void retryNode(node)}
                     onToggleFreeResize={(node) => toggleNodeFreeResize(node.id)}
                     onDelete={(node) => deleteNodes(new Set([node.id]))}
                     onUngroup={(node) => ungroupSelection(new Set([node.id]))}

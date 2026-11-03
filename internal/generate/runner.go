@@ -3,6 +3,7 @@ package generate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"path"
@@ -189,12 +190,21 @@ func (r *Runner) RunWorkflow(ctx context.Context, opts RunOptions) (*RunResult, 
 }
 
 // waitForHistory polls /history until the job finishes, fails, or times out.
+//
+// An unanswered question is not an answer. ComfyUI going away — a restart, a redeploy, a dropped network —
+// leaves the render exactly where it was, so a poll that could not be *made* is retried until the run's own
+// timeout decides that waiting is no longer honest (#234). Before this, one bad request ended the task while
+// ComfyUI went on rendering it: the user paid for a clip nobody would ever collect.
+//
+// What is not retried is a refusal that will not change — ComfyUI answering that it will not run this, which
+// could be a malformed graph or a missing model. `comfyRefusalIsFinal` is where that line is.
 func (r *Runner) waitForHistory(ctx context.Context, promptID string, timeoutMs, pollIntervalMs int) (map[string]any, error) {
 	var deadline time.Time
 	if timeoutMs > 0 {
 		deadline = time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 	}
 	poll := time.Duration(pollIntervalMs) * time.Millisecond
+	var unreachable error
 
 	for {
 		if ctx.Err() != nil {
@@ -202,10 +212,14 @@ func (r *Runner) waitForHistory(ctx context.Context, promptID string, timeoutMs,
 		}
 		if !deadline.IsZero() && time.Now().After(deadline) {
 			r.cancelPrompt(promptID)
+			message := "generation timed out"
+			if unreachable != nil {
+				message = "generation timed out while ComfyUI could not be reached: " + unreachable.Error()
+			}
 			return nil, &httpx.Error{
 				Status:  http.StatusGatewayTimeout,
 				Code:    "generation_timeout",
-				Message: "generation timed out",
+				Message: message,
 			}
 		}
 
@@ -214,8 +228,21 @@ func (r *Runner) waitForHistory(ctx context.Context, promptID string, timeoutMs,
 			if ctx.Err() != nil {
 				return nil, cancelled()
 			}
-			return nil, err
+			if comfyRefusalIsFinal(err) {
+				return nil, err
+			}
+			if unreachable == nil {
+				r.logger.Warn("comfyui could not be asked about prompt %s, still trying: %s", promptID, err)
+			}
+			unreachable = err
+			select {
+			case <-time.After(poll):
+			case <-ctx.Done():
+				return nil, cancelled()
+			}
+			continue
 		}
+		unreachable = nil
 		if failure := historyError(history); failure != "" {
 			return nil, executionFailure(failure)
 		}
@@ -229,6 +256,23 @@ func (r *Runner) waitForHistory(ctx context.Context, promptID string, timeoutMs,
 			return nil, cancelled()
 		}
 	}
+}
+
+// comfyRefusalIsFinal says whether an error from ComfyUI is an answer rather than an outage.
+//
+// A 4xx is ComfyUI saying it will not run this — a graph it does not understand, a model it does not have —
+// and asking again would get the same sentence. Everything else (a 5xx, a connection that never opened, a
+// timeout) is the question not reaching it, which is what the caller waits through.
+func comfyRefusalIsFinal(err error) bool {
+	var comfyErr *comfy.Error
+	if !errors.As(err, &comfyErr) {
+		return false
+	}
+	status := comfyErr.HTTPStatus
+	if status == 0 {
+		status = comfyErr.Status
+	}
+	return status >= 400 && status < 500
 }
 
 // cancelPrompt asks ComfyUI to stop a job, using a detached context so that

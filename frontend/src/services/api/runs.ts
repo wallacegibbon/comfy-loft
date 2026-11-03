@@ -1,7 +1,7 @@
 import i18n from "@/i18n";
 import { activeCanvasId } from "@/services/canvas-files";
 import { gatewayRoot } from "@/constant/app-mode";
-import { apiErrorMessage, httpJson, throwIfCanceled } from "@/services/api/http";
+import { ApiError, apiErrorMessage, httpJson, throwIfCanceled } from "@/services/api/http";
 import type { AiConfig } from "@/stores/use-config-store";
 
 /**
@@ -83,6 +83,8 @@ type RunWaitOptions = {
     signal?: AbortSignal;
     /** Milliseconds between status reads. */
     intervalMs?: number;
+    /** How long the gateway may be unreachable before the watch gives up. Defaults to three minutes. */
+    unreachableMs?: number;
     onProgress?: (run: Run) => void;
     onSteps?: (steps: { step: number; total: number }) => void;
     /**
@@ -169,16 +171,14 @@ export async function uploadMedia(config: AiConfig, file: Blob, filename: string
     }
 }
 
-/** Read one run. */
+/**
+ * One read of a run.
+ *
+ * The error is passed on as it arrived: `waitForRun` has to tell a gateway that will not answer from a
+ * gateway that has no record of this run, and only the status says which (#234).
+ */
 async function getRun(config: AiConfig, id: string): Promise<Run> {
-    try {
-        return await httpJson<Run>(runUrl(config, `/api/runs/${encodeURIComponent(id)}`), {
-            headers: JSON_HEADERS,
-        });
-    } catch (error) {
-        throwIfCanceled(error);
-        throw new Error(apiErrorMessage(error, apiText("runQueryFailed")));
-    }
+    return httpJson<Run>(runUrl(config, `/api/runs/${encodeURIComponent(id)}`), { headers: JSON_HEADERS });
 }
 
 /** Cancel a run. Idempotent on the gateway. */
@@ -190,20 +190,54 @@ export async function cancelRun(config: AiConfig, id: string): Promise<Run> {
 }
 
 /**
+ * How long a run may be unreachable before the canvas stops watching it.
+ *
+ * A run belongs to the gateway, and a gateway goes away for ordinary reasons — a restart, a deploy, a
+ * dropped network. The run itself has not changed when it does, and the node still holds its id, so the
+ * honest thing is to keep asking. This is the bound on "keep asking": past it the node is told it could not
+ * reach the run, instead of sitting on a progress bar that will never move again (#234).
+ */
+const RUN_UNREACHABLE_MS = 3 * 60_000;
+
+/**
  * Poll a run until it is terminal.
  *
  * Resolves with the finished run, throws `RunFailedError` when the gateway reports a failure or a
  * cancellation, and rethrows the abort error when the caller aborts (cancelling the run first if
  * `cancelOnAbort` is set).
+ *
+ * A run that cannot be *reached* is not a run that failed. The gateway being away — restarted, redeployed,
+ * off the network for a moment — leaves the run exactly where it was, so the loop keeps asking and picks the
+ * run up again when it answers. Only two things end the watch: the gateway saying the run ended, and the
+ * gateway being gone long enough that waiting is no longer honest. A 404 is the first: it means the gateway
+ * has no record of this run, and it will not grow one.
  */
 export async function waitForRun(config: AiConfig, id: string, options: RunWaitOptions = {}): Promise<Run> {
     const interval = options.intervalMs ?? DEFAULT_INTERVAL_MS;
+    const unreachableMs = options.unreachableMs ?? RUN_UNREACHABLE_MS;
+    let unreachableSince: number | null = null;
     for (;;) {
         if (options.signal?.aborted) {
             await cancelOnAbort(config, id, options);
             throw abortError();
         }
-        const run = await getRun(config, id);
+        let run: Run;
+        try {
+            run = await getRun(config, id);
+            unreachableSince = null;
+        } catch (error) {
+            throwIfCanceled(error);
+            if (error instanceof ApiError && error.status === 404) throw new Error(apiErrorMessage(error, apiText("runQueryFailed")));
+            unreachableSince ??= Date.now();
+            if (Date.now() - unreachableSince > unreachableMs) throw new Error(apiText("runUnreachable"));
+            try {
+                await delay(interval, options.signal);
+            } catch (delayedError) {
+                await cancelOnAbort(config, id, options);
+                throw delayedError;
+            }
+            continue;
+        }
         options.onProgress?.(run);
         if (run.progress && run.progress.total && run.progress.total > 0) {
             options.onSteps?.({ step: Math.min(run.progress.total, Math.max(0, run.progress.step || 0)), total: run.progress.total });

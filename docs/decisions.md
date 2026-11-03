@@ -8383,3 +8383,55 @@ exercised in a browser: what to look for is one live conversation — "这张图
 **Where** `internal/server/{routes_mcp.go,agent_instructions.go,mcp_test.go}`,
 `frontend/src/lib/canvas/{canvas-agent-tools,canvas-agent-view}.ts`,
 `frontend/tests/{canvas-agent-tools,canvas-agent-view}.test.ts`.
+
+## 234. A watch is not the job: neither end gives up on a run that is still out
+
+**Decision** Two loops that used to give up too early now wait, and the second way to re-run a node is gone.
+
+- **Browser ↔ gateway** (`waitForRun`, `services/api/runs.ts`): a poll that fails is asked again — every
+  interval — until the gateway has been unreachable for three minutes, and the run is picked up again the
+  moment it answers. A 404 is the one answer that stops it: the gateway has no record of that run and will not
+  grow one. The budget is `unreachableMs`, so a caller can ask for longer.
+- **Gateway ↔ ComfyUI** (`waitForHistory`, `internal/generate/runner.go`): the same rule one layer down. A
+  `/history` poll that could not be made is retried until the run's own timeout; a 4xx — ComfyUI saying it
+  will not run this — still ends the task at once, because asking again gets the same sentence. When the
+  timeout does arrive after an outage, its message says so instead of pretending the render was just slow.
+- **`retryNode` is deleted**, with `resolveMetadataReferences`, `sourceNodeReferenceImages`, and the three
+  ways in: the hover toolbar's 「重试」, its 「获取任务状态」, and the error banner's button. The banner keeps
+  the reason and nothing else. Running a node again is the generate button, which is where running it the
+  first time was.
+
+**Why** The user's reading was right and mine was muddled: on "the run is still out" the canvas has exactly
+one duty — keep watching. There were two loops, and both of them treated "could not ask" as "the answer is
+no":
+
+- One dropped `/history` request ended the task while ComfyUI went on rendering it. That is the expensive one:
+  a video's minutes are paid for and nobody collects the clip, and the user is told the run failed when it
+  did not.
+- The browser ended the watch on one failed poll, so a wifi blip or a busy gateway showed up as 查询失败 with
+  a live render behind it.
+
+And the retry button was a second generation path beside `handleGenerateNode` — with its own composition, its
+own reference resolution (from what the failed attempt recorded, not from the connections the canvas shows)
+and therefore its own drift: it ignored #230's empty-wire refusal and reported nothing to the agent. Deleting
+it removes a mechanism, not a convenience: a node that failed is a node to fix and press generate on, and
+that is the same button the agent uses.
+
+**What this does not do** A **gateway restart** still loses the run: the job is a goroutine in the gateway,
+and a task that was `running` on disk is loaded as `failed` ("the gateway restarted before the task finished",
+`internal/task/task.go`). The record keeps its ComfyUI `PromptID`, so re-attaching *there* is possible — that
+is a queue-recovery decision, not this one, and it is the only thing left between here and "the run belongs
+to nobody but ComfyUI".
+
+**Tested** `make check` (two new: a `/history` outage is waited through and the completed answer still lands;
+a 400 ends the task without burning the timeout). `npx vitest run` (268: three new for `waitForRun` — an
+unreachable gateway is asked again and the run is picked up, a 404 stops at once, the budget says
+`runUnreachable`). `npm run check` (i18n 820/806, both new keys used). `npm run build`. Not exercised in a
+browser: the case worth trying is stopping ComfyUI mid-video and starting it again — the node should keep its
+progress and finish, not turn red.
+
+**Where** `frontend/src/services/api/runs.ts`, `frontend/src/pages/canvas/hooks/use-generation-runs.ts`,
+`frontend/src/lib/canvas/canvas-generation-helpers.ts`,
+`frontend/src/components/canvas/{canvas-node,canvas-node-hover-toolbar}.tsx`,
+`frontend/src/pages/canvas/project.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
+`frontend/tests/api-runs.test.ts`, `internal/generate/{runner.go,generate_test.go}`.

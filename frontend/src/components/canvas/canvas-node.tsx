@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import { ChevronRight, Download, Group, Image as ImageIcon, Music2, Puzzle, RefreshCw, Star, Video } from "lucide-react";
+import { ChevronRight, Download, Group, Image as ImageIcon, Music2, Puzzle, Star, Video } from "lucide-react";
 
 import { type CanvasTheme } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
@@ -49,7 +49,6 @@ type CanvasNodeProps = {
     onToggleBatch?: (nodeId: string) => void;
     onSetBatchPrimary?: (nodeId: string, itemId: string) => void;
     onDownloadImage?: (node: CanvasNodeData) => void;
-    onRetry?: (node: CanvasNodeData) => void;
     onViewImage?: (node: CanvasNodeData, imageId?: string) => void;
     onSelectReference?: (nodeId: string) => void;
     onContextMenu: (event: React.MouseEvent, nodeId: string) => void;
@@ -68,7 +67,6 @@ type NodeContentRendererProps = {
     onVideoDimensions?: (nodeId: string, width: number, height: number) => void;
     onStopEditing: () => void;
     mentionReferences: CanvasResourceReference[];
-    onRetry?: (node: CanvasNodeData) => void;
     onToggleBatch?: () => void;
     onSetBatchPrimary?: (itemId: string) => void;
     onDownloadImage?: () => void;
@@ -105,7 +103,6 @@ export const CanvasNode = React.memo(function CanvasNode({
     onToggleBatch,
     onSetBatchPrimary,
     onDownloadImage,
-    onRetry,
     onViewImage,
     onSelectReference,
     onContextMenu,
@@ -396,7 +393,6 @@ export const CanvasNode = React.memo(function CanvasNode({
                         onContentChange={onContentChange}
                         onVideoDimensions={onVideoDimensions}
                         onStopEditing={() => setIsEditingContent(false)}
-                        onRetry={onRetry}
                         onToggleBatch={() => onToggleBatch?.(data.id)}
                         onSetBatchPrimary={(itemId) => onSetBatchPrimary?.(data.id, itemId)}
                         onDownloadImage={() => onDownloadImage?.(data)}
@@ -462,7 +458,7 @@ function NodeContent(props: NodeContentRendererProps) {
         return (
             <div className="relative h-full w-full">
                 {content}
-                <NodeErrorBanner node={props.node} onRetry={props.onRetry} />
+                <NodeErrorBanner node={props.node} />
             </div>
         );
     }
@@ -522,25 +518,20 @@ function LoadingContent({ theme, node }: Pick<NodeContentRendererProps, "theme" 
     );
 }
 
-function NodeErrorBanner({ node, onRetry }: Pick<NodeContentRendererProps, "node" | "onRetry">) {
+/**
+ * Why a node failed, on the node — the reason and nothing else.
+ *
+ * Running it again is the generate button, which is where running it the first time was. A retry beside the
+ * message was a second way in and a second implementation of the same request, and the two drifted: it did
+ * not refuse an empty wire, and it rebuilt references from what the failed attempt recorded instead of the
+ * connections the canvas shows (#234).
+ */
+function NodeErrorBanner({ node }: Pick<NodeContentRendererProps, "node">) {
     const { t } = useTranslation();
     return (
         <div className="pointer-events-none absolute inset-x-2 top-2 z-30 flex justify-center">
             <div className="pointer-events-auto flex max-w-[92%] items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] leading-none shadow-lg" style={{ background: "rgba(88,18,18,.92)", borderColor: "rgba(255,140,140,.45)", color: "#ffecec" }}>
                 <span className="min-w-0 truncate">{node.metadata?.errorDetails || t("canvas.node.failed")}</span>
-                <button
-                    type="button"
-                    className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 transition hover:opacity-80"
-                    style={{ borderColor: "rgba(255,255,255,.35)" }}
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        onRetry?.(node);
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
-                >
-                    <RefreshCw className="size-3" />
-                    {t("canvas.node.retry")}
-                </button>
             </div>
         </div>
     );

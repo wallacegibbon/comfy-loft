@@ -10,7 +10,7 @@ import { getNodeDefinition } from "@/lib/canvas/node-registry";
 
 type NodeLora = { name: string; strength: number };
 
-type NodeGenerationContext = {
+export type NodeGenerationContext = {
     prompt: string;
     referenceImages: ReferenceImage[];
     referenceVideos: ReferenceVideo[];
