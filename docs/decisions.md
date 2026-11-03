@@ -7376,28 +7376,30 @@ goroutines, one winner, seven conflicts, and the surviving document is a whole o
 
 **Where** `internal/canvas/canvas.go`, `internal/canvas/canvas_test.go`.
 
-## 209. A stored document's connection ids are repaired by reading it
+## 209. The document that carried duplicate connection ids was repaired where it lives
 
-**Decision** `normalizeConnections` (`frontend/src/lib/canvas/canvas-document.ts`) is applied by
-`readDocument` (`frontend/src/services/api/canvases.ts`): the first connection keeps its id, a later duplicate
-is given a fresh one, and an entry that names no node is dropped. The repaired ids are what the next save
-writes, so a canvas is fixed by being opened and an old export by being imported.
+**Decision** `canvases/3df8b7a65088/canvas.json` — the one document in this workspace that held two
+connections with one id — was rewritten once with distinct ids: a one-off edit of the file, not a step in the
+product. The read path does nothing about it — no normalisation, no migration branch, no compatibility field.
+#205 already made every new id unique (`nanoid()` in `addConnection`), so nothing mints a duplicate again.
 
-**Why** #205 stopped *minting* duplicate ids and left the documents that already had them. The canvas #205
-measured as evidence — `canvases/3df8b7a65088/canvas.json` — still carried two connections with
-`conn-1793652015279`, and the consequence was live: clicking one lit both (one click, two paths at
-`stroke-width="3"`), and a delete of either removed both.
+**Why the data and not the reader** #205's own evidence pointed at a live bug — clicking one of those two
+connections lit both (one click, two paths at `stroke-width="3"`), and deleting either removed both — and the
+temptation is to repair it on load, which also fixes any zip exported before the change. But this project has
+no installed base and no released version: there are no old documents, no old exports, and nothing in the
+world that a migration would be run against. A reader that repairs what it reads is then permanent code for a
+case that cannot occur — the same reflex that produces version-0 formats nobody dares remove. One document was
+wrong; one document was fixed.
 
-**Cost** Reading a document may change it. The ids are opaque — nothing parses them (#205) — and the endpoints
-are untouched, so the only difference is which wire a click highlights.
+**Cost** If a duplicate ever turns up again — a hand-edited `canvas.json`, a zip from an unrecoverable
+build — the fix is an edit of the file, not a restart, and the symptom is visible (two connections
+highlighting together) rather than silent. That is a worse day than a read-time repair would give, and it is
+the correct trade for a tree with no users.
 
-**Tested** Four assertions in `frontend/tests/canvas-document.test.ts` (a whole one is kept, a duplicate gets a
-fresh id, an entry with no endpoints is dropped, a non-list is empty). In the browser: reloading Canvas 1
-replaced `conn-1793652015279` with `wlH8vm06xPNVXcN4k0rcS`, the four DOM ids became distinct, the save that
-follows a load wrote them to disk, and one click then lit exactly one path.
+**Tested** Not a code change: the document was rewritten and re-read (`GET /api/canvases/3df8b7a65088`), the
+four DOM ids are distinct, and one click now lights one path.
 
-**Where** `frontend/src/lib/canvas/canvas-document.ts`, `frontend/src/services/api/canvases.ts`,
-`frontend/tests/canvas-document.test.ts`.
+**Where** `canvases/3df8b7a65088/canvas.json` (not tracked), `frontend/src/pages/canvas/project.tsx` (#205).
 
 ## 210. An import skips directory entries
 

@@ -119,7 +119,7 @@ itself, tests included (so "0" means the test suite does not use it either):
 | `MainModels.Snapshot` | `internal/store/preferences.go` | "for diagnostics"; nothing asks |
 | `NormalizeModelPath` | `internal/workflow/helpers.go` | "exposes … for callers comparing model names"; the callers use the private helper |
 | `ReadGraphFile` | `internal/workflow/registry.go` | `Registry.readGraph` is the one that runs |
-| `Store.OutputPath` (+ `withinOutput`, `within`) | `internal/task/task.go` | only `task_test.go` calls it — artifacts are served from the canvas's `files/` since #156. Its record is read under the lock now, so the torn-slice race it had is gone whether or not it is kept |
+| `Store.OutputPath` (+ `withinOutput`, `within`) | `internal/task/task.go` | only `task_test.go` calls it — artifacts are served from the canvas's `files/` since #156 |
 | `Hub.promptByRequest` | `internal/generate/preview.go` | written on every prompt and reaped with its progress record, never read |
 
 **Fix to decide** Delete them, or add the missing gate. Deleting `OutputPath` also takes four assertions in
