@@ -340,6 +340,23 @@ func (s *Store) Create(canvasID, object, model string, request map[string]any, a
 	return task
 }
 
+// Resume hands a task that was already submitted back to the queue, by id.
+//
+// It takes an id rather than a task because the records that outlive a restart are read out of the store as
+// snapshots (`Get`, `List`) — the copies callers see. Enqueuing one of those runs the job and updates the copy:
+// the output file is written, and the record on disk stays `running` for ever, which is exactly what a resume
+// must not do. The live task is looked up here, so the pump is updating the one the store serves (#236).
+func (s *Store) Resume(id string, run RunFunc) *Task {
+	s.mu.Lock()
+	task, ok := s.tasks[id]
+	s.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	s.Enqueue(task, run)
+	return task
+}
+
 // Enqueue schedules a task; tasks run one at a time, like the old implementation.
 func (s *Store) Enqueue(task *Task, run RunFunc) {
 	s.mu.Lock()

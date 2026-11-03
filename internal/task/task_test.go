@@ -598,6 +598,15 @@ func TestARestartKeepsASubmittedTaskAndFailsAnUnsubmittedOne(t *testing.T) {
 	if dropped.Status != "failed" {
 		t.Errorf("unsubmitted status = %q, want failed", dropped.Status)
 	}
+
+	// Resuming runs the job against the record the store serves, not against the snapshot the caller is
+	// holding: a copy would write the output file and leave the task `running` for ever (#236).
+	if resumed := store.Resume(kept.ID, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
+		return &Result{Outputs: []ResultFile{{Buffer: []byte("VIDEO"), Ext: "mp4", MimeType: "video/mp4"}}, PromptID: "p_kept"}, nil
+	}); resumed == nil {
+		t.Fatal("Resume returned nil for a task the store holds")
+	}
+	waitFor(t, "resumed completion", func() bool { return store.Get(kept.ID).Status == "completed" })
 }
 
 func reopen(t *testing.T, store *Store) *Store {

@@ -103,9 +103,12 @@ func (s *Server) resumeInterruptedRuns() {
 			continue
 		}
 		promptID := *stored.PromptID
-		s.tasks.Enqueue(stored, func(_ *task.Task, progress func(task.Update), jobCtx context.Context) (*task.Result, error) {
+		object := stored.Object
+		// By id: `List` hands out snapshots, and enqueuing one of those would run the job against a copy —
+		// writing the output file while the record the canvas reads stayed `running` for ever.
+		resumed := s.tasks.Resume(stored.ID, func(_ *task.Task, progress func(task.Update), jobCtx context.Context) (*task.Result, error) {
 			opts := generate.RunOptions{
-				TimeoutMs:      s.runTimeout(stored.Object),
+				TimeoutMs:      s.runTimeout(object),
 				PollIntervalMs: s.cfg.PollIntervalMs,
 				OnProgress: func(event generate.ProgressEvent) {
 					progress(task.Update{Progress: event.Progress})
@@ -115,8 +118,12 @@ func (s *Server) resumeInterruptedRuns() {
 			if err != nil {
 				return nil, err
 			}
-			return filesResult(stored.Object, result)
+			return filesResult(object, result)
 		})
+		if resumed == nil {
+			s.logger.Warn("run %s vanished before it could be resumed", stored.ID)
+			continue
+		}
 		s.logger.Info("run %s resumed after a restart (prompt %s)", stored.ID, promptID)
 	}
 }

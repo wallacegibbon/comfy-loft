@@ -8502,7 +8502,10 @@ sound alike.
 - **Collecting, not resubmitting.** `Runner.Collect` takes a prompt id and does the half of a run that is left:
   wait for `/history`, download the files, hand them back. Nothing is submitted, nothing is paid for twice.
 - **Resumed first.** `resumeInterruptedRuns` runs before the server serves anything, so the queue that was
-  interrupted is the queue that resumes.
+  interrupted is the queue that resumes. It hands the task back by **id** (`Store.Resume`), because `Get` and
+  `List` hand out *snapshots*: enqueuing one of those runs the job against a copy — the output file lands in
+  the canvas, and the record the canvas reads stays `running` for ever. That is not a hypothetical: the first
+  version of this did exactly that, and a video sat finished on disk with the node still saying 等待结果.
 - **The canvas says so.** `resumed` is in the run payload, and a node watching a resumed run drops its step
   ring and says 等待结果 / "Awaiting result — reattached after a gateway restart, so there is no progress to
   show". The step count and the preview frames come from ComfyUI's socket bound to the process that
