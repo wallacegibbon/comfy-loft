@@ -79,7 +79,7 @@ the canvas frontend is a self-contained subtree beside it (see Credits):
 ├── docs/              # gateway API and env vars, the run protocol, prompt optimization, runtime deps
 ├── tools/             # development scripts
 ├── Makefile           # make build / check / check-full / verify-static / frontend / frontend-check
-└── start.sh           # builds what is missing, then starts the gateway (which serves the canvas)
+└── start.sh           # builds what is missing or out of date, then starts the gateway (serves the canvas)
 ```
 
 Two directories carry the runtime assets, and the split is deliberate:
@@ -125,7 +125,7 @@ What Chinese still lives in the source, and why each line is data rather than co
 ```bash
 # Dependencies (first run)
 make frontend          # installs frontend deps if needed, then vite build
-make build             # Go gateway, static binary; start.sh builds it too if missing
+make build             # Go gateway, static binary; start.sh rebuilds it when it is out of date
 
 # Configure and start
 cp .env.example .env   # adjust COMFY_URL / GATEWAY_HOST for this machine
@@ -142,6 +142,11 @@ ComfyUI `http://127.0.0.1:8188` must already be running; the workbench only conn
 > without starting anything, and `make frontend-check` typechecks without emitting. `WEB_DIR` is what points
 > the gateway at it (`start.sh` and `make run` set it); a gateway without it answers `/api/*` only, which is
 > the development shape.
+>
+> The two binaries are treated the same way: `./start.sh` rebuilds `bin/comfyui-gateway` and
+> `bin/comfyloft-mcp` when either is missing or older than `cmd/`, `internal/`, `go.mod` or `go.sum`, so
+> editing a `.go` file and restarting is enough. A release directory holds no sources, so it starts with no
+> Go toolchain on the machine at all.
 
 ### Reaching the workbench from another device
 

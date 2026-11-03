@@ -54,15 +54,27 @@ fi
 # allow, and nothing written into the bundle the build produced.
 export WEB_DIR="$ROOT/frontend/dist"
 
-# The gateway is a static binary: build it once when it is missing, then startup is instant.
-# `make build` produces both it and the bridge.
-if [ ! -x "$GATEWAY_BIN" ]; then
-  echo "→ building the gateway (first run, needs the Go toolchain)"
+# The gateway and the bridge are build output too, and the rule is the same one the bundle above gets:
+# `internal/` moves on and `bin/` does not, so a start script that ran yesterday's binary against today's
+# sources is the invisible bug this check exists to prevent — worse than a stale page, because the canvas
+# and the gateway would disagree about the protocol rather than both being old.
+#
+# A release directory ships neither `cmd/` nor `internal/`, so there is nothing to compare against and no
+# toolchain is asked for: a static binary in a directory of its own still starts with nothing installed.
+needs_build() {
+  if [ ! -x "$1" ]; then return 0; fi
+  [ -n "$(find "$ROOT/cmd" "$ROOT/internal" "$ROOT/go.mod" "$ROOT/go.sum" "$ROOT/Makefile" \
+    -newer "$1" -print -quit 2>/dev/null)" ]
+}
+
+if needs_build "$GATEWAY_BIN" || needs_build "$MCP_BIN"; then
+  command -v go >/dev/null 2>&1 || {
+    echo "the gateway binaries are missing or older than their sources, and there is no Go toolchain here; run: make build" >&2
+    exit 1
+  }
+  echo "→ building the gateway and the bridge (missing, or older than their sources)"
   ( cd "$ROOT" && make build ) || { echo "gateway build failed" >&2; exit 1; }
 fi
-
-# The bridge is spawned by AlayaCore from the static mcp.conf, which names it beside the gateway binary.
-[ -x "$MCP_BIN" ] || { echo "missing $MCP_BIN; run: make build" >&2; exit 1; }
 
 echo "→ canvas    http://${GATEWAY_HOST}:${GATEWAY_PORT}   (served by the gateway)"
 echo "→ gateway   http://${GATEWAY_HOST}:${GATEWAY_PORT}   (ComfyUI at ${COMFY_URL})"

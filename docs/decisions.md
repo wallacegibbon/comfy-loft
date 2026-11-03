@@ -7913,3 +7913,33 @@ that path is covered, but the round trip was read from a socket, not off a scree
 `internal/server/agent_e2e_test.go`, `frontend/src/services/api/{runs,image,audio,video}.ts`,
 `frontend/src/pages/canvas/hooks/{use-canvas-agent-tools,use-generation-runs}.ts`,
 `frontend/src/pages/canvas/project.tsx`, `docs/protocol.md`, `docs/gateway.md`.
+
+## 226. The start script rebuilds the binaries too, not only the bundle
+
+**Decision** `./start.sh` runs `make build` when `bin/comfyui-gateway` or `bin/comfyloft-mcp` is missing or
+older than `cmd/`, `internal/`, `go.mod`, `go.sum` or the `Makefile`. It is the rule #181 already applies to
+the canvas bundle, and it replaces the check that only asked whether the gateway binary existed.
+
+**Why** "Is the binary there" answers *has this ever been built*, not *is this the build this tree makes*.
+Edit a `.go` file, run `./start.sh`, and the previous binary starts — silently, with the bundle beside it
+rebuilt from the new sources. That is the failure #181 was written to end, one half worse: the two sides are
+then from different trees, so they can disagree about the protocol instead of both being merely old — a
+panel waiting for a `usage` event from a gateway that predates it, with nothing in the log to say so.
+
+**Cost** One `find` per binary per start — the cost #181 already accepted, and Go's build cache makes the
+rebuild itself a fraction of a second when it happens at all. The `Makefile` is on the list because the build
+recipe is part of what produces the binary; the data files are deliberately not, since `workflows/`,
+`resources.json` and `prompts/` are read at run time and nothing is embedded (#219).
+
+A release directory holds neither `cmd/` nor `internal/`, so there is nothing newer to find, the check passes,
+and no toolchain is asked for — which is what keeps "a static binary and nothing else" a supported layout.
+That is also the case the error message has to serve: a binary missing on a machine with no `go` now says
+both halves of it ("missing or older than their sources, and there is no Go toolchain here; run: make build").
+
+**Tested** By hand, against a copy of the script that stops before `exec`: nothing touched → no build;
+`touch internal/server/run_notice.go` → "→ building the gateway and the bridge (missing, or older than their
+sources)", both rebuilt; immediately again → no build; `bin/` and `frontend/dist/` copied into a directory
+with no sources and started under `env -i PATH=/usr/bin:/bin` → starts, no toolchain needed; the same copy
+with `bin/comfyloft-mcp` removed → exit 1 with the sentence above. The script is not part of `make check`.
+
+**Where** `start.sh`, `README.md`.
