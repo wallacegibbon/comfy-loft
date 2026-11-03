@@ -38,6 +38,8 @@ export type Run = {
     started_at?: string | null;
     finished_at?: string | null;
     prompt_id?: string;
+    /** True for a run the gateway re-attached to after a restart: it has no progress to report (#236). */
+    resumed?: boolean;
 };
 
 /**

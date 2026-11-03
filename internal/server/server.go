@@ -164,6 +164,9 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 	// What happens at the end of a run: the agent that asked for it is told, as a message from the user
 	// (run_notice.go). Wired before the first request, so a run cannot finish with nobody listening.
 	tasks.SetOnFinish(server.onRunFinished)
+	// Runs that were out when this process last stopped are still rendering: hand them back to the queue
+	// before serving anything, so a restart costs the progress bar and not the work (#236).
+	server.resumeInterruptedRuns()
 	go server.sweepAllCanvasFiles()
 	if err := server.startMCPListener(); err != nil {
 		return nil, err

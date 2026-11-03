@@ -22,7 +22,12 @@ type VideoUpscaleSource = { name: string; type?: string; url?: string; storageKe
 type VideoInterpolateSource = VideoUpscaleSource;
 type VideoInterpolateParams = { multiplier: 2 | 3 };
 export type VideoPreview = { url: string; mime?: string; step?: number; total?: number };
-type WaitOptions = RequestOptions & { onPreview?: (preview: VideoPreview | null) => void; onSteps?: (steps: { step: number; total: number }) => void };
+type WaitOptions = RequestOptions & {
+    onPreview?: (preview: VideoPreview | null) => void;
+    onSteps?: (steps: { step: number; total: number }) => void;
+    /** Every read of the run, for what a poll says beyond steps and previews — "this one was resumed". */
+    onPoll?: (run: Run) => void;
+};
 /**
  * A video run renders for minutes, so it is polled slower than an image: the step count and the
  * preview frame are the only things a poll adds, and both change slowly.
@@ -167,6 +172,7 @@ async function waitForVideoRun(config: AiConfig, task: VideoGenerationTask, opti
             signal: options?.signal,
             intervalMs: VIDEO_RUN_INTERVAL_MS,
             onProgress: (current) => {
+                options?.onPoll?.(current);
                 const preview = current.preview;
                 if (preview?.url) {
                     options?.onPreview?.({

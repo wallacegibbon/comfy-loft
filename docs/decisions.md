@@ -8490,3 +8490,41 @@ sound alike.
 `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`,
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
 `frontend/tests/{canvas-resumable-runs,api-runs,api-video-runs,model-selection}.test.ts`.
+
+## 236. A restart costs the progress bar, not the run
+
+**Decision** The gateway picks up the runs it was watching when it stopped.
+
+- **The record survives.** `task.Load` no longer fails a task that was `running` or `queued` *and* has a
+  prompt id: nobody submitted nothing, ComfyUI has been rendering it the whole time, and the only thing the
+  dead process took with it is the goroutine that was watching. Such a task is marked `Resumed` and left
+  alone. A task with no prompt id was never submitted, so it is failed with the reason it already had.
+- **Collecting, not resubmitting.** `Runner.Collect` takes a prompt id and does the half of a run that is left:
+  wait for `/history`, download the files, hand them back. Nothing is submitted, nothing is paid for twice.
+- **Resumed first.** `resumeInterruptedRuns` runs before the server serves anything, so the queue that was
+  interrupted is the queue that resumes.
+- **The canvas says so.** `resumed` is in the run payload, and a node watching a resumed run drops its step
+  ring and says 等待结果 / "Awaiting result — reattached after a gateway restart, so there is no progress to
+  show". The step count and the preview frames come from ComfyUI's socket bound to the process that
+  submitted; without that process there is nothing honest to draw, and a frozen bar reads as "stuck".
+
+**Why** #235 made a *reload* survivable and left the one case that costs real money: restarting the gateway
+mid-video. The render keeps going on ComfyUI — the gateway simply stopped watching — so recovering it is one
+`/history` call and the download that was going to happen anyway. The alternative (start over) pays for the
+same minutes twice and leaves ComfyUI working on a clip nobody will collect.
+
+**What this does not do** No progress for a resumed run, by construction (see above). A task that was *queued*
+and not yet submitted is lost by a restart — it never cost GPU time, and pressing generate again is the fix;
+that case is why `Resumed` is a per-task fact rather than a global "restart happened". And nothing survives
+**ComfyUI** restarting: if its history does not know the prompt, the collect fails and the task says so.
+
+**Tested** `make check` (three new: a submitted task comes back `Resumed` and alive while an unsubmitted one is
+failed; `Collect` reattaches and never submits, and fails for a prompt ComfyUI does not know). `npx vitest run`
+264. `npm run check` (i18n 822/808). `npm run build`. Not exercised in a real restart: the case worth trying is
+a video mid-render, `Ctrl+C` and `./start.sh`, then watching the node say 等待结果 and finish with the clip.
+
+**Where** `internal/task/task.go`, `internal/generate/runner.go`, `internal/server/{server.go,runs.go,routes_runs.go}`,
+`frontend/src/types/canvas.ts`, `frontend/src/services/api/{runs,video}.ts`,
+`frontend/src/pages/canvas/{project.tsx,hooks/use-generation-runs.ts}`,
+`frontend/src/components/canvas/canvas-node.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
+`internal/task/task_test.go`, `internal/generate/generate_test.go`.

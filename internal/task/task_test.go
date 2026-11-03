@@ -551,3 +551,68 @@ func TestTheAskIsOnTheRecordAndAReplayedOneReportsNobody(t *testing.T) {
 		t.Errorf("a run found on disk reported itself %d time(s)", got)
 	}
 }
+
+// A run that was out when the gateway stopped is not a run that failed.
+//
+// The render belongs to ComfyUI and did not stop because this process did, so the record keeps its prompt id
+// and comes back marked `Resumed` for the server to re-attach to. A task that never got a prompt id was
+// never submitted — there is nothing to pick up, and saying so is the honest answer (#236).
+func TestARestartKeepsASubmittedTaskAndFailsAnUnsubmittedOne(t *testing.T) {
+	store := newStore(t)
+	submitted := store.Create(testCanvas, ObjectVideo, "video-test", map[string]any{"prompt": "x"}, nil)
+	store.Enqueue(submitted, func(_ *Task, progress func(Update), ctx context.Context) (*Result, error) {
+		progress(Update{Progress: 0.3, PromptID: "p_kept"})
+		<-ctx.Done() // still rendering when the process goes away
+		return nil, ctx.Err()
+	})
+	waitFor(t, "prompt id", func() bool { return store.Get(submitted.ID).PromptID != nil })
+
+	// A second task that was queued behind it and never submitted.
+	unsubmitted := store.Create(testCanvas, ObjectImage, "image-test", map[string]any{"prompt": "y"}, nil)
+	if unsubmitted.Status != "queued" {
+		t.Fatalf("initial status = %q, want queued", unsubmitted.Status)
+	}
+
+	store.Close()
+	store = reopen(t, store)
+	store.Load()
+
+	kept := store.Get(submitted.ID)
+	if kept == nil {
+		t.Fatal("the submitted task disappeared")
+	}
+	if !kept.Resumed {
+		t.Error("a submitted task must come back marked Resumed")
+	}
+	if kept.Status != "running" && kept.Status != "queued" {
+		t.Errorf("status = %q, want it left alone for the server to re-attach", kept.Status)
+	}
+	if kept.PromptID == nil || *kept.PromptID != "p_kept" {
+		t.Errorf("prompt id = %v, want p_kept", kept.PromptID)
+	}
+
+	dropped := store.Get(unsubmitted.ID)
+	if dropped == nil {
+		t.Fatal("the unsubmitted task disappeared")
+	}
+	if dropped.Status != "failed" {
+		t.Errorf("unsubmitted status = %q, want failed", dropped.Status)
+	}
+}
+
+func reopen(t *testing.T, store *Store) *Store {
+	t.Helper()
+	dir := store.dataDir
+	files := filepath.Join(dir, "files")
+	reopened, err := New(Options{
+		DataDir:       dir,
+		FilesDirFor:   func(string) (string, error) { return files, nil },
+		PublicBaseURL: "http://127.0.0.1:8190",
+		Logger:        logx.NewWithWriter("test", os.Stderr),
+	})
+	if err != nil {
+		t.Fatalf("reopen New: %v", err)
+	}
+	t.Cleanup(reopened.Close)
+	return reopened
+}

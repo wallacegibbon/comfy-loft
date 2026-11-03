@@ -510,10 +510,15 @@ function LoadingContent({ theme, node }: Pick<NodeContentRendererProps, "theme" 
             </div>
         );
     }
+    // A run the gateway picked up after a restart has no progress to report: the step count and the preview
+    // frames came from the socket bound to the process that submitted. Saying so is the whole point — a
+    // spinner with a frozen number reads as "stuck" (#236).
+    const resumed = Boolean(node.metadata?.progressUnavailable);
     return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.activeStroke }}>
+        <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-4 text-center" style={{ color: theme.node.activeStroke }}>
             <div className="size-10 animate-spin rounded-full border-2" style={{ borderColor: theme.node.stroke, borderTopColor: theme.node.activeStroke }} />
-            <span className="text-[10px] tracking-[0.2em]">{t("canvas.node.generating")}</span>
+            <span className="text-[10px] tracking-[0.2em]">{resumed ? t("canvas.node.awaitingResult") : t("canvas.node.generating")}</span>
+            {resumed ? <span className="text-[10px] leading-relaxed opacity-60">{t("canvas.node.awaitingResultHint")}</span> : null}
         </div>
     );
 }

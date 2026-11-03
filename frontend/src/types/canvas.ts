@@ -151,6 +151,12 @@ export type CanvasNodeMetadata = {
      * into this one (`adoptLegacyRunIds`).
      */
     runId?: string;
+    /**
+     * Set while a run is being watched that cannot report progress — one the gateway picked up again after a
+     * restart. The step count and preview frames come from the socket bound to the process that submitted,
+     * so the node says it is waiting instead of drawing a bar that will not move (#236).
+     */
+    progressUnavailable?: boolean;
     previewUrl?: string;
     previewMime?: string;
     previewStep?: number;

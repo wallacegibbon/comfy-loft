@@ -131,11 +131,27 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
      * Run progress is the only source of the step ring for audio: the node is not a video task, so
      * there is no preview stream to read steps from.
      */
+    /**
+     * What one poll tells the node about how far along it is.
+     *
+     * `resumed` is the gateway saying it re-attached to a run whose watching it had lost: the step count and
+     * the previews came from the socket bound to the process that submitted, so there is nothing to show, and
+     * the node says so instead of drawing a bar that will not move (#236). Ordinary runs are untouched — the
+     * flag is only ever raised by a poll that reports one.
+     */
     const setRunStepProgress = useCallback(
-        (nodeId: string, progress?: RunProgress) => {
+        (nodeId: string, progress?: RunProgress, resumed = false) => {
             const total = progress?.total && progress.total > 0 ? progress.total : 0;
             const step = Math.max(0, progress?.step || 0);
-            setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, stepProgress: total > 0 ? { step: Math.min(total, step), total } : undefined } } : node)));
+            const stepProgress = total > 0 ? { step: Math.min(total, step), total } : undefined;
+            const progressUnavailable = Boolean(resumed) || undefined;
+            setNodes((prev) =>
+                prev.map((node) => {
+                    if (node.id !== nodeId) return node;
+                    if (node.metadata?.stepProgress === stepProgress && node.metadata?.progressUnavailable === progressUnavailable) return node;
+                    return { ...node, metadata: { ...node.metadata, stepProgress, progressUnavailable } };
+                }),
+            );
         },
         [setNodes],
     );
@@ -343,10 +359,12 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                         setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, runId } } : node)));
                         run.start({ started: true, runId });
                     },
-                    onProgress: (run) => setRunStepProgress(nodeId, run.progress),
+                    onProgress: (run) => setRunStepProgress(nodeId, run.progress, run.resumed),
                 });
                 setNodes((prev) =>
-                    prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...audioMetadata(audio), prompt, ...buildAudioGenerationMetadata(generationConfig), runId: undefined, stepProgress: undefined } } : node)),
+                    prev.map((node) =>
+                        node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...audioMetadata(audio), prompt, ...buildAudioGenerationMetadata(generationConfig), runId: undefined, stepProgress: undefined, progressUnavailable: undefined } } : node,
+                    ),
                 );
             } finally {
                 finishGenerationRequest(nodeId, controller);
@@ -501,21 +519,27 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                 controller = startGenerationRequest(node.id, node.id, node.id);
                 const finished = await waitForRun(generationConfig, runId, {
                     signal: controller.signal,
-                    onProgress: (run) => setRunStepProgress(node.id, run.progress),
+                    onProgress: (run) => setRunStepProgress(node.id, run.progress, run.resumed),
                     // Watching a run must not kill it: the page leaving is exactly the case this exists for.
                     cancelOnAbort: false,
                 });
                 const audio = await generatedAudio(requestConfig, finished);
                 setNodes((prev) =>
                     prev.map((item) =>
-                        item.id === node.id ? { ...item, metadata: { ...item.metadata, ...audioMetadata(audio), prompt: item.metadata?.prompt, ...buildAudioGenerationMetadata(generationConfig), runId: undefined, stepProgress: undefined } } : item,
+                        item.id === node.id
+                            ? { ...item, metadata: { ...item.metadata, ...audioMetadata(audio), prompt: item.metadata?.prompt, ...buildAudioGenerationMetadata(generationConfig), runId: undefined, stepProgress: undefined, progressUnavailable: undefined } }
+                            : item,
                     ),
                 );
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
                 const { ended, errorDetails } = failedWatch(error, t("canvas.runtime.generationFailed"));
                 if (!silent) toast.error(errorDetails);
-                setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, runId: ended ? undefined : item.metadata?.runId, stepProgress: undefined } } : item)));
+                setNodes((prev) =>
+                    prev.map((item) =>
+                        item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, runId: ended ? undefined : item.metadata?.runId, stepProgress: undefined, progressUnavailable: undefined } } : item,
+                    ),
+                );
             } finally {
                 if (controller) finishGenerationRequest(node.id, controller);
                 setRunningNodeId((current) => (current === node.id ? null : current));
@@ -553,18 +577,24 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                 controller = startGenerationRequest(node.id, node.id, node.id);
                 const finished = await waitForRun(requestConfig, runId, {
                     signal: controller.signal,
-                    onProgress: (run) => setRunStepProgress(node.id, run.progress),
+                    onProgress: (run) => setRunStepProgress(node.id, run.progress, run.resumed),
                     // Watching a run must not kill it: the page leaving is exactly the case this exists for.
                     cancelOnAbort: false,
                 });
                 const image = await generatedImage(requestConfig, finished, { signal: controller.signal });
                 await fillImage(node.id, image);
-                setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined, runId: undefined, stepProgress: undefined } } : item)));
+                setNodes((prev) =>
+                    prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined, runId: undefined, stepProgress: undefined, progressUnavailable: undefined } } : item)),
+                );
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
                 const { ended, errorDetails } = failedWatch(error, t("canvas.runtime.generationFailed"));
                 if (!silent) toast.error(errorDetails);
-                setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, runId: ended ? undefined : item.metadata?.runId, stepProgress: undefined } } : item)));
+                setNodes((prev) =>
+                    prev.map((item) =>
+                        item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, runId: ended ? undefined : item.metadata?.runId, stepProgress: undefined, progressUnavailable: undefined } } : item,
+                    ),
+                );
             } finally {
                 if (controller) finishGenerationRequest(node.id, controller);
                 setRunningNodeId((current) => (current === node.id ? null : current));

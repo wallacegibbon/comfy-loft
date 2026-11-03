@@ -157,7 +157,49 @@ func (r *Runner) RunWorkflow(ctx context.Context, opts RunOptions) (*RunResult, 
 	}
 	r.emit(opts.OnProgress, ProgressEvent{Phase: "completed", PromptID: promptID, Progress: 0.65})
 
-	collected := collectOutputFiles(history, opts.IncludePreviewOutputs)
+	files, err := r.downloadOutputs(ctx, promptID, collectOutputFiles(history, opts.IncludePreviewOutputs))
+	if err != nil {
+		return nil, err
+	}
+	r.emit(opts.OnProgress, ProgressEvent{Phase: "downloaded", PromptID: promptID, Progress: 0.95})
+	return &RunResult{PromptID: promptID, Files: files, Workflow: finalGraph}, nil
+}
+
+// Collect re-attaches to a prompt that was submitted before the gateway restarted.
+//
+// ComfyUI is still working on it — or has finished it — and all the old process lost was the goroutine that
+// was watching. So nothing is submitted here: the prompt id on the task record is enough to ask what happened
+// and collect the result, which is the one thing a restart must not cost (#236).
+//
+// What is *not* recovered is the live progress: the step count and preview frames come from ComfyUI's socket
+// bound to the process that submitted, so a resumed run reports no progress at all — and the task says so
+// (`Resumed`), which is what the canvas shows instead of a progress bar that is not moving.
+func (r *Runner) Collect(ctx context.Context, promptID string, opts RunOptions) (*RunResult, error) {
+	timeoutMs := opts.TimeoutMs
+	if timeoutMs <= 0 {
+		timeoutMs = r.timeoutMs
+	}
+	pollInterval := opts.PollIntervalMs
+	if pollInterval <= 0 {
+		pollInterval = r.pollIntervalMs
+	}
+
+	history, err := r.waitForHistory(ctx, promptID, timeoutMs, pollInterval)
+	if err != nil {
+		return nil, err
+	}
+	r.emit(opts.OnProgress, ProgressEvent{Phase: "completed", PromptID: promptID, Progress: 0.65})
+
+	files, err := r.downloadOutputs(ctx, promptID, collectOutputFiles(history, opts.IncludePreviewOutputs))
+	if err != nil {
+		return nil, err
+	}
+	r.emit(opts.OnProgress, ProgressEvent{Phase: "downloaded", PromptID: promptID, Progress: 0.95})
+	return &RunResult{PromptID: promptID, Files: files}, nil
+}
+
+// downloadOutputs fetches the files a finished run wrote, the one step every run ends with.
+func (r *Runner) downloadOutputs(ctx context.Context, promptID string, collected []collectedFile) ([]OutputFile, error) {
 	if len(collected) == 0 {
 		return nil, &httpx.Error{
 			Status:  http.StatusBadGateway,
@@ -165,7 +207,6 @@ func (r *Runner) RunWorkflow(ctx context.Context, opts RunOptions) (*RunResult, 
 			Message: "ComfyUI produced no output files",
 		}
 	}
-
 	files := make([]OutputFile, 0, len(collected))
 	for _, item := range collected {
 		viewed, err := r.comfy.View(ctx, item.Filename, item.Subfolder, item.Type)
@@ -185,8 +226,7 @@ func (r *Runner) RunWorkflow(ctx context.Context, opts RunOptions) (*RunResult, 
 			NodeID:    item.NodeID,
 		})
 	}
-	r.emit(opts.OnProgress, ProgressEvent{Phase: "downloaded", PromptID: promptID, Progress: 0.95})
-	return &RunResult{PromptID: promptID, Files: files, Workflow: finalGraph}, nil
+	return files, nil
 }
 
 // waitForHistory polls /history until the job finishes, fails, or times out.

@@ -444,6 +444,8 @@ export default {
             renameHint: "双击修改节点名称",
             group: "组",
             nodeCount: "{{count}} 个节点",
+            awaitingResult: "等待结果",
+            awaitingResultHint: "网关重启后重新接上了这次运行，进度暂时看不到",
             generating: "生成中",
             failed: "生成失败",
             missingNode: "未知节点",

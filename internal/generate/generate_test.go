@@ -1,10 +1,12 @@
 package generate
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -314,4 +316,52 @@ func newComfyClient(t *testing.T, url string) *comfy.Client {
 		t.Fatalf("comfy.New: %v", err)
 	}
 	return client
+}
+
+// Collect re-attaches to a prompt ComfyUI is already working on: it asks, it collects, and it never submits.
+// That is the whole point of a restart being survivable — the render was never ours to lose (#236).
+func TestCollectReattachesWithoutSubmittingAnything(t *testing.T) {
+	var submissions atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/history/"):
+			_, _ = w.Write([]byte(`{"p1":{"status":{"completed":true,"status_str":"success"},"outputs":{"9":{"images":[{"filename":"a.png","subfolder":"","type":"output"}]}}}}`))
+		case r.URL.Path == "/view":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("PNGDATA"))
+		default:
+			submissions.Add(1)
+			w.WriteHeader(http.StatusTeapot)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	runner := NewRunner(newComfyClient(t, server.URL), nil, logx.NewWithWriter("test", io.Discard), 5000, 1)
+	result, err := runner.Collect(context.Background(), "p1", RunOptions{TimeoutMs: 5000, PollIntervalMs: 1})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if len(result.Files) != 1 || string(result.Files[0].Buffer) != "PNGDATA" {
+		t.Fatalf("files = %d (%v), want the one ComfyUI produced", len(result.Files), result.Files)
+	}
+	if result.Files[0].MimeType != "image/png" {
+		t.Errorf("mime = %q, want image/png from the view response", result.Files[0].MimeType)
+	}
+	if submissions.Load() != 0 {
+		t.Errorf("Collect submitted %d workflows: a resumed run must not be submitted again", submissions.Load())
+	}
+}
+
+// A prompt ComfyUI does not know is not collectable: the answer is a failure, honestly reported.
+func TestCollectFailsWhenComfyUIHasNoSuchPrompt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"prompt not found"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	runner := NewRunner(newComfyClient(t, server.URL), nil, logx.NewWithWriter("test", io.Discard), 5000, 1)
+	if _, err := runner.Collect(context.Background(), "gone", RunOptions{TimeoutMs: 5000, PollIntervalMs: 1}); err == nil {
+		t.Fatal("Collect: want an error for a prompt ComfyUI does not know, got nil")
+	}
 }

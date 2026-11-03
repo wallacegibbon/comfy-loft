@@ -430,6 +430,8 @@ export default {
             renameHint: "Double-click to rename the node",
             group: "Group",
             nodeCount: "{{count}} nodes",
+            awaitingResult: "Awaiting result",
+            awaitingResultHint: "Reattached after a gateway restart, so there is no progress to show",
             generating: "Generating",
             failed: "Generation failed",
             missingNode: "Unknown node",

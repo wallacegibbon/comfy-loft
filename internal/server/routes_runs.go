@@ -476,6 +476,10 @@ func (s *Server) runPayload(stored *task.Task) map[string]any {
 		"created_at":  stored.CreatedAt,
 		"started_at":  stored.StartedAt,
 		"finished_at": stored.CompletedAt,
+		// A resumed run reports no progress: the step count and previews came from the socket bound to the
+		// process that submitted, and that process is gone. The canvas says so rather than drawing a bar
+		// that will not move (#236).
+		"resumed": stored.Resumed,
 	}
 	if stored.PromptID != nil {
 		payload["prompt_id"] = *stored.PromptID

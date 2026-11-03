@@ -103,10 +103,14 @@ type Task struct {
 	UpdatedAt   string         `json:"updatedAt"`
 	CompletedAt *string        `json:"completedAt"`
 	PromptID    *string        `json:"promptId"`
-	URL         *string        `json:"url"`
-	File        *string        `json:"file"`
-	MimeType    *string        `json:"mimeType"`
-	Bytes       int64          `json:"bytes"`
+	// Resumed marks a task the gateway picked up again after restarting: it was submitted, the render kept
+	// going on ComfyUI, and only the watching was lost. The canvas reads it to say "waiting for the result,
+	// progress unavailable" instead of showing a progress bar that will not move (#236).
+	Resumed  bool    `json:"resumed,omitempty"`
+	URL      *string `json:"url"`
+	File     *string `json:"file"`
+	MimeType *string `json:"mimeType"`
+	Bytes    int64   `json:"bytes"`
 	// Outputs is the full artifact list. File/URL/MimeType/Bytes above mirror the first
 	// one for the legacy single-file endpoints and for records written before this field.
 	Outputs []TaskOutput `json:"outputs,omitempty"`
@@ -284,6 +288,15 @@ func (s *Store) reconcileLocked(task *Task) {
 		return
 	}
 	if task.Status == "running" || task.Status == "queued" {
+		// Submitted to ComfyUI: the render belongs to ComfyUI and did not stop because this process did.
+		// The only thing lost is the goroutine that was watching, so the task stays as it was and the
+		// server re-attaches to it (`resumeInterruptedRuns`). A task that never got a prompt id is a
+		// different thing: nothing was submitted, so nothing can be picked up (#236).
+		if task.PromptID != nil && *task.PromptID != "" {
+			task.Resumed = true
+			task.UpdatedAt = util.NowIso()
+			return
+		}
 		task.Status = "failed"
 		message := "the gateway restarted before the task finished"
 		task.Error = &message

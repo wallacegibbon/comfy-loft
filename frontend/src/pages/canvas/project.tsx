@@ -319,6 +319,17 @@ function InfiniteCanvasPage() {
     const updateVideoSteps = useCallback((nodeId: string, steps: { step: number; total: number }) => {
         setNodes((prev) => prev.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, stepProgress: steps } } : item)));
     }, []);
+    /**
+     * Say that this run cannot report progress.
+     *
+     * A video's steps and previews come from ComfyUI's socket, which the gateway bound in the process that
+     * submitted it. A run it re-attached to after a restart has neither, so the node says it is waiting
+     * rather than showing a count that has stopped (#236).
+     */
+    const noteRunResumed = useCallback((nodeId: string, resumed: boolean) => {
+        if (!resumed) return;
+        setNodes((prev) => prev.map((item) => (item.id === nodeId && !item.metadata?.progressUnavailable ? { ...item, metadata: { ...item.metadata, progressUnavailable: true, stepProgress: undefined } } : item)));
+    }, []);
 
     /** What a video run may be told beyond the request itself. */
     type CompleteVideoOptions = {
@@ -357,10 +368,19 @@ function InfiniteCanvasPage() {
                         : item,
                 ),
             );
-            const video = await waitForVideoGenerationTask(config, task, { signal, onPreview: (preview) => updateVideoPreview(nodeId, preview), onSteps: (steps) => updateVideoSteps(nodeId, steps) });
-            setNodes((prev) => prev.map((item) => (item.id === nodeId ? applyGeneratedVideo(item, video, { prompt, model: config.model, ...extra, previewUrl: undefined, previewMime: undefined, previewStep: undefined, previewTotal: undefined }) : item)));
+            const video = await waitForVideoGenerationTask(config, task, {
+                signal,
+                onPreview: (preview) => updateVideoPreview(nodeId, preview),
+                onSteps: (steps) => updateVideoSteps(nodeId, steps),
+                onPoll: (run) => noteRunResumed(nodeId, Boolean(run.resumed)),
+            });
+            setNodes((prev) =>
+                prev.map((item) =>
+                    item.id === nodeId ? applyGeneratedVideo(item, video, { prompt, model: config.model, ...extra, previewUrl: undefined, previewMime: undefined, previewStep: undefined, previewTotal: undefined, progressUnavailable: undefined }) : item,
+                ),
+            );
         },
-        [updateVideoPreview, updateVideoSteps],
+        [noteRunResumed, updateVideoPreview, updateVideoSteps],
     );
 
     const pollVideoNodeTask = useCallback(
@@ -385,7 +405,12 @@ function InfiniteCanvasPage() {
                 const video = await waitForVideoGenerationTask(
                     generationConfig,
                     { id: taskId, model: generationConfig.model },
-                    { signal: controller.signal, onPreview: (preview) => updateVideoPreview(node.id, preview), onSteps: (steps) => updateVideoSteps(node.id, steps) },
+                    {
+                        signal: controller.signal,
+                        onPreview: (preview) => updateVideoPreview(node.id, preview),
+                        onSteps: (steps) => updateVideoSteps(node.id, steps),
+                        onPoll: (run) => noteRunResumed(node.id, Boolean(run.resumed)),
+                    },
                 );
                 setNodes((prev) =>
                     prev.map((item) =>
@@ -427,6 +452,7 @@ function InfiniteCanvasPage() {
                                       previewMime: undefined,
                                       previewStep: undefined,
                                       previewTotal: undefined,
+                                      progressUnavailable: undefined,
                                   },
                               }
                             : item,
@@ -440,7 +466,7 @@ function InfiniteCanvasPage() {
                 }
             }
         },
-        [effectiveConfig, finishGenerationRequest, isAiConfigReady, openPreferences, startGenerationRequest, t, updateVideoPreview, updateVideoSteps],
+        [effectiveConfig, finishGenerationRequest, isAiConfigReady, noteRunResumed, openPreferences, startGenerationRequest, t, updateVideoPreview, updateVideoSteps],
     );
 
     const stopGenerationByRunningId = useCallback(

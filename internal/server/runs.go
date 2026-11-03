@@ -85,3 +85,38 @@ func defaultObjectExt(object string) string {
 		return "mp4"
 	}
 }
+
+// resumeInterruptedRuns picks up the runs the gateway was watching when it stopped.
+//
+// A task that was submitted and has a prompt id is handed back to the queue with a job that only collects:
+// ComfyUI has been rendering it all along, so nothing is submitted again and no GPU time is paid twice. The
+// task is marked `Resumed`, which is what tells the canvas there will be no progress to show (#236).
+//
+// Anything else the restart found is left alone: a task with no prompt id was never submitted, and the store
+// has already failed it with the reason.
+func (s *Server) resumeInterruptedRuns() {
+	for _, stored := range s.tasks.List() {
+		if !stored.Resumed || stored.PromptID == nil || *stored.PromptID == "" {
+			continue
+		}
+		if stored.Status != "running" && stored.Status != "queued" {
+			continue
+		}
+		promptID := *stored.PromptID
+		s.tasks.Enqueue(stored, func(_ *task.Task, progress func(task.Update), jobCtx context.Context) (*task.Result, error) {
+			opts := generate.RunOptions{
+				TimeoutMs:      s.runTimeout(stored.Object),
+				PollIntervalMs: s.cfg.PollIntervalMs,
+				OnProgress: func(event generate.ProgressEvent) {
+					progress(task.Update{Progress: event.Progress})
+				},
+			}
+			result, err := s.runner.Collect(jobCtx, promptID, opts)
+			if err != nil {
+				return nil, err
+			}
+			return filesResult(stored.Object, result)
+		})
+		s.logger.Info("run %s resumed after a restart (prompt %s)", stored.ID, promptID)
+	}
+}
