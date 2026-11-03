@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { citationLabel, mentionSegments, referenceBlock, referenceEntries, referenceLine, withoutReferences } from "@/lib/canvas/agent-references";
+import { citationLabel, mentionResolver, referenceBlock, referenceEntries, referenceLine, withoutReferences } from "@/lib/canvas/agent-references";
 
 /**
  * The block is plumbing that the agent needs and the reader does not. These check the two directions
@@ -62,6 +62,9 @@ describe("citationLabel", () => {
 });
 
 describe("mentionSegments", () => {
+    /** The resolver is prepared once per message and asked once per run of text; this is one run. */
+    const mentionSegments = (text: string, citations: { id: string; label: string }[], nodes: { id: string; label: string }[]) => mentionResolver(citations, nodes)(text);
+
     const nodes = [
         { id: "image-1", label: "图片" },
         { id: "image-2", label: "图片" },

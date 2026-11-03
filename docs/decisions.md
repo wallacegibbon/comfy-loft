@@ -8569,6 +8569,34 @@ is 1.0 kB and has no tables. Handwritten: 0 packages, and the built entry grew 5
 164.2 kB gzipped) — the cost is a file to maintain and its tests, which is the price the rest of this panel
 already pays.
 
+**What a frame costs** An answer arrives one delta at a time and every delta re-renders the panel, so the
+cost that matters is per frame, not per message. Measured in jsdom with a 4 kB answer streaming at four
+characters a frame (absolute numbers are jsdom's and run high; the ratios are what the fix is about):
+
+| transcript | before | after |
+| --- | --- | --- |
+| 1 answer streaming | 3.2 ms | 3.2 ms |
+| + 10 finished 4 kB answers | **73 ms** | 3.5 ms |
+| + 40 finished | — (never finished) | 3.6 ms |
+
+Three things got it flat, and none of them is a cache:
+
+- **A finished message is not rebuilt.** `AnswerBody` / `PlainBody` are `memo`, and their props are exactly
+  what they read — text, the message's citations, the canvas's labels, the accent colour — all of them
+  stable once a message is finished. Before this, every frame also parsed and rebuilt every finished answer
+  in the transcript, which is what the 73 ms was.
+- **The canvas's labels are mapped once per render** (`citationLabels`), not once per run of text. The old
+  walk called the translator for every node on every run: 166 runs × 50 nodes per frame.
+- **The citation tables are prepared once per message** (`mentionResolver`). Sorting the canvas's labels
+  inside the per-run scan cost 6.5 µs a run — 1 ms of every frame — and it is the same answer every time.
+  `mentionSegments` became the resolver's returned function; the queue that hands out one citation per
+  occurrence stayed per call, because that is per text and not per message.
+
+**Deliberately not done** The answer being written is still parsed and rebuilt whole on every delta. At 4 kB
+that is 0.05 ms of parsing, so incremental block reuse would trade a real amount of machinery (stable block
+keys, diffing a growing tail) for a rounding error. Also no virtualised transcript: the memo already makes a
+long conversation cost the same per frame as a short one.
+
 **Tested** `npx vitest run` 288 (24 new in `tests/markdown.test.ts`: paragraphs and soft breaks, heading
 levels, a fence that keeps `**` and pipes verbatim, an unclosed fence mid-stream, rules against bullets,
 quotes, lists that keep their indent / their start number / their loose spacing, tables with alignment, without

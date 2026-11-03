@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, Bot, ChevronRight, CircleCheck, CircleDashed, CircleX, Eraser, Info, LoaderCircle, Square, Wrench, X } from "lucide-react";
 
-import { citationLabel, mentionSegments, referenceBlock, referenceLine, type Citation } from "@/lib/canvas/agent-references";
+import { citationLabel, mentionResolver, referenceBlock, referenceLine, type Citation, type MentionSegment } from "@/lib/canvas/agent-references";
 import { textOf, transcriptEvent, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
 import { contextSegment, speedSegment } from "@/lib/canvas/agent-usage";
 import { nodeTitle } from "@/lib/canvas/node-title";
@@ -60,6 +60,16 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
 
     /** This canvas's conversation, by name. It is also the name of the file the agent keeps it in. */
     const session = useMemo(() => canvasAgent(canvasId), [canvasId]);
+
+    /**
+     * What each node is called, mapped once for the whole panel.
+     *
+     * Every run of text in every answer resolves `@label` against this, so mapping it inside that walk —
+     * once per run, translator call per node included — made a frame cost grow with the canvas times the
+     * answer (#237). The identity matters too: a finished answer is only rebuilt when something it reads
+     * has actually changed, and this is one of those things.
+     */
+    const citationLabels = useMemo(() => nodes.map((node) => ({ id: node.id, label: nodeTitle(node, t) })), [nodes, t]);
 
     /**
      * How full the context is and how fast the agent is going, as it last reported — plus the size of the
@@ -470,12 +480,10 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                                     // An answer is a document — the model writes lists and tables, and a `pre-wrap`
                                     // paragraph printed the pipes instead of the table (#237). What the user typed
                                     // keeps the line breaks it was typed with, so only this side is parsed.
-                                    <div key={`${message.id}-${index}`} className="leading-relaxed">
-                                        <AgentMarkdown text={part.text} renderText={(text) => withMentions(text, message.mentions, nodes, t, onFocusNode, theme.node.activeStroke)} />
-                                    </div>
+                                    <AnswerBody key={`${message.id}-${index}`} text={part.text} mentions={message.mentions} labels={citationLabels} color={theme.node.activeStroke} onFocusNode={onFocusNode} />
                                 ) : (
                                     <p key={`${message.id}-${index}`} className="whitespace-pre-wrap leading-relaxed">
-                                        {withMentions(part.text, message.mentions, nodes, t, onFocusNode, theme.node.activeStroke)}
+                                        <PlainBody key={`${message.id}-${index}`} text={part.text} mentions={message.mentions} labels={citationLabels} color={theme.node.activeStroke} onFocusNode={onFocusNode} />
                                     </p>
                                 ),
                             )}
@@ -637,13 +645,13 @@ function ReasoningBlock({ text }: { text: string }) {
  * A message is drawn one part at a time (#221), so each run of text is read on its own: two citations with
  * the same label on either side of a tool call resolve to the first of them twice, which is the fallback a
  * transcript written before labels were unique gets anyway.
+ *
+ * The canvas's labels arrive already mapped (`citationLabels`) rather than as nodes: this runs once per run
+ * of text in an answer, and mapping every node — calling the translator per node — once per run was a cost
+ * that grew with the square of the canvas (#237).
  */
-function withMentions(text: string, mentions: Citation[], nodes: CanvasNodeData[], translate: (key: string) => string, onFocusNode: (nodeId: string) => void, color: string): ReactNode {
-    const segments = mentionSegments(
-        text,
-        mentions,
-        nodes.map((node) => ({ id: node.id, label: nodeTitle(node, translate) })),
-    );
+function withMentions(text: string, resolve: (text: string) => MentionSegment[], onFocusNode: (nodeId: string) => void, color: string): ReactNode {
+    const segments = resolve(text);
     if (segments.every((segment) => segment.kind === "text")) return text;
     return segments.map((segment, index) =>
         segment.kind === "text" ? (
@@ -655,6 +663,38 @@ function withMentions(text: string, mentions: Citation[], nodes: CanvasNodeData[
         ),
     );
 }
+
+/**
+ * A message drawn as it was written — the user's own words, with its `@label`s as links.
+ *
+ * Memoised for the same reason `AnswerBody` is: the transcript re-renders on every frame of the answer that
+ * is still arriving, and a message that has not changed has nothing to say again.
+ */
+const PlainBody = memo(function PlainBody({ text, mentions, labels, color, onFocusNode }: { text: string; mentions: Citation[]; labels: Citation[]; color: string; onFocusNode: (nodeId: string) => void }) {
+    const resolve = useMemo(() => mentionResolver(mentions, labels), [mentions, labels]);
+    return <p className="whitespace-pre-wrap leading-relaxed">{withMentions(text, resolve, onFocusNode, color)}</p>;
+});
+
+/**
+ * An answer's words, and nothing rebuilt while they are not changing.
+ *
+ * A finished message never changes again, but the panel re-renders on every frame of the answer that is
+ * still arriving — so every finished answer in the transcript was parsed and rebuilt tens of times a
+ * second. Measured (jsdom, #237): a transcript of ten 4 kB answers cost 55 ms a frame that way, and 2.8 ms
+ * for the streaming one alone. The memo makes the frame cost the streaming answer and nothing else, which
+ * is why its props are exactly what the body reads and all of them are stable for a finished message: its
+ * text, the citations the message recorded, the canvas's labels and the accent colour.
+ */
+const AnswerBody = memo(function AnswerBody({ text, mentions, labels, color, onFocusNode }: { text: string; mentions: Citation[]; labels: Citation[]; color: string; onFocusNode: (nodeId: string) => void }) {
+    // Prepared once for the whole answer, not once per run of text inside it: the tables it needs are the
+    // canvas's labels, and sorting them a couple of hundred times a frame was a millisecond of every frame.
+    const resolve = useMemo(() => mentionResolver(mentions, labels), [mentions, labels]);
+    return (
+        <div className="leading-relaxed">
+            <AgentMarkdown text={text} renderText={(value) => withMentions(value, resolve, onFocusNode, color)} />
+        </div>
+    );
+});
 
 function describeNode(node: CanvasNodeData | undefined, label: string): string {
     if (!node) return "";

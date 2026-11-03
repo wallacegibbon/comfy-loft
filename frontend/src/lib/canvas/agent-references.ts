@@ -83,54 +83,63 @@ export function citationLabel(base: string, taken: string[]): string {
     }
 }
 
-type MentionSegment = { kind: "text"; text: string } | { kind: "link"; id: string; label: string };
+/** One run of a message: plain words, or a citation that is a link to a node. */
+export type MentionSegment = { kind: "text"; text: string } | { kind: "link"; id: string; label: string };
 
 /**
- * A message's text, cut into plain runs and `@label` citations, each link carrying the node's id.
+ * A message's citations, ready to be asked about one run of text at a time.
  *
- * The ids come from the message itself — the block it was sent with — so two nodes with the same name
- * are two different links even though they read the same; a transcript written before labels were made
- * unique is read the same way, one citation per occurrence in the order they were cited, and an
- * occurrence past the last of them stays on the node that was cited. A name the canvas still has is the
- * fallback, so an answer that mentions a node is clickable too; it is only ever used when the message
- * cited nothing by that name.
+ * What a mention means does not depend on the words being scanned: the ids come from the message itself —
+ * the block it was sent with — so two nodes with the same name are two different links even though they read
+ * the same, and a name the canvas still has is the fallback, so an answer that mentions a node is clickable
+ * too. A transcript written before labels were unique is read the same way: one citation per occurrence, in
+ * the order they were cited, and an occurrence past the last of them stays on the node that was cited (#163).
+ *
+ * Only the scan is per run of text. The two tables it needs — what the canvas calls each node, and the labels
+ * to look for longest-first — are built once per message. An answer is drawn one run at a time, so building
+ * them per run meant sorting the canvas's labels a couple of hundred times per frame, which measured as a
+ * millisecond of every frame of a streaming answer (#237).
  */
-export function mentionSegments(text: string, citations: Citation[], nodes: Citation[]): MentionSegment[] {
-    const cited = new Map<string, { queue: string[]; last: string }>();
-    for (const citation of citations) {
-        if (!citation.label) continue;
-        const entry = cited.get(citation.label);
-        if (entry) {
-            entry.queue.push(citation.id);
-            entry.last = citation.id;
-        } else cited.set(citation.label, { queue: [citation.id], last: citation.id });
-    }
+export function mentionResolver(citations: Citation[], nodes: Citation[]): (text: string) => MentionSegment[] {
     const named = new Map<string, string>();
     for (const node of nodes) {
         if (!node.label || named.has(node.label)) continue;
         named.set(node.label, node.id);
     }
+    const cited = citations.filter((citation) => citation.label);
+    const labels = [...new Set([...named.keys(), ...cited.map((citation) => citation.label)])].sort((a, b) => b.length - a.length);
+    if (!labels.length) return (text) => [{ kind: "text", text }];
 
-    const labels = [...new Set([...named.keys(), ...cited.keys()])].sort((a, b) => b.length - a.length);
-    if (!labels.length) return [{ kind: "text", text }];
+    return (text) => {
+        // The queue is per text, not per message: `withMentions` reads each part of an answer on its own, and
+        // the citations of a message are handed out in the order its runs ask for them (#221).
+        const queue = new Map<string, { pending: string[]; last: string }>();
+        for (const citation of cited) {
+            const entry = queue.get(citation.label);
+            if (entry) {
+                entry.pending.push(citation.id);
+                entry.last = citation.id;
+            } else queue.set(citation.label, { pending: [citation.id], last: citation.id });
+        }
 
-    const segments: MentionSegment[] = [];
-    let plain = "";
-    let index = 0;
-    while (index < text.length) {
-        const label = text[index] === "@" ? labels.find((candidate) => text.startsWith(candidate, index + 1)) : undefined;
-        const entry = label ? cited.get(label) : undefined;
-        const id = label ? (entry ? (entry.queue.length ? entry.queue.shift() : entry.last) : named.get(label)) : undefined;
-        if (!label || !id) {
-            plain += text[index];
-            index += 1;
-            continue;
+        const segments: MentionSegment[] = [];
+        let plain = "";
+        let index = 0;
+        while (index < text.length) {
+            const label = text[index] === "@" ? labels.find((candidate) => text.startsWith(candidate, index + 1)) : undefined;
+            const entry = label ? queue.get(label) : undefined;
+            const id = label ? (entry ? (entry.pending.length ? entry.pending.shift() : entry.last) : named.get(label)) : undefined;
+            if (!label || !id) {
+                plain += text[index];
+                index += 1;
+                continue;
+            }
+            if (plain) segments.push({ kind: "text", text: plain });
+            plain = "";
+            segments.push({ kind: "link", id, label });
+            index += 1 + label.length;
         }
         if (plain) segments.push({ kind: "text", text: plain });
-        plain = "";
-        segments.push({ kind: "link", id, label });
-        index += 1 + label.length;
-    }
-    if (plain) segments.push({ kind: "text", text: plain });
-    return segments;
+        return segments;
+    };
 }
