@@ -133,6 +133,13 @@ func AgentHostDir() string {
 	return safe
 }
 
+// WithAgentConfigPath overrides the agent's configuration directory.
+//
+// It exists for tests: without it every test server writes `mcp.conf` into the operator's real
+// `<UserConfigDir>/comfyloft-server/<machine>/alayacore`, which `make check` was doing to the developer's home
+// directory (#244).
+func WithAgentConfigPath(dir string) Option { return func(c *Config) { c.AgentConfigPath = dir } }
+
 // WithMaxImportBytes overrides the ceiling for one imported canvas archive.
 func WithMaxImportBytes(bytes int64) Option { return func(c *Config) { c.MaxImportBytes = bytes } }
 

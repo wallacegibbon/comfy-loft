@@ -8856,3 +8856,24 @@ pass by the variable being ignored) and `TestAgentHostDirIsASafePathSegment` (no
 stable). `make check` 19 packages, `npx vitest run` 314, `npm run check`, `npm run build`.
 
 **Where** `internal/config/config.go`, `internal/config/config_test.go`.
+
+## 244. A test server keeps its own agent directory
+
+**Decision** `newTestServer` passes `config.WithAgentConfigPath(<temp dir>)`, and the two helpers that used to
+set `AGENT_CONFIG_PATH` in the environment pass the option instead.
+
+**Why** `config.Load` fills `AgentConfigPath` from `<UserConfigDir>` when nothing names one, and `server.New`
+writes `mcp.conf` there at startup (`writeMCPConf`). So every `make check` wrote into the developer's home
+directory — `~/.config/comfyloft-server/<machine>/alayacore/mcp.conf` — and, once the agent's directory was keyed
+by the machine (#243), that also meant a test run could create the directory the *next* real start would use.
+A test that writes into the operator's configuration is wrong twice: it is not isolated, and the thing it
+writes is the file that tells an agent where to call back to.
+
+**Why the option and not the environment** The environment variable still works for the binaries, but options
+are applied *after* the environment when `Load` runs, so a test that sets both would silently keep the
+environment's answer. One mechanism, applied last, is easier to reason about than a precedence rule.
+
+**Tested** `rm -rf ~/.config/comfyloft-server` then `make check`: exit 0 and the directory is not recreated.
+`npx vitest run` 314, `npm run check`, `npm run build`, `make build`.
+
+**Where** `internal/config/config.go`, `internal/server/e2e_test.go`, `internal/server/{mcp_test,agent_e2e_test}.go`.

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"comfyloft/internal/comfy"
+	"comfyloft/internal/config"
 )
 
 // The fake agent speaks AlayaCore's wire, including the part that matters for a reload: `--session <file>`
@@ -113,11 +114,10 @@ func startAgentServer(t *testing.T) (*httptest.Server, string) {
 	}
 	spawnLog := filepath.Join(dir, "spawned")
 	t.Setenv("FAKE_SPAWN_LOG", spawnLog)
-	// config.Load reads these; newTestServer builds the config inside the call below.
+	// config.Load reads this; newTestServer builds the config inside the call below.
 	t.Setenv("ALAYACORE_BIN", binary)
-	t.Setenv("AGENT_CONFIG_PATH", t.TempDir())
 
-	server := httptest.NewServer(newTestServer(t, newFakeComfy(t)).Handler())
+	server := httptest.NewServer(newTestServer(t, newFakeComfy(t), config.WithAgentConfigPath(t.TempDir())).Handler())
 	t.Cleanup(server.Close)
 	return server, spawnLog
 }

@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"comfyloft/internal/config"
 	"comfyloft/internal/mcpstdio"
 )
 
@@ -39,7 +40,7 @@ func startMCPServer(t *testing.T) (*httptest.Server, *Server, string) {
 	t.Setenv("ALAYACORE_BIN", binary)
 	t.Setenv("AGENT_CONFIG_PATH", configDir)
 
-	srv := newTestServer(t, newFakeComfy(t))
+	srv := newTestServer(t, newFakeComfy(t), config.WithAgentConfigPath(configDir))
 	server := httptest.NewServer(srv.Handler())
 	t.Cleanup(server.Close)
 	return server, srv, configDir
