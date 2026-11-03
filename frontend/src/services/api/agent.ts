@@ -29,7 +29,7 @@ export type AgentModel = { id: number; name: string; protocolType?: string; base
  * because the list of models comes from the agent itself.
  */
 export type AgentEvent = {
-    type: "models" | "user" | "steering" | "delta" | "reasoning" | "model" | "reasoning_level" | "command" | "tool_call" | "tool_result" | "tool" | "history" | "done" | "error" | "closed";
+    type: "models" | "user" | "steering" | "delta" | "reasoning" | "model" | "reasoning_level" | "command" | "tool_call" | "tool_result" | "notice" | "tool" | "history" | "done" | "error" | "closed";
     text?: string;
     elapsedMs?: number;
     models?: AgentModel[];
@@ -42,17 +42,18 @@ export type AgentEvent = {
     name?: string;
     input?: string;
     output?: string;
+    /** `tool_result`: the agent's own verdict on the call — failed rather than did something. */
+    isError?: boolean;
     /** `tool`: what the agent wants run, as it sent it. The canvas is what runs it. */
     arguments?: unknown;
-    /** `history`: the conversation the agent replayed from its session file. Replaces what the panel has. */
-    history?: AgentHistoryEntry[];
+    /** `history`: the conversation the agent replayed from its session file — the frames themselves, as
+     *  the events they would have been live, in the order the agent loaded them. Replaces what the panel
+     *  has. Nothing in it is a summary: reasoning, tool calls and their results are all there. */
+    history?: AgentEvent[];
     /** `steering`: `queued` when a message sent into a running task was taken into the queue, `delivered`
      *  when the agent has worked it into the conversation. */
     phase?: string;
 };
-
-/** One thing that was said in a conversation that already existed. */
-type AgentHistoryEntry = { role: "user" | "assistant"; text: string };
 
 /**
  * One content block of a tool result, in the protocol's own shape.

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUp, Bot, Eraser, LoaderCircle, Square, Wrench, X } from "lucide-react";
+import { ArrowUp, Bot, ChevronRight, CircleCheck, CircleDashed, CircleX, Eraser, Info, LoaderCircle, Square, Wrench, X } from "lucide-react";
 
-import { citationLabel, mentionSegments, referenceBlock, referenceEntries, referenceLine, withoutReferences, type Citation } from "@/lib/canvas/agent-references";
+import { citationLabel, mentionSegments, referenceBlock, referenceLine, type Citation } from "@/lib/canvas/agent-references";
+import { textOf, transcriptEvent, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
 import { nodeTitle } from "@/lib/canvas/node-title";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { confirm } from "@/components/kit/confirm";
@@ -23,20 +24,6 @@ import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
  * (`CanvasAgentWindow`), so a canvas reopens with the conversation where it was left.
  */
 
-type ToolStep = { callId: string; name: string; input?: string; output?: string };
-
-type Message = {
-    id: string;
-    role: "user" | "assistant" | "error";
-    text: string;
-    /** The nodes this message cited: their ids, and the label the message shows for each. */
-    mentions: Citation[];
-    reasoning: string;
-    tools: ToolStep[];
-    /** An assistant message is still being written until the agent says the turn ended. */
-    streaming: boolean;
-};
-
 type Props = {
     canvasId: string;
     nodes: CanvasNodeData[];
@@ -53,8 +40,9 @@ const NODE_LABEL: Record<string, string> = {
     [CanvasNodeType.Config]: "config",
 };
 
-let messageSeq = 0;
-const nextId = () => `m${Date.now().toString(36)}${(messageSeq++).toString(36)}`;
+/** How a call that ended reads: green when it worked, red when it did not. */
+const TOOL_OK = "#22c55e";
+const TOOL_FAILED = "#ef4444";
 
 export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: Props) {
     const { t } = useTranslation();
@@ -71,7 +59,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
     /** This canvas's conversation, by name. It is also the name of the file the agent keeps it in. */
     const session = useMemo(() => canvasAgent(canvasId), [canvasId]);
 
-    const [messages, setMessages] = useState<Message[]>([]);
+    const [messages, setMessages] = useState<TranscriptMessage[]>([]);
     const [draft, setDraft] = useState("");
     const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "closed">("idle");
     const [busy, setBusy] = useState(false);
@@ -104,7 +92,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
             setStatus("connected");
         } catch (error) {
             setStatus("closed");
-            setMessages((current) => [...current, { id: nextId(), role: "error", text: error instanceof Error ? error.message : t("canvas.agent.connectFailed"), mentions: [], reasoning: "", tools: [], streaming: false }]);
+            setMessages((current) => transcriptEvent(current, { type: "error", message: error instanceof Error ? error.message : t("canvas.agent.connectFailed") }));
         }
     }, [canvasId, config, t]);
 
@@ -132,7 +120,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         } catch (error) {
             // The gateway's own words: "the agent is in the middle of a turn" is actionable in a way that
             // "could not clear" is not, and nothing was changed, so the conversation is still usable.
-            setMessages((current) => [...current, { id: nextId(), role: "error", text: apiErrorMessage(error, t("canvas.agent.clearHistoryFailed")), mentions: [], reasoning: "", tools: [], streaming: false }]);
+            setMessages((current) => transcriptEvent(current, { type: "error", message: apiErrorMessage(error, t("canvas.agent.clearHistoryFailed")) }));
             return;
         }
         setBusy(false);
@@ -150,6 +138,13 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
 
     useEffect(() => onAgentEvent(session, applyEvent), [session]);
 
+    /**
+     * One frame, three things: the session's own state, whether a turn is running, and the transcript.
+     *
+     * The transcript is `transcriptEvent`'s — the order messages are drawn in is decided there, once, and
+     * it is the order the frames arrived in. What is left here is what only the panel knows: connected or
+     * not, working or idle, and how many messages are waiting in the agent's queue.
+     */
     const applyEvent = (event: AgentEvent) => {
         if (event.type === "steering") {
             // A queue nobody can see looks like a message that was lost, so it is counted — and cleared by
@@ -157,80 +152,19 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
             setSteering((current) => (event.phase === "queued" ? current + 1 : 0));
             return;
         }
-        if (event.type === "user") {
-            // The agent echoing what the canvas sent. This is the only place a user message comes from,
-            // which is why a reloaded conversation and a live one look the same: both are the agent's.
-            const said = event.text || "";
-            setMessages((current) => [...current, { id: nextId(), role: "user", text: withoutReferences(said), mentions: referenceEntries(said), reasoning: "", tools: [], streaming: false }]);
-            return;
-        }
-        if (event.type === "history") {
-            // The agent has just said what its conversation is. That is the whole truth about this
-            // panel's past — a reload left nothing on screen, and a reopened panel may have been
-            // showing a copy that the file has since moved past — so it replaces, and it does not append.
-            setSteering(0);
-            setMessages(
-                (event.history || []).map((entry) => ({
-                    id: nextId(),
-                    role: entry.role,
-                    // What was sent carried the citation block; what is shown is what was typed.
-                    text: entry.role === "user" ? withoutReferences(entry.text) : entry.text,
-                    mentions: entry.role === "user" ? referenceEntries(entry.text) : [],
-                    reasoning: "",
-                    tools: [],
-                    streaming: false,
-                })),
-            );
-            return;
-        }
-        if (event.type === "closed") {
-            setStatus("closed");
-            setBusy(false);
-            setSteering(0);
-            setMessages((current) => current.map((message) => (message.streaming ? { ...message, streaming: false } : message)));
-            return;
-        }
-        if (event.type === "error") {
-            setMessages((current) => [...current, { id: nextId(), role: "error", text: event.message || "", mentions: [], reasoning: "", tools: [], streaming: false }]);
-            return;
-        }
-        if (event.type === "done") {
-            setBusy(false);
-            setMessages((current) => current.map((message) => (message.streaming ? { ...message, streaming: false } : message)));
-            return;
-        }
         if (event.type === "delta" || event.type === "reasoning" || event.type === "tool_call" || event.type === "tool_result") {
             // Anything arriving mid-turn means the agent is working, whoever asked it. `busy` normally
             // follows the send and the `done`, but a turn that outlived its panel would otherwise look idle.
             setBusy(true);
-            setMessages((current) => {
-                // The answer that is still being written, wherever it sits: a message sent while one is in
-                // flight is echoed above it, and the answer continues in its own bubble rather than
-                // splitting into a second one.
-                const open = current.findLastIndex((message) => message.role === "assistant" && message.streaming);
-                const started = open >= 0 ? current[open] : null;
-                const from = started || { id: nextId(), role: "assistant" as const, text: "", mentions: [], reasoning: "", tools: [], streaming: true };
-                const updated = { ...from };
-                if (event.type === "delta") updated.text = from.text + (event.text || "");
-                else if (event.type === "reasoning") updated.reasoning = from.reasoning + (event.text || "");
-                else if (event.type === "tool_call") {
-                    // A call arrives in frames, not in one message: the name first, so the step can be
-                    // shown while the tool runs, then the input as it fills in. One step per call,
-                    // updated — a step per frame would show the same call twice.
-                    const callId = event.callId || "";
-                    // A name and an input are each their own fragment; an empty one says nothing.
-                    const merge = (step: ToolStep): ToolStep => ({
-                        ...step,
-                        ...(event.name ? { name: event.name } : {}),
-                        ...(event.input ? { input: event.input } : {}),
-                    });
-                    updated.tools = from.tools.some((step) => step.callId === callId) ? from.tools.map((step) => (step.callId === callId ? merge(step) : step)) : [...from.tools, merge({ callId, name: "tool" })];
-                } else updated.tools = from.tools.map((step) => (step.callId === event.callId ? { ...step, output: event.output } : step));
-                // In place, not at the end: the answer belongs to the question above it, and a message that
-                // arrives while it is being written does not take it over.
-                return started ? [...current.slice(0, open), updated, ...current.slice(open + 1)] : [...current, updated];
-            });
         }
+        if (event.type === "done") setBusy(false);
+        if (event.type === "closed") {
+            setStatus("closed");
+            setBusy(false);
+            setSteering(0);
+        }
+        if (event.type === "history") setSteering(0);
+        setMessages((current) => transcriptEvent(current, event));
     };
 
     const submit = async () => {
@@ -263,7 +197,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         // A message that could not be written would leave the panel on a turn nobody is running.
         if (!sendAgentMessage(session, { prompt: context + text })) {
             setBusy(false);
-            setMessages((current) => [...current, { id: nextId(), role: "error", text: t("canvas.agent.sendFailed"), mentions: [], reasoning: "", tools: [], streaming: false }]);
+            setMessages((current) => transcriptEvent(current, { type: "error", message: t("canvas.agent.sendFailed") }));
         }
     };
 
@@ -496,33 +430,43 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
             >
                 {messages.length === 0 ? <p className="text-xs opacity-50">{t("canvas.agent.hint")}</p> : null}
                 {/* One left edge for everything. A user message is already told apart by its box, and
-                    pushing it to the right only made the transcript read in two columns. */}
-                {messages.map((message) => (
-                    <div key={message.id} className={message.role === "user" ? "rounded-xl px-3 py-2" : "mr-2"} style={message.role === "user" ? { background: theme.node.fill, border: `1px solid ${theme.node.stroke}` } : undefined}>
-                        {message.tools.length ? (
-                            <div className="mb-1 space-y-0.5 text-[11px] opacity-60">
-                                {message.tools.map((step) => (
-                                    <div key={step.callId} className="flex items-center gap-1">
-                                        <Wrench className="size-3" />
-                                        <span className="truncate">{t("canvas.agent.tool", { name: step.name })}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : null}
-                        {message.text ? <p className="whitespace-pre-wrap leading-relaxed">{withMentions(message, nodes, t, onFocusNode, theme.node.activeStroke)}</p> : null}
-                        {message.role === "assistant" && !message.text && message.streaming ? (
-                            <p className="flex items-center gap-1.5 text-xs opacity-50">
-                                <LoaderCircle className="size-3 animate-spin" />
-                                {t("canvas.agent.thinking")}
-                            </p>
-                        ) : null}
-                        {message.role === "error" ? (
-                            <p className="text-xs" style={{ color: "#ef4444" }}>
-                                {message.text}
-                            </p>
-                        ) : null}
-                    </div>
-                ))}
+                    pushing it to the right only made the transcript read in two columns. A system notice
+                    is neither side talking, so it sits between the bubbles, smaller than either. */}
+                {messages.map((message) =>
+                    message.role === "system" ? (
+                        <div key={message.id} className="flex items-start gap-1.5 px-1 text-[11px] opacity-50">
+                            <Info className="mt-0.5 size-3 shrink-0" />
+                            <span className="whitespace-pre-wrap">{textOf(message)}</span>
+                        </div>
+                    ) : (
+                        <div key={message.id} className={message.role === "user" ? "rounded-xl px-3 py-2" : "mr-2 space-y-1"} style={message.role === "user" ? { background: theme.node.fill, border: `1px solid ${theme.node.stroke}` } : undefined}>
+                            {/* The parts, in the order the frames arrived: a sentence, a call, the sentence
+                                that reads its result — never the calls gathered at the top. */}
+                            {message.parts.map((part, index) =>
+                                part.kind === "tool" ? (
+                                    <ToolStepLine key={`${message.id}-${index}`} step={part} live={message.streaming} />
+                                ) : part.kind === "reasoning" ? (
+                                    <ReasoningBlock key={`${message.id}-${index}`} text={part.text} />
+                                ) : message.role === "error" ? (
+                                    <p key={`${message.id}-${index}`} className="whitespace-pre-wrap text-xs" style={{ color: TOOL_FAILED }}>
+                                        {part.text}
+                                    </p>
+                                ) : (
+                                    <p key={`${message.id}-${index}`} className="whitespace-pre-wrap leading-relaxed">
+                                        {withMentions(part.text, message.mentions, nodes, t, onFocusNode, theme.node.activeStroke)}
+                                    </p>
+                                ),
+                            )}
+                            {/* Nothing said yet: the reasoning, if any, has a line of its own above this. */}
+                            {message.role === "assistant" && !textOf(message) && message.streaming ? (
+                                <p className="flex items-center gap-1.5 text-xs opacity-50">
+                                    <LoaderCircle className="size-3 animate-spin" />
+                                    {t("canvas.agent.thinking")}
+                                </p>
+                            ) : null}
+                        </div>
+                    ),
+                )}
             </div>
 
             <div className="relative border-t px-2 py-2" style={{ borderColor: theme.toolbar.border }}>
@@ -588,8 +532,63 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
     );
 }
 
-/** How one cited node is described to the agent. Ids are what a tool call could act on; the label and
- * the text are what a model can read today. */
+/**
+ * One tool call, drawn where it happened, with the answer to "did it work?" beside it.
+ *
+ * The call is a frame that arrives while the tool runs, and the result is a second frame that says
+ * nothing new except how it went — so the step is drawn once and the symbol answers it: a spinner while
+ * the call is out, a tick when it came back, a cross when it came back as a failure. A turn that ended
+ * before the result arrived leaves a dash: nothing is known about that call, and a tick or a cross would
+ * both be a claim the agent never made.
+ */
+function ToolStepLine({ step, live }: { step: ToolStep; live: boolean }) {
+    const { t } = useTranslation();
+    return (
+        <div className="flex items-center gap-1 text-[11px] opacity-70">
+            <Wrench className="size-3 shrink-0" />
+            <span className="truncate">{t("canvas.agent.tool", { name: step.name })}</span>
+            {step.state === "running" && live ? (
+                <span className="flex shrink-0 items-center" title={t("canvas.agent.toolRunning")} aria-label={t("canvas.agent.toolRunning")}>
+                    <LoaderCircle className="size-3 animate-spin" />
+                </span>
+            ) : step.state === "running" ? (
+                <span className="flex shrink-0 items-center" title={t("canvas.agent.toolUnsettled")} aria-label={t("canvas.agent.toolUnsettled")}>
+                    <CircleDashed className="size-3 opacity-60" />
+                </span>
+            ) : step.state === "ok" ? (
+                <span className="flex shrink-0 items-center" title={t("canvas.agent.toolOk")} aria-label={t("canvas.agent.toolOk")}>
+                    <CircleCheck className="size-3" style={{ color: TOOL_OK }} />
+                </span>
+            ) : (
+                <span className="flex shrink-0 items-center" title={t("canvas.agent.toolFailed")} aria-label={t("canvas.agent.toolFailed")}>
+                    <CircleX className="size-3" style={{ color: TOOL_FAILED }} />
+                </span>
+            )}
+        </div>
+    );
+}
+
+/**
+ * What the agent thought before it answered, folded away by default.
+ *
+ * Reasoning is the one part that is written but not said: it is useful when an answer surprises the reader
+ * and noise the rest of the time, so it is one line that opens. It is drawn where it happened like any
+ * other part, and it stays open once it is opened — the text keeps arriving under it.
+ */
+function ReasoningBlock({ text }: { text: string }) {
+    const { t } = useTranslation();
+    const [expanded, setExpanded] = useState(false);
+    return (
+        <div>
+            <button type="button" aria-expanded={expanded} className="flex items-center gap-1 text-[11px] opacity-60 hover:opacity-100" onClick={() => setExpanded((open) => !open)}>
+                <ChevronRight className={`size-3 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
+                {t("canvas.agent.reasoningTitle")}
+            </button>
+            {expanded ? <div className="mt-1 whitespace-pre-wrap border-l pl-2 text-[11px] leading-relaxed opacity-60">{text}</div> : null}
+        </div>
+    );
+}
+
 /**
  * A message's text with each `@label` citation as a link to the node it cited.
  *
@@ -597,14 +596,18 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
  * citation, so two nodes that share a name are two links, not one (#163). A node the canvas still names is
  * the fallback, so an answer that mentions something is clickable too. Clicking does what clicking a row in
  * the side panel does: the canvas moves to that node and selects it.
+ *
+ * A message is drawn one part at a time (#221), so each run of text is read on its own: two citations with
+ * the same label on either side of a tool call resolve to the first of them twice, which is the fallback a
+ * transcript written before labels were unique gets anyway.
  */
-function withMentions(message: Message, nodes: CanvasNodeData[], translate: (key: string) => string, onFocusNode: (nodeId: string) => void, color: string): ReactNode {
+function withMentions(text: string, mentions: Citation[], nodes: CanvasNodeData[], translate: (key: string) => string, onFocusNode: (nodeId: string) => void, color: string): ReactNode {
     const segments = mentionSegments(
-        message.text,
-        message.mentions,
+        text,
+        mentions,
         nodes.map((node) => ({ id: node.id, label: nodeTitle(node, translate) })),
     );
-    if (segments.every((segment) => segment.kind === "text")) return message.text;
+    if (segments.every((segment) => segment.kind === "text")) return text;
     return segments.map((segment, index) =>
         segment.kind === "text" ? (
             segment.text
