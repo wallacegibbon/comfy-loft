@@ -8877,3 +8877,33 @@ environment's answer. One mechanism, applied last, is easier to reason about tha
 `npx vitest run` 314, `npm run check`, `npm run build`, `make build`.
 
 **Where** `internal/config/config.go`, `internal/server/e2e_test.go`, `internal/server/{mcp_test,agent_e2e_test}.go`.
+
+## 245. No segment: the agent's configuration is `comfyloft-server/alayacore`
+
+**Decision** `<UserConfigDir>/comfyloft-server/alayacore`, and nothing between the two. #243 replaced the bind
+address with the machine name; that is now gone as well.
+
+**The three keys, and what each cost** The directory holds `model.conf` (the operator's models and API keys),
+`runtime.conf` (which of them was active) and `mcp.conf` (the address an agent dials back to, rewritten at every
+start).
+
+- **The bind address** — lost the models whenever the address moved, which is what happened (#243).
+- **The hostname** — the same failure, one order of magnitude rarer: it takes a renamed machine rather than a
+  changed port. Rarer is not the same as right.
+- **Nothing** — the models are the operator's, and the operator has one set of keys whether the server listens
+  on loopback or on the LAN. This is the answer.
+
+**What dropping the segment gives up** Two machines sharing one home directory (an NFS `$HOME`) and running a
+server each would write the same `mcp.conf` and fight over it: the last one to start wins, and the other
+machine's agent dials a socket that belongs to its neighbour. That is one operator with a shared home, which is
+both rare and — unlike the two failures above — something the operator would immediately suspect, since an
+`AGENT_CONFIG_PATH` in the unit file is already the normal way to run two servers from one home. A path that
+never moves beats a path that defends a setup nobody has.
+
+**Tested** `TestAgentDirectoryDoesNotDependOnWhereTheServerListens` (two loads, a LAN address and loopback, same
+directory — while requiring the bind itself to have changed, so it cannot pass by the variable being ignored)
+and `TestAgentDirectoryHasNoSegmentOfItsOwn` (the path ends in `comfyloft-server/alayacore`). `make check`
+19 packages. The migration on this machine is one `mv`: `~/.config/comfyui-gateway/*/alayacore/model.conf` →
+`~/.config/comfyloft-server/alayacore/model.conf`.
+
+**Where** `internal/config/config.go`, `internal/config/config_test.go`.

@@ -247,11 +247,13 @@ func TestCanvasRootHasItsOwnDefaultAndItsOwnVariable(t *testing.T) {
 	}
 }
 
-// The agent's directory is keyed by the machine, not by the address the server happens to listen on.
+// The agent's directory is one place, and nothing about where the server listens is in it.
 //
 // It was keyed by the bind address, and the models behind it disappeared when the address changed — a fresh
-// directory, the agent's placeholder model, and a 404 from whatever that placeholder pointed at (#242).
-func TestAgentDirectoryDoesNotMoveWithTheBindAddress(t *testing.T) {
+// directory, the agent's placeholder model, and a 404 from whatever that placeholder pointed at (#243). It
+// was then keyed by the hostname, which only made that rarer; the directory holds the operator's models and
+// keys, which are the same wherever the server runs (#245).
+func TestAgentDirectoryDoesNotDependOnWhereTheServerListens(t *testing.T) {
 	isolateEnv(t)
 	t.Setenv("COMFYLOFT_SERVER_HOST", "192.168.3.232")
 	onLan, err := Load()
@@ -277,18 +279,14 @@ func TestAgentDirectoryDoesNotMoveWithTheBindAddress(t *testing.T) {
 	}
 }
 
-// Whatever a machine is called has to be a directory name on every platform the server builds for.
-func TestAgentHostDirIsASafePathSegment(t *testing.T) {
-	dir := AgentHostDir()
-	if dir == "" {
-		t.Fatal("empty directory name")
+// `.../comfyloft-server/alayacore`, and nothing between them: no machine name, no address, no port.
+func TestAgentDirectoryHasNoSegmentOfItsOwn(t *testing.T) {
+	isolateEnv(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
 	}
-	for _, forbidden := range []string{"/", "\\", ":", " "} {
-		if strings.Contains(dir, forbidden) {
-			t.Fatalf("AgentHostDir() = %q, want no %q in it", dir, forbidden)
-		}
-	}
-	if dir != AgentHostDir() {
-		t.Fatal("AgentHostDir is not stable within one process")
+	if want := "/comfyloft-server/alayacore"; !strings.HasSuffix(filepath.ToSlash(cfg.AgentConfigPath), want) {
+		t.Fatalf("AgentConfigPath = %q, want it to end in %q", cfg.AgentConfigPath, want)
 	}
 }
