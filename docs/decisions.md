@@ -8775,3 +8775,30 @@ found.
 **Where** `cmd/comfyloft-server`, `internal/{config,server,workflow,setup}`, `Makefile`, `start.sh`,
 `.env.example`, `docs/{server,protocol,known-issues,decisions}.md`, `README.md`, `frontend/src/**`,
 `frontend/{scripts,tests}/**`.
+
+## 241. The server's address is the page's, never the document's
+
+**Decision** `config.baseUrl` and every channel's `baseUrl` are filled from `LOCAL_SERVER_BASE_URL` — the origin
+that served the page, or `PUBLIC_BASE_URL` when the operator named one (#220) — and a stored address is
+discarded on hydration. It is not a preference any more; it is a fact about where the page came from.
+
+**The bug** Open the canvas at `http://192.168.3.232:8190`, restart the server on `127.0.0.1`, open the page
+again: everything still dialled `192.168.3.232`, the agent's socket included —
+`ws://192.168.3.232:8190/api/agent/socket/canvas%3A2dfdadcd440f failed: net::ERR_CONNECTION_REFUSED`. The
+address was stored in `data/settings.json` when the channel was created, and `createModelChannel` kept what it
+found: "The stored address is the server root". That sentence was true when a channel could be a cloud provider
+you typed an address into. There is no such channel any more (#190 deleted the tab that added them), and the
+gateway has served the canvas itself since #219 — so the only address a stored one can disagree with is the one
+the page is on.
+
+**Why the page wins** It is the one value that cannot be stale: the bundle came from that origin, so the API is
+there too. Any other answer is a memory, and memories of a moved server fail in the worst way — the page loads,
+the canvas draws, and only the things that talk to the server break, one at a time.
+
+**Tested** `tests/server-address.test.ts` seeds a settings document that names the old machine and a page that
+is on the new one, then asserts that the document's address, every channel's address, the models and the stored
+selection are what the store hands out. Verified to fail against the previous code (`×` on both address
+assertions, `✓` on the models) so it pins the bug rather than the fix. `npm run check`, `npx vitest run` 314,
+`make check`, `npm run build`.
+
+**Where** `frontend/src/stores/use-config-store.ts`, `frontend/tests/server-address.test.ts`.

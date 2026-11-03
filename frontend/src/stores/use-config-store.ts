@@ -3,7 +3,7 @@ import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
 import { serverModelLabel } from "@/lib/server-labels";
-import { serverRoot, LOCAL_SERVER_BASE_URL, LOCAL_SERVER_CHANNEL_ID } from "@/constant/app-mode";
+import { LOCAL_SERVER_BASE_URL, LOCAL_SERVER_CHANNEL_ID } from "@/constant/app-mode";
 import { mirrorToSettings, readSetting } from "@/stores/use-settings-store";
 
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -265,7 +265,11 @@ function isAiConfigReady(config: AiConfig, model: string) {
  * canvas pointing at a model that the server stopped reporting, which looks like a broken button.
  */
 function hydrateConfig(stored: Partial<AiConfig>): AiConfig {
-    const config = { ...defaultConfig, ...stored };
+    // The server's address is never taken from the document, only from the page (#241). A stored address is
+    // a memory of where the server used to be: the canvas is served by the server it talks to (#219), so a
+    // page that moved — a different port, a different host, a phone on the LAN — was otherwise left pointing
+    // every request, and the agent's socket, at the address it itself had just stopped living at.
+    const config = { ...defaultConfig, ...stored, baseUrl: defaultBaseUrl() };
     if (!Array.isArray(stored.channels)) config.channels = [];
     const channels = normalizeChannels(config);
     const models = modelOptionsFromChannels(channels);
@@ -383,8 +387,8 @@ function createModelChannel(channel?: Partial<ModelChannel>): ModelChannel {
     return {
         id: channel?.id?.trim() || nanoid(),
         name: name || i18n.t("config.channels.newName"),
-        // The stored address is the server root; an older config may still end in /v1.
-        baseUrl: serverRoot(channel?.baseUrl || defaultBaseUrl()),
+        // Same rule as the document's own: the address is the page's, not the stored one (#241).
+        baseUrl: defaultBaseUrl(),
         // An older config stored the translated default; adopt the key so the name follows the language.
         nameKey: channel?.nameKey || defaultChannelNameKey(name) || undefined,
         models: normalizeChannelModels(channel?.models),
