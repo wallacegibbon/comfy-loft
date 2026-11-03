@@ -233,3 +233,48 @@ describe("generate: a wire that carries nothing", () => {
         expect(written.generated).toEqual([["image-1", "a brass compass"]]);
     });
 });
+
+/**
+ * `read_prompt` is the pair to `read_node`.
+ *
+ * A node has two kinds of words and they are not interchangeable: what it holds (the card, the picture,
+ * the film — `read_node`) and what it will be asked (the prompt its panel shows — this). The list stopped
+ * carrying the second (#233), so this is the one way to it, and its answer says which is which where the
+ * two are easiest to confuse.
+ */
+describe("read_prompt: the question behind a node", () => {
+    test("answers with the words the panel shows, and says what they are", async () => {
+        const { hands } = handsFor([textSaying(card, question)]);
+        const { answer, text } = await textOf(hands, "read_prompt", { nodeId: "text-1" });
+
+        expect(answer.isError).not.toBe(true);
+        expect(text).toContain(question);
+        expect(text).toContain("the question it will answer next");
+        // The card is the other kind of words, and the answer points at the tool that reads it.
+        expect(text).not.toContain(card);
+        expect(text).toContain("read_node");
+    });
+
+    test("says so when nothing has been asked of the node", async () => {
+        const { hands } = handsFor([textSaying(card)]);
+        const { answer, text } = await textOf(hands, "read_prompt", { nodeId: "text-1" });
+
+        expect(answer.isError).not.toBe(true);
+        expect(text).toContain("has no prompt");
+        expect(text).toContain("nothing has been asked of it yet");
+    });
+
+    test("answers for a picture too, which has a prompt and no words of its own", async () => {
+        const { hands } = handsFor([node("image", { content: "data:image/png;base64,AAAA", prompt: "a brass compass" })]);
+        const { text } = await textOf(hands, "read_prompt", { nodeId: "image-1" });
+
+        expect(text).toBe("a brass compass");
+    });
+
+    test("refuses a node the canvas does not hold", async () => {
+        const { hands } = handsFor([]);
+        const { answer } = await textOf(hands, "read_prompt", { nodeId: "text-9" });
+
+        expect(answer.isError).toBe(true);
+    });
+});

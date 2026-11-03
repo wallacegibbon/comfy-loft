@@ -53,6 +53,8 @@ export async function runTool(name: string, args: unknown, hands: CanvasHands, s
             return createNode(hands, args);
         case "read_node":
             return readNode(hands, args);
+        case "read_prompt":
+            return readPrompt(hands, args);
         case "connect":
             return connect(hands, args);
         case "set_prompt":
@@ -312,6 +314,30 @@ async function readNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> 
     const clause = generationClause(node.metadata);
     if (clause) content.push(textBlock(`${node.id} (${node.type}) ${clause}`));
     return { content };
+}
+
+/**
+ * Read what a node will be asked — the prompt its own panel shows, and the words `set_prompt` writes.
+ *
+ * The pair to `read_node`, and the same distinction #229 drew: `read_node` answers with what the node
+ * holds, this answers with the question standing behind it. Its own tool rather than a field in the list,
+ * because a prompt is private until someone asks for it, and because a list that carried every node's
+ * prompt twice was both large and ambiguous (#233).
+ *
+ * A text node is where the two are easiest to confuse, so its answer says which is which: the card is
+ * what it says, this is what it will be asked next.
+ */
+function readPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
+
+    const words = nodePromptOf(node);
+    if (!words.trim()) {
+        const has = nodeContentOf(node) ? " — what it says is its content, which read_node answers with" : "";
+        return { content: [textBlock(`${node.id} (${node.type}) has no prompt: nothing has been asked of it yet${has}`)], isError: false };
+    }
+    const note = node.type === CanvasNodeType.Text ? ` — the question it will answer next; what it says now is its content, which read_node answers with` : "";
+    return { content: [textBlock(words + note)], isError: false };
 }
 
 /**

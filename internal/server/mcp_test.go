@@ -159,8 +159,8 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 	for _, tool := range tools {
 		names = append(names, tool.(map[string]any)["name"].(string))
 	}
-	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,set_text,generate,read_node,delete_node,focus_node,move_node" {
-		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, set_text, generate, read_node, delete_node, focus_node, move_node", names)
+	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,set_text,generate,read_node,read_prompt,delete_node,focus_node,move_node" {
+		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, set_text, generate, read_node, read_prompt, delete_node, focus_node, move_node", names)
 	}
 }
 
@@ -173,7 +173,7 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 	server := newTestGateway(t, newFakeComfy(t))
 
 	system := strings.Join(server.agentOptions().System, "\n")
-	for _, want := range []string{"canvas_connect", "copy", "canvas_focus_node", "leave that node's own prompt empty", "the node the user asked about", "canvas_set_text", "carries nothing"} {
+	for _, want := range []string{"canvas_connect", "copy", "canvas_focus_node", "leave that node's own prompt empty", "the node the user asked about", "canvas_set_text", "carries nothing", "canvas_read_prompt"} {
 		if !strings.Contains(system, want) {
 			t.Fatalf("the agent's system prompt does not mention %q: %q", want, system)
 		}

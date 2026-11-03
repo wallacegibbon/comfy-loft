@@ -1,15 +1,15 @@
 import { generationClause } from "@/lib/canvas/node-generation-facts";
-import { nodeContentOf, nodePromptOf } from "@/lib/canvas/node-prompt-field";
+import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import type { CanvasConnection, CanvasNodeData } from "@/types/canvas";
 
 /**
  * The whole canvas as text: every node with the id a tool call can act on, and every edge.
  *
- * One line per node, because a model reads lines and diffs them. Nothing is omitted for looking empty,
- * since a node with no prompt is a fact about the canvas too — but the two kinds of words are named
- * separately, because they are two different things: `content:` is what the node says, `prompt:` is what it
- * will be asked next. One `prompt:` that meant either, depending on the node's type, is what let an agent
- * read the prompt box as the text node's body (#229).
+ * One line per node, because a model reads lines and diffs them. What a line carries is what the node
+ * *holds* — `content:` — and nothing else: the prompt is what the node was asked, a private word until
+ * someone reads it on purpose with `read_prompt` (#233). Printing it here meant every list carried a copy
+ * of every node's words twice, and it put a field with two meanings back into the one place #229 had just
+ * cleaned up.
  *
  * What made a node's content and when is on that line, before the words: a canvas of a dozen pictures is
  * exactly where "which model drew this one" is a question, and asking it node by node would cost a
@@ -22,8 +22,7 @@ export function describeCanvas(nodes: CanvasNodeData[], connections: CanvasConne
         const at = ` at (${Math.round(node.position.x)}, ${Math.round(node.position.y)})`;
         const made = generationClause(node.metadata);
         const content = oneLine(nodeContentOf(node));
-        const prompt = oneLine(nodePromptOf(node));
-        lines.push(`- ${node.id} (${node.type})${title}${at}${made ? ` ${made}` : ""}${content ? ` content: ${content}` : ""}${prompt ? ` prompt: ${prompt}` : ""}`);
+        lines.push(`- ${node.id} (${node.type})${title}${at}${made ? ` ${made}` : ""}${content ? ` content: ${content}` : ""}`);
     }
     if (connections.length) lines.push("connections:");
     for (const connection of connections) lines.push(`- ${connection.fromNodeId} -> ${connection.toNodeId}`);

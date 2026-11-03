@@ -8347,3 +8347,39 @@ canvas in the browser — cards, borders, the two creation menus, clicking a nod
 
 **Where** `frontend/src/types/{canvas,canvas-node}.ts`,
 `frontend/src/components/canvas/{canvas-node,canvas-create-menus}.tsx`, `frontend/src/pages/canvas/project.tsx`.
+
+## 233. A prompt is read on purpose: `read_prompt`, and out of the list
+
+**Decision** The agent gets `read_prompt {nodeId}`: the words a node will be asked — the prompt its own panel
+shows, and the words `set_prompt` writes. `read_node` stays what it is (what the node *holds*), and the two
+are named as a pair. `list_nodes` stops printing `prompt:`: a line carries `content:` and nothing else.
+
+**Why** #230 made a prompt private between nodes and #229 taught the tool that wrote it to say which kind of
+words it was, but the list still carried every node's prompt on every call. Two costs, neither about privacy
+as such:
+
+- **Size.** A canvas of forty nodes sent forty prompts whether or not the question was about prompts, and the
+  list is the tool an agent calls most.
+- **Attention.** A prompt on the line is a fact the agent did not ask for and may act on, which is how the
+  screenshot that started #229 happened — a text node's question read as its body because it was simply
+  there. A prompt one call away is a prompt someone wanted.
+
+So the pair is now explicit: `read_node` for what it holds, `read_prompt` for what it will be asked. The
+answer says which is which where the two are easiest to confuse — a text node's card is what it says, its
+prompt is what it will be asked next — and points at the other tool.
+
+**What this does not buy** Privacy against the agent. It runs as a child process in the project root with
+`read_file` enabled (that is how it opens a skill), so `canvases/<id>/canvas.json` is readable and holds every
+prompt on the canvas. Removing `prompt:` from the list removes an accidental read, not a possible one; a real
+boundary would be a sandbox, which is a separate decision.
+
+**Tested** `npx vitest run` (265: four new for `read_prompt` — the question, the empty answer, a picture's
+prompt, a node that is not there; and the list's format test now asserts a prompt is *not* on the line).
+`make check`, including the tools/list vocabulary (now twelve names, `read_prompt` after `read_node`) and the
+system-prompt assertion, which now requires `canvas_read_prompt`. `npm run check`. `npm run build`. Not
+exercised in a browser: what to look for is one live conversation — "这张图当时用的什么提示词" answered from
+`read_prompt`, and a canvas of many nodes whose `list_nodes` is shorter than it was.
+
+**Where** `internal/server/{routes_mcp.go,agent_instructions.go,mcp_test.go}`,
+`frontend/src/lib/canvas/{canvas-agent-tools,canvas-agent-view}.ts`,
+`frontend/tests/{canvas-agent-tools,canvas-agent-view}.test.ts`.

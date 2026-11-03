@@ -113,7 +113,7 @@ func (s *Server) mcpTools() []mcpTool {
 		InputSchema: noArguments,
 	}, {
 		Name:        "list_nodes",
-		Description: "Every node on the canvas, one line each — id, type, title, position, what made its content and when, then its own words: `content:` is what it holds (a text node's text) and `prompt:` is the words it will be asked next — the ones that made it, for a node a run made and nobody has retyped since. Two different things, and a text node has both. Then every connection between them. The ids are what the other tools act on.",
+		Description: "Every node on the canvas, one line each — id, type, title, position, what made its content and when, then `content:`: the words it holds (a text node's text). What a node will be asked is not here; read one node's prompt with read_prompt. Then every connection between them. The ids are what the other tools act on.",
 		InputSchema: noArguments,
 	}, {
 		Name:        "create_node",
@@ -184,6 +184,17 @@ func (s *Server) mcpTools() []mcpTool {
 	}, {
 		Name:        "read_node",
 		Description: "Read what one node holds: a text node's text, or the image, video or audio itself — not a description of it, and not the words it will be asked next. A text node holding a batch answers with every text, the one its card shows first. A node something generated ends with a line naming the workflow that made it and the moment that run finished; both are facts the canvas recorded, so they are the answer to \"which model drew this, and when\" rather than a guess.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
+			},
+			"required": ["nodeId"],
+			"additionalProperties": false
+		}`),
+	}, {
+		Name:        "read_prompt",
+		Description: "Read the words a node will be asked — the prompt its own panel shows, and the words set_prompt writes. This is the pair to read_node: read_node answers with what the node holds, this answers with the question behind it. A text node is where the two are easiest to confuse: its card is what it says, its prompt is what it will be asked next. A node nobody has asked anything of has no prompt, and that is the answer.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
