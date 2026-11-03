@@ -223,8 +223,9 @@ as `--session`. That file, not the process, is the conversation, and it is part 
 the canvas deletes it, copying the canvas's directory copies it (decisions #178). It is not part of the
 document, so an export carries the nodes and their media and not what was said about them. The process
 lives exactly as long as its socket, and the next connection starts a new one that replays the file before
-it says it is ready — which the gateway relays as one `history` event, so a reloaded page draws what was
-said instead of an empty panel.
+it says it is ready — which the gateway relays as one `history` event carrying those frames as the events a
+live turn sends (`user`, `reasoning`, `tool_call`, `tool_result`, `delta`), so a reloaded page draws what was
+said, thought and called instead of an empty panel (decisions #223).
 
 A name that is not a canvas keeps no file at all: a node panel asks one question at a time and writes the
 answer into the node, so a file there would carry an earlier question into the next answer and leave one
@@ -235,11 +236,17 @@ away. The canvas's session lives until it says `{"close":true}`; a node panel's 
 so a node nobody is working on holds no process. Nothing expires on the gateway's side — see
 [`decisions.md`](decisions.md) #80 for the cost of that.
 
-Down the socket: `models`, `delta`, `reasoning`, `model`, `reasoning_level`, `command`, `tool_call`,
-`tool_result`, `tool`, `done`, `error`, `closed`. The first message is the agent's startup broadcast,
-which is where the model list comes from. Up: `{"prompt":…}` (with optional `images` as data URLs),
+Down the socket: `models`, `history`, `user`, `delta`, `reasoning`, `model`, `reasoning_level`, `command`,
+`tool_call`, `tool_result`, `notice`, `steering`, `tool`, `done`, `error`, `closed`. The first message is the
+agent's startup broadcast, which is where the model list comes from; `history` follows it, carrying the
+conversation the agent just replayed. Up: `{"prompt":…}` (with optional `images` as data URLs),
 `{"command":…,"args":…}` for one of AlayaCore's own settings, `{"cancel":true}`, `{"toolResult":…}` for a
 tool the agent asked for, and `{"close":true}`.
+
+`notice` is AlayaCore's `SM notify` — the agent saying what it is doing to itself ("Summarizing
+conversation…", "retrying in 5s (retry 1/3)"). It is not conversation, so it is not in the session file, and
+it is not a failure, so it is not an `error`; `tool_result` carries `isError` from the UF frame's `is_error`,
+which is the one thing a result adds to the step the canvas has already drawn (decisions #222).
 
 `done` marks the end of a turn and carries the elapsed time only: the answer is what the deltas built,
 and a second copy of it would be a second truth.

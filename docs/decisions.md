@@ -7689,3 +7689,122 @@ template in the bundle. `go test ./internal/...`, `make check`, `npm run check`,
 `internal/server/routes_settings.go`, `internal/server/server.go`, `internal/config/config.go`
 (`RuntimeConfigPath`), `start.sh`, `Makefile`, `frontend/index.html`, `frontend/public/config.js`,
 `frontend/src/constant/runtime-config.ts`, `docs/gateway.md`, `README.md`.
+
+## 221. A message is a list of parts, drawn in the order the frames arrived
+
+**Decision** The panel's transcript is built by one reducer, `transcriptEvent`, and a message is a **list of
+parts** — text, reasoning, a tool call — appended as the frames arrive and never moved. The tool list that
+hung off a message is gone, and with it the block that drew every call above every sentence. Message ids
+come from a counter, not a timestamp, padded so that sorting them as strings is the order they arrived in.
+
+**Why** A `text` field plus a `tools` array cannot say *where* in a message a call happened, so the renderer
+had to choose — and it chose the top. A real transcript shows what that costs: in
+`data/agent/sessions/canvas-d35c56e43bf8-3de3706a.session` two `canvas_read_node` calls sit between the
+reasoning that decided to make them and the paragraph that reads their output, and the panel drew both calls
+before both sentences. The frames already carry the order; only the shape lost it.
+
+The same question one level up is which bubble a frame belongs to, and the answer is the end of the list and
+nothing else: a message that arrives takes the end, and text and calls keep going into the answer that is at
+the end — if what is at the end is not an answer, they open one below it. That is why the panel reaches back
+into no earlier bubble. Scheduling is not this side's business: a message said mid-answer is echoed by the
+agent when the agent says it, drawn where it lands, and the answer goes on underneath. What the person typed
+is not drawn at all — it appears when the echo arrives (#104), so there is still one copy of it.
+
+**Cost** One more module and one indirection: the panel no longer builds messages inline. An answer that is
+echoed over mid-turn reads as two bubbles with that message between them, where it used to be one bubble with
+later words written above them. A message can now be several paragraphs, so each run of text is read for `@`
+mentions on its own — two citations with the same label on either side of a call resolve to the first of them
+twice, which is the fallback a transcript written before labels were unique already got (#163).
+
+**Tested** `frontend/tests/agent-transcript.test.ts` (14): a call keeps its place between two sentences; the
+order of several calls and the sentences between them; ids unique and sorting in arrival order; one step for
+the two frames of a call; a message echoed mid-answer taken at the end with the answer continuing below it;
+history replacing rather than appending; a frame that says nothing opening nothing. Replayed through the
+reducer, the session file above produced `user → [reasoning, tool, tool, reasoning, text] → user →
+[reasoning, tool, tool, reasoning, text]`, where the panel had drawn `[tool, tool, text]` with both reasonings
+dropped. `npx vitest run` (198), `npm run check`, `npm run build`.
+
+**Where** `frontend/src/lib/canvas/agent-transcript.ts`,
+`frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/tests/agent-transcript.test.ts`.
+
+## 222. A tool step says how it ended, reasoning is folded, and the agent's notices are drawn
+
+**Decision** Three things the panel did not say before, all of them about what a frame means rather than what
+it is:
+
+1. A tool step carries a state — running, ok, failed — and draws a coloured mark after its name: a spinner
+   while the call is out, a green tick when the result said it worked, a red cross when it said it did not,
+   and a grey dash for a step a stopped turn never answered. The verdict is the UF frame's own `is_error`,
+   which the gateway now relays as `isError` instead of dropping.
+2. Reasoning is drawn, folded away: one `思考` line per reasoning block that opens on a click and stays
+   open. It used to be accumulated into a field nothing rendered.
+3. The agent's **system messages** are drawn. `SM notify` — "Summarizing conversation…", "retrying in 5s
+   (retry 1/3)", "prompt deferred until MCP initialization completes" — was collected by nobody and dropped
+   on the floor; it is relayed as `notice` and drawn between the bubbles, smaller than either.
+
+**Why** A step without a verdict is a spinner that means nothing: the panel showed `调用 canvas_read_node`
+and left the reader to guess whether the call had come back, and after a stop it showed a spinner that would
+never stop. The answer was two fields away — UF carries `is_error`, and the gateway's own tool path already
+knew the idea (`toolAnswer.IsError`) — so the mark is the frame's verdict and not a guess from the text.
+
+Reasoning is the part that is written but not said: it is what a surprising answer is explained by, and noise
+in the common case. Folded, it costs one line; unfolded, it is the whole trace. Dropping it entirely (the
+first version) was the one option that helps nobody.
+
+The notices are how the agent says what it is doing to itself while the user waits on a long turn. They are
+not in the session file and not errors — a `notify` drawn as an error would be a red line for "summarizing",
+which is normal work — so they travel as their own kind and are drawn as their own row.
+
+**Cost** One more event type across the wire, and one more field on `tool_result`. A failed call still shows
+no reason of its own: UF's text is the first content item, and a failure's words are in it only when the tool
+put them there. A notice is the one thing that does not come back after a reload, because AlayaCore does not
+put it in the session file: it is the live stream saying what it is doing at that moment, not something that
+was said. That is the agent's file and its call, not a gap to patch here — the rest of the turn (reasoning,
+calls, results) is replayed and drawn as it was (#223).
+
+**Tested** `internal/server/agent_e2e_test.go`'s
+`TestSocketRelaysTheSystemNoticeAndTheFailure`: the fake agent sends `SM notify`, an `AF`, a UF with
+`is_error: true` and a task that ends — the socket relays all three, the failure with `isError`. On the
+frontend, `frontend/tests/agent-transcript.test.ts` covers the state of a call that worked, one that failed,
+one never answered, and a notice arriving mid-answer. In the browser: not exercised — the marks were checked
+by rendering a replayed transcript, not against a live AlayaCore. `go test ./internal/...`, `npx vitest run`
+(198), `npm run check`, `npm run build`.
+
+**Where** `internal/agent/events.go` (`IsError`, `systemNotice`), `internal/agent/run.go` (`notify`),
+`internal/server/agent_e2e_test.go`, `frontend/src/services/api/agent.ts`,
+`frontend/src/lib/canvas/agent-transcript.ts`,
+`frontend/src/components/canvas/canvas-agent-panel.tsx` (`ToolStepLine`, `ReasoningBlock`),
+`frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
+
+## 223. The replayed conversation is the frames, relayed as they come
+
+**Decision** `Event.History` is `[]Event` — the replayed frames carried as the events a live turn sends — and
+`HistoryEntry` (`{role, text}`) is gone. `replayed()` calls the same parsers a live turn does (`userContent`,
+`contentDelta`, `toolCall`, `toolResult`) and passes each frame on as `user` / `delta` / `reasoning` /
+`tool_call` / `tool_result`, in the order the agent wrote them. The panel folds that list through
+`transcriptEvent`, the same reducer that draws a live turn.
+
+**Why** The session file is AlayaCore's, and it holds the whole turn: the question, the reasoning, every call
+and its result, the answer. `replayed()` read only the text of that stream, so a reloaded page drew a
+conversation with its thinking and its tool steps cut out — a copy that was cheaper to produce and not what
+the agent said. Nothing needed to be summarised or reconstructed: the file is already in order, and reading
+only part of it was the whole defect. Relaying the frames also removes a second shape from the wire and a
+second renderer from the panel, which is the version that cannot drift: a reload is drawn by the code that
+drew it live, from the same frames.
+
+**Cost** `AX`/`AF`/`UF` frames from the startup window now travel to the page as events, so the `history`
+message is larger than bare role/text pairs — the tool inputs and outputs a turn carried. A `Uf` preview
+(result before it is final) and the textless `AX` marker are still skipped: they are display-only or nothing
+said. Notices are not in this list and cannot be: AlayaCore does not write `SM notify` to the file, so what
+the agent was doing to its own context at 14:03 is not part of the conversation it replays.
+
+**Tested** `internal/server/agent_e2e_test.go`'s `TestSocketGoingAwayReplaysTheConversation`: the fake agent
+writes a turn to its session file — reasoning, a call with arguments, the result, the answer — the socket is
+dropped, and the next connection replays `user, reasoning, tool_call, tool_result, delta` in that order, with
+the call's arguments intact. `frontend/tests/agent-transcript.test.ts` folds the same list and gets one user
+message and one answer carrying its reasoning and its finished call. `go test ./internal/...`, `npx vitest
+run` (198), `npm run check`, `npm run build`.
+
+**Where** `internal/agent/events.go` (`Event.History`, `replayed`), `internal/agent/sessions.go`
+(`Connected.History`), `internal/server/routes_agent.go`, `internal/server/agent_e2e_test.go`,
+`frontend/src/services/api/agent.ts`, `frontend/src/lib/canvas/agent-transcript.ts`.
