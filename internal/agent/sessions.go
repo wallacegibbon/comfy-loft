@@ -66,9 +66,10 @@ type Session struct {
 type Connected struct {
 	Session *Session
 	Startup Event
-	// History is the conversation the new process replayed from its session file, oldest first. It is
-	// empty when the agent was already running (there was nothing to replay) and when there was no file.
-	History []HistoryEntry
+	// History is the conversation the new process replayed from its session file, oldest first, as the
+	// events it would have sent live. It is empty when the agent was already running (there was nothing to
+	// replay) and when there was no file.
+	History []Event
 	Spawned bool
 }
 
@@ -436,9 +437,9 @@ func activeName(state startup) string {
 
 // readStartup reads the frames an agent emits before it accepts input: its own startup broadcast, and
 // the conversation it replayed from its session file.
-func readStartup(proc *Process) (startup, []HistoryEntry, error) {
+func readStartup(proc *Process) (startup, []Event, error) {
 	state := startup{}
-	history := []HistoryEntry{}
+	history := []Event{}
 	err := waitReady(proc, &state, &history, func(Event) {}, func() error { return nil })
 	return state, history, err
 }

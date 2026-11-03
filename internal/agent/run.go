@@ -150,6 +150,13 @@ func turnStep(state *startup, frame *Frame, hasPrompt bool, emit func(Event)) (e
 			if json.Unmarshal(data, &payload) == nil && payload.Phase != "" {
 				emit(Event{Type: "steering", Phase: payload.Phase})
 			}
+		case "notify":
+			// The agent talking about its own work: summarizing, retrying, deferring a prompt. Not part
+			// of the conversation and not a failure, so it is a kind of its own rather than an `error` —
+			// and it is relayed while it happens, because it is only in the live stream.
+			if text, ok := systemNotice(data); ok {
+				emit(Event{Type: "notice", Text: text})
+			}
 		case "error":
 			emit(systemError(data))
 		default:

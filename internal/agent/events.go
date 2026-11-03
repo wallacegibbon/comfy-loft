@@ -38,25 +38,28 @@ type Event struct {
 	Name   string `json:"name,omitempty"`
 	Input  string `json:"input,omitempty"`
 	Output string `json:"output,omitempty"`
+	// tool_result: the agent's own verdict on the call, UF's `is_error`. It is relayed as it comes, since
+	// the step the canvas already drew needs one thing from the result — whether it worked.
+	IsError bool `json:"isError,omitempty"`
 
 	// tool: one of the gateway's own tools, on its way down to the canvas, which is the only thing that
 	// can run it. The canvas answers with `{"toolResult":…}` on the same socket — see Session.CallTool.
 	Arguments json.RawMessage `json:"arguments,omitempty"`
 
+	// notice: an SM `notify`, the agent saying what it is doing to itself — summarizing a conversation,
+	// retrying a step, deferring a prompt until MCP is ready. It is not part of the conversation (it is
+	// not in the session file) and it is not an error, so it travels as a kind of its own. Its words are
+	// `Text`.
+
 	// error: the agent's own words
 	Message string `json:"message,omitempty"`
 
-	// history: the conversation the agent loaded from its session file and replayed before it was
-	// ready. A reloaded page draws this instead of an empty panel, and replaces whatever it had.
-	History []HistoryEntry `json:"history,omitempty"`
-}
-
-// HistoryEntry is one thing that was said, as the agent replayed it. Only the words are kept: the
-// reasoning blocks and the empty end-of-message markers are AlayaCore's own bookkeeping, and a picture
-// is its own content item, which this does not draw yet.
-type HistoryEntry struct {
-	Role string `json:"role"`
-	Text string `json:"text"`
+	// history: the conversation the agent loaded from its session file and replayed before it was ready.
+	// It is the frames themselves — the same events a live turn sends — so a reloaded page draws the
+	// conversation it left through the same code that drew it the first time: the agent's own record,
+	// read back by the agent, passed on unchanged. A reloaded page draws this instead of an empty panel,
+	// and it replaces whatever it had.
+	History []Event `json:"history,omitempty"`
 }
 
 // Model is what a canvas is told about one of the agent's models: enough to show it in a picker and to
@@ -275,7 +278,9 @@ func toolCall(value string) (Event, bool) {
 }
 
 // toolResult is the UF body. The output is a list of content items; the text of the first is what
-// there is to show, and a result that carries no text is still a result.
+// there is to show, and a result that carries no text is still a result. `is_error` is the tool's own
+// verdict and travels with it: the canvas has already drawn the call, and success or failure is the one
+// thing the result adds to that step.
 func toolResult(value string) (Event, bool) {
 	var payload struct {
 		CallID string `json:"call_id"`
@@ -283,6 +288,7 @@ func toolResult(value string) (Event, bool) {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"output"`
+		IsError bool `json:"is_error"`
 	}
 	if json.Unmarshal([]byte(value), &payload) != nil || payload.CallID == "" {
 		return Event{}, false
@@ -291,7 +297,21 @@ func toolResult(value string) (Event, bool) {
 	if len(payload.Output) > 0 {
 		text = payload.Output[0].Text
 	}
-	return Event{Type: "tool_result", CallID: payload.CallID, Output: text}, true
+	return Event{Type: "tool_result", CallID: payload.CallID, Output: text, IsError: payload.IsError}, true
+}
+
+// systemNotice is the SM `notify` body: one sentence, and nothing else to it.
+//
+// These are the agent's own remarks about its work — "Summarizing conversation…", "retrying in 5s
+// (retry 1/3)", "prompt deferred until MCP initialization completes". A blank one says nothing.
+func systemNotice(data json.RawMessage) (string, bool) {
+	var payload struct {
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(data, &payload) != nil || strings.TrimSpace(payload.Text) == "" {
+		return "", false
+	}
+	return payload.Text, true
 }
 
 // systemError is the SM error payload, which is a plain sentence.
@@ -319,33 +339,44 @@ func userContent(value string) (string, bool) {
 }
 
 // replayed reads a frame that arrived before the agent was ready as part of the conversation it loaded
-// from its session file. Live turns send the same tags — `UX` echo and a textless `AX` marker — so this
-// is only ever asked about frames from the startup window: a `AX` that carries text is a replayed
-// message, and one that carries none is the end of a message already sent as deltas.
-func replayed(frame *Frame) (HistoryEntry, bool) {
-	role := ""
+// from its session file, and turns it into the event it would have been live.
+//
+// It is the same translation live turns get, because it is the same frames: the file holds what the agent
+// said, and AlayaCore replays it as `UX` (the user's words) and `AX` (assistant content: text or
+// reasoning) plus the `AF`/`UF` pair of every tool call. Reading only the text of that stream is what used
+// to make a reloaded conversation lose its reasoning and its tool steps; nothing has to be merged,
+// reordered or summarised here — the file is already in order, so each frame is passed on as it comes.
+//
+// The one thing skipped is the textless `AX` that closes a message written as deltas: it is a marker, and
+// a turn whose stream already ended says nothing more.
+func replayed(frame *Frame) (Event, bool) {
 	switch frame.Tag {
 	case TagUserX:
 		if text, ok := userContent(frame.Value); ok {
-			return HistoryEntry{Role: "user", Text: text}, true
+			return Event{Type: "user", Text: text}, true
 		}
-		return HistoryEntry{}, false
+		return Event{}, false
 	case TagAssistantX:
-		role = "assistant"
+		kind, text, ok := contentDelta(frame.Value)
+		if !ok || strings.TrimSpace(text) == "" {
+			return Event{}, false
+		}
+		switch kind {
+		case "text":
+			return Event{Type: "delta", Text: text}, true
+		case "reasoning":
+			return Event{Type: "reasoning", Text: text}, true
+		}
+		return Event{}, false
+	case TagAssistantF:
+		return toolCall(frame.Value)
+	case TagUserF:
+		return toolResult(frame.Value)
 	default:
-		return HistoryEntry{}, false
+		// `Af`/`Uf` are argument and result previews — display only, and never authoritative — and every
+		// other tag is the agent's own bookkeeping rather than something it said.
+		return Event{}, false
 	}
-	var item struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	if json.Unmarshal([]byte(frame.Value), &item) != nil {
-		return HistoryEntry{}, false
-	}
-	if item.Type != "text" || strings.TrimSpace(item.Text) == "" {
-		return HistoryEntry{}, false
-	}
-	return HistoryEntry{Role: role, Text: item.Text}, true
 }
 
 // waitReady reads startup frames until the session accepts input, then hands the collected state to
@@ -355,7 +386,7 @@ func replayed(frame *Frame) (HistoryEntry, bool) {
 // An agent that stops before `ready` is an error, not an empty startup: it said nothing about itself, so
 // the only account of why is the last line of its stderr, and a caller told "connected" would show an
 // empty model list over a process that is already gone.
-func waitReady(proc *Process, state *startup, history *[]HistoryEntry, emit func(Event), onReady func() error) error {
+func waitReady(proc *Process, state *startup, history *[]Event, emit func(Event), onReady func() error) error {
 	for {
 		frame, err := proc.Read()
 		if err != nil || frame == nil {

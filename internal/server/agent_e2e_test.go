@@ -54,6 +54,9 @@ while IFS= read -r line; do
         *)
           printf 'CO{"command_id":"1","is_error":true,"result":{"code":"REQUEST_MODEL_UNKNOWN","message":"model_set: model not found: 99"}}\n' ;;
       esac ;;
+    UX*'summarize'*)
+      printf '%s\n' "$line"
+      SUMMARIZE=1 ;;
     UX*'die'*)
       exit 0 ;;
     UX*slow*)
@@ -67,6 +70,15 @@ while IFS= read -r line; do
       printf '%s\n' "$line"
       if [ -n "$SESSION" ]; then printf '%s\n' "$line" >> "$SESSION"; fi ;;
     UE)
+      if [ -n "$SUMMARIZE" ]; then
+        printf 'SM{"type":"notify","data":{"text":"Summarizing conversation..."}}\n'
+        printf 'SM{"type":"task","data":{"in_progress":true}}\n'
+        printf 'AF{"call_id":"call-2","name":"read_file","id":"3"}\n'
+        printf 'UF{"call_id":"call-2","output":[{"type":"text","text":"no such file"}],"is_error":true,"id":"4"}\n'
+        printf 'Ax{"id":"2","type":"text","text":"done"}\n'
+        printf 'SM{"type":"task","data":{"in_progress":false}}\n'
+        continue
+      fi
       printf 'SM{"type":"steering","data":{"phase":"queued","text":"steering queued"}}\n'
       printf 'SM{"type":"task","data":{"in_progress":true,"current_step":1,"context_tokens":5}}\n'
       printf 'AF{"call_id":"call-1","name":"read_file","id":"3"}\n'
@@ -76,7 +88,12 @@ while IFS= read -r line; do
       printf 'Ax{"id":"2","type":"text","text":"world"}\n'
       printf 'SM{"type":"steering","data":{"phase":"delivered"}}\n'
       printf 'SM{"type":"task","data":{"in_progress":false,"context_tokens":9}}\n'
-      if [ -n "$SESSION" ]; then printf 'AX{"type":"text","text":"hello world"}\n' >> "$SESSION"; fi ;;
+      if [ -n "$SESSION" ]; then
+        printf 'AX{"type":"reasoning","text":"thinking about it"}\n' >> "$SESSION"
+        printf 'AF{"call_id":"call-1","name":"read_file","input":{"path":"/skills/SKILL.md"}}\n' >> "$SESSION"
+        printf 'UF{"call_id":"call-1","output":[{"type":"text","text":"a file"}],"id":"4"}\n' >> "$SESSION"
+        printf 'AX{"type":"text","text":"hello world"}\n' >> "$SESSION"
+      fi ;;
   esac
 done
 `
@@ -541,6 +558,33 @@ func TestSocketRelaysTheToolItUsed(t *testing.T) {
 	}
 }
 
+// TestSocketRelaysTheSystemNoticeAndTheFailure: two frames the panel needs and the gateway used to drop.
+// AlayaCore says what it is doing to itself as an SM `notify` (it is in no session file — it is the live
+// stream only), and a UF carries `is_error`, which is the one thing a tool result adds to the step the
+// canvas has already drawn.
+func TestSocketRelaysTheSystemNoticeAndTheFailure(t *testing.T) {
+	gateway, _ := startAgentGateway(t)
+	conn := openSocket(t, gateway, canvasSession(t, gateway))
+
+	send(t, conn, map[string]any{"prompt": "summarize please"})
+	seen := until(t, conn, "done")
+
+	var notice, called, failed bool
+	for _, event := range seen {
+		switch event["type"] {
+		case "notice":
+			notice = event["text"] == "Summarizing conversation..."
+		case "tool_call":
+			called = event["name"] == "read_file"
+		case "tool_result":
+			failed = event["isError"] == true && event["output"] == "no such file"
+		}
+	}
+	if !notice || !called || !failed {
+		t.Fatalf("messages = %v, want the notice, the call and its failure", seen)
+	}
+}
+
 // TestSocketCloseReleasesTheAgent: closing the conversation is the one thing that ends an agent, and the
 // only way a canvas can say "I am done with this" rather than "I am not looking right now".
 func TestSocketCloseReleasesTheAgent(t *testing.T) {
@@ -600,16 +644,30 @@ func TestSocketGoingAwayReplaysTheConversation(t *testing.T) {
 		t.Fatalf("second message = %v, want history", history)
 	}
 	replayed, _ := history["history"].([]any)
-	if len(replayed) != 2 {
-		t.Fatalf("replayed %v, want the question and the answer", history["history"])
+	// The file holds the whole turn — what was said, what was thought, the call and its result — and the
+	// replayed frames are relayed as the events a live turn sends, in the order the agent wrote them.
+	if len(replayed) != 5 {
+		t.Fatalf("replayed %v, want the question, the thinking, the call, its result and the answer", history["history"])
+	}
+	kinds := make([]string, 0, len(replayed))
+	for _, entry := range replayed {
+		frame, _ := entry.(map[string]any)
+		kinds = append(kinds, frame["type"].(string))
+	}
+	if got, want := strings.Join(kinds, ","), "user,reasoning,tool_call,tool_result,delta"; got != want {
+		t.Fatalf("replayed %s, want %s", got, want)
 	}
 	said := replayed[0].(map[string]any)
-	if said["role"] != "user" || !strings.Contains(said["text"].(string), "violet") {
+	if !strings.Contains(said["text"].(string), "violet") {
 		t.Fatalf("first replayed entry = %v, want the user's words", said)
 	}
-	answered := replayed[1].(map[string]any)
-	if answered["role"] != "assistant" || answered["text"] != "hello world" {
-		t.Fatalf("second replayed entry = %v, want the answer", answered)
+	called := replayed[2].(map[string]any)
+	if called["name"] != "read_file" || !strings.Contains(called["input"].(string), "SKILL.md") {
+		t.Fatalf("replayed call = %v, want the call its arguments", called)
+	}
+	answered := replayed[4].(map[string]any)
+	if answered["text"] != "hello world" {
+		t.Fatalf("last replayed entry = %v, want the answer", answered)
 	}
 	if got := spawns(t, spawnLog); got != 2 {
 		t.Fatalf("spawned %d agents, want a fresh one on the new connection", got)
