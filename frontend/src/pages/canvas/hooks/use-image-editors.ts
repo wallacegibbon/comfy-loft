@@ -35,37 +35,44 @@ export function useImageEditors(deps: NodeEditorDeps) {
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
     const openPreferences = useConfigStore((state) => state.openPreferences);
 
-    const cropImageNode = useCallback(async (node: CanvasNodeData, crop: CanvasImageCropRect) => {
-        if (!node.metadata?.content) return;
-        const cropped = await cropDataUrl(node.metadata.content, crop);
-        const image = await uploadImage(cropped);
-        const width = Math.min(node.width, Math.max(220, image.width));
-        const childId = nanoid();
-        const child: CanvasNodeData = {
-            id: childId,
-            type: CanvasNodeType.Image,
-            title: t("canvas.runtime.cropNodeTitle"),
-            titleKey: "canvas.runtime.cropNodeTitle",
-            position: { x: node.position.x + node.width + 96, y: node.position.y },
-            width,
-            height: width * (image.height / image.width),
-            metadata: {
-                ...imageMetadata(image),
-                prompt: node.metadata?.prompt,
-            },
-        };
-        setNodes((prev) => [...prev, child]);
-        setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
-        setSelectedNodeIds(new Set([childId]));
-        setDialogNodeId(childId);
-        closeNodeTool();
-    }, []);
+    const cropImageNode = useCallback(
+        async (node: CanvasNodeData, crop: CanvasImageCropRect) => {
+            if (!node.metadata?.content) return;
+            // The source is re-drawn in the browser, so it can be refused (a file that is gone, a gateway
+            // that answers no CORS for it). Reporting that is better than a child node appearing empty.
+            const cropped = await cropDataUrl(node.metadata.content, crop).catch(() => "");
+            if (!cropped) return toast.error(t("common.imageReadFailed"));
+            const image = await uploadImage(cropped);
+            const width = Math.min(node.width, Math.max(220, image.width));
+            const childId = nanoid();
+            const child: CanvasNodeData = {
+                id: childId,
+                type: CanvasNodeType.Image,
+                title: t("canvas.runtime.cropNodeTitle"),
+                titleKey: "canvas.runtime.cropNodeTitle",
+                position: { x: node.position.x + node.width + 96, y: node.position.y },
+                width,
+                height: width * (image.height / image.width),
+                metadata: {
+                    ...imageMetadata(image),
+                    prompt: node.metadata?.prompt,
+                },
+            };
+            setNodes((prev) => [...prev, child]);
+            setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
+            setSelectedNodeIds(new Set([childId]));
+            setDialogNodeId(childId);
+            closeNodeTool();
+        },
+        [t],
+    );
 
     const splitImageNode = useCallback(
         async (node: CanvasNodeData, params: CanvasImageSplitParams) => {
             if (!node.metadata?.content) return;
             closeNodeTool();
-            const pieces = await splitDataUrl(node.metadata.content, params);
+            const pieces = await splitDataUrl(node.metadata.content, params).catch(() => []);
+            if (!pieces.length) return toast.error(t("common.imageReadFailed"));
             const gap = 16;
             const cellWidth = node.width / params.columns;
             const cellHeight = node.height / params.rows;

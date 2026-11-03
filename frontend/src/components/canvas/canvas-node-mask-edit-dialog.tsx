@@ -9,6 +9,7 @@ import { Dialog } from "@/components/kit/dialog";
 import { Input, Slider } from "@/components/kit/input";
 import { Tooltip } from "@/components/kit/tooltip";
 import { readImageMeta } from "@/lib/image-utils";
+import { loadDrawableImage } from "@/lib/canvas/canvas-image-data";
 import { useImageEditorViewport } from "@/components/canvas/use-image-editor-viewport";
 
 export type CanvasImageMaskEditPayload = {
@@ -31,7 +32,7 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
     const { t } = useTranslation();
     const maskCanvasRef = useRef<HTMLCanvasElement>(null);
     const previewCanvasRef = useRef<HTMLCanvasElement>(null);
-    const imageRef = useRef<HTMLImageElement>(null);
+    const drawableRef = useRef<{ src: string; image: Promise<HTMLImageElement> } | null>(null);
     const drawingRef = useRef<{ active: boolean; stroke: MaskStroke | null }>({ active: false, stroke: null });
     const brushAdjustRef = useRef<{ active: boolean; pointerId: number; startX: number; startSize: number; previewX: number; previewY: number } | null>(null);
     const historyRef = useRef<MaskStroke[]>([]);
@@ -46,6 +47,19 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
     const [brushPreview, setBrushPreview] = useState<BrushPreview | null>(null);
     const viewport = useImageEditorViewport(image, open);
 
+    /**
+     * The picture as something this editor may composite and export.
+     *
+     * Not the `<img>` on screen: that one is loaded the plain way, which is all a picture needs to be
+     * *shown* but taints any canvas it is drawn into, and the overlay this dialog exports is the source
+     * drawn under the mask. `loadDrawableImage` asks for the same bytes in CORS mode, and it is started
+     * when the dialog opens so pressing Generate does not wait for a second download.
+     */
+    const drawableImage = useCallback(() => {
+        if (drawableRef.current?.src !== dataUrl) drawableRef.current = { src: dataUrl, image: loadDrawableImage(dataUrl) };
+        return drawableRef.current.image;
+    }, [dataUrl]);
+
     useEffect(() => {
         if (!open) return;
         setPrompt("");
@@ -59,8 +73,10 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
         redoRef.current = [];
         brushAdjustRef.current = null;
         drawingRef.current = { active: false, stroke: null };
+        drawableRef.current = null;
+        void drawableImage().catch(() => undefined);
         void readImageMeta(dataUrl).then(setImage);
-    }, [dataUrl, open]);
+    }, [dataUrl, drawableImage, open]);
 
     useEffect(() => {
         clearCanvas(maskCanvasRef.current);
@@ -208,14 +224,23 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
         return () => window.removeEventListener("keydown", handleKeyDown, true);
     }, [open, redoMask, undoMask]);
 
-    const submit = (generate: boolean) => {
+    const submit = async (generate: boolean) => {
         const nextPrompt = prompt.trim();
         const canvas = maskCanvasRef.current;
-        const element = imageRef.current;
         if (!nextPrompt) return setError(t("canvas.editors.maskPromptRequired"));
-        if (!canvas || !element) return;
+        if (!canvas) return;
         if (!canvasHasPaint(canvas)) return setError(t("canvas.editors.maskRequired"));
-        onConfirm({ prompt: nextPrompt, maskDataUrl: buildMaskOverlay(element, canvas), binaryMaskDataUrl: buildBinaryMask(canvas), generate });
+        let payload: { maskDataUrl: string; binaryMaskDataUrl: string };
+        try {
+            // The overlay is the picture the mask was drawn on, exported for the run: it needs the source
+            // as something the canvas may export, and a canvas that has drawn the on-screen `<img>` throws
+            // `SecurityError` here ("tainted canvases may not be exported"). Without it there is nothing to
+            // send — a mask alone would ask the model to repaint marks over a picture it cannot see.
+            payload = { maskDataUrl: buildMaskOverlay(await drawableImage(), canvas), binaryMaskDataUrl: buildBinaryMask(canvas) };
+        } catch {
+            return setError(t("common.imageReadFailed"));
+        }
+        onConfirm({ prompt: nextPrompt, ...payload, generate });
     };
 
     return (
@@ -232,7 +257,7 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
                                 <>
                                     <canvas ref={maskCanvasRef} width={image.width} height={image.height} className="hidden" />
                                     <div className="absolute left-0 top-0 [backface-visibility:hidden]" style={viewport.mediaStyle}>
-                                        <img ref={imageRef} src={dataUrl} alt="" className="absolute inset-0 block h-full w-full bg-transparent object-contain" draggable={false} />
+                                        <img src={dataUrl} alt="" className="absolute inset-0 block h-full w-full bg-transparent object-contain" draggable={false} />
                                         <canvas
                                             ref={previewCanvasRef}
                                             width={image.width}
@@ -331,10 +356,10 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
                             {t("canvas.editors.reset")}
                         </Button>
                         <div className="flex items-center gap-2">
-                            <Button icon={<ImagePlus className="size-4" />} onClick={() => submit(false)}>
+                            <Button icon={<ImagePlus className="size-4" />} onClick={() => void submit(false)}>
                                 {t("canvas.editors.maskExport")}
                             </Button>
-                            <Button type="primary" icon={<WandSparkles className="size-4" />} onClick={() => submit(true)}>
+                            <Button type="primary" icon={<WandSparkles className="size-4" />} onClick={() => void submit(true)}>
                                 {t("canvas.editors.maskGenerate")}
                             </Button>
                         </div>

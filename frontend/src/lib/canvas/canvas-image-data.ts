@@ -19,7 +19,7 @@ type ImageSplitPiece = {
 };
 
 export async function cropDataUrl(dataUrl: string, crop?: ImageCropRect) {
-    const image = await loadImage(dataUrl);
+    const image = await loadDrawableImage(dataUrl);
     if (crop) {
         return drawCrop(image, Math.floor(crop.x * image.width), Math.floor(crop.y * image.height), Math.ceil(crop.width * image.width), Math.ceil(crop.height * image.height));
     }
@@ -30,7 +30,7 @@ export async function cropDataUrl(dataUrl: string, crop?: ImageCropRect) {
 }
 
 export async function splitDataUrl(dataUrl: string, params: ImageSplitParams): Promise<ImageSplitPiece[]> {
-    const image = await loadImage(dataUrl);
+    const image = await loadDrawableImage(dataUrl);
     const xCuts = buildSplitCuts(params.verticalLines, image.width, Math.max(1, Math.floor(params.columns)));
     const yCuts = buildSplitCuts(params.horizontalLines, image.height, Math.max(1, Math.floor(params.rows)));
     const pieces: ImageSplitPiece[] = [];
@@ -70,10 +70,46 @@ function drawCrop(image: HTMLImageElement, sx: number, sy: number, sw: number, s
     return canvas.toDataURL("image/png");
 }
 
-function loadImage(dataUrl: string) {
-    return new Promise<HTMLImageElement>((resolve) => {
+/**
+ * A picture decoded for drawing onto a canvas that will be exported.
+ *
+ * `canvas.toDataURL()` throws `SecurityError` — "tainted canvases may not be exported" — as soon as the
+ * canvas has drawn bytes from another origin, and every picture here is from another origin: the canvas
+ * bundle is served on :3000 and the gateway holding the files on :8190. The taint is not about reading
+ * the pixels, it is about *how* they arrived, so the fix is at the source: `crossOrigin` asks for the
+ * image in CORS mode, which the gateway already answers (its CORS middleware allows the canvas's own
+ * host, `httpx.CORS`). A response that does not answer it would fail to load at all, so the last resort
+ * fetches the same bytes and hands them back as a `blob:` URL — same origin by definition, therefore
+ * safe to draw.
+ */
+export async function loadDrawableImage(src: string) {
+    if (!needsCors(src)) return decodeImage(src);
+    try {
+        return await decodeImage(src, "anonymous");
+    } catch {
+        const response = await fetch(src).catch(() => null);
+        if (!response?.ok) throw new Error(`image could not be read: ${src}`);
+        const objectUrl = URL.createObjectURL(await response.blob());
+        try {
+            return await decodeImage(objectUrl);
+        } finally {
+            // The element keeps the decoded picture once it has loaded; only the address is released.
+            URL.revokeObjectURL(objectUrl);
+        }
+    }
+}
+
+/** `data:` and `blob:` bytes are this document's own, so no CORS request is involved. */
+function needsCors(src: string) {
+    return !src.startsWith("data:") && !src.startsWith("blob:");
+}
+
+function decodeImage(src: string, crossOrigin?: "anonymous") {
+    return new Promise<HTMLImageElement>((resolve, reject) => {
         const image = new Image();
+        if (crossOrigin) image.crossOrigin = crossOrigin;
         image.onload = () => resolve(image);
-        image.src = dataUrl;
+        image.onerror = () => reject(new Error(`image could not be decoded: ${src}`));
+        image.src = src;
     });
 }
