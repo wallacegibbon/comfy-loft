@@ -417,9 +417,24 @@ export async function askOnceAgentSession(name: string, request: { prompt: strin
     }
 }
 
-/** Stop the answer being written. The session keeps its history. */
-export function cancelAgentSession(name: string): void {
-    sendAgentMessage(name, { cancel: true });
+/**
+ * AlayaCore's one cancel argument: stop the task, and leave the words that were queued into it alone so they
+ * run as the next prompt (`commands.CancelArgKeepSteering` on the other side). An empty argument — what a
+ * cancel carries when nothing says otherwise — drops them with the task, which is why stopping cannot be
+ * mistaken for "keep going".
+ */
+const CANCEL_KEEP_STEERING = "keep_steering";
+
+/**
+ * Stop the answer being written. The session keeps its history.
+ *
+ * `keepSteering` is the choice when the panel has a queue to speak for: the messages typed into the running
+ * turn are not lost with it, they become the next question. Without it — and for every caller that has no
+ * queue on screen, like a node's one-shot prompt being interrupted — they go with the task, and AlayaCore
+ * says so in the transcript.
+ */
+export function cancelAgentSession(name: string, keepSteering = false): void {
+    sendAgentMessage(name, keepSteering ? { cancel: true, args: CANCEL_KEEP_STEERING } : { cancel: true });
 }
 
 /** Close the socket and keep the agent: the window went away, not the conversation. */

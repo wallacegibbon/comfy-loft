@@ -427,10 +427,21 @@ func (s *Session) setBusy(busy bool) {
 
 // Cancel asks the agent to wind its current task down. A turn is the agent's to finish, so this is a
 // request rather than a kill; what it already said is in the session file either way.
-func (s *Session) Cancel() error {
+//
+// The word, if there is one, is AlayaCore's own cancel argument and is forwarded unchanged: `keep_steering`
+// is the only value it declares (`commands.CancelArgKeepSteering`), and what it means is that the words
+// queued into the running task become the next prompt instead of being dropped with it. An empty word is
+// the drop — the behaviour a bare cancel has always had, and the only one a signal can ask for. Which of
+// the two a cancel means is the panel's decision, made where the queue is on screen; the gateway writes
+// what it was given and does not choose.
+func (s *Session) Cancel(args string) error {
 	s.write.Lock()
 	defer s.write.Unlock()
-	if err := s.proc.Write(TagCmdInput, `{"command_id":"cancel","name":"cancel"}`); err != nil {
+	payload, err := json.Marshal(map[string]string{"command_id": "cancel", "name": "cancel", "args": args})
+	if err != nil {
+		return err
+	}
+	if err := s.proc.Write(TagCmdInput, string(payload)); err != nil {
 		return ErrGone
 	}
 	return nil

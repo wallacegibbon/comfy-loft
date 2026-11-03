@@ -84,8 +84,10 @@ type socketMessage struct {
 	Prompt  string   `json:"prompt"`
 	Images  []string `json:"images"`
 	Command string   `json:"command"`
-	Args    string   `json:"args"`
-	Cancel  bool     `json:"cancel"`
+	// Args is what a command carries, and — for a cancel — the one optional word AlayaCore accepts there
+	// (`keep_steering`). It is forwarded unchanged either way; the gateway does not read it.
+	Args   string `json:"args"`
+	Cancel bool   `json:"cancel"`
 	// ToolResult is the canvas answering a `tool` event: what running the tool did. It is not the same
 	// pipe as the agent's own `tool_call` / `tool_result` events, which run inside AlayaCore and which
 	// the gateway only relays.
@@ -161,7 +163,7 @@ func (s *Server) handleAgentSocket(ctx *httpx.Ctx) error {
 		if !stopWatching() {
 			return false
 		}
-		_ = session.Cancel()
+		_ = session.Cancel("")
 		s.agentSessions.Close(session.ID, "socket closed")
 		if s.logger != nil {
 			s.logger.Info("agent: socket closed session=%s", session.ID)
@@ -221,7 +223,10 @@ func (s *Server) readSocket(conn *ws.Conn, session *agent.Session, send func(age
 			_ = conn.Close()
 			return
 		case message.Cancel:
-			if err := session.Cancel(); err != nil {
+			// The optional word travels with it (`keep_steering`), so a stop can either take the queued
+			// messages with it or leave them to run as the next prompt. The panel decides which; the
+			// gateway forwards — see `agent.Session.Cancel`.
+			if err := session.Cancel(message.Args); err != nil {
 				return
 			}
 		default:

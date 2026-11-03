@@ -238,6 +238,50 @@ func TestSessionRelaysACommandAndTheAgentsStatement(t *testing.T) {
 	}
 }
 
+// A cancel carries the word the panel chose, and the gateway forwards it rather than translating it:
+// `keep_steering` is AlayaCore's own argument, and the two fates it picks between — the queue dropped with
+// the task, or left to run as the next prompt — are AlayaCore's to carry out. An empty word is the bare
+// cancel the socket-closed path sends, and it has to stay an empty word rather than vanish: the frame the
+// agent reads is `args` present and empty, not `args` missing.
+func TestCancelForwardsTheWordThePanelChose(t *testing.T) {
+	fs := openFakeSession(t)
+	session, log := fs.session, fs.log
+
+	if err := session.Cancel("keep_steering"); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	kept := waitForFrame(t, log, func(frames string) bool { return strings.Contains(frames, `"name":"cancel"`) })
+	if !strings.Contains(kept, `"args":"keep_steering"`) {
+		t.Fatalf("the word the panel chose was not forwarded: %q", kept)
+	}
+
+	if err := session.Cancel(""); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	dropped := waitForFrame(t, log, func(frames string) bool { return strings.Count(frames, `"name":"cancel"`) == 2 })
+	if !strings.Contains(dropped, `"args":""`) {
+		t.Fatalf("a bare cancel must still carry an empty args, not drop the field: %q", dropped)
+	}
+}
+
+// waitForFrame polls the fake agent's log until the frames it has read satisfy the test. The agent reads
+// its stdin on its own goroutine, so "written" and "read" are two moments and a test that read the file
+// once would be racing the child process.
+func waitForFrame(t *testing.T, log string, done func(frames string) bool) string {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		frames, _ := os.ReadFile(log)
+		if done(string(frames)) {
+			return string(frames)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the frames never arrived: %q", string(frames))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func TestSessionRelaysARejection(t *testing.T) {
 	fs := openFakeSession(t)
 	session, watcher := fs.session, fs.watcher

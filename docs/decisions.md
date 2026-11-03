@@ -8610,3 +8610,50 @@ ordered list, a quote and a fence — not by a component test: `vitest` here run
 
 **Where** `frontend/src/lib/markdown.ts`, `frontend/src/components/canvas/agent-markdown.tsx`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/tests/markdown.test.ts`.
+
+---
+
+## 238. Stopping is a choice: the queued words can outlive the task
+
+**Decision** A cancel carries AlayaCore's optional `keep_steering` argument, and the panel offers the choice
+exactly while there is a queue it would decide about.
+
+- **The word is AlayaCore's and the gateway forwards it.** `Session.Cancel(args string)` writes
+  `{"command_id":"cancel","name":"cancel","args":…}`; an empty word is the bare cancel, which is what the
+  socket-closed path still sends. The gateway does not translate `keep` into anything — the same rule
+  `agent.Request` already states for commands: the pair is forwarded, and what it means is the agent's.
+- **The socket already had a field for it.** `socketMessage.Args` was a command's; a cancel now reads it too,
+  so one action did not grow a second representation (`cancelArgs`, or worse a second message type).
+- **One optional word at the far end**: `commands.CancelArgKeepSteering` = `keep_steering`, declared as
+  `Optional(Token(...))` on `cancel` and read by `cancelSteeringFate`. Empty drops the queue and announces
+  `steering dropped — the task was canceled before it was delivered`; `keep_steering` leaves it to
+  `deliverLeftoverSteering`, which promotes it to the next prompt and reports the batch `delivered`. Only what
+  is queued at the instant of the cancel is settled — anything typed after it is a fresh intent. A signal or a
+  keystroke carries no argument, so those paths always drop, which is why "stop" cannot silently keep going.
+- **The choice is asked at the moment of stopping**, in a dialog, and only when there is a queue to decide
+  about: press stop with `steering > 0` and the panel asks 「还有 N 条消息在排队…要一起取消吗?」 with the two
+  answers the command has — 保留排队 (`keep_steering`) and 一起取消 (bare). With nothing queued, stopping has
+  one answer and the button is it: no dialog over a question with no alternatives.
+- **Two answers, not three.** Closing the dialog (X, Esc) sends nothing at all — the turn goes on — but that
+  is what closing anything means, not an option the design offers. The earlier version of this put the choice
+  on a checkbox in the steering notice, which asked the user to decide *before* they had decided to stop, kept
+  a state nobody could see, and had to be reset every time the queue emptied; asking at the moment of the
+  press has none of those problems and puts the count in the question.
+- **Every other caller keeps the drop.** `cancelAgentSession(name)` with no second argument is what a node's
+  one-shot prompt interruption sends, and `release()` on socket close sends `Cancel("")` — neither has a queue
+  on screen to speak for.
+
+**Why bother** The panel already showed 「N 条消息已排队」 and then threw those messages away when the stop
+button was pressed — the one moment the user is most likely to want either answer, and the two are genuinely
+different intents ("stop, I'll retype it" versus "stop this, then do what I just told you"). AlayaCore had
+already built the distinction and the panel could not reach it.
+
+**Tested** `make check` (one new: `TestCancelForwardsTheWordThePanelChose` — `keep_steering` reaches the frame,
+and a bare cancel carries `"args":""` rather than dropping the field, read from the fake agent's own log).
+`npx vitest run` 291. `npm run check` (i18n 824/810). `npm run build`. Not exercised against a real AlayaCore:
+the case worth trying is queue two messages into a running turn, tick the box, press stop, and watch them
+arrive as the next prompt (`delivered`, which the panel already uses to clear the counter).
+
+**Where** `internal/agent/sessions.go`, `internal/server/routes_agent.go`, `internal/agent/session_test.go`,
+`frontend/src/services/api/agent.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`,
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts`.

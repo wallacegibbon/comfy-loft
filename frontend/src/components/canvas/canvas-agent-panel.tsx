@@ -8,6 +8,8 @@ import { contextSegment, speedSegment } from "@/lib/canvas/agent-usage";
 import { nodeTitle } from "@/lib/canvas/node-title";
 import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
+import { Button } from "@/components/kit/button";
+import { Dialog } from "@/components/kit/dialog";
 import { confirm } from "@/components/kit/confirm";
 import { apiErrorMessage } from "@/services/api/http";
 import { AgentSettingsControls } from "./agent-settings-controls";
@@ -99,6 +101,15 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
      * outright on delivery, not decremented: one delivery empties the queue.
      */
     const [steering, setSteering] = useState(0);
+    /**
+     * Whether the stop button is asking what to do with the queue.
+     *
+     * Only ever open when there is something to ask about: with nothing queued, stopping has one answer and
+     * a dialog over it would be a question with no alternatives. The question itself has two answers —
+     * AlayaCore's one optional cancel argument, with it or without it — and closing the dialog is not a third
+     * one: nothing is sent at all until one of the two is pressed.
+     */
+    const [stopAsk, setStopAsk] = useState(false);
     /**
      * How many of the newest messages are mounted.
      *
@@ -544,7 +555,8 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
             <div className="relative border-t px-2 py-2" style={{ borderColor: theme.toolbar.border }}>
                 {steering > 0 ? (
                     // A queue nobody can see looks like a message that was lost, so the agent's own word on
-                    // it is shown right where the message was sent from.
+                    // it is shown right where the message was sent from. What happens to those words when
+                    // the turn is stopped is asked at the moment of stopping — see the dialog below.
                     <p className="flex items-center gap-1.5 px-1 pb-1 text-[11px] opacity-60">
                         <LoaderCircle className="size-3 animate-spin" />
                         {t("canvas.agent.steeringQueued", { count: steering })}
@@ -581,7 +593,15 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                     ) : null}
                     <div className="ml-auto flex items-center gap-1">
                         {busy ? (
-                            <button type="button" className="rounded-full p-2 hover:opacity-80" onClick={() => cancelAgentSession(session)} title={t("canvas.agent.stop")} aria-label={t("canvas.agent.stop")}>
+                            <button
+                                type="button"
+                                className="rounded-full p-2 hover:opacity-80"
+                                // Nothing queued: one answer, and the button is it. Something queued: the
+                                // queue's fate is a real choice, so it is asked before anything is stopped.
+                                onClick={() => (steering > 0 ? setStopAsk(true) : cancelAgentSession(session))}
+                                title={t("canvas.agent.stop")}
+                                aria-label={t("canvas.agent.stop")}
+                            >
                                 <Square className="size-3.5" />
                             </button>
                         ) : null}
@@ -599,6 +619,43 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                     </div>
                 </div>
             </div>
+
+            {/*
+             * The one cancel that has two shapes. A bare cancel takes the queued messages with the task and
+             * says so in the transcript; `keep_steering` leaves them to run as the next prompt. Which one is
+             * meant is the user's to say, the words at stake are theirs, and the count is the whole point of
+             * asking — so the question carries it. Closing this (X, Esc) sends nothing: the turn goes on.
+             */}
+            <Dialog
+                open={stopAsk}
+                onClose={() => setStopAsk(false)}
+                title={t("canvas.agent.stopQueuedTitle")}
+                footer={
+                    <>
+                        <Button
+                            onClick={() => {
+                                setStopAsk(false);
+                                cancelAgentSession(session, true);
+                            }}
+                        >
+                            {t("canvas.agent.stopKeepQueued")}
+                        </Button>
+                        <Button
+                            type="primary"
+                            danger
+                            onClick={() => {
+                                setStopAsk(false);
+                                cancelAgentSession(session);
+                            }}
+                        >
+                            {t("canvas.agent.stopDropQueued")}
+                        </Button>
+                    </>
+                }
+                size="form"
+            >
+                <p className="text-sm leading-6 text-stone-500 dark:text-stone-400">{t("canvas.agent.stopQueued", { count: steering })}</p>
+            </Dialog>
 
             {/* Drag the corner and the panel is the size you left it — for this session, like its position. */}
             <div data-canvas-agent-grip="top-left" className="absolute left-0 top-0 z-10 size-3 cursor-nwse-resize" onPointerDown={startResize("top-left")} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize} aria-hidden>
