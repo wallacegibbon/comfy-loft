@@ -844,9 +844,12 @@ password-manager prompt. Both were invisible to `tsc`, `--noUnusedLocals`, the t
 reachability graph. The second is the same class of failure as #27's missing JSX brace: deleting a
 component deletes the semantics it silently provided.
 
-**Left alone deliberately** `known-issues.md` still describes the aria-hidden warning radix raises
-when a confirmation opens over a focused button. It predates this work, it is a browser hint rather
-than a fault, and fixing it means patching radix's `hideOthers`.
+**Left alone deliberately** radix logs `Blocked aria-hidden on an element because its descendant retained
+focus` when a confirmation opens over the button that opened it: `@radix-ui/react-dialog` calls
+`aria-hidden`'s `hideOthers` before focus has moved into the layer, Chrome refuses the attribute, and the
+page stays readable — which is the outcome we want. Fixing it means patching radix's `hideOthers` or moving
+focus in the trigger's `onPointerDown`; both are larger than a console line nobody sees, and neither changes
+what the dialog does.
 
 **Where** `package.json`, `components/kit/*`, `components/kit/field.tsx`, `lib/canvas-overlay.ts`,
 `lib/design-tokens.ts`, `components/layout/app-providers.tsx`.
@@ -7531,8 +7534,8 @@ rewritten in English: the citation module's header and `referenceEntries` (`agen
 **Why** #17 asks for everything written for a human to be English, and #9's exception is for *data* — a value
 a model or ComfyUI reads. A comment that quotes `图片` is neither: it is prose, and the string it quotes is
 already defined a few lines away (`MARKERS`, the i18n dictionary, `titleKey`). The result was a rule with an
-asterisk nobody could check: `known-issues` #4 listed them as exceptions, so "no Chinese in the source except
-data" was true only if you accepted four comments as data.
+asterisk nobody could check: the four comments sat in an exception list, so "no Chinese in the source except
+data" was true only if comments counted as data.
 
 **Cost** Saying "the default title for the type" instead of naming it is one turn of the screw less vivid.
 The source now has 60 Chinese lines in six files, every one of them a value: the catalogue map, the agent's

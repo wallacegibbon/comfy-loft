@@ -20,21 +20,7 @@ audio through the interpolation. The media plan is declared in `registry.json` (
 
 ---
 
-## 2. Radix hides the page from assistive tech while a focused button sits in it
-
-**Symptom** Opening a confirmation (`kit/confirm`, radix's `AlertDialog`) over the trigger that has focus logs
-`Blocked aria-hidden on an element because its descendant retained focus` once per open, in the console only.
-
-**Cause** `@radix-ui/react-dialog` calls `aria-hidden`'s `hideOthers` as the modal layer opens, before focus
-has moved into it, and Chrome refuses the attribute — which is the outcome we want, since the page stays
-readable.
-
-**Fix to decide** Upgrade radix once it uses `inert` for `hideOthers`, or move focus into the dialog from the
-trigger's `onPointerDown`. #33 records leaving it alone.
-
----
-
-## 3. The Go half has no "nothing calls this" gate, and thirteen exported symbols have no caller
+## 2. The Go half has no "nothing calls this" gate, and thirteen exported symbols have no caller
 
 The canvas fails on an export nobody imports (`scripts/check-exports.cjs`) and `tsc` fails on an unused local.
 Neither has a Go counterpart, so an exported function whose last caller a refactor removed stays behind:

@@ -230,7 +230,7 @@ own frame protocol on stdin/stdout. Its model list, model choice and skills are 
 - [`docs/gateway.md`](docs/gateway.md): gateway endpoints, environment variables, architecture and language policy.
 - [`docs/protocol.md`](docs/protocol.md): the run protocol — submit, poll, outputs, media and errors.
 - [`docs/decisions.md`](docs/decisions.md): why the code looks the way it does — one entry per decision, with its cost.
-- [`docs/known-issues.md`](docs/known-issues.md): verified open problems and the command that fixes each.
+- [`docs/known-issues.md`](docs/known-issues.md): the open problems, what breaks and what the fix is.
 - [`docs/runtime-deps.md`](docs/runtime-deps.md): SageAttention and other runtimes must be installed with `pip` by hand (the workbench no longer does it).
 - [`tools/bake-moss-preset.py`](tools/bake-moss-preset.py): bakes MOSS Base+SFT into `moss_balanced_s100.safetensors` — the `builder` behind the `type: "bake"` entry in the resource index; run it with ComfyUI's Python (it imports torch).
 
