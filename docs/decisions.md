@@ -7498,3 +7498,25 @@ module-level `WebSocket` map and the failure is a listener that is not there, wh
 reach through the socket.
 
 **Where** `frontend/src/services/api/agent.ts`.
+
+## 215. The H3 rewrite is not asked for an output language
+
+**Decision** The instruction `optimizePrompt` sends for a video node no longer carries a `输出语言：…` clause.
+The image one (`optimizeImagePrompt`) keeps it.
+
+**Why** It could not be honoured. The H3 guides say the rewrite sections are written in English and that
+dialogue, lyrics and on-screen text are carried inside `<d>` verbatim, in their original language
+(`prompts/skills/h3-prompt-writing/references/ref-en.txt`, `base-en.txt` §4.4). So the clause asked the agent
+to do the one thing the format forbids, on every click, and the agent — correctly — followed the skill. For an
+image model it is a real choice: a Chinese prompt is what a Chinese reader wants to edit, and nothing forbids
+it there.
+
+**Cost** A video prompt still comes back in English, with the user's Chinese dialogue inside it. That is the
+format, not a choice this project makes; `promptOptimizeLanguage` (no control on screen, default `zh`) now
+affects image prompts only.
+
+**Tested** `npm run check` (tsc, i18n, exports, prettier), `npx vitest run`, `npm run build`; the built bundle
+carries the H3 instruction without the clause. Not exercised against an agent: the change is one template
+string, and what the agent does with it is the skill's business.
+
+**Where** `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.

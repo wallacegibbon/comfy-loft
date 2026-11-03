@@ -271,7 +271,11 @@ export function CanvasNodePromptPanel({
         try {
             const images = defaults.selectedRefs.length ? await resolveCanvasReferenceImages(defaults.selectedRefs, nodes) : [];
             const note = defaults.referenceNote ? `\n参考素材说明：${defaults.referenceNote}` : "";
-            const instruction = `把下面这段需求改写成一条 MiniMax H3 视频生成提示词。任务类型：${defaults.taskType}；时长：${defaults.duration} 秒；输出语言：${optimizeLanguage === "en" ? "英文" : "中文"}。${note}\n\n${text}`;
+            // No output-language clause: the H3 guides require the rewrite sections in English and keep
+            // dialogue, lyrics and on-screen text verbatim inside `<d>`
+            // (prompts/skills/h3-prompt-writing/references/ref-en.txt), so asking for a language here would
+            // contradict the skill the agent follows for this job.
+            const instruction = `把下面这段需求改写成一条 MiniMax H3 视频生成提示词。任务类型：${defaults.taskType}；时长：${defaults.duration} 秒。${note}\n\n${text}`;
             const result = await askOnceAgentSession(
                 agentName,
                 { prompt: instruction, images },

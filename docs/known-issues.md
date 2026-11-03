@@ -59,7 +59,7 @@ UI copy goes through `t()`. These lines do not — 68 lines in ten files, each o
 | Lines | File | What it is |
 | --- | --- | --- |
 | 45 | `lib/resource-copy-zh.ts` | the resource catalogue's Chinese, keyed by id: `resources.json` is English data (#66, #67) |
-| 10 | `components/canvas/canvas-node-prompt-panel.tsx` | the rewrite instructions sent to the agent (`输出语言：…`, the H3 task types, the caption request) |
+| 10 | `components/canvas/canvas-node-prompt-panel.tsx` | the instructions sent to the agent: the H3 task types, the two rewrite prompts (`输出语言：…` belongs to the image one), the caption request |
 | 5 | `lib/canvas/agent-references.ts` | the `【画布引用】` marker the citation block is built from, and the Chinese examples the comment quotes |
 | 2 | `components/canvas/canvas-node-moss-layout-dialog.tsx` | the caption prefix and regex the MOSS workflow parses |
 | 1 | `services/api/prompts.ts` | the `PromptOptimizeMode` union, as a type |
