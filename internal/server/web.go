@@ -17,9 +17,10 @@ import (
  * made every picture a cross-origin image. That was not a detail: `canvas.toDataURL()` refuses a canvas that
  * has drawn one ("tainted canvases may not be exported"), so InPaint, crop and split could not export what
  * they drew, CORS had to be listed per address, and a release could not ship at all because `vite` is a
- * development dependency. The bytes are static files that already sit beside the binary (`frontend/dist`,
- * which the gateway already writes `config.js` into), so serving them from the gateway's own origin is one
- * process, one port and one firewall rule (#219).
+ * development dependency. The bytes are static files that already sit beside the binary (`frontend/dist`),
+ * so serving them from the gateway's own origin is one process, one port and one firewall rule (#219). The
+ * one thing in that directory the gateway does not serve is `config.js`: that is a route, computed from
+ * `data/settings.json` (#220).
  *
  * This file is the only place in the gateway that knows the bundle exists, and it still does not know what a
  * node is: what it serves is bytes. `/api/*` remains the whole protocol.
@@ -66,9 +67,10 @@ func (s *Server) handleWeb(ctx *httpx.Ctx) error {
 // cacheControlFor is the whole cache policy of the bundle.
 //
 // Vite puts a content hash in every name under `assets/`, so those can be kept without ever asking again —
-// the same argument a canvas file's name makes (#156). Nothing else under the root may be: `index.html` and
-// `config.js` change under a fixed name, and losing that race is a white page rather than a slow one. The
-// remaining files (favicon, icons) are small enough that revalidating them costs nothing.
+// the same argument a canvas file's name makes (#156). Nothing else under the root may be: `index.html`
+// changes under a fixed name (`config.js` is not a file here at all, see #220), and losing that race is a
+// white page rather than a slow one. The remaining files (favicon, icons) are small enough that
+// revalidating them costs nothing.
 func cacheControlFor(requested string) string {
 	if strings.HasPrefix(requested, "/assets/") {
 		return "public, max-age=31536000, immutable"

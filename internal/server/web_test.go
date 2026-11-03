@@ -22,7 +22,8 @@ import (
  * answer: an unknown `/api/*` path and a missing chunk are errors, never the page (#219).
  */
 
-// webGateway is a gateway with a bundle of its own: one page, one hashed asset, and the first-paint file.
+// webGateway is a gateway with a bundle of its own: one page, one hashed asset, and the `config.js` template
+// a build puts there for a static host.
 func webGateway(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -118,15 +119,22 @@ func TestAHashedAssetIsCacheableForever(t *testing.T) {
 	}
 }
 
-// Everything else is written under a fixed name, so nothing else may be kept.
-func TestTheFirstPaintFileIsNotCached(t *testing.T) {
-	gateway, _ := webGateway(t)
-	response, _ := get(t, gateway, "/config.js")
+// The bundle carries a `config.js` of its own — the template `make frontend` copies from
+// `frontend/public/` for a static host — and the gateway must never serve it. What it serves is the
+// document it is holding, computed per request (#220): a template answered from the bundle is exactly the
+// stale copy this route replaced.
+func TestTheFirstPaintScriptWinsOverTheTemplateInTheBundle(t *testing.T) {
+	gateway, dir := webGateway(t)
+	writeBundleFile(t, dir, "config.js", `window.__RUNTIME_CONFIG__ = {"STALE":"from the bundle"};`)
+	response, body := get(t, gateway, "/config.js")
 	if response.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", response.StatusCode)
+		t.Fatalf("status = %d (%s), want 200", response.StatusCode, body)
 	}
-	if got := response.Header.Get("Cache-Control"); got != "no-store" {
-		t.Errorf("cache-control = %q, want no-store", got)
+	if strings.Contains(body, "STALE") {
+		t.Errorf("the bundle's copy answered instead of the document:\n%s", body)
+	}
+	if !strings.Contains(body, "SETTINGS") {
+		t.Errorf("the served script carries no settings:\n%s", body)
 	}
 }
 

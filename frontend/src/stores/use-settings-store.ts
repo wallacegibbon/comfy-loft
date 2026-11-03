@@ -12,9 +12,9 @@ import { requestSettings, requestSettingsSave, type SettingsBlob } from "@/servi
  * `data/settings.json` (#155): they survive a cleared browser and travel with the workspace, and the
  * canvas carries no persisted state at all.
  *
- * **Why there is no request at startup.** The gateway writes the document into the script the page
- * loads before its bundle (`dist/config.js`, `internal/server/runtime_config.go`), so it is available
- * synchronously, before the first frame. Without that file the theme would arrive one paint late.
+ * **Why there is no request at startup.** The page loads a script before its bundle (`/config.js`), and the
+ * gateway answers it with this document (`internal/server/runtime_config.go`, #220), so it is available
+ * synchronously, before the first frame. Without it the theme would arrive one paint late.
  * `load()` is therefore the fallback, not the path: it asks over HTTP only when the bootstrap is
  * missing, and until one of the two has produced a document the store refuses to save — writing
  * defaults over a document this build never read is the one failure worth a guard.

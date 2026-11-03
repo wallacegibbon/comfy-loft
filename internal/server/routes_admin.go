@@ -16,9 +16,11 @@ import (
 
 // routes registers the full HTTP surface.
 func (s *Server) routes(mux *http.ServeMux) {
-	// The canvas itself, when this gateway is the one serving it. `GET /` is a subtree pattern, and every
-	// `/api/...` pattern below is more specific, so an API path still reaches its handler; what is left for
-	// this one is a file of the bundle or a client-side route (#219).
+	// The canvas itself, when this gateway is the one serving it. Both are `GET`, and a literal path is
+	// more specific than the `GET /` subtree, so `/config.js` wins even though `WEB_DIR` usually holds a
+	// `config.js` of its own (the template `make frontend` copies for a static host): the gateway never
+	// serves a stale copy of the preferences it is holding (#220).
+	s.route(mux, "GET /config.js", s.handleFirstPaint)
 	s.route(mux, "GET /", s.handleWeb)
 
 	s.routesGeneration(mux)

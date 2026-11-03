@@ -30,9 +30,10 @@ func (s *Server) handleSettingsGet(ctx *httpx.Ctx) error {
 
 // handleSettingsPut implements PUT /api/settings.
 //
-// The body is `{settings: {...}}` and it replaces the stored document. The first-paint file is
-// rewritten here rather than on a timer: the next page load is the only thing that reads it, and it
-// should already be saying what this save said.
+// The body is `{settings: {...}}` and it replaces the stored document. Nothing has to be re-rendered for
+// the page's first paint (#220): `GET /config.js` reads this document per request. The one write here is
+// the opt-in copy for a canvas a static host publishes (`RUNTIME_CONFIG_PATH`), which would otherwise be a
+// save behind.
 func (s *Server) handleSettingsPut(ctx *httpx.Ctx) error {
 	body, err := bodyOrEmpty(ctx)
 	if err != nil {
@@ -52,7 +53,7 @@ func (s *Server) handleSettingsPut(ctx *httpx.Ctx) error {
 		}
 		return err
 	}
-	s.writeRuntimeConfig()
+	s.writeFirstPaintFile()
 	stored, err := s.settings.Read()
 	if err != nil {
 		return err

@@ -7,10 +7,11 @@
         <link rel="icon" href="/logo.svg" />
         <title>Comfy Loft</title>
         <!--
-            The theme is applied by the app, not here: the gateway writes the workspace preferences into
-            /config.js (docs/decisions.md #155), so any script in this file would either duplicate that
-            document or read a key nothing writes. `AppProviders` reads the store, which was initialised
-            from that document before the first render.
+            The theme is applied by the app, not here: `/config.js` carries the workspace preferences
+            (docs/decisions.md #155, #220) — served by the gateway from data/settings.json, or by a static
+            host as an empty template — so any script in this file would either duplicate that document or
+            read a key nothing writes. `AppProviders` reads the store, which was initialised from that
+            document before the first render.
         -->
     </head>
     <body class="bg-background text-foreground antialiased">

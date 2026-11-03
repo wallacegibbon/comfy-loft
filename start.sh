@@ -40,8 +40,7 @@ DIST_INDEX="$ROOT/frontend/dist/index.html"
 
 # The bundle is build output: `frontend/src` moves on, `dist/` does not, and a start script that served
 # the old one changed the meaning of "restart it and try again". Rebuild when the bundle is missing or
-# older than anything that goes into it — before serving, and before the gateway writes `dist/config.js`,
-# so the workspace preferences still land in the file the browser reads first (docs/decisions.md #155).
+# older than anything that goes into it, so what the gateway serves is what this tree builds.
 if [ ! -f "$DIST_INDEX" ] || [ -n "$(find "$ROOT/frontend/src" "$ROOT/frontend/public" "$ROOT/frontend/index.html" \
   "$ROOT/frontend/vite.config.ts" "$ROOT/frontend/package.json" "$ROOT/frontend/package-lock.json" \
   -newer "$DIST_INDEX" -print -quit 2>/dev/null)" ]; then
@@ -50,16 +49,10 @@ if [ ! -f "$DIST_INDEX" ] || [ -n "$(find "$ROOT/frontend/src" "$ROOT/frontend/p
   ( cd "$ROOT" && make frontend ) || { echo "canvas build failed" >&2; exit 1; }
 fi
 
-# The canvas itself: the gateway answers `GET /` with this directory (#219). It is the same bundle the
-# gateway writes `config.js` into, served from the origin the page will then talk to — so there is no
-# address to inject and no origin to allow.
+# The canvas itself: the gateway answers `GET /` with this directory (#219), and `GET /config.js` with the
+# workspace preferences read from data/settings.json (#220) — so there is no address to inject, no origin to
+# allow, and nothing written into the bundle the build produced.
 export WEB_DIR="$ROOT/frontend/dist"
-
-# The canvas's first paint. The gateway writes this file on every start and after every settings save,
-# with the workspace preferences (docs/decisions.md #155), so the theme and the language are known before
-# the first frame. `make frontend` restores the template from frontend/public/config.js, which is what a
-# page served before the gateway is up reads.
-export RUNTIME_CONFIG_PATH="$ROOT/frontend/dist/config.js"
 
 # The gateway is a static binary: build it once when it is missing, then startup is instant.
 # `make build` produces both it and the bridge.

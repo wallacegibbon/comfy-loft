@@ -21,9 +21,9 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         void useCanvasStore.getState().refresh();
-        // Normally a no-op: the preferences arrive in `config.js`, before the bundle. This asks over
-        // HTTP only when an operator serves no first-paint file, and the store refuses to save until
-        // one of the two has produced a document.
+        // Normally a no-op: the preferences arrive in `/config.js`, before the bundle. This asks over
+        // HTTP only when nothing bootstrapped them (a static host serving the empty template), and the
+        // store refuses to save until one of the two has produced a document.
         void useSettingsStore.getState().load();
         // `pagehide` rather than `beforeunload`: it also fires on the mobile cases where `beforeunload`
         // does not, and a queued save is the only thing here that cannot be reconstructed.

@@ -160,7 +160,7 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 	}
 
 	server.writeMCPConf()
-	server.writeRuntimeConfig()
+	server.writeFirstPaintFile()
 	go server.sweepAllCanvasFiles()
 	if err := server.startMCPListener(); err != nil {
 		return nil, err

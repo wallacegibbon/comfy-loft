@@ -10,7 +10,7 @@ export type AppLocale = "zh-CN" | "en-US";
 const LOCALE_SETTING_KEY = "locale";
 
 /**
- * The workspace's language, read from the first-paint file.
+ * The workspace's language, read from the first-paint script (`GET /config.js`).
  *
  * It comes from `window.__RUNTIME_CONFIG__.SETTINGS` rather than a store, because i18next is
  * initialised at import time — before any React tree exists. The gateway puts the document in the

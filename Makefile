@@ -44,7 +44,7 @@ build: ## Compile both binaries into bin/
 	@echo "built $(BIN) $(MCP_BIN)"
 
 run: ## Run the gateway from source, serving the built canvas bundle
-	WEB_DIR=$(FRONTEND_DIR)/dist RUNTIME_CONFIG_PATH=$(FRONTEND_DIR)/dist/config.js $(GO) run $(GATEWAY_PKG)
+	WEB_DIR=$(FRONTEND_DIR)/dist $(GO) run $(GATEWAY_PKG)
 
 frontend-deps: ## Install frontend dependencies when node_modules is missing or stale
 	@if [ ! -f $(FRONTEND_STAMP) ] || [ $(FRONTEND_DIR)/package-lock.json -nt $(FRONTEND_STAMP) ]; then \

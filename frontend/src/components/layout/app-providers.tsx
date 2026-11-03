@@ -30,7 +30,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
     const dark = theme === "dark";
     const locale = i18n.resolvedLanguage as AppLocale;
 
-    // Before the paint, not after: the theme came from the first-paint file, so applying it in an
+    // Before the paint, not after: the theme came from the first-paint script, so applying it in an
     // effect would still flash the default for one frame.
     useLayoutEffect(() => {
         document.documentElement.classList.toggle("dark", dark);

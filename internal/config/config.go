@@ -33,9 +33,9 @@ type Config struct {
 
 	WorkflowDir string
 	DataDir     string
-	// RuntimeConfigPath, when set, is a file the gateway keeps current for the canvas's first paint:
-	// the gateway address and a copy of the settings document, so the page can apply the theme and the
-	// language before it draws. Empty means the operator serves that file themselves.
+	// RuntimeConfigPath, when set, is where the gateway also writes the first-paint script as a file, for a
+	// canvas published by a static host with no gateway in the request path (#220). It is a copy of what
+	// `GET /config.js` answers; empty — the normal case — means nothing is written anywhere.
 	RuntimeConfigPath string
 	// WebDir, when set, is a canvas bundle this gateway serves itself (#219): `GET /` answers with its
 	// `index.html` and any file under it. Empty means somebody else serves the canvas — a development
@@ -48,7 +48,7 @@ type Config struct {
 
 	PublicBaseURL string
 	// PublicBaseURLSet records that the operator named the address (PUBLIC_BASE_URL) instead of it being
-	// derived from the bind. It is what tells the first-paint file whether the canvas is served somewhere
+	// derived from the bind. It is what tells the first-paint script whether the canvas is served somewhere
 	// other than this gateway (#219): a page this gateway served knows its own origin, and that is the only
 	// answer that stays right behind a LAN name, a phone or a reverse proxy.
 	PublicBaseURLSet bool
@@ -133,7 +133,7 @@ func WithDataDir(dir string) Option { return func(c *Config) { c.DataDir = dir }
 // WithCanvasRoot overrides the canvas root.
 func WithCanvasRoot(dir string) Option { return func(c *Config) { c.CanvasRoot = dir } }
 
-// WithRuntimeConfigPath points the first-paint file at a path (tests), or turns it off with "".
+// WithRuntimeConfigPath names a file to also write the first-paint script to, or turns that off with "".
 func WithRuntimeConfigPath(path string) Option { return func(c *Config) { c.RuntimeConfigPath = path } }
 
 // WithWebDir makes the gateway serve a canvas bundle from `dir` (tests, and a caller that does not want to
@@ -154,7 +154,7 @@ func WithAudioTimeout(ms int) Option { return func(c *Config) { c.AudioTimeoutMs
 // WithPollInterval overrides the history poll interval.
 func WithPollInterval(ms int) Option { return func(c *Config) { c.PollIntervalMs = ms } }
 
-// WithPublicBaseURL overrides the externally visible base URL. Naming one also tells the first-paint file
+// WithPublicBaseURL overrides the externally visible base URL. Naming one also tells the first-paint script
 // that the canvas is served from that address rather than from this gateway (#219).
 func WithPublicBaseURL(url string) Option {
 	return func(c *Config) {
