@@ -118,8 +118,8 @@ are data or user-facing copy rather than prose:
   because translating it would change generation behaviour or break parsing.
 
 The reasoning and the exact exceptions: [`docs/decisions.md`](docs/decisions.md) #8, #9, #17, #20.
-Chinese prose that still predates the rule is listed in
-[`docs/known-issues.md`](docs/known-issues.md) #6.
+The Chinese that stays in the source, and why each line does, is
+[`docs/known-issues.md`](docs/known-issues.md) #5.
 
 ## Quick start
 
