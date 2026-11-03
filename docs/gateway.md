@@ -79,15 +79,19 @@ Every variable is optional; the defaults match the previous implementation.
 | `WORKFLOW_DIR`       | `<root>/workflows`                 | Registry directory.                                                                                                                                                |
 | `DATA_DIR`           | `<root>/data`                      | Tasks, locks, preferences.                                                                                                                                         |
 | `CANVAS_ROOT`        | `<root>/canvases`                  | The canvases, one directory each. This is the workspace: back it up and you have the work.                                                                          |
-| `RUNTIME_CONFIG_PATH` | *(unset)*                        | A file the gateway keeps current for the canvas's first paint (address + settings). `start.sh` points it at `frontend/dist/config.js`; unset means "the operator serves it". |
-| `PUBLIC_BASE_URL`    | `http://GATEWAY_HOST:GATEWAY_PORT` | Absolute prefix for the URLs the gateway returns (run outputs, previews). Set it when a proxy publishes the gateway under another address. |
+| `WEB_DIR`            | *(unset)*                          | A canvas bundle to serve from this gateway: `GET /` answers with its `index.html` and any file under it (#219). `start.sh` and `make run` point it at `frontend/dist`. Unset means the canvas is served elsewhere and only `/api/*` is answered. |
+| `RUNTIME_CONFIG_PATH` | *(unset)*                        | A file the gateway keeps current for the canvas's first paint (the workspace settings, and the gateway address only when `PUBLIC_BASE_URL` names one). `start.sh` points it at `frontend/dist/config.js`; unset means "the operator serves it". |
+| `PUBLIC_BASE_URL`    | `http://GATEWAY_HOST:GATEWAY_PORT` | Absolute prefix for the URLs the gateway returns (run outputs, previews), and the address written into the first-paint file. Set it when a proxy publishes the gateway under another address, or when the canvas is served from an origin of its own. |
 | `CORS_ORIGINS`       | canvas + ComfyUI origins           | Extra allow list for canvases on another host. A canvas on the gateway's own host is allowed by rule. `*` is refused.                                              |
 
 `GATEWAY_HOST` is not a policy switch: `GATEWAY_HOST=192.168.3.232` binds the LAN address exactly
 like `127.0.0.1` binds loopback, and the gateway says so in a startup warning when that address is
-reachable from the network. Browser access is allowed when the canvas is served from the same host
-name as the gateway — the usual `:3000` canvas and `:8190` gateway — so a LAN address needs no
-`CORS_ORIGINS` entry; a canvas on a _different_ host does.
+reachable from the network.
+
+The canvas comes from this same address (`WEB_DIR`), so the page, its API calls and its pictures are
+one origin: no `CORS_ORIGINS` entry to maintain, and no cross-origin image for a canvas to refuse to
+export. A canvas served from a _different_ host — `npm run dev` without the proxy, or a static host of
+your own — is allowed when it shares the gateway's host name or is listed in `CORS_ORIGINS`.
 
 ### There is no authentication
 
@@ -363,6 +367,10 @@ model selections — that the canvas itself defines. The gateway checks only tha
 and stores it whole: a settings document with per-key endpoints would need a merge, and a merge is
 where preferences quietly lose keys.
 
+The address half is written only when `PUBLIC_BASE_URL` names one: a page the gateway served already
+knows where the gateway is, and its own origin is the only answer that survives a LAN name, a phone or a
+reverse proxy (#219).
+
 It is written to `RUNTIME_CONFIG_PATH` (when set) on every start and after every save, because the
 theme and the language have to be applied before the first frame. A preferences document that only
 arrives over HTTP opens every dark workspace white for a moment and every English workspace in
@@ -529,7 +537,7 @@ Two things stay Chinese on purpose, because they are _data_ rather than messagin
 make check        # gofmt check + go vet + the suite
 make test-race    # the same suite under the race detector (needs a C toolchain)
 make verify-static
-cd canvas && npm run check && npx vitest run       # the canvas
+cd frontend && npm run check && npx vitest run     # the canvas
 ```
 
 The suite covers binding application, LoRA injection, prompt sanitising, registry

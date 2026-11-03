@@ -7547,3 +7547,100 @@ CJK in `frontend/src` outside the two dictionaries reports those 60 lines and no
 **Where** `frontend/src/lib/canvas/agent-references.ts`, `node-title.ts`,
 `frontend/src/components/canvas/sent-prompt-disclosure.tsx`,
 `frontend/src/stores/use-config-store.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`.
+
+## 217. An editor exports a picture it decoded in CORS mode
+
+**Decision** `loadDrawableImage` (`frontend/src/lib/canvas/canvas-image-data.ts`) decodes a picture with
+`crossOrigin="anonymous"` and, if a response does not answer the CORS request, fetches the same bytes and
+decodes them through a `blob:` URL instead. The mask editor composites its source through it, and so do crop
+and split.
+
+**Why** `canvas.toDataURL()` throws `SecurityError: Tainted canvases may not be exported` the moment a canvas
+has drawn bytes from another origin, and the two origins are structural: the bundle is served on `:3000` and
+the gateway holding the files on `:8190` (`start.sh`). InPaint's Generate and Export both died on it, because
+the overlay they send as the second reference *is* the picture with the mask drawn over it — the export was
+never about the mask, it was about the source underneath. The taint is a property of how the bytes arrived,
+not of the pixels, so the fix belongs at the load: `crossOrigin` makes the browser ask for the image in CORS
+mode, and the gateway already answers that (its middleware allows the canvas's own host, `httpx.CORS`). The
+blob fallback covers a deployment that answers the headers on `fetch` but not on a subresource; a source that
+is already `data:` or `blob:` is this document's own and skips both.
+
+**Cost** One more decode per edit, as a separate cache entry from the `<img>` on screen. It is not on the
+click: the load starts when the dialog opens, so Generate awaits a download that already happened. A gateway
+that answers no CORS at all now reports "Failed to read image" instead of throwing from a click handler.
+
+**Tested** `npm run check` (tsc, i18n, exports, prettier), `npx vitest run`, `npm run build`. Not exercised
+against a tainted canvas in a browser: jsdom's canvas does not taint, so the argument rests on the headers
+`internal/httpx/middleware.go` sets and on the same attribute already used for cross-origin video
+(`canvas-video-frame.ts`, `camera-orbit-widget.ts`).
+
+**Where** `frontend/src/lib/canvas/canvas-image-data.ts`,
+`frontend/src/components/canvas/canvas-node-mask-edit-dialog.tsx`,
+`frontend/src/pages/canvas/hooks/use-image-editors.ts`.
+
+## 218. A node's `content` is the URL it is shown from, and `storageKey` is the reference
+
+**Decision** `imageMetadata`, `videoMetadata` and `audioMetadata` (`canvas-node-factory.ts`) put the URL a
+file is served at into `metadata.content` and keep `files/<name>` in `metadata.storageKey`. `documentOf` was
+already swapping them back, so nothing on disk changed.
+
+**Why** These three functions were the only place writing the reference into `content`, and every reader of
+`content` treats it as something an `<img>` can load: the lightbox in `project.tsx` (`previewContent`), the
+hover preview, the mask, crop, outpaint and angle dialogs, and `pickImageSource`'s `originalUrl` once a node
+is magnified past the preview's size. A node made in this session therefore pointed at `files/<name>`, which
+under `/canvas/<id>` is a 404 — so the picture appeared in its node (that path resolves the reference itself,
+`previewUrlFor`) and was broken in every view that did not: click to enlarge failed, and so did zooming in far
+enough to leave the preview. A reload fixed it because loading a canvas is what resolves `content`
+(`hydrateCanvasImages`), which is the shape this entry makes unnecessary to rely on.
+
+**Cost** An absolute URL lives in memory for as long as the canvas is open. It reaches neither `canvas.json`
+nor an export zip: `documentOf` replaces it with `storageKey` before either is written, and #152's rule — a
+document that carries no host, port or canvas id — still holds. A file with no derivable URL keeps the
+reference, which is no worse than before.
+
+**Tested** `frontend/tests/canvas-node-metadata.test.ts` (the URL in `content`, the reference back in the
+document, the fallback for a file without a URL), `npm run check`, `npx vitest run` (179), `npm run build`.
+
+**Where** `frontend/src/lib/canvas/canvas-node-factory.ts`, `frontend/src/lib/canvas/canvas-document.ts`.
+
+## 219. The gateway serves the canvas bundle, from its own origin
+
+**Decision** `WEB_DIR` names a canvas bundle and `GET /` serves it: a file under that directory, or its
+`index.html` for a path that names no file (a client-side route). `start.sh` starts one process instead of
+two, `frontend/dist` is what it points at, and `make run` does the same from source. The first-paint file
+carries a gateway address only when the operator names one (`PUBLIC_BASE_URL`); the frontend otherwise uses
+the origin it was loaded from.
+
+**Why** The canvas was a second process — `vite preview` on `:3000`, gateway on `:8190` — and that cost more
+than a second window. `vite` is a development dependency, so a release could not ship at all without
+shipping a build tool. Every picture was cross-origin, and `canvas.toDataURL()` refuses a canvas that has
+drawn one, so InPaint, crop and split could not export what they drew (#217 patched the symptom).
+`CORS_ORIGINS` had to be kept per address, with `*` refused and a "same host name" rule to paper over the
+usual single-machine case. And the frontend had to *guess* the gateway's address and carry it into the
+page, which is wrong for a LAN name, a phone, or a reverse proxy — the page it came from is the only answer
+none of those can get wrong. Serving bytes is not knowing what a node is: `/api/*` remains the whole
+protocol, and `canvas.Store`'s boundary is untouched.
+
+**Cost** The gateway now owns two things it did not: a cache policy, and the failure mode where the bundle
+is stale. `/assets/*` carries a content hash and is served `immutable`; everything else is `no-store`,
+because a cached `index.html` outlives an upgrade and asks for chunks that are gone — a white page a reload
+cannot fix, since the reload is what reads the cache. A missing asset answers 404, never the page, for the
+same reason. There is no compression: the wire is loopback or a LAN, which is the argument the bundle's own
+chunking already makes. A `go:embed` build (one file to ship) is not done: it would make `make build` depend
+on npm, and reading the directory keeps "copy a new `dist/` over the old one" working without a restart.
+
+**Tested** `internal/server/web_test.go` (root and a client route answer with the page, a hashed asset is
+`immutable`, `config.js` and the page are `no-store`, a missing asset and an unknown `/api/*` path stay 404
+JSON, no bundle means the old 404, and no request serves a file outside the bundle), the two first-paint
+tests (an address when `PUBLIC_BASE_URL` names one, none when the gateway serves the canvas),
+`frontend/tests/gateway-origin.test.ts` (the page's origin is the answer in a browser, a named address
+wins over it, loopback outside one), `go test ./internal/...`, `npm run check`, `npx vitest run` (184),
+`npm run build`. Smoke-tested by hand: the gateway
+served the built bundle on a spare port and answered `/`, `/canvas/<id>`, `/assets/*`, `/config.js` and
+`/api/nope` as above; `npm run dev` proxied `/api/canvases` through vite to a gateway. Not exercised in a
+browser against a real ComfyUI.
+
+**Where** `internal/server/web.go`, `internal/server/web_test.go`, `internal/config/config.go` (`WEB_DIR`,
+`PUBLIC_BASE_URL` explicitness), `internal/server/runtime_config.go`, `internal/server/routes_admin.go`,
+`frontend/src/constant/app-mode.ts`, `frontend/vite.config.ts`, `start.sh`, `Makefile`, `README.md`,
+`docs/gateway.md`.

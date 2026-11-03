@@ -79,7 +79,7 @@ the canvas frontend is a self-contained subtree beside it (see Credits):
 ├── docs/              # gateway API and env vars, the run protocol, prompt optimization, runtime deps
 ├── tools/             # development scripts
 ├── Makefile           # make build / check / check-full / verify-static / frontend / frontend-check
-└── start.sh           # starts the gateway and previews the canvas
+└── start.sh           # builds what is missing, then starts the gateway (which serves the canvas)
 ```
 
 Two directories carry the runtime assets, and the split is deliberate:
@@ -133,12 +133,15 @@ cp .env.example .env   # adjust COMFY_URL / GATEWAY_HOST for this machine
 ./start.sh
 ```
 
-Canvas `http://127.0.0.1:3000` · gateway `http://127.0.0.1:8190`
+Canvas and gateway `http://127.0.0.1:8190` — one process, one port: the gateway serves the bundle
+(docs/decisions.md #219).
 ComfyUI `http://127.0.0.1:8188` must already be running; the workbench only connects, never starts it.
 
 > The canvas bundle `frontend/dist/` is build output and is not tracked. `./start.sh` rebuilds it when it is
 > missing or older than the sources it is built from, so a restart is enough; `make frontend` builds it
-> without starting anything, and `make frontend-check` typechecks without emitting.
+> without starting anything, and `make frontend-check` typechecks without emitting. `WEB_DIR` is what points
+> the gateway at it (`start.sh` and `make run` set it); a gateway without it answers `/api/*` only, which is
+> the development shape.
 
 ### Reaching the workbench from another device
 
@@ -147,33 +150,30 @@ gateway binds it, the same way `127.0.0.1` binds loopback. Nothing else has to b
 
 ```bash
 # .env
-GATEWAY_HOST=192.168.3.232  # the gateway; also the address the browser will call
+GATEWAY_HOST=192.168.3.232  # the gateway, and therefore the canvas
 GATEWAY_PORT=8190
-CANVAS_HOST=192.168.3.232   # what `vite preview` serves
-CANVAS_PORT=3000
 ```
 
-`./start.sh` derives everything else from those two addresses: it writes the gateway URL into
-`dist/config.js` (`window.__RUNTIME_CONFIG__.LOCAL_GATEWAY_URL`, so the browser does not fall
-back to its own loopback) and lists the canvas origin for `CORS_ORIGINS`. Open
-`http://192.168.3.232:3000` from the phone and the canvas talks to `http://192.168.3.232:8190`.
+That is the whole change: the canvas is served from the same address, so open
+`http://192.168.3.232:8190` from the phone and it is the workbench. Nothing writes an address into
+the page any more (`config.js` carries the workspace preferences only), and nothing has to be added
+to `CORS_ORIGINS`, because the page and its pictures are one origin. Serving the canvas from
+*another* host is still possible — that is what `PUBLIC_BASE_URL` and `CORS_ORIGINS` are for.
 
 One thing to know when the gateway is reachable from the network: **it has no authentication.** Any
 device that can reach the port can run a workflow, read its artifacts and drive a canvas's agent (the
 gateway warns about this at startup). There is no token to turn on — the browser could not have kept
-one — so the choice is the address you bind and the network it sits on. `CORS_ORIGINS` is only needed
-for a canvas served from a *different* host than the gateway, and it governs browsers only.
+one — so the choice is the address you bind and the network it sits on.
 
 Gateway endpoints and environment variables: [`docs/gateway.md`](docs/gateway.md).
 
 ## Processes and interface ownership
 
-Four processes, all calls one-directional; the browser only talks to the gateway.
+Three processes, all calls one-directional; the browser only talks to the gateway.
 
 | Process | Port | What it is | Started by |
 |---|---|---|---|
-| Canvas frontend | `3000` | Prebuilt static pages (`vite preview`) | `./start.sh` |
-| Gateway | `8190` | Go static binary that runs ComfyUI workflows through its own run protocol | `./start.sh` |
+| Gateway | `8190` | Go static binary that runs ComfyUI workflows through its own run protocol — and serves the canvas bundle | `./start.sh` |
 | ComfyUI | `8188` | Python, does the actual image / video work | You, wherever it runs — nothing here starts it |
 | alayacore | *(spawned per request)* | The agent that answers prompts | The ecosystem's own install |
 
@@ -184,8 +184,8 @@ browser ─→ :8190 gateway ─┬─→ :8188 ComfyUI      images / videos
 The frontend sources contain no reference to `8188`; the canvas never bypasses the gateway.
 
 **There are no other background services.** The local agent used by Codex and the
-CORS-avoidance proxy have been removed from the repository; `./start.sh` starts one
-gateway process and one canvas process.
+CORS-avoidance proxy have been removed from the repository; `./start.sh` starts one gateway process,
+which also answers `GET /` with the bundle it sits beside.
 
 ### Where each endpoint lives
 
@@ -209,6 +209,7 @@ among its endpoints; [Not an OpenAI-compatible gateway](#not-an-openai-compatibl
 | `/mcp` (its own listener) | The agent's hands: the MCP server a session's tool calls arrive at. Loopback only |
 | `/api/resources/*` | Download models, install custom nodes |
 | `/api/system/*`, `/api/loras`, `/health` | System status, LoRA files, liveness |
+| `GET /` (and any path that is not `/api/*`) | The canvas bundle: `WEB_DIR`'s files, or its `index.html` for a client-side route. Unset `WEB_DIR`, and only `/api/*` is answered |
 
 **ComfyUI `:8188` endpoints** — only the gateway's ComfyUI client (`internal/comfy`) calls
 these, the canvas never sees them:
