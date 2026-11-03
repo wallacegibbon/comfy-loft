@@ -5,6 +5,7 @@ import { activeFileUrl } from "@/services/canvas-files";
 import type { AiConfig } from "@/stores/use-config-store";
 import type { UploadedImage } from "@/services/image-storage";
 import type { UploadedFile } from "@/services/file-storage";
+import type { RunFacts } from "@/services/api/runs";
 import type { ReferenceImage } from "@/types/image";
 import { CanvasNodeType, type CanvasImageGenerationType, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type Position } from "@/types/canvas";
 
@@ -46,15 +47,37 @@ export function createCanvasNode(type: CanvasNodeTypeId, position: Position, met
  * the lightbox cannot disagree.
  */
 export function imageMetadata(image: UploadedImage): CanvasNodeMetadata {
-    return { content: servedUrlOf(image), storageKey: image.storageKey, status: "success", naturalWidth: image.width, naturalHeight: image.height, bytes: image.bytes, mimeType: image.mimeType };
+    return { content: servedUrlOf(image), storageKey: image.storageKey, status: "success", naturalWidth: image.width, naturalHeight: image.height, bytes: image.bytes, mimeType: image.mimeType, ...madeBy(image) };
 }
 
 export function videoMetadata(video: UploadedFile): CanvasNodeMetadata {
-    return { content: servedUrlOf(video), storageKey: video.storageKey, status: "success", naturalWidth: video.width, naturalHeight: video.height, bytes: video.bytes, mimeType: video.mimeType || "video/mp4", durationMs: video.durationMs };
+    return {
+        content: servedUrlOf(video),
+        storageKey: video.storageKey,
+        status: "success",
+        naturalWidth: video.width,
+        naturalHeight: video.height,
+        bytes: video.bytes,
+        mimeType: video.mimeType || "video/mp4",
+        durationMs: video.durationMs,
+        ...madeBy(video),
+    };
 }
 
 export function audioMetadata(audio: UploadedFile): CanvasNodeMetadata {
-    return { content: servedUrlOf(audio), storageKey: audio.storageKey, status: "success", bytes: audio.bytes, mimeType: audio.mimeType || "audio/mpeg", durationMs: audio.durationMs };
+    return { content: servedUrlOf(audio), storageKey: audio.storageKey, status: "success", bytes: audio.bytes, mimeType: audio.mimeType || "audio/mpeg", durationMs: audio.durationMs, ...madeBy(audio) };
+}
+
+/**
+ * The run a file came from, as the two facts a node keeps about its own content — or nothing, for a file
+ * nothing made (a picture the user picked, a crop, a mask drawn in the editor).
+ *
+ * It is written here, in the three builders every node's media passes through, rather than at each place a
+ * node is filled: a run ends in a batch fill, an in-place regeneration, a resumed poll and a retry path, and
+ * a fact that a path can forget is a fact the agent will be told it does not have (docs/decisions.md #227).
+ */
+function madeBy(file: { run?: RunFacts }): CanvasNodeMetadata {
+    return file.run ? { workflow: file.run.workflow, generatedAt: file.run.finishedAt } : {};
 }
 
 /** The address one of these files is served at: this canvas's file URL, then the caller's, then the reference. */

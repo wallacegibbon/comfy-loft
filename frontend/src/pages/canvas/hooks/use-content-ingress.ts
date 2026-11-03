@@ -9,6 +9,7 @@ import { VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH } from "@/lib/canvas/canvas
 import { audioMetadata, createCanvasNode, imageMetadata, videoMetadata } from "@/lib/canvas/canvas-node-factory";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
 import { NODE_STATUS_SUCCESS } from "@/lib/canvas/canvas-node-status";
+import { NO_MAKER } from "@/lib/canvas/node-generation-facts";
 import { uploadMediaFile } from "@/services/file-storage";
 import { uploadImage } from "@/services/image-storage";
 import { CanvasNodeType, type CanvasNodeData, type ContextMenuState, type Position } from "@/types/canvas";
@@ -195,7 +196,7 @@ export function useContentIngress(deps: ContentIngressDeps) {
                                       position: { x: node.position.x + node.width / 2 - spec.width / 2, y: node.position.y + node.height / 2 - spec.height / 2 },
                                       width: spec.width,
                                       height: spec.height,
-                                      metadata: { ...node.metadata, ...audioMetadata(audio), errorDetails: undefined },
+                                      metadata: { ...node.metadata, ...audioMetadata(audio), errorDetails: undefined, ...NO_MAKER },
                                   }
                                 : node,
                         ),
@@ -215,7 +216,7 @@ export function useContentIngress(deps: ContentIngressDeps) {
                                       position: { x: node.position.x + node.width / 2 - nextSize.width / 2, y: node.position.y + node.height / 2 - nextSize.height / 2 },
                                       width: nextSize.width,
                                       height: nextSize.height,
-                                      metadata: { ...node.metadata, ...videoMetadata(video), errorDetails: undefined },
+                                      metadata: { ...node.metadata, ...videoMetadata(video), errorDetails: undefined, ...NO_MAKER },
                                   }
                                 : node,
                         ),
@@ -241,6 +242,7 @@ export function useContentIngress(deps: ContentIngressDeps) {
                                           freeResize: false,
                                           generationType: undefined,
                                           model: undefined,
+                                          ...NO_MAKER,
                                           size: undefined,
                                           quality: undefined,
                                           references: undefined,

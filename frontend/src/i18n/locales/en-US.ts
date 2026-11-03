@@ -563,6 +563,8 @@ export default {
             size: "Size",
             position: "Position",
             status: "Status",
+            workflow: "Model",
+            generatedAt: "Generated at",
             imageSize: "Image size",
             group: "Group",
             groupTitle: "Wrap selected nodes in a group",

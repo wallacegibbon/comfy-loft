@@ -6,6 +6,7 @@ import { resolveMediaUrl } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
 import { onAnyAgentEvent, sendAgentMessage, type ToolContent } from "@/services/api/agent";
 import { generateAnswer, GENERATE_START_WAIT_MS, type GenerateOptions, type GenerateStart } from "@/lib/canvas/agent-generate";
+import { generationClause } from "@/lib/canvas/node-generation-facts";
 import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type Position } from "@/types/canvas";
 
 /**
@@ -297,6 +298,10 @@ const GENERATE_MODES: string[] = [CanvasNodeType.Text, CanvasNodeType.Image, Can
  * that holds a picture, a film or a sound — the media itself, as the block the protocol defines for it.
  * The block carries its type, so the choice of block is the media's, not ours: an image is an image, a
  * sound is a sound, and a film travels as a `resource` blob because the protocol has no video block.
+ *
+ * A node something made ends with one line saying what made it and when — the caption a picture would have
+ * in a book, and the answer to the question a model cannot ask: "was this drawn by the model I am about to
+ * blame, or by another one, an hour ago?" (#227).
  */
 async function readNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> {
     const node = namedNode(hands, args);
@@ -309,6 +314,8 @@ async function readNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> 
     const media = await mediaOf(node);
     if (media) content.push(media);
     if (!content.length) content.push(textBlock(`${node.id} (${node.type}) holds nothing to read`));
+    const clause = generationClause(node.metadata);
+    if (clause) content.push(textBlock(`${node.id} (${node.type}) ${clause}`));
     return { content };
 }
 
@@ -437,7 +444,9 @@ function readPosition(value: unknown): Position | undefined {
  * The whole canvas as text: every node with the id a tool call can act on, and every edge.
  *
  * One line per node, because a model reads lines and diffs them; nothing is omitted for looking empty,
- * since a node with no prompt is a fact about the canvas too.
+ * since a node with no prompt is a fact about the canvas too. What made a node's content and when is on
+ * that line, before the prompt: a canvas of a dozen pictures is exactly where "which model drew this one"
+ * is a question, and asking it node by node would cost a `read_node` and a picture's bytes each time (#227).
  */
 function describeCanvas(nodes: CanvasNodeData[], connections: CanvasConnection[]): string {
     const lines = [`${nodes.length} nodes, ${connections.length} connections`];
@@ -445,7 +454,8 @@ function describeCanvas(nodes: CanvasNodeData[], connections: CanvasConnection[]
         const prompt = wordsOf(node).slice(0, 300);
         const title = node.title ? ` "${node.title}"` : "";
         const at = ` at (${Math.round(node.position.x)}, ${Math.round(node.position.y)})`;
-        lines.push(`- ${node.id} (${node.type})${title}${at}${prompt ? ` prompt: ${prompt}` : ""}`);
+        const made = generationClause(node.metadata);
+        lines.push(`- ${node.id} (${node.type})${title}${at}${made ? ` ${made}` : ""}${prompt ? ` prompt: ${prompt}` : ""}`);
     }
     if (connections.length) lines.push("connections:");
     for (const connection of connections) lines.push(`- ${connection.fromNodeId} -> ${connection.toNodeId}`);

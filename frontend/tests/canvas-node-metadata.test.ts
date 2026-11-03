@@ -56,6 +56,28 @@ describe("a node built from a finished file", () => {
         expect(metadata.content).toBe(`http://127.0.0.1:8190/api/canvases/349b70cf4764/files/task_ab12.png`);
     });
 
+    test("remembers the run that made it: which workflow, and when it finished", () => {
+        // A node outlives its run — the record is pruned and a finished image node drops its run id — so the
+        // two facts that answer "what drew this, and when" are stamped onto the node where the picture is
+        // (#227). They ride on the artifact, so every path from a run to a node gets them: a live run, a
+        // batch fill, a resumed poll, a retry.
+        const facts = { workflow: "image-z-image-turbo", finishedAt: "2026-11-03T13:09:19.928Z" };
+        const image = imageMetadata({ url, storageKey: key, width: 512, height: 512, bytes: 10, mimeType: "image/png", run: facts });
+        expect(image.workflow).toBe("image-z-image-turbo");
+        expect(image.generatedAt).toBe("2026-11-03T13:09:19.928Z");
+        const clip = videoMetadata({ url, storageKey: key, bytes: 10, mimeType: "video/mp4", width: 64, height: 64, run: facts });
+        const sound = audioMetadata({ url, storageKey: key, bytes: 10, mimeType: "audio/mpeg", run: facts });
+        expect([clip.workflow, clip.generatedAt, sound.workflow, sound.generatedAt]).toEqual(["image-z-image-turbo", "2026-11-03T13:09:19.928Z", "image-z-image-turbo", "2026-11-03T13:09:19.928Z"]);
+    });
+
+    test("says nothing about a maker for a file nothing made", () => {
+        // A picture the user picked, a crop of one, a mask drawn in an editor: there is no run, and an
+        // empty claim would be worse than no field at all.
+        const metadata = imageMetadata({ url, storageKey: key, width: 512, height: 512, bytes: 10, mimeType: "image/png" });
+        expect(metadata).not.toHaveProperty("workflow");
+        expect(metadata).not.toHaveProperty("generatedAt");
+    });
+
     test("does the same for clips and sounds", () => {
         const clip = videoMetadata({ url, storageKey: key, bytes: 10, mimeType: "video/mp4", width: 64, height: 64 });
         const sound = audioMetadata({ url, storageKey: key, bytes: 10, mimeType: "audio/mpeg" });

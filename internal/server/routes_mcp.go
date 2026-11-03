@@ -113,7 +113,7 @@ func (s *Server) mcpTools() []mcpTool {
 		InputSchema: noArguments,
 	}, {
 		Name:        "list_nodes",
-		Description: "Every node on the canvas — id, type, title, prompt, position — and every connection between them. The ids are what the other tools act on.",
+		Description: "Every node on the canvas — id, type, title, prompt, position, and what made its content and when — and every connection between them. The ids are what the other tools act on.",
 		InputSchema: noArguments,
 	}, {
 		Name:        "create_node",
@@ -171,7 +171,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "read_node",
-		Description: "Read one node's actual content: its words, or the image, video or audio it holds. Answers with the content itself — an image, a video, a sound or text — not a description of it.",
+		Description: "Read one node's actual content: its words, or the image, video or audio it holds. Answers with the content itself — an image, a video, a sound or text — not a description of it. A node something generated ends with a line naming the workflow that made it and the moment that run finished; both are facts the canvas recorded, so they are the answer to \"which model drew this, and when\" rather than a guess.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {

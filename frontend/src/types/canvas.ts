@@ -78,6 +78,23 @@ export type CanvasNodeMetadata = {
     generationMode?: CanvasGenerationMode;
     generationType?: CanvasImageGenerationType;
     model?: string;
+    /**
+     * The workflow the gateway ran for this node's content, as the run named itself
+     * (`image-z-image-turbo`).
+     *
+     * Not the same string as `model`, which is the pick the user made (`default::image-z-image-turbo`):
+     * a pick can be renamed or deleted out of the settings afterwards, and what actually ran cannot.
+     * Written when the run finishes, with `generatedAt` (docs/decisions.md #227).
+     */
+    workflow?: string;
+    /**
+     * The instant the run that produced this node's content finished, as the gateway stamped it: ISO 8601
+     * in UTC, kept verbatim rather than re-formatted for a locale.
+     *
+     * The node is the only place it survives. The run record is pruned, and a finished image node clears
+     * its run id, so anything that wants to know when a picture was made has to read it here.
+     */
+    generatedAt?: string;
     size?: string;
     quality?: string;
     background?: string;

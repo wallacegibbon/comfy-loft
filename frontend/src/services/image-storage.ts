@@ -1,4 +1,5 @@
 import i18n from "@/i18n";
+import type { RunFacts } from "@/services/api/runs";
 import { activeCanvasId, activeFileUrl, uploadCanvasFile } from "@/services/canvas-files";
 
 /**
@@ -21,6 +22,15 @@ export type UploadedImage = {
     height: number;
     bytes: number;
     mimeType: string;
+    /**
+     * The run that made it, when a run did.
+     *
+     * It rides on the artifact rather than on the node because the artifact is the only thing the run's
+     * result and the node's metadata have in common: every path from a finished run to a node goes through
+     * here, so "what made this picture, and when" cannot be forgotten by one of them and remembered by
+     * another. A picked file, a crop of one, a pasted picture: no run, no field (docs/decisions.md #227).
+     */
+    run?: RunFacts;
 };
 
 type ImageReadOptions = { signal?: AbortSignal };

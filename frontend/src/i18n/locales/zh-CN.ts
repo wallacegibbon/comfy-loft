@@ -568,6 +568,8 @@ export default {
             size: "尺寸",
             position: "位置",
             status: "状态",
+            workflow: "模型",
+            generatedAt: "生成于",
             imageSize: "图片大小",
             group: "打组",
             groupTitle: "用组节点包住选中节点",

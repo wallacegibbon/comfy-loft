@@ -7959,3 +7959,74 @@ with no sources and started under `env -i PATH=/usr/bin:/bin` → starts, no too
 with `bin/comfyloft-mcp` removed → exit 1 with the sentence above. The script is not part of `make check`.
 
 **Where** `start.sh`, `README.md`.
+
+## 227. A node remembers the run that made it: the workflow, and when it finished
+
+**Decision** A node's metadata carries two more facts about its own content — `workflow` (the gateway's id
+for what ran: `image-z-image-turbo`) and `generatedAt` (the instant that run finished, ISO 8601 in UTC,
+kept verbatim). They are written when the run's file becomes the node's content, and erased when the node's
+content stops being a run's output: a picked file replacing a generated one, or a node whose picture is
+being replaced by a new run.
+
+The facts ride on the *artifact* rather than being passed to each node patch. `Run` already answers both —
+`workflow` and `finished_at` — so `factsOf(run)` (`services/api/runs.ts`) puts them on what
+`generatedImage` / `generatedVideo` / `generatedAudio` return, and the three metadata builders
+(`imageMetadata`, `videoMetadata`, `audioMetadata`) turn them into node fields. Every path from a finished
+run to a node goes through those two places: a live run, a batch fill, an in-place regeneration, a resumed
+poll after a reload, a retry, an inpaint or upscale child. A picked file, a crop, a mask: no run on the
+artifact, and the fields are simply absent.
+
+The canvas tools then say it, in one place: `generationClause(metadata)`
+(`lib/canvas/node-generation-facts.ts`) returns `made 2026-11-03T13:09:19.928Z with image-z-image-turbo`.
+`list_nodes` puts it on the node's line, before the prompt; `read_node` ends its answer with it. The node
+information dialog shows the same two facts as rows, and the timestamp there is rendered in the reader's
+own clock — a person is looking at their own machine, a model is not.
+
+**Why** A node held everything about a picture except what made it and when. `metadata.model` was there but
+unreachable through any tool, and held the *pick* (`default::image-z-image-turbo`), which the settings can
+rename or delete after the fact. There was no time anywhere on the node at all.
+
+The time was recoverable in principle, and every route was worse than writing it down. The run record has
+it (`createdAt`, `startedAt`, `completedAt`) but is pruned (`TASK_RETENTION_DAYS`, `MAX_STORED_TASKS`) and
+names only `object: "image"` — no node — so a run cannot be traced back to what it drew. The output file's
+name carries the run id (`files/task_<id>.png`) and its mtime is the moment it was written, which is a
+derivation through two accidents; `imageRunId` is cleared when the image lands, so even that link is gone
+for pictures (video keeps `videoTaskId`). The canvas's `updatedAt` is the whole document. The node id's
+leading number is when the *node* was created — a node re-run in place keeps its id, so it answers a
+different question. And the agent has no HTTP path to `/api/runs` at all: its tools are the canvas ones.
+
+So an agent asked "which model drew this, and when" could only guess from the prompt, and the honest answer
+was "I cannot tell". Worse for the case that made this worth fixing: a canvas with a dozen pictures from
+three models, where the question is precisely *which* of them drew the one under discussion.
+
+**Cost** One optional field on the two artifact types, two optional fields on `CanvasNodeMetadata`, and one
+`{workflow: undefined, generatedAt: undefined}` patch (`NO_MAKER`) where a node forgets its maker. The
+`list_nodes` line grows by about fifty characters per generated node — accepted, because the alternative is
+a `read_node` per node, and that answer carries the picture's bytes.
+
+What this does not cover: a text node's answer is not a run (its own agent writes it), so it has no
+`generatedAt`; it keeps `model` and nothing else. Nodes written before this decision have neither field and
+their tools say nothing about a maker — there is no backfill, and inventing one from the filename would put
+a guess where every other fact here is a record. `model` on a node that was *replaced* by an uploaded clip
+or sound is still the old generation model: the image branch has always cleared it, the audio and video
+branches have not, and that pre-existing inconsistency is untouched here.
+
+**Tested** `frontend/tests/api-runs.test.ts`: `factsOf` — the workflow with `finished_at`, the `created_at`
+fallback, nothing for a run that names no workflow, nothing for one with no time; the artifact carries the
+two facts; and the seam — a finished run through `generatedImage`, `imageMetadata` and `generationClause`
+comes out as `made 2026-11-03T13:09:19.928Z with audio-minimax-music-3`, which is the sentence the two
+tools print. `frontend/tests/canvas-node-metadata.test.ts`: all three builders stamp both fields from the
+artifact's run, and a file nothing made has neither. `frontend/tests/node-generation-facts.test.ts` (4):
+both facts, workflow alone, time alone, and nothing at all for a node nothing made (or another node's empty
+strings). `npx vitest run` (222), `npm run check`, `npm run build`, `make check`, `go test ./internal/...`.
+Not exercised against a live gateway in a browser: the wire was already carrying `workflow` and
+`finished_at`, so what is untested on screen is the two dialog rows and the two tool sentences, and the
+sentences are unit-tested.
+
+**Where** `frontend/src/services/api/runs.ts` (`RunFacts`, `factsOf`),
+`frontend/src/services/image-storage.ts`, `frontend/src/services/file-storage.ts`,
+`frontend/src/lib/canvas/generated-media.ts`, `frontend/src/lib/canvas/canvas-node-factory.ts`,
+`frontend/src/lib/canvas/node-generation-facts.ts`, `frontend/src/types/canvas.ts`,
+`frontend/src/pages/canvas/hooks/{use-canvas-agent-tools,use-generation-runs,use-content-ingress}.ts`,
+`frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`, the two locales,
+`internal/server/routes_mcp.go` (the two tool descriptions).

@@ -1,5 +1,5 @@
 import type { AiConfig } from "@/stores/use-config-store";
-import { outputUrl, type Run, type RunOutput } from "@/services/api/runs";
+import { factsOf, outputUrl, type Run, type RunFacts, type RunOutput } from "@/services/api/runs";
 import { readAudioMeta, readVideoMeta, type UploadedFile } from "@/services/file-storage";
 import { readImageSize, type UploadedImage } from "@/services/image-storage";
 
@@ -44,6 +44,17 @@ function generatedFileOf(config: AiConfig, output: RunOutput): GeneratedFile {
     };
 }
 
+/**
+ * The `run` field an artifact carries, or no key at all for a run that names nothing.
+ *
+ * Spread into what `generatedImage`, `generatedVideo` and `generatedAudio` return, so all three answer
+ * "who made this" the same way and a caller cannot get one of them without it (#227).
+ */
+function runField(run: Run): { run?: RunFacts } {
+    const facts = factsOf(run);
+    return facts ? { run: facts } : {};
+}
+
 /** A generated picture, ready to become a node's content. */
 async function imageOf(file: GeneratedFile, options: { signal?: AbortSignal }): Promise<UploadedImage> {
     const size = await readImageSize(file.url, options);
@@ -59,19 +70,19 @@ async function imageOf(file: GeneratedFile, options: { signal?: AbortSignal }): 
 
 /** The picture a run made, ready to become a node's content. One run, one picture (#180). */
 export async function generatedImage(config: AiConfig, run: Run, options: { signal?: AbortSignal } = {}): Promise<UploadedImage> {
-    return imageOf(generatedFile(config, run), options);
+    return { ...(await imageOf(generatedFile(config, run), options)), ...runField(run) };
 }
 
 /** A generated clip, with the duration the node shows. */
 export async function generatedVideo(config: AiConfig, run: Run, index = 0): Promise<UploadedFile> {
     const file = generatedFile(config, run, index);
     const meta = await readVideoMeta(file.url);
-    return { url: file.url, storageKey: file.key, bytes: file.bytes, mimeType: file.mime, ...meta };
+    return { url: file.url, storageKey: file.key, bytes: file.bytes, mimeType: file.mime, ...meta, ...runField(run) };
 }
 
 /** A generated sound, with the duration the node shows. */
 export async function generatedAudio(config: AiConfig, run: Run, index = 0): Promise<UploadedFile> {
     const file = generatedFile(config, run, index);
     const meta = await readAudioMeta(file.url);
-    return { url: file.url, storageKey: file.key, bytes: file.bytes, mimeType: file.mime, ...meta };
+    return { url: file.url, storageKey: file.key, bytes: file.bytes, mimeType: file.mime, ...meta, ...runField(run) };
 }

@@ -1,4 +1,5 @@
 import { activeCanvasId, activeFileUrl, uploadCanvasFile } from "@/services/canvas-files";
+import type { RunFacts } from "@/services/api/runs";
 
 /**
  * Media files, as canvas files.
@@ -9,7 +10,17 @@ import { activeCanvasId, activeFileUrl, uploadCanvasFile } from "@/services/canv
  * (#156), so everything here is a thin layer over that name: a URL to show it, a fetch to get it back.
  */
 
-export type UploadedFile = { url: string; storageKey: string; bytes: number; mimeType: string; width?: number; height?: number; durationMs?: number };
+export type UploadedFile = {
+    url: string;
+    storageKey: string;
+    bytes: number;
+    mimeType: string;
+    width?: number;
+    height?: number;
+    durationMs?: number;
+    /** The run that made it, when a run did — the same field a picture's artifact carries (#227). */
+    run?: RunFacts;
+};
 
 export async function uploadMediaFile(input: string | Blob, prefix = "file"): Promise<UploadedFile> {
     const blob = typeof input === "string" ? await (await fetch(input)).blob() : input;

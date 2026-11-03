@@ -40,6 +40,30 @@ export type Run = {
     prompt_id?: string;
 };
 
+/**
+ * The run a file came from, as the node keeps it: the workflow that made it, and the moment it stopped.
+ *
+ * A node outlives its run. The record is pruned by the store (`TASK_RETENTION_DAYS`, `MAX_STORED_TASKS`) and
+ * a finished image node keeps no run id at all, so the two facts that answer *what made this, and when* have
+ * to be written down where the picture is. Absent on a file the user picked: nothing made it
+ * (docs/decisions.md #227).
+ */
+export type RunFacts = { workflow: string; finishedAt: string };
+
+/**
+ * What a finished run leaves on its artifacts — or nothing, for a run that names no workflow to believe.
+ *
+ * `finished_at` is stamped under the same lock that marks the run terminal, so a poll that sees `succeeded`
+ * sees it too; `created_at` is the fallback for a record that carries only that. `workflow` is the gateway's
+ * own id for what ran (`image-z-image-turbo`), which is not the same string as the model the user picked
+ * (`default::image-z-image-turbo`): a pick can be renamed or deleted afterwards, and what ran cannot.
+ */
+export function factsOf(run: Run): RunFacts | undefined {
+    const workflow = (run.workflow || "").trim();
+    const finishedAt = (run.finished_at || run.created_at || "").trim();
+    return workflow && finishedAt ? { workflow, finishedAt } : undefined;
+}
+
 export type RunRequest = {
     workflow: string;
     inputs?: Record<string, unknown>;

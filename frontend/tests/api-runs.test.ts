@@ -17,9 +17,11 @@ const noteGatewayError = vi.fn();
 vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: (...args: unknown[]) => noteGatewayError(...args), noteGatewayResponse: () => undefined }));
 vi.mock("@/services/image-storage", () => ({ readImageSize: async () => ({ width: 512, height: 512 }) }));
 
-const { RunFailedError, createRun, gatewayProtocolRoot, outputUrl, waitForRun } = await import("@/services/api/runs");
+const { RunFailedError, createRun, factsOf, gatewayProtocolRoot, outputUrl, waitForRun } = await import("@/services/api/runs");
 const { generatedImage } = await import("@/lib/canvas/generated-media");
 const { setActiveCanvas } = await import("@/services/canvas-files");
+const { imageMetadata } = await import("@/lib/canvas/canvas-node-factory");
+const { generationClause } = await import("@/lib/canvas/node-generation-facts");
 
 // A run and an upload belong to the canvas on screen (#156), so every case here opens one.
 const CANVAS = "40e8afb47f10";
@@ -168,6 +170,8 @@ describe("a run's files", () => {
     const finished = () =>
         run({
             status: "succeeded",
+            created_at: "2026-11-03T13:09:12.305Z",
+            finished_at: "2026-11-03T13:09:19.928Z",
             outputs: [
                 { index: 0, kind: "image", mime: "image/png", bytes: 12, filename: "task_1.png", url: `/api/canvases/${CANVAS}/files/task_1.png` },
                 { index: 1, kind: "image", mime: "image/png", bytes: 34, filename: "task_1-2.png", url: `/api/canvases/${CANVAS}/files/task_1-2.png` },
@@ -184,5 +188,47 @@ describe("a run's files", () => {
         expect(image.storageKey).toBe("files/task_1.png");
         expect(image.url).toBe(`http://gateway.test:8190/api/canvases/${CANVAS}/files/task_1.png`);
         expect(image).toMatchObject({ bytes: 12, mimeType: "image/png", width: 512, height: 512 });
+    });
+
+    it("reaches the sentence a tool says about the node", async () => {
+        // The seam the whole feature exists for: a finished run becomes a node, and the node says what made
+        // it and when — the same two facts `list_nodes` and `read_node` print (#227).
+        const image = await generatedImage(config, finished());
+        expect(generationClause(imageMetadata(image))).toBe("made 2026-11-03T13:09:19.928Z with audio-minimax-music-3");
+    });
+
+    it("carries the run that made it, so the node can say what drew it and when", async () => {
+        // The record is pruned and a finished image node drops its run id, so these two facts are the only
+        // ones that survive: they ride on the artifact from the moment the run ends (#227).
+        const image = await generatedImage(config, finished());
+        expect(image.run).toEqual({ workflow: "audio-minimax-music-3", finishedAt: "2026-11-03T13:09:19.928Z" });
+    });
+});
+
+describe("factsOf", () => {
+    // What a finished run leaves on its artifacts. `finished_at` is stamped under the same lock that marks
+    // the run terminal, so a poll that sees `succeeded` sees it; `created_at` is the fallback for a record
+    // that carries only that.
+    it("takes the workflow and the moment it finished", () => {
+        expect(factsOf({ id: "task_1", workflow: "image-z-image-turbo", status: "succeeded", created_at: "2026-11-03T13:09:12.305Z", finished_at: "2026-11-03T13:09:19.928Z" })).toEqual({
+            workflow: "image-z-image-turbo",
+            finishedAt: "2026-11-03T13:09:19.928Z",
+        });
+    });
+
+    it("falls back to when it was submitted", () => {
+        expect(factsOf({ id: "task_1", workflow: "image-z-image-turbo", status: "succeeded", created_at: "2026-11-03T13:09:12.305Z", finished_at: null })).toEqual({
+            workflow: "image-z-image-turbo",
+            finishedAt: "2026-11-03T13:09:12.305Z",
+        });
+    });
+
+    it("says nothing for a run that names no workflow", () => {
+        // A stamp without a workflow answers half the question, and half an answer is a lie on the node.
+        expect(factsOf({ id: "task_1", workflow: "", status: "succeeded", created_at: "2026-11-03T13:09:12.305Z" })).toBeUndefined();
+    });
+
+    it("says nothing for a run with no time at all", () => {
+        expect(factsOf({ id: "task_1", workflow: "flux", status: "succeeded" })).toBeUndefined();
     });
 });

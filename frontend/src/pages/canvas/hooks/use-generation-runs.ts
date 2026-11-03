@@ -11,6 +11,7 @@ import { requestPromptChat } from "@/services/api/prompts";
 import { waitForRun, type Run, type RunProgress, type RunRequest } from "@/services/api/runs";
 import type { GenerateStart } from "@/lib/canvas/agent-generate";
 import { generatedAudio, generatedImage } from "@/lib/canvas/generated-media";
+import { NO_MAKER } from "@/lib/canvas/node-generation-facts";
 import { isVideoTaskFailed } from "@/services/api/video";
 import { resolveModelRequestConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { imageToDataUrl, type UploadedImage } from "@/services/image-storage";
@@ -230,7 +231,20 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                                     // name it by: the request was the connected text, and "【Text 1】…" is
                                     // not a title.
                                     ...(prompt ? { title: rootNode.title } : {}),
-                                    metadata: { ...node.metadata, ...rootNode.metadata, content: undefined, storageKey: undefined, naturalWidth: undefined, naturalHeight: undefined, bytes: undefined, mimeType: undefined, errorDetails: undefined },
+                                    metadata: {
+                                        ...node.metadata,
+                                        ...rootNode.metadata,
+                                        content: undefined,
+                                        storageKey: undefined,
+                                        naturalWidth: undefined,
+                                        naturalHeight: undefined,
+                                        bytes: undefined,
+                                        mimeType: undefined,
+                                        // The picture they described is gone: a run that fails leaves the node
+                                        // with no content and must not leave it claiming to hold one (#227).
+                                        ...NO_MAKER,
+                                        errorDetails: undefined,
+                                    },
                                 }
                               : {
                                     ...node,
