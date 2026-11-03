@@ -8060,7 +8060,9 @@ remaining product was the debris the agent would then be told about as fact.
 **Cost** Three entry points with their handlers, and `use-content-ingress`'s entire target mechanism
 (`uploadTargetRef`, the three replacement branches — about ninety lines), whose file filtering and
 staggered placement collapsed into one `addFiles` that the drop and the picker share (a paste is one image
-at the centre and was already its own line). Six i18n keys. One image quick tool.
+at the centre and was already its own line). Six i18n keys. One image quick tool. The one entry that
+still opens the picker is named after what it does — `canvas.toolbar.import`, 导入文件 / Import files — since it
+imports files *as nodes*; "upload" named the mechanism and promised a destination there no longer is.
 
 What is lost: a node that is already placed, wired and grouped can no longer take a local file in place —
 the file becomes its own node, and the old one is deleted or rewired. If that gesture turns out to be

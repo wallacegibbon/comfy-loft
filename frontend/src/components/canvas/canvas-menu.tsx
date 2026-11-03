@@ -71,7 +71,7 @@ export function canvasMenuItems({
         { key: "add-video", icon: <Video className="size-4" />, label: t("canvas.toolbar.video"), onClick: onAddVideo },
         { key: "add-group", icon: <Group className="size-4" />, label: t("canvas.toolbar.group"), onClick: onAddGroup },
         { key: "add-lora", icon: <SlidersHorizontal className="size-4" />, label: t("canvas.toolbar.lora"), onClick: onAddLora },
-        { key: "upload", icon: <Upload className="size-4" />, label: t("canvas.toolbar.upload"), onClick: onUpload },
+        { key: "import", icon: <Upload className="size-4" />, label: t("canvas.toolbar.import"), onClick: onUpload },
 
         { type: "divider", key: "edit-divider" },
         { type: "label", key: "edit-label", text: t("canvas.menu.edit") },

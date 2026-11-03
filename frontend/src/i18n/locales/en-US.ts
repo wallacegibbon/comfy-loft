@@ -373,7 +373,7 @@ export default {
             video: "Video",
             group: "Group",
             lora: "LoRA card",
-            upload: "Upload files",
+            import: "Import files",
             clear: "Clear canvas",
             dots: "Dots",
             lines: "Lines",

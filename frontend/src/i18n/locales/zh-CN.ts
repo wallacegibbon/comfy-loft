@@ -387,7 +387,7 @@ export default {
             video: "视频",
             group: "组",
             lora: "LoRA 卡片",
-            upload: "上传文件",
+            import: "导入文件",
             clear: "清空画布",
             dots: "点",
             lines: "线",
