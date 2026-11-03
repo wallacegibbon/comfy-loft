@@ -9,6 +9,7 @@ import { Button } from "@/components/kit/button";
 import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
 import { requestEdit, requestGeneration } from "@/services/api/image";
+import type { RunRequest } from "@/services/api/runs";
 import { createVideoGenerationTask, isVideoTaskFailed, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
 import { useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { uploadImage } from "@/services/image-storage";
@@ -253,7 +254,7 @@ function InfiniteCanvasPage() {
     const selectedNodeIdsRef = useRef(selectedNodeIds);
     const viewportRef = useRef(viewport);
     const focusAnimRef = useRef<number | null>(null);
-    const generateNodeRef = useRef<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => Promise<void>) | null>(null);
+    const generateNodeRef = useRef<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, askedBy?: RunRequest["askedBy"]) => Promise<void>) | null>(null);
     const connectingParamsRef = useRef(connectingParams);
     const connectionTargetNodeIdRef = useRef(connectionTargetNodeId);
     const selectionBoxRef = useRef(selectionBox);
@@ -340,11 +341,12 @@ function InfiniteCanvasPage() {
             prompt: string,
             images: Parameters<typeof createVideoGenerationTask>[2],
             signal: AbortSignal,
+            askedBy: RunRequest["askedBy"] | undefined,
             extra: CanvasNodeData["metadata"] = {},
             videos: ReferenceVideo[] = [],
             audios: ReferenceAudio[] = [],
         ) => {
-            const task = await createVideoGenerationTask(config, prompt, images, { signal, videos, audios });
+            const task = await createVideoGenerationTask(config, prompt, images, { signal, videos, audios, askedBy });
             setNodes((prev) =>
                 prev.map((item) =>
                     item.id === nodeId
@@ -1941,7 +1943,7 @@ function InfiniteCanvasPage() {
     }, [projectLoaded, projectId, pollAudioRun, pollImageRun]);
 
     const handleGenerateNode = useCallback(
-        async (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => {
+        async (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, askedBy?: RunRequest["askedBy"]) => {
             const sourceNode = nodesRef.current.find((node) => node.id === nodeId);
             const generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode);
             // Text is answered by the agent, which needs nothing configured here; media needs a workflow.
@@ -1964,7 +1966,7 @@ function InfiniteCanvasPage() {
                     const context = await hydrateNodeGenerationContext(buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, fullPrompt));
                     if (context.loras.length) generationConfig.params = { ...(generationConfig.params || {}), loras: context.loras };
                     const refs = context.referenceImages;
-                    const image = refs.length ? await requestEdit(generationConfig, context.prompt, refs, { signal: controller.signal }) : await requestGeneration(generationConfig, context.prompt, { signal: controller.signal });
+                    const image = refs.length ? await requestEdit(generationConfig, context.prompt, refs, { signal: controller.signal, askedBy }) : await requestGeneration(generationConfig, context.prompt, { signal: controller.signal, askedBy });
                     const uploaded = image;
                     setNodes((prev) =>
                         prev.map((node) =>
@@ -2013,6 +2015,7 @@ function InfiniteCanvasPage() {
                 generationContext,
                 runController,
                 pendingChildIds: [],
+                askedBy,
             };
             if (markSourceStatus)
                 setNodes((prev) =>

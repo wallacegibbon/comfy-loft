@@ -27,11 +27,14 @@ type runSpec struct {
 	TimeoutMs int
 	RequestID string
 	Request   map[string]any
+	// Ask is the agent that asked for this run, or nil. It travels with the record so the end of the run
+	// can be said to whoever is waiting for it, however long that takes (#225).
+	Ask *task.Ask
 }
 
 // submitRun queues one run and returns its record. The record's id is the caller's handle.
 func (s *Server) submitRun(spec runSpec) *task.Task {
-	stored := s.tasks.Create(spec.Canvas, spec.Object, spec.Entry.Name, spec.Request)
+	stored := s.tasks.Create(spec.Canvas, spec.Object, spec.Entry.Name, spec.Request, spec.Ask)
 	s.tasks.Enqueue(stored, func(_ *task.Task, progress func(task.Update), jobCtx context.Context) (*task.Result, error) {
 		opts := generate.RunOptions{
 			Entry:          spec.Entry,

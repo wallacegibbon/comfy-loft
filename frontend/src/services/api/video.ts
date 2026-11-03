@@ -6,13 +6,13 @@ import { VIDEO_INTERPOLATE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 import { mediaIdOf } from "@/services/canvas-files";
 import { getMediaBlob, resolveMediaUrl, type UploadedFile } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
-import { cancelRun, createRun, uploadMedia, waitForRun, RunFailedError, type Run } from "@/services/api/runs";
+import { cancelRun, createRun, uploadMedia, waitForRun, RunFailedError, type Run, type RunRequest } from "@/services/api/runs";
 import { generatedVideo } from "@/lib/canvas/generated-media";
 import { resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
-type RequestOptions = { signal?: AbortSignal; params?: Record<string, unknown> };
+type RequestOptions = { signal?: AbortSignal; params?: Record<string, unknown>; askedBy?: RunRequest["askedBy"] };
 type VideoMediaOptions = RequestOptions & { videos?: ReferenceVideo[]; audios?: ReferenceAudio[] };
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
@@ -68,6 +68,7 @@ export async function createVideoInterpolateTask(config: AiConfig, source: Video
             workflow: VIDEO_INTERPOLATE_WORKFLOW,
             inputs: { multiplier: params.multiplier },
             media: { video: sourceId },
+            askedBy: options?.askedBy,
         });
         return { id: run.id, model: VIDEO_INTERPOLATE_WORKFLOW };
     } catch (error) {
@@ -119,6 +120,7 @@ async function createGatewayVideoTask(config: AiConfig, prompt: string, referenc
             workflow: config.model,
             inputs,
             ...(Object.keys(media).length ? { media } : {}),
+            askedBy: options?.askedBy,
         });
         return { id: run.id, model: config.model };
     } catch (error) {

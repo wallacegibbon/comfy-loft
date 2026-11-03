@@ -161,6 +161,9 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 
 	server.writeMCPConf()
 	server.writeFirstPaintFile()
+	// What happens at the end of a run: the agent that asked for it is told, as a message from the user
+	// (run_notice.go). Wired before the first request, so a run cannot finish with nobody listening.
+	tasks.SetOnFinish(server.onRunFinished)
 	go server.sweepAllCanvasFiles()
 	if err := server.startMCPListener(); err != nil {
 		return nil, err

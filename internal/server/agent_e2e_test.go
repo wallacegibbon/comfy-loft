@@ -66,6 +66,11 @@ while IFS= read -r line; do
       sleep 2
       printf 'Ax{"id":"2","type":"text","text":"slow answer"}\n'
       printf 'SM{"type":"task","data":{"in_progress":false}}\n' ;;
+    UX*'[comfyloft]'*)
+      printf '%s\n' "$line"
+      printf 'SM{"type":"task","data":{"in_progress":true}}\n'
+      printf 'Ax{"id":"2","type":"text","text":"carrying on"}\n'
+      printf 'SM{"type":"task","data":{"in_progress":false}}\n' ;;
     UX*text*)
       printf '%s\n' "$line"
       if [ -n "$SESSION" ]; then printf '%s\n' "$line" >> "$SESSION"; fi ;;
@@ -831,5 +836,76 @@ func TestSocketReportsADeadProcess(t *testing.T) {
 		if _, err := conn.ReadMessage(ctx); err != nil {
 			return // the socket closed: the conversation is over and the client knows
 		}
+	}
+}
+
+// TestARunFinishingTellsTheAgentThatAskedForIt: `generate` is answered the moment the run starts, so the
+// agent's turn can end with the picture still rendering. When the run ends, the agent that asked is told,
+// as a message from the user — it goes in as a prompt, the agent echoes it, and the socket relays that
+// echo, which is what makes the panel draw it like anything typed (docs/decisions.md #225).
+func TestARunFinishingTellsTheAgentThatAskedForIt(t *testing.T) {
+	gateway, _ := startAgentGateway(t)
+	session := canvasSession(t, gateway)
+	canvas := strings.TrimPrefix(session, "canvas:")
+	conn := openSocket(t, gateway, session)
+
+	// The request the page submits after answering `generate`: the run, and who is waiting to hear of it.
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/canvases/"+canvas+"/runs", map[string]any{
+		"workflow": "image-test",
+		"inputs":   map[string]any{"prompt": "a cat"},
+		"askedBy":  map[string]any{"session": session, "node": "n12"},
+	})
+	if status != http.StatusAccepted {
+		t.Fatalf("submit status = %d, body = %v", status, payload)
+	}
+	id, _ := payload["id"].(string)
+	if id == "" {
+		t.Fatalf("no run id: %v", payload)
+	}
+	if finished := waitForRun(t, gateway, id); finished["status"] != "succeeded" {
+		t.Fatalf("the run did not succeed: %v", finished)
+	}
+
+	// The agent was told, as a user message: the notice names the node it asked about, so it can carry on.
+	seen := until(t, conn, "delta")
+	var told string
+	for _, event := range seen {
+		if event["type"] == "user" {
+			told, _ = event["text"].(string)
+		}
+	}
+	if !strings.Contains(told, "n12") || !strings.Contains(told, "finished") {
+		t.Fatalf("the agent was not told which run ended; events: %v", seen)
+	}
+	// And it answered the message as a turn of its own, so the conversation goes on from there.
+	if answer := textOf(seen); answer != "carrying on" {
+		t.Errorf("answer = %q, want the fake agent's reply to the notice", answer)
+	}
+}
+
+// TestARunNobodyAskedAboutTellsNoOne: a run the user started by pressing the button is not news to the
+// agent, and a message nobody is waiting for would be noise in the conversation.
+func TestARunNobodyAskedAboutTellsNoOne(t *testing.T) {
+	gateway, _ := startAgentGateway(t)
+	session := canvasSession(t, gateway)
+	canvas := strings.TrimPrefix(session, "canvas:")
+	conn := openSocket(t, gateway, session)
+
+	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/canvases/"+canvas+"/runs", map[string]any{
+		"workflow": "image-test",
+		"inputs":   map[string]any{"prompt": "a cat"},
+	})
+	if status != http.StatusAccepted {
+		t.Fatalf("submit status = %d, body = %v", status, payload)
+	}
+	id, _ := payload["id"].(string)
+	waitForRun(t, gateway, id)
+
+	// Nothing is said on the socket. A prompt the user typed would echo at once, so a short wait for one
+	// is what tells the two apart — and the fake agent answers everything it is sent.
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if raw, err := conn.ReadMessage(ctx); err == nil {
+		t.Fatalf("the socket said %q about a run nobody asked about", raw)
 	}
 }

@@ -7853,3 +7853,63 @@ not exercised against a live AlayaCore — the row was read off a replayed trans
 `frontend/src/services/api/agent.ts` (`AgentUsage`, `adopt`),
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
 `docs/gateway.md`.
+
+## 225. A run's end is a message to the agent that asked for it
+
+**Decision** `POST /api/canvases/{id}/runs` takes an optional `askedBy: {session, node}`, filled in by the
+page when it submits a run because an agent called `generate`. The run record keeps it (`task.Ask`), and
+when the run reaches a terminal status the gateway says what became of it to that session — one sentence
+naming the node, the files or the reason — through `agent.Sessions.Tell`, which sends it as a prompt. It
+therefore arrives the way anything typed into the panel does: AlayaCore echoes it as a user message, draws
+it, and answers in a turn of its own.
+
+The store reports a run once (`Store.SetOnFinish`, guarded by a flag that is never serialized), from
+whichever side reached a terminal status first: the worker that unwound it, or a cancel that took it out of
+the queue before a worker ever saw it.
+
+**Why** `generate` is answered the moment the run is queued, because a picture takes minutes and a tool call
+is not a progress bar. So the agent's turn can end — usually does end — with the work still going, and the
+tool's own answer said only "the node shows its own progress". The agent that started a two-minute video
+then waits for a message that never comes, and the user says "it's done" by hand. That is the whole defect.
+
+Two shapes were rejected. Keeping the pairing in the page — the promise `generateNode` returns, and a send
+when it settles — is a hundred lines shorter and dies on the one occasion this exists for: reload the tab,
+or leave the canvas and come back, and the run goes on while the memory of who asked goes with the page.
+Deriving it instead from the tool call at the gateway is a timing heuristic: the call knows the session and
+the node but not the run (the page's own button creates that), so "the next run on this canvas" would
+attribute a user's own generation to an agent that happened to be idle.
+
+It is sent as a *user* message rather than a frame of its own, because the conversation belongs to the agent
+and a finished run is the kind of thing a person would tell it. Anything else would need AlayaCore to grow a
+frame.
+
+**Cost** One more optional field on the run body, threaded from the tool handler through `handleGenerateNode`
+and the four generation modes to each API helper (`askedBy` on `RunRequest`), and one hook on the task store.
+A session that is gone when the run ends hears nothing, and the log says so: the message is not queued for
+the next process. The ask is a *name*, which is what lets it survive a reload — and also what lets it
+outlive a conversation cleared mid-run, whose successor under the same name would be told about a run it
+never asked for. A text node's generate is not a run — that node's own agent writes the answer into it — so
+it is not reported, and the tool's answer says so instead of promising a message. `generate`'s description
+and answer now set the expectation ("you will be sent a message; do not poll"), which is the other half of
+the feature: an agent told nothing waits, and an agent told too little polls.
+
+**Tested** `internal/task/task_test.go`: `TestTheEndOfARunIsReported` (a run that worked, one that failed,
+one nobody asked about — with `Ask` intact on the snapshot the hook receives) and
+`TestACancelledRunIsReportedOnce` (a queued cancel is reported by the cancel; a cancel that lands mid-run is
+reported once, not again by the worker that unwinds afterwards). `internal/server/run_notice_test.go`: the
+body parsing, and the three sentences. `internal/agent/session_test.go`:
+`TestTellSendsTheWordsAsAPrompt` (the words leave as one `UX` frame flushed with `UE`) and
+`TestTellReportsASessionThatIsGone`. `internal/server/agent_e2e_test.go`:
+`TestARunFinishingTellsTheAgentThatAskedForIt` — a real run on the fake ComfyUI, the socket relaying the
+echo and the fake agent's reply — and `TestARunNobodyAskedAboutTellsNoOne`, where nothing is said on the
+socket at all. `frontend/tests/api-runs.test.ts`: the body carries `askedBy`, and does not carry it when
+nobody asked. `go test ./internal/...`, `make check`, `npx vitest run` (206), `npm run check`, `npm run
+build`. In the browser: not exercised — the panel shows the notice because it shows every user message, and
+that path is covered, but the round trip was read from a socket, not off a screen.
+
+**Where** `internal/task/task.go` (`Ask`, `SetOnFinish`, `finishedLocked`, `finish`),
+`internal/server/run_notice.go`, `internal/server/routes_runs.go`, `internal/server/runs.go`,
+`internal/server/server.go`, `internal/server/routes_mcp.go`, `internal/agent/sessions.go` (`Tell`),
+`internal/server/agent_e2e_test.go`, `frontend/src/services/api/{runs,image,audio,video}.ts`,
+`frontend/src/pages/canvas/hooks/{use-canvas-agent-tools,use-generation-runs}.ts`,
+`frontend/src/pages/canvas/project.tsx`, `docs/protocol.md`, `docs/gateway.md`.

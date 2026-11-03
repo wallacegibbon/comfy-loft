@@ -114,7 +114,8 @@ surface; they manage the gateway and the workspace, they do not run workflows
     "reference": ["up-9f01ab2c.png"],
     "first_frame": ["up-2b7788de.png"],
     "mask": ["up-7c31e5aa.png"]
-  }
+  },
+  "askedBy": { "session": "canvas:40e8afb47f10", "node": "n12" }
 }
 ```
 
@@ -128,6 +129,9 @@ surface; they manage the gateway and the workspace, they do not run workflows
   the **first mode is the default**. The variant carries its own graph, bindings and media contract,
   so an inpaint request means "source + mask" without the handler knowing the workflow.
 - No `wait`, no `stream`, no synchronous variant: see "The id is the contract" below.
+- **`askedBy` is optional, and only an agent sets it.** It names the conversation that asked for the
+  run, and the node it asked about, so the gateway can say what became of the run when it ends — as a
+  message from the user, on that session (decisions #225). A body without it is a run the user started.
 
 Response (`202` in every case, including a run that finished instantly). `status` is the state at
 the moment the response is written, so a queue that picks the run up immediately answers `running`:

@@ -8,7 +8,7 @@ import { requestAudioGeneration } from "@/services/api/audio";
 import { requestEdit, requestGeneration } from "@/services/api/image";
 import { nodeAgent } from "@/services/api/agent";
 import { requestPromptChat } from "@/services/api/prompts";
-import { waitForRun, type Run, type RunProgress } from "@/services/api/runs";
+import { waitForRun, type Run, type RunProgress, type RunRequest } from "@/services/api/runs";
 import { generatedAudio, generatedImage } from "@/lib/canvas/generated-media";
 import { isVideoTaskFailed } from "@/services/api/video";
 import { resolveModelRequestConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
@@ -44,6 +44,12 @@ export type GenerationRun = {
      * it is a field on the run rather than a return value.
      */
     pendingChildIds: string[];
+    /**
+     * The agent that asked for this generation, if one did. It rides along to the run, which is where the
+     * gateway keeps "who is waiting to be told" — the tool call that started this is answered long before
+     * the run ends (docs/decisions.md #225).
+     */
+    askedBy?: RunRequest["askedBy"];
 };
 
 export type GenerationRunDeps = {
@@ -64,6 +70,7 @@ export type GenerationRunDeps = {
         prompt: string,
         images: Parameters<typeof import("@/services/api/video").createVideoGenerationTask>[2],
         signal: AbortSignal,
+        askedBy: RunRequest["askedBy"] | undefined,
         extra?: CanvasNodeData["metadata"],
         videos?: ReferenceVideo[],
         audios?: ReferenceAudio[],
@@ -246,6 +253,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             try {
                 const requestOptions = {
                     signal: controller.signal,
+                    askedBy: run.askedBy,
                     onProgress: (state: Run) => setRunStepProgress(rootId, state.progress),
                     // The id arrives at submission, before a single artifact exists: it is what a
                     // reload reattaches to.
@@ -336,6 +344,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                     effectivePrompt,
                     generationContext.referenceImages,
                     controller.signal,
+                    run.askedBy,
                     {
                         size: generationConfig.size,
                         seconds: generationConfig.videoSeconds,
@@ -383,6 +392,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             try {
                 const audio = await requestAudioGeneration(generationConfig, effectivePrompt, {
                     signal: controller.signal,
+                    askedBy: run.askedBy,
                     // The id lands on the node before the first poll, so a reload can resume it.
                     onRun: (runId) => setNodes((prev) => prev.map((node) => (node.id === audioId ? { ...node, metadata: { ...node.metadata, audioRunId: runId } } : node))),
                     onProgress: (run) => setRunStepProgress(audioId, run.progress),
@@ -629,6 +639,8 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                         prompt,
                         retryImages,
                         controller.signal,
+                        // A retry is the user pressing the button again, not the agent asking.
+                        undefined,
                         {
                             size: generationConfig.size,
                             seconds: generationConfig.videoSeconds,

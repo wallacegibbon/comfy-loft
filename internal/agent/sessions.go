@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -162,6 +163,21 @@ func (s *Sessions) List() []*Session {
 		all = append(all, session)
 	}
 	return all
+}
+
+// Tell says one thing to a session as if the user had typed it: it goes in as a prompt, so the agent
+// answers it in a turn of its own and the canvas draws the message like any other (docs/decisions.md
+// #225).
+//
+// Nothing here waits for the agent to be idle. AlayaCore takes a prompt while it is working and works it
+// into the run already in progress — that queue is the agent's, and waiting on this side would only turn
+// "the run finished" into a message delivered at some later, arbitrary moment.
+func (s *Sessions) Tell(id, text string) error {
+	session, ok := s.Lookup(id)
+	if !ok {
+		return fmt.Errorf("no agent session %q is open", id)
+	}
+	return session.Send(Request{Prompt: text})
 }
 
 // Close releases a session and the process with it. Called when the client says so, when the process

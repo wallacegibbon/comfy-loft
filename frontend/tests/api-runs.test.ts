@@ -78,6 +78,34 @@ describe("createRun", () => {
             inputs: { prompt: "indie folk", lyrics: "[Verse]\nhello" },
         });
     });
+
+    it("says which conversation asked, so the gateway can tell it when the run ends", async () => {
+        // `generate` answers at once, so the agent's turn can end with the run still going. The session
+        // and node travel with the request: that pairing is the mapping the gateway reports on (#225).
+        const fetchMock = vi.fn(async () => json(run({ status: "queued" })));
+        vi.stubGlobal("fetch", fetchMock);
+
+        await createRun(config, { workflow: "flux", inputs: { prompt: "a cat" }, askedBy: { session: "canvas:40e8afb47f10", node: "n12" } });
+
+        const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        expect(JSON.parse(String(init.body))).toEqual({
+            workflow: "flux",
+            inputs: { prompt: "a cat" },
+            askedBy: { session: "canvas:40e8afb47f10", node: "n12" },
+        });
+    });
+
+    it("leaves the field out for a run the user started", async () => {
+        // Nobody has to be told about their own button — and an `askedBy: undefined` key would say the
+        // same thing only by accident (it survives JSON.stringify only as an absent key).
+        const fetchMock = vi.fn(async () => json(run({ status: "queued" })));
+        vi.stubGlobal("fetch", fetchMock);
+
+        await createRun(config, { workflow: "flux", inputs: { prompt: "a cat" }, askedBy: undefined });
+
+        const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        expect(JSON.parse(String(init.body))).not.toHaveProperty("askedBy");
+    });
 });
 
 describe("waitForRun", () => {

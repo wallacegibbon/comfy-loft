@@ -5,6 +5,7 @@ import { repeatedConnectedText } from "@/components/canvas/canvas-node-generatio
 import { resolveMediaUrl } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
 import { onAnyAgentEvent, sendAgentMessage, type ToolContent } from "@/services/api/agent";
+import type { RunRequest } from "@/services/api/runs";
 import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type Position } from "@/types/canvas";
 
 /**
@@ -69,7 +70,7 @@ export function useCanvasAgentTools({
                 if (event.type !== "tool" || !event.callId) return;
                 const callId = event.callId;
                 const answer = (content: ToolContent[], isError?: boolean) => sendAgentMessage(session, { toolResult: { callId, content, isError } });
-                void runTool(event.name || "", event.arguments, hands.current).then(
+                void runTool(event.name || "", event.arguments, hands.current, session).then(
                     (result) => answer(result.content, result.isError),
                     (error: unknown) => answer([textBlock(error instanceof Error ? error.message : String(error))], true),
                 );
@@ -83,7 +84,7 @@ type CanvasHands = {
     nodes: () => CanvasNodeData[];
     connections: () => CanvasConnection[];
     createNode: (type: CanvasNodeTypeId, position?: Position, patch?: CanvasNodeMetadata) => CanvasNodeData;
-    generateNode: (nodeId: string, mode: CanvasGenerationMode, prompt: string) => Promise<void>;
+    generateNode: (nodeId: string, mode: CanvasGenerationMode, prompt: string, askedBy?: RunRequest["askedBy"]) => Promise<void>;
     setNodePrompt: (nodeId: string, prompt: string) => void;
     connectNodes: (firstNodeId: string, secondNodeId: string, firstHandleType: "source" | "target") => boolean;
     deleteNodes: (nodeIds: string[]) => void;
@@ -99,7 +100,7 @@ const textBlock = (text: string): ToolContent => ({ type: "text", text });
 /** The node types a tool may make. A group is structure, not content. */
 const CREATE_TYPES: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text, CanvasNodeType.Config];
 
-async function runTool(name: string, args: unknown, hands: CanvasHands): Promise<ToolAnswer> {
+async function runTool(name: string, args: unknown, hands: CanvasHands, session: string): Promise<ToolAnswer> {
     switch (name) {
         case "ping":
             return { content: [textBlock(`listening: ${hands.nodes().length} nodes, ${hands.connections().length} connections`)] };
@@ -114,7 +115,7 @@ async function runTool(name: string, args: unknown, hands: CanvasHands): Promise
         case "set_prompt":
             return setPrompt(hands, args);
         case "generate":
-            return pressGenerate(hands, args);
+            return pressGenerate(hands, args, session);
         case "delete_node":
             return deleteNode(hands, args);
         case "focus_node":
@@ -232,12 +233,16 @@ function setPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
  * Press one node's generate button — the same function the node's own panel presses.
  *
  * It is not waited on: a picture takes minutes, and the tool's job is to start it, not to be the progress
- * bar. The node itself shows what is happening, which is where the user will look anyway.
+ * bar. The node itself shows what is happening, which is where the user will look anyway — and when the
+ * run ends, the agent that asked is told, as a message from the user (docs/decisions.md #225).
+ *
+ * The session travels with the generation for exactly that: it is the one thing that knows which
+ * conversation asked, and the run carries it so the gateway can say how it went long after this answer.
  *
  * The mode is the one the node's own panel would use: a content node generates what it is, and a config node
  * generates the kind its composer is set to (that is what pressing its button does).
  */
-function pressGenerate(hands: CanvasHands, args: unknown): ToolAnswer {
+function pressGenerate(hands: CanvasHands, args: unknown, session: string): ToolAnswer {
     const node = namedNode(hands, args);
     if (!node) return noSuchNode(args);
 
@@ -245,8 +250,13 @@ function pressGenerate(hands: CanvasHands, args: unknown): ToolAnswer {
     const mode: string = node.type === CanvasNodeType.Config ? node.metadata?.generationMode || "image" : node.type;
     if (!GENERATE_MODES.includes(mode)) return { content: [textBlock(`a ${node.type} node has nothing to generate`)], isError: true };
 
-    void hands.generateNode(node.id, mode as CanvasGenerationMode, wordsOf(node));
-    return { content: [textBlock(`pressed generate on ${node.id} (${mode}): the node shows its own progress`)], isError: false };
+    void hands.generateNode(node.id, mode as CanvasGenerationMode, wordsOf(node), { session, node: node.id });
+    // A text node is answered by its own agent, which writes into the node: there is no run behind it and
+    // so nothing to be told about later.
+    if (mode === CanvasNodeType.Text) {
+        return { content: [textBlock(`pressed generate on ${node.id} (text). The node writes the answer itself as it streams — canvas_read_node it to see how far it has got.`)], isError: false };
+    }
+    return { content: [textBlock(`pressed generate on ${node.id} (${mode}). It will take a while: you will be sent a message when it finishes, so do not wait for it or poll the node — carry on with something else, or answer me now.`)], isError: false };
 }
 
 const GENERATE_MODES: string[] = [CanvasNodeType.Text, CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio];

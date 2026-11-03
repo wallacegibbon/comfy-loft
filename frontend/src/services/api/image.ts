@@ -8,7 +8,7 @@ import { IMAGE_ANGLE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 import { imageToDataUrl, type UploadedImage } from "@/services/image-storage";
 import { imageSizePresets } from "@/lib/media-size";
 import { apiErrorMessage, throwIfCanceled } from "@/services/api/http";
-import { createRun, uploadMedia, waitForRun, type Run } from "@/services/api/runs";
+import { createRun, uploadMedia, waitForRun, type Run, type RunRequest } from "@/services/api/runs";
 import { generatedImage } from "@/lib/canvas/generated-media";
 import type { ReferenceImage } from "@/types/image";
 
@@ -22,6 +22,8 @@ type RequestOptions = {
     /** Reported as soon as the gateway accepts a run, so the node can resume it after a reload. */
     onRun?: (runId: string) => void;
     onProgress?: (run: Run) => void;
+    /** The agent that asked for this generation, if one did: the gateway tells it when the run ends. */
+    askedBy?: RunRequest["askedBy"];
 };
 
 const DEFAULT_IMAGE_SHORT_SIDE = 1024;
@@ -138,7 +140,7 @@ async function requestGatewayImages(input: { config: AiConfig; prompt: string; r
     }
 
     try {
-        const run = await createRun(config, { workflow: config.model, inputs, ...(Object.keys(media).length ? { media } : {}) });
+        const run = await createRun(config, { workflow: config.model, inputs, ...(Object.keys(media).length ? { media } : {}), askedBy: options?.askedBy });
         options?.onRun?.(run.id);
         const finished = await waitForRun(config, run.id, { signal: options?.signal, onProgress: options?.onProgress, cancelOnAbort: true });
         // The run wrote these files into the canvas; the node references them where they are (#173).

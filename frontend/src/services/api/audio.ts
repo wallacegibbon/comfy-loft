@@ -2,11 +2,11 @@ import i18n from "@/i18n";
 import { normalizeAudioFormatValue } from "@/lib/audio-generation";
 import type { UploadedFile } from "@/services/file-storage";
 import { apiErrorMessage, throwIfCanceled } from "@/services/api/http";
-import { createRun, waitForRun, type Run } from "@/services/api/runs";
+import { createRun, waitForRun, type Run, type RunRequest } from "@/services/api/runs";
 import { generatedAudio } from "@/lib/canvas/generated-media";
 import { resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 
-type RequestOptions = { signal?: AbortSignal };
+type RequestOptions = { signal?: AbortSignal; askedBy?: RunRequest["askedBy"] };
 
 /**
  * Hooks a canvas node needs to keep its generation alive across a reload: the run id arrives as soon
@@ -36,7 +36,7 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
     const inputs: Record<string, unknown> = { prompt, format };
     if (lyrics) inputs.lyrics = lyrics;
     try {
-        const run = await createRun(requestConfig, { workflow: model, inputs });
+        const run = await createRun(requestConfig, { workflow: model, inputs, askedBy: options?.askedBy });
         options?.onRun?.(run.id);
         const finished = await waitForRun(requestConfig, run.id, {
             signal: options?.signal,

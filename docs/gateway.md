@@ -315,6 +315,15 @@ node connected to it, never both (#203, #204). A tool description explains one t
 preference between two; a skill would have to be read before it helped, and the first canvas move is exactly
 when nothing has been read (#183).
 
+**A run outlives the tool call that started it.** `generate` answers as soon as the run is queued — a
+picture takes minutes, and a tool call is not a progress bar — so the agent's turn can end with the work
+still going, and nothing in the conversation would ever say the picture arrived. What the page sends with
+the run is who asked (`askedBy`: the session, and the node it pressed), the run record keeps it, and when
+the run ends the gateway says how it went through the same door the user's typing uses: a prompt on that
+session, which AlayaCore echoes and answers like any other message, so the panel draws it as one
+(decisions #225). Nothing waits for the agent to be idle — AlayaCore queues a prompt into the run already
+in progress. A run the user started carries no `askedBy` and is not reported to anybody.
+
 Media, runs and files:
 
 | Method | Path                              | Purpose                                                                                                    |

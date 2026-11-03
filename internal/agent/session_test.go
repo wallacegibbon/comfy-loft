@@ -282,3 +282,42 @@ func TestSessionWithoutAWatcherDropsTheEvents(t *testing.T) {
 		t.Errorf("a detached watcher still received %d event(s): %+v", len(events), events)
 	}
 }
+
+// A session can be told something the user did not type: a run finished, and the agent that asked for it
+// has to know. It goes in through the same door — a prompt on stdin, flushed as one user message — and
+// nothing here waits for the agent to be idle, because AlayaCore takes a prompt mid-turn and queues it
+// into the run already going (docs/decisions.md #225).
+func TestTellSendsTheWordsAsAPrompt(t *testing.T) {
+	fs := openFakeSession(t)
+	said := "[comfyloft] the image generation on n12 has finished"
+	if err := fs.sessions.Tell("test", said); err != nil {
+		t.Fatalf("tell: %v", err)
+	}
+	// The agent treated it as a turn of its own: the fake answers every prompt with its two deltas.
+	fs.watcher.waitFor(t, "the end of the turn the message started", func(event Event) bool { return event.Type == "done" })
+
+	frames, err := os.ReadFile(fs.log)
+	if err != nil {
+		t.Fatalf("read frames: %v", err)
+	}
+	if !strings.Contains(string(frames), said) {
+		t.Errorf("frames = %q, want the words on their way to the agent", string(frames))
+	}
+	// One user message, not a stray fragment: the prompt goes out as UX and is finished with UE.
+	if !strings.HasSuffix(string(frames), "UE\n") {
+		t.Errorf("the message was not flushed with UE: %q", string(frames))
+	}
+}
+
+// A name nobody is behind is answered, not dropped: the caller logs which conversation ended with nobody
+// left to hear about it.
+func TestTellReportsASessionThatIsGone(t *testing.T) {
+	sessions := NewSessions(nil)
+	err := sessions.Tell("canvas:nobody", "[comfyloft] a run finished")
+	if err == nil {
+		t.Fatal("Tell to a session that does not exist reported success")
+	}
+	if !strings.Contains(err.Error(), "canvas:nobody") {
+		t.Errorf("error = %q, want it to name the session", err)
+	}
+}

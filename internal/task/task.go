@@ -111,6 +111,10 @@ type Task struct {
 	// one for the legacy single-file endpoints and for records written before this field.
 	Outputs []TaskOutput `json:"outputs,omitempty"`
 	Error   *string      `json:"error"`
+	// Ask names whoever is waiting to be told how this run went — the agent session that called
+	// `generate`, and the node it asked about. Nil for a run the user started: nobody has to be told
+	// about their own button (docs/decisions.md #225).
+	Ask *Ask `json:"ask,omitempty"`
 	// Structured failure, kept alongside the human-readable message so a caller can
 	// react to a code instead of parsing text. Absent on success.
 	ErrorCode    *string `json:"errorCode,omitempty"`
@@ -120,6 +124,19 @@ type Task struct {
 	// Cancellation plumbing, never serialized.
 	cancelled  bool
 	cancelFunc context.CancelFunc
+	// notified records that the finish hook has been fired for this task. Never serialized: it guards
+	// one run against being reported twice, and a record reloaded from disk has nobody to report to.
+	notified bool
+}
+
+// Ask is the agent that asked for a run: the session to tell, and the node it asked about.
+//
+// The session is a name, not a process: the agent it belongs to may be a different process by the time
+// the run ends (a reloaded page replays the conversation into a new one), and the name is what survives
+// that. An empty session is nobody to tell.
+type Ask struct {
+	Session string `json:"session"`
+	Node    string `json:"node,omitempty"`
 }
 
 // CodedFailure is a failure that carries a stable, machine-readable code. The task
@@ -164,6 +181,7 @@ type Store struct {
 	tasks        map[string]*Task
 	queue        []*Task
 	running      bool
+	onFinish     func(*Task)
 	persistTimer *time.Timer
 	persistMu    sync.Mutex
 	filesDirFor  func(canvasID string) (string, error)
@@ -283,11 +301,12 @@ func (s *Store) reconcileLocked(task *Task) {
 }
 
 // Create registers a new queued task. The object says what the run produces; it decides
-// the fallback MIME type and where reconciliation looks for the output file.
+// the fallback MIME type and where reconciliation looks for the output file. `ask` is the agent
+// waiting to be told how it went, or nil for a run the user started.
 //
 // The returned record is the live one the queue will mutate: read it through Get when the value is
 // about to be serialised, or the read races the worker.
-func (s *Store) Create(canvasID, object, model string, request map[string]any) *Task {
+func (s *Store) Create(canvasID, object, model string, request map[string]any, ask *Ask) *Task {
 	now := util.NowIso()
 	task := &Task{
 		ID:        util.RandomID("task_"),
@@ -297,6 +316,7 @@ func (s *Store) Create(canvasID, object, model string, request map[string]any) *
 		Progress:  0,
 		Model:     model,
 		Request:   request,
+		Ask:       ask,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -313,6 +333,49 @@ func (s *Store) Enqueue(task *Task, run RunFunc) {
 	s.queue = append(s.queue, task)
 	s.mu.Unlock()
 	s.startPump(run)
+}
+
+// SetOnFinish names what to do when a run ends, whether it worked, failed or was cancelled.
+//
+// It is set once, before the gateway serves anything, and it is called at most once per run: from the
+// worker that unwound it, or from the cancel that took it out of the queue or stopped it mid-flight —
+// whichever reached a terminal status first. A run the gateway finds already finished at startup is not
+// reported: nobody is left from the moment it was asked for.
+func (s *Store) SetOnFinish(fn func(*Task)) {
+	s.mu.Lock()
+	s.onFinish = fn
+	s.mu.Unlock()
+}
+
+// finishedLocked marks one task as reported and answers with the snapshot to hand over, or nil when it
+// was already reported. Called with the lock held, at every place a task leaves the queue for good.
+func (s *Store) finishedLocked(task *Task) *Task {
+	if task.notified {
+		return nil
+	}
+	task.notified = true
+	return task.snapshot()
+}
+
+// finish hands one finished task to the hook, outside the lock and off the worker: telling an agent
+// about a run is a write into another process, and the queue behind it has work to do.
+func (s *Store) finish(task *Task) {
+	if task == nil {
+		return
+	}
+	s.mu.RLock()
+	onFinish := s.onFinish
+	s.mu.RUnlock()
+	if onFinish == nil {
+		return
+	}
+	select {
+	case <-s.closed:
+		// Shutting down: the agents go with the gateway, so there is nobody left to tell.
+		return
+	default:
+	}
+	go onFinish(task)
 }
 
 // startPump runs the queue worker in a tracked goroutine so Close can wait for it.
@@ -459,9 +522,11 @@ func (s *Store) pump(run RunFunc) {
 	task.cancelFunc = nil
 	task.cancelled = false
 	s.running = false
+	finished := s.finishedLocked(task)
 	s.mu.Unlock()
 
 	s.persistNow()
+	s.finish(finished)
 	s.startPump(run)
 }
 
@@ -546,6 +611,9 @@ func (s *Store) Cancel(id string) *Task {
 		}
 		task.UpdatedAt = now
 	}
+	// The worker that is still unwinding will call this again and be told it is done: a run is reported
+	// once, and a cancel of a queued job has no worker at all to report it.
+	finished := s.finishedLocked(task)
 	s.mu.Unlock()
 
 	if cancelFunc != nil {
@@ -554,6 +622,7 @@ func (s *Store) Cancel(id string) *Task {
 	if wasActive {
 		s.persistNow()
 	}
+	s.finish(finished)
 	return s.Get(id)
 }
 

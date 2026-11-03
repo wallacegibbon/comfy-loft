@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -58,7 +59,7 @@ func waitFor(t *testing.T, what string, condition func() bool) {
 func TestAPanickingRunFailsItsTaskAndTheQueueCarriesOn(t *testing.T) {
 	store := newStore(t)
 
-	first := store.Create(testCanvas, ObjectImage, "image-boom", map[string]any{"prompt": "x"})
+	first := store.Create(testCanvas, ObjectImage, "image-boom", map[string]any{"prompt": "x"}, nil)
 	store.Enqueue(first, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		panic("a workflow the code did not expect")
 	})
@@ -70,7 +71,7 @@ func TestAPanickingRunFailsItsTaskAndTheQueueCarriesOn(t *testing.T) {
 	}
 
 	// The queue is still alive: the next task runs to completion.
-	second := store.Create(testCanvas, ObjectImage, "image-after", map[string]any{"prompt": "y"})
+	second := store.Create(testCanvas, ObjectImage, "image-after", map[string]any{"prompt": "y"}, nil)
 	store.Enqueue(second, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return &Result{Outputs: []ResultFile{{Buffer: []byte("PNG"), Ext: "png", MimeType: "image/png"}}}, nil
 	})
@@ -79,7 +80,7 @@ func TestAPanickingRunFailsItsTaskAndTheQueueCarriesOn(t *testing.T) {
 
 func TestTaskCompletesAndPersists(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(testCanvas, ObjectVideo, "video-test", map[string]any{"prompt": "x"})
+	created := store.Create(testCanvas, ObjectVideo, "video-test", map[string]any{"prompt": "x"}, nil)
 	if created.Status != "queued" {
 		t.Fatalf("initial status = %q, want queued", created.Status)
 	}
@@ -130,7 +131,7 @@ func TestTaskCompletesAndPersists(t *testing.T) {
 
 func TestTaskFailureIsRecorded(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(testCanvas, ObjectVideo, "video-test", nil)
+	created := store.Create(testCanvas, ObjectVideo, "video-test", nil, nil)
 	store.Enqueue(created, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return nil, errors.New("boom")
 	})
@@ -151,14 +152,14 @@ func TestCancelQueuedTask(t *testing.T) {
 
 	// Occupy the single worker so the second task stays queued.
 	blocker := make(chan struct{})
-	first := store.Create(testCanvas, ObjectVideo, "video-test", nil)
+	first := store.Create(testCanvas, ObjectVideo, "video-test", nil, nil)
 	store.Enqueue(first, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		<-blocker
 		return &Result{Outputs: []ResultFile{{Buffer: []byte("A"), Ext: "mp4"}}}, nil
 	})
 	waitFor(t, "first task running", func() bool { return store.Get(first.ID).Status == "running" })
 
-	second := store.Create(testCanvas, ObjectVideo, "video-test", nil)
+	second := store.Create(testCanvas, ObjectVideo, "video-test", nil, nil)
 	store.Enqueue(second, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return &Result{Outputs: []ResultFile{{Buffer: []byte("B"), Ext: "mp4"}}}, nil
 	})
@@ -177,7 +178,7 @@ func TestCancelQueuedTask(t *testing.T) {
 
 func TestCancelRunningTaskAbortsContext(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(testCanvas, ObjectVideo, "video-test", nil)
+	created := store.Create(testCanvas, ObjectVideo, "video-test", nil, nil)
 	aborted := make(chan struct{})
 
 	store.Enqueue(created, func(_ *Task, _ func(Update), ctx context.Context) (*Result, error) {
@@ -205,7 +206,7 @@ func TestCleanupRespectsLimits(t *testing.T) {
 
 	// Both limits at zero means "keep everything": that is the documented default,
 	// so cleanup must be a no-op rather than wiping the history.
-	keep := store.Create(testCanvas, ObjectVideo, "video-test", nil)
+	keep := store.Create(testCanvas, ObjectVideo, "video-test", nil, nil)
 	store.Enqueue(keep, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return &Result{Outputs: []ResultFile{{Buffer: []byte("KEEP"), Ext: "mp4"}}}, nil
 	})
@@ -217,7 +218,7 @@ func TestCleanupRespectsLimits(t *testing.T) {
 
 	// With maxTasks=1, the oldest terminal task record is pruned. Its file stays: it belongs to the
 	// canvas, and whether anything still shows it is the canvas's answer to give (#156).
-	extra := store.Create(testCanvas, ObjectVideo, "video-test", nil)
+	extra := store.Create(testCanvas, ObjectVideo, "video-test", nil, nil)
 	store.Enqueue(extra, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return &Result{Outputs: []ResultFile{{Buffer: []byte("EXTRA"), Ext: "mp4"}}}, nil
 	})
@@ -246,7 +247,7 @@ func TestCleanupRespectsLimits(t *testing.T) {
 
 func TestContentPathRejectsEscapingFile(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(testCanvas, ObjectVideo, "video-test", nil)
+	created := store.Create(testCanvas, ObjectVideo, "video-test", nil, nil)
 
 	// Simulate a corrupted record pointing outside the output directory.
 	outside := filepath.Join(t.TempDir(), "secret.mp4")
@@ -269,7 +270,7 @@ func fileExists(path string) bool {
 // extension reconciliation looks for. An audio run has to persist the same way.
 func TestAudioTaskStoresMp3AndReconciles(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(testCanvas, ObjectAudio, "audio-test", nil)
+	created := store.Create(testCanvas, ObjectAudio, "audio-test", nil, nil)
 	store.Enqueue(created, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return &Result{Outputs: []ResultFile{{Buffer: []byte("MP3"), Ext: "mp3", MimeType: "audio/mpeg"}}}, nil
 	})
@@ -308,7 +309,7 @@ func TestAudioTaskStoresMp3AndReconciles(t *testing.T) {
 // later a run reader) needs the code, and callers must not have to parse English.
 func TestTaskFailureKeepsCodeAndDetails(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(testCanvas, ObjectAudio, "audio-test", nil)
+	created := store.Create(testCanvas, ObjectAudio, "audio-test", nil, nil)
 	store.Enqueue(created, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return nil, &codedTestError{code: "comfy_execution_failed", message: "boom", details: map[string]any{"node": "35"}}
 	})
@@ -344,7 +345,7 @@ func (e *codedTestError) StatusCode() int     { return 400 }
 // single-file fields so an older client still finds it.
 func TestTaskStoresEveryOutput(t *testing.T) {
 	store := newStore(t)
-	created := store.Create(testCanvas, ObjectImage, "image-test", nil)
+	created := store.Create(testCanvas, ObjectImage, "image-test", nil, nil)
 	store.Enqueue(created, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
 		return &Result{Outputs: []ResultFile{
 			{Buffer: []byte("ONE"), Ext: "png", MimeType: "image/png"},
@@ -375,5 +376,132 @@ func TestTaskStoresEveryOutput(t *testing.T) {
 	}
 	if len(done.Outputs) != 2 {
 		t.Errorf("outputs = %v", done.Outputs)
+	}
+}
+
+// reports collects what the finish hook was told, from whichever goroutine said it.
+type reports struct {
+	mu   sync.Mutex
+	seen []*Task
+}
+
+func (r *reports) sink(finished *Task) {
+	r.mu.Lock()
+	r.seen = append(r.seen, finished)
+	r.mu.Unlock()
+}
+
+func (r *reports) all() []*Task {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]*Task(nil), r.seen...)
+}
+
+// of is the reports there are about one run.
+func (r *reports) of(id string) []*Task {
+	var found []*Task
+	for _, report := range r.all() {
+		if report.ID == id {
+			found = append(found, report)
+		}
+	}
+	return found
+}
+
+// The end of a run reaches whoever asked for it, with the record as it stands and the ask intact — the
+// session that called `generate` and the node it asked about (#225).
+//
+// Every run is reported, including one no agent asked for: who is interested in a run is the hook's
+// business, and the store's job is to say that it ended.
+func TestTheEndOfARunIsReported(t *testing.T) {
+	store := newStore(t)
+	reported := &reports{}
+	store.SetOnFinish(reported.sink)
+
+	ask := &Ask{Session: "canvas:40e8afb47f10", Node: "n12"}
+	worked := store.Create(testCanvas, ObjectImage, "image-test", map[string]any{"prompt": "a cat"}, ask)
+	store.Enqueue(worked, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
+		return &Result{Outputs: []ResultFile{{Buffer: []byte("PNG"), Ext: "png", MimeType: "image/png"}}}, nil
+	})
+	waitFor(t, "the report of a run that worked", func() bool { return len(reported.of(worked.ID)) == 1 })
+
+	report := reported.of(worked.ID)[0]
+	if report.Status != "completed" {
+		t.Errorf("reported status = %q, want completed", report.Status)
+	}
+	if report.Ask == nil || report.Ask.Session != ask.Session || report.Ask.Node != "n12" {
+		t.Errorf("ask = %+v, want the session and node that asked", report.Ask)
+	}
+	if len(report.Outputs) != 1 {
+		t.Errorf("outputs = %v, want the artifact the run wrote", report.Outputs)
+	}
+
+	// A failure is an ending too, and it is reported with the reason the run gave.
+	broken := store.Create(testCanvas, ObjectVideo, "video-test", nil, &Ask{Session: "canvas:other"})
+	store.Enqueue(broken, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
+		return nil, errors.New("the model refused")
+	})
+	waitFor(t, "the report of a failure", func() bool { return len(reported.of(broken.ID)) == 1 })
+	failed := reported.of(broken.ID)[0]
+	if failed.Status != "failed" || failed.Error == nil || *failed.Error != "the model refused" {
+		t.Errorf("reported failure = %+v", failed)
+	}
+
+	// A run nobody asked about is still reported: the hook decides who to tell.
+	plain := store.Create(testCanvas, ObjectAudio, "audio-test", nil, nil)
+	store.Enqueue(plain, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
+		return &Result{Outputs: []ResultFile{{Buffer: []byte("MP3"), Ext: "mp3", MimeType: "audio/mpeg"}}}, nil
+	})
+	waitFor(t, "the report of a run the user started", func() bool { return len(reported.of(plain.ID)) == 1 })
+	if ask := reported.of(plain.ID)[0].Ask; ask != nil {
+		t.Errorf("a run the user started named an asker: %+v", ask)
+	}
+}
+
+// A cancelled run is reported once, whoever ended it: the cancel itself for a job the queue never reached,
+// and only once for the run the worker then unwinds.
+func TestACancelledRunIsReportedOnce(t *testing.T) {
+	store := newStore(t)
+	reported := &reports{}
+	store.SetOnFinish(reported.sink)
+
+	// One worker, held: the next run stays queued, so its cancel has no worker to report it.
+	blocker := make(chan struct{})
+	var release sync.Once
+	releaseBlocker := func() { release.Do(func() { close(blocker) }) }
+	t.Cleanup(releaseBlocker)
+	holding := store.Create(testCanvas, ObjectImage, "image-test", nil, nil)
+	store.Enqueue(holding, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
+		<-blocker
+		return &Result{Outputs: []ResultFile{{Buffer: []byte("A"), Ext: "png"}}}, nil
+	})
+	waitFor(t, "the worker to be busy", func() bool { return store.Get(holding.ID).Status == "running" })
+
+	queued := store.Create(testCanvas, ObjectImage, "image-test", nil, &Ask{Session: "canvas:x", Node: "n1"})
+	store.Enqueue(queued, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
+		return &Result{Outputs: []ResultFile{{Buffer: []byte("B"), Ext: "png"}}}, nil
+	})
+	waitFor(t, "the second run to be queued", func() bool { return store.Get(queued.ID).Status == "queued" })
+	store.Cancel(queued.ID)
+	waitFor(t, "the queued cancel to be reported", func() bool { return len(reported.of(queued.ID)) == 1 })
+	if status := reported.of(queued.ID)[0].Status; status != "cancelled" {
+		t.Errorf("reported status = %q, want cancelled", status)
+	}
+
+	// A cancel that lands mid-run: the worker unwinds afterwards and must not report it again.
+	releaseBlocker()
+	waitFor(t, "the held run to finish", func() bool { return store.Get(holding.ID).Status == "completed" })
+	running := store.Create(testCanvas, ObjectVideo, "video-test", nil, &Ask{Session: "canvas:x", Node: "n2"})
+	store.Enqueue(running, func(_ *Task, _ func(Update), ctx context.Context) (*Result, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+	waitFor(t, "the third run to start", func() bool { return store.Get(running.ID).Status == "running" })
+	store.Cancel(running.ID)
+	waitFor(t, "the cancel to be reported", func() bool { return len(reported.of(running.ID)) == 1 })
+	// The worker needs a moment to finish unwinding; it would be the second report.
+	time.Sleep(50 * time.Millisecond)
+	if got := len(reported.of(running.ID)); got != 1 {
+		t.Errorf("reports for one cancelled run = %d, want 1", got)
 	}
 }

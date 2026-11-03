@@ -40,10 +40,19 @@ export type Run = {
     prompt_id?: string;
 };
 
-type RunRequest = {
+export type RunRequest = {
     workflow: string;
     inputs?: Record<string, unknown>;
     media?: Record<string, string | string[]>;
+    /**
+     * The agent that asked for this run: the session to tell when it ends, and the node it asked about.
+     *
+     * A generation takes minutes and `generate` answers at once, so the agent's turn can end with the run
+     * still going. The mapping travels with the run — the gateway keeps it, and says what happened when
+     * the run ends (docs/decisions.md #225). Absent for a run the user started: nobody has to be told
+     * about their own button.
+     */
+    askedBy?: { session: string; node?: string };
 };
 
 type RunWaitOptions = {
