@@ -508,7 +508,7 @@ export default {
             copyPrompt: "复制提示词",
             copyPromptTitle: "复制生成该图片的提示词",
             reversePrompt: "反推提示词",
-            reversePromptTitle: "创建反推提示词的文本和配置节点",
+            reversePromptTitle: "创建一个节点，让它读出这张图的提示词",
             locked: "锁比例",
             free: "自由比例",
             lockTitle: "切换为等比缩放",

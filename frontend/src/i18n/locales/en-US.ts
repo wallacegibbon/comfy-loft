@@ -503,7 +503,7 @@ export default {
             copyPrompt: "Copy prompt",
             copyPromptTitle: "Copy the prompt used to generate this image",
             reversePrompt: "Reverse prompt",
-            reversePromptTitle: "Create text and configuration nodes to infer the prompt",
+            reversePromptTitle: "Create a node and have it read this picture back as a prompt",
             locked: "Lock ratio",
             free: "Free ratio",
             lockTitle: "Switch to proportional scaling",
