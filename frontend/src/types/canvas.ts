@@ -155,7 +155,6 @@ export type CanvasNodeMetadata = {
     seedFixed?: string;
     aspectRatio?: string;
     groupId?: string;
-    interactive?: boolean; // Node interaction/move state; see CanvasNodeDefinition.interactionToggle.
     params?: Record<string, unknown>; // Per-node model params (e.g. LoRA stack).
 };
 

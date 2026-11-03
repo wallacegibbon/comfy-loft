@@ -18,7 +18,7 @@ export function ConnectionCreateMenu({ pending, scale = 1, onCreate, onClose }: 
     const { t } = useTranslation();
     // Nodes that want to live *before* what they feed — a LoRA card is the one that does — are offered
     // here: dragging out of a node's handle is when you know what you are about to attach.
-    const upstreamDefinitions = listNodeDefinitions().filter((def) => def.showInCreateMenu !== false && def.insertBefore);
+    const upstreamDefinitions = listNodeDefinitions().filter((def) => def.insertBefore);
     return (
         <div
             className="absolute z-[120] w-[240px] rounded-2xl border p-2 shadow-2xl backdrop-blur"
@@ -46,7 +46,7 @@ export function ConnectionCreateMenu({ pending, scale = 1, onCreate, onClose }: 
                             {t("canvas.createMenu.upstream")}
                         </div>
                         {upstreamDefinitions.map((def) => (
-                            <ConnectionCreateOption key={def.type} theme={theme} icon={def.icon} title={getNodeSpec(def.type).title} description={def.description} onClick={() => onCreate(def.type)} />
+                            <ConnectionCreateOption key={def.type} theme={theme} icon={def.icon} title={getNodeSpec(def.type).title} onClick={() => onCreate(def.type)} />
                         ))}
                     </div>
                 ) : null}
@@ -84,7 +84,7 @@ export function NodeCreateMenu({ position, scale = 1, onCreate, onClose }: { pos
     const theme = useCanvasTheme();
     const { t } = useTranslation();
     const menuRef = useRef<HTMLDivElement>(null);
-    const definitions = listNodeDefinitions().filter((def) => def.showInCreateMenu !== false);
+    const definitions = listNodeDefinitions();
     // Close automatically when clicking outside the menu.
     useEffect(() => {
         const handlePointerDown = (event: PointerEvent) => {
@@ -111,7 +111,7 @@ export function NodeCreateMenu({ position, scale = 1, onCreate, onClose }: { pos
             </div>
             <div className="grid gap-0.5">
                 {definitions.map((def) => (
-                    <ConnectionCreateOption key={def.type} theme={theme} icon={def.icon} title={getNodeSpec(def.type).title} description={def.description} onClick={() => onCreate(def.type)} />
+                    <ConnectionCreateOption key={def.type} theme={theme} icon={def.icon} title={getNodeSpec(def.type).title} onClick={() => onCreate(def.type)} />
                 ))}
             </div>
         </div>

@@ -983,9 +983,9 @@ function InfiniteCanvasPage() {
             setSelectedNodeIds(new Set([newNode.id]));
             setSelectedConnectionId(null);
             const definition = getNodeDefinition(type);
-            // Display-only nodes (hidePanel) never open a panel; the rest do, except the two whose panel is
-            // their own editing surface (text is edited in place, audio has nothing to configure).
-            const wantsPanel = definition?.hidePanel ? false : definition?.autoOpenPanel ? true : isBuiltinNodeType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Group;
+            // The panel opens unless the node is one whose content is its own editing surface: text is
+            // edited in place, and audio has nothing to configure.
+            const wantsPanel = definition?.autoOpenPanel ? true : isBuiltinNodeType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Group;
             if (wantsPanel) setDialogNodeId(newNode.id);
             return newNode;
         },
@@ -1507,11 +1507,7 @@ function InfiniteCanvasPage() {
         dragRef.current.movedIds = new Set();
         if (wasClick && clickedNodeId) {
             const clickedNode = nodesRef.current.find((node) => node.id === clickedNodeId);
-            const clickedDefinition = clickedNode ? getNodeDefinition(clickedNode.type) : undefined;
-            if (clickedDefinition?.hidePanel) {
-                // Clicking a display-only node selects it without opening a lower panel.
-                setDialogNodeId((current) => (current === clickedNodeId ? current : null));
-            } else if (clickedNode?.type !== CanvasNodeType.Group) {
+            if (clickedNode?.type !== CanvasNodeType.Group) {
                 setDialogNodeId(clickedNodeId);
                 if (useConfigStore.getState().config.autoFocusOnSelect) {
                     // Wait for the generation panel to render so centering accounts for it.
@@ -2289,7 +2285,7 @@ function InfiniteCanvasPage() {
                                           ? "disabled"
                                           : "available"
                             }
-                            showPanel={!isNodeResizing && dialogNodeId === node.id && !selectionBox && !getNodeDefinition(node.type)?.hidePanel}
+                            showPanel={!isNodeResizing && dialogNodeId === node.id && !selectionBox}
                             groupChildCount={groupChildCountById.get(node.id) || 0}
                             isGroupDropTarget={dropTargetGroupId === node.id}
                             showImageInfo={showImageInfo}

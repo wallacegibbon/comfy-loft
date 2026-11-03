@@ -8323,3 +8323,27 @@ each generated twice in place, plus opening a canvas written before it.
 `internal/server/{routes_mcp.go,mcp_test.go}`, `frontend/tests/{canvas-generation-context,canvas-agent-tools,node-prompt-field}.test.ts`.
 Deleted: `frontend/src/components/canvas/canvas-config-composer.tsx`,
 `frontend/src/components/canvas/canvas-config-node-panel.tsx`, `frontend/src/components/kit/media.tsx`.
+
+## 232. The node definition loses the flags nothing set
+
+**Decision** `CanvasNodeDefinition` drops `interactionToggle`, `forceInteractive`, `transparentBackground`,
+`showInCreateMenu`, `hidePanel` and `description`, and `CanvasNodeMetadata` drops `interactive`. What read
+them is gone too: the interaction/move gate on content pointer events, the two transparent-border branches,
+the two menu filters, the two panel-opening conditions and the description slot in the creation menu.
+
+**Why** #231 left them as "separate debt"; reading them showed they were not debt but *inert*. No built-in
+definition ever set any of them, and `metadata.interactive` had no writer anywhere in the tree — so
+`supportsInteractionToggle` was always false, `contentInteractive` always true, `pointerEvents` always
+`undefined`, `transparentBg` always false, and every `hidePanel`/`showInCreateMenu`/`description` check a
+constant. They were the shape of the plugin framework #148 removed, kept as flags nothing could reach: a
+branch nothing takes reads like a feature that exists.
+
+**What this does not change** Nothing at runtime, by construction: every condition removed was constant. The
+node card renders the same background, border and pointer events; the creation menus list the same entries;
+a click opens the same panel.
+
+**Tested** `make check`; `npx vitest run` (261); `npm run check`; `npm run build`; and one look at a real
+canvas in the browser — cards, borders, the two creation menus, clicking a node to open its panel.
+
+**Where** `frontend/src/types/{canvas,canvas-node}.ts`,
+`frontend/src/components/canvas/{canvas-node,canvas-create-menus}.tsx`, `frontend/src/pages/canvas/project.tsx`.
