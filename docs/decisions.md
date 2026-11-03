@@ -8083,8 +8083,9 @@ were read, not clicked.
 
 ## 229. A node's words are three fields with three meanings, and each question has one function
 
-**Decision** `content` is what a node holds; `prompt` is the words that made it; `composerContent` is what
-you type when it already holds something, so typing cannot throw the result away. The canvas asks three
+**Decision** `content` is what a node holds; `prompt` is the words it will be asked next (the ones that
+made it, for a node a run made and nobody has retyped since); `composerContent` is what you type when it
+already holds something, so typing cannot throw the result away. The canvas asks three
 questions of those fields, and each has exactly one answer, in `lib/canvas/node-prompt-field.ts`:
 `nodeContentOf` (what it says), `nodePromptOf` (what was asked of it), `promptPatch` (where an instruction
 goes). The panel and the agent's `set_prompt` call `promptPatch`, so they cannot write different fields for
@@ -8127,6 +8128,13 @@ What this does **not** do: it does not make a text node hold one field. A card w
 question standing beside it, so the two fields stay; what goes away is five different stories about which
 one a word lives in. `composerContent` also stays, with one reason: a node that already holds something
 must be able to take an instruction without losing it.
+
+`prompt` is a question, not evidence of provenance, and the labels now say so: editing a card by hand —
+which the user can always do, and `set_text` does on their behalf — leaves the question those words no
+longer answer, because that is still what running the node sends. Nothing is left claiming to have made
+them: a text node has no run behind it, so #227's maker facts are stamped on media only, and there is no
+second field to scrub. That is the line between this and #228 — a file entering a node had ten fields
+describing bytes that were gone; a hand editing words has none.
 
 The placeholder had to change with it: 「请输入你想要将本段文本修改成什么」 promised a revision the code never
 did — generating a text node asks the question again and replaces the card (see the comment in

@@ -7,8 +7,8 @@ import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "../sr
  * What `list_nodes` answers with.
  *
  * One line per node, and the two kinds of words named apart: `content:` is what the node says, `prompt:`
- * is what made it. One `prompt:` that meant either, depending on the node's type, is what taught the
- * agent that a text node's prompt box was its body (#229).
+ * is what it will be asked next. One `prompt:` that meant either, depending on the node's type, is what
+ * taught the agent that a text node's prompt box was its body (#229).
  */
 
 function node(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}, title = ""): CanvasNodeData {
@@ -24,7 +24,7 @@ describe("the canvas as the agent reads it", () => {
         expect(lines[1]).toBe(`- text-1 (text) "森林" at (40, -12) content: 宫崎骏风格的森林。 prompt: 改成无字幕的版本`);
     });
 
-    test("a picture shows what made it, and no content of its own", () => {
+    test("a picture shows the run that made it, and no content words of its own", () => {
         // Its content is the picture, which a line cannot carry: the type says what it is, `read_node`
         // hands the bytes over, and the file's URL — which used to fall through as "words" — is not text.
         const lines = canvas([node("image", { content: "/api/canvases/c/files/a.png", prompt: "a brass compass", workflow: "image-z-image-turbo", generatedAt: "2026-11-03T13:09:19.928Z" })]);

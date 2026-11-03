@@ -4,8 +4,9 @@ import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata, type Canv
  * A node's words, and the one function that answers each question about them.
  *
  * There are three kinds, and they are not interchangeable: `content` is what the node holds, `prompt` is
- * the words that made it, and `composerContent` is what you type when it already holds something (so
- * typing cannot throw the result away, #91).
+ * the words it will be asked next — the ones that made it, for a node a run made and nobody has retyped
+ * since — and `composerContent` is what you type when it already holds something (so typing cannot throw
+ * the result away, #91).
  *
  * The canvas used to answer all three with one function and a chain of fallbacks —
  * `composerContent ?? prompt ?? content ?? texts[0]` — which is harmless while every node's content is a
@@ -17,6 +18,13 @@ import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata, type Canv
  *
  * One question, one function. The panel and the tools ask the same ones, so they cannot disagree about
  * where a node's words live.
+ *
+ * `prompt` is a question, not a record of provenance, and the difference is what keeps a hand-edited card
+ * honest: editing the words (by hand, or with `set_text`) leaves the question they no longer answer, which
+ * is right — it is still what running the node sends. Nothing is left claiming to have made those words,
+ * because on a text node there is nothing to claim: a text node has no run behind it, so #227's maker facts
+ * are stamped on media only. That is why writing a card needs no scrubbing, while a file entering a node
+ * needed all of it (#228).
  */
 
 /** The types whose content is media — a picture, a film, a sound — rather than words. */
@@ -51,7 +59,11 @@ export function nodeOtherTextsOf(node: CanvasNodeData): string[] {
 }
 
 /**
- * The words the node was made from — what its own panel shows in the box.
+ * The words the node will be asked next: what its own panel shows in the box, and what running it sends.
+ *
+ * For a node a run made, and nobody has retyped since, these are also the words that made it — and they
+ * stop being that the moment a hand edits the content, which is why this is a question and not evidence.
+ * The list says which it is, rather than calling the field a node's provenance.
  *
  * Returned as typed, without trimming: the panel syncs its textarea against this, and a value that came
  * back shorter than what the user typed would eat the space they had just pressed.

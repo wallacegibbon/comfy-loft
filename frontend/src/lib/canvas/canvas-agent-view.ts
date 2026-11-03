@@ -7,9 +7,9 @@ import type { CanvasConnection, CanvasNodeData } from "@/types/canvas";
  *
  * One line per node, because a model reads lines and diffs them. Nothing is omitted for looking empty,
  * since a node with no prompt is a fact about the canvas too — but the two kinds of words are named
- * separately, because they are two different things: `content:` is what the node says, `prompt:` is what
- * made it. One `prompt:` that meant either, depending on the node's type, is what let an agent read the
- * prompt box as the text node's body (#229).
+ * separately, because they are two different things: `content:` is what the node says, `prompt:` is what it
+ * will be asked next. One `prompt:` that meant either, depending on the node's type, is what let an agent
+ * read the prompt box as the text node's body (#229).
  *
  * What made a node's content and when is on that line, before the words: a canvas of a dozen pictures is
  * exactly where "which model drew this one" is a question, and asking it node by node would cost a
