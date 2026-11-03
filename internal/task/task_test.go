@@ -505,3 +505,49 @@ func TestACancelledRunIsReportedOnce(t *testing.T) {
 		t.Errorf("reports for one cancelled run = %d, want 1", got)
 	}
 }
+
+// The ask lives on the run record, which is on disk — so a gateway that comes back to a run it started
+// still knows who was waiting. Nothing is reported for a record it merely found there: the agent that
+// asked went with the process, and a restart is not an ending anybody is left to hear about.
+func TestTheAskIsOnTheRecordAndAReplayedOneReportsNobody(t *testing.T) {
+	dir := t.TempDir()
+	files := filepath.Join(dir, "files")
+	if err := os.MkdirAll(files, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	options := Options{
+		DataDir:       dir,
+		FilesDirFor:   func(string) (string, error) { return files, nil },
+		PublicBaseURL: "http://127.0.0.1:8190",
+		Logger:        logx.NewWithWriter("test", os.Stderr),
+	}
+
+	first, err := New(options)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	created := first.Create(testCanvas, ObjectImage, "image-test", nil, &Ask{Session: "canvas:a", Node: "n12"})
+	first.PersistNow()
+	first.Close()
+
+	reloaded, err := New(options)
+	if err != nil {
+		t.Fatalf("reload New: %v", err)
+	}
+	t.Cleanup(reloaded.Close)
+	reported := &reports{}
+	reloaded.SetOnFinish(reported.sink)
+	reloaded.Load()
+
+	replayed := reloaded.Get(created.ID)
+	if replayed == nil {
+		t.Fatal("the run did not come back from the task index")
+	}
+	if replayed.Ask == nil || replayed.Ask.Session != "canvas:a" || replayed.Ask.Node != "n12" {
+		t.Errorf("ask = %+v, want the session and node that asked", replayed.Ask)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if got := len(reported.of(created.ID)); got != 0 {
+		t.Errorf("a run found on disk reported itself %d time(s)", got)
+	}
+}

@@ -18,6 +18,7 @@ func TestAskedByReadsTheRequest(t *testing.T) {
 		{"a run the user started", map[string]any{"workflow": "flux"}, nil},
 		{"no session named", map[string]any{"askedBy": map[string]any{"node": "n1"}}, nil},
 		{"a blank session", map[string]any{"askedBy": map[string]any{"session": "  "}}, nil},
+		{"not an object at all", map[string]any{"askedBy": "canvas:abc"}, nil},
 		{"an asker with a node", map[string]any{"askedBy": map[string]any{"session": "canvas:abc", "node": "n1"}}, &task.Ask{Session: "canvas:abc", Node: "n1"}},
 		{"an asker with no node", map[string]any{"askedBy": map[string]any{"session": "node:n1"}}, &task.Ask{Session: "node:n1"}},
 	}
