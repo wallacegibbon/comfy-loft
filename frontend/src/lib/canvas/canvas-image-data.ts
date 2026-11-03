@@ -75,9 +75,9 @@ function drawCrop(image: HTMLImageElement, sx: number, sy: number, sw: number, s
  *
  * `canvas.toDataURL()` throws `SecurityError` — "tainted canvases may not be exported" — as soon as the
  * canvas has drawn bytes from another origin, and every picture here is from another origin: the canvas
- * bundle is served on :3000 and the gateway holding the files on :8190. The taint is not about reading
+ * bundle is served on :3000 and the server holding the files on :8190. The taint is not about reading
  * the pixels, it is about *how* they arrived, so the fix is at the source: `crossOrigin` asks for the
- * image in CORS mode, which the gateway already answers (its CORS middleware allows the canvas's own
+ * image in CORS mode, which the server already answers (its CORS middleware allows the canvas's own
  * host, `httpx.CORS`). A response that does not answer it would fail to load at all, so the last resort
  * fetches the same bytes and hands them back as a `blob:` URL — same origin by definition, therefore
  * safe to draw.

@@ -1,7 +1,7 @@
 // Package settings keeps the workspace's preferences in one file.
 //
-// The gateway does not understand a single key in it. Preferences are the canvas's business — which
-// theme, which language, which panel width — and the gateway's job is to hold the bytes so that they
+// The server does not understand a single key in it. Preferences are the canvas's business — which
+// theme, which language, which panel width — and the server's job is to hold the bytes so that they
 // survive a cleared browser, follow the workspace to another machine, and can be backed up with the
 // canvases. That is the same division #152 drew for a canvas document, applied to the smaller thing.
 package settings
@@ -90,7 +90,7 @@ func (s *Store) Write(document []byte) error {
 	return writeFile(s.path, trimmed)
 }
 
-// validate is the only check the gateway makes: an object, and not an absurdly large one.
+// validate is the only check the server makes: an object, and not an absurdly large one.
 func validate(document []byte) error {
 	if len(document) == 0 || len(document) > MaxBytes || document[0] != '{' || !json.Valid(document) {
 		return ErrInvalid

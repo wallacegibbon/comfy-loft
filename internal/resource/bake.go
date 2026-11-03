@@ -18,7 +18,7 @@ func (e *manualStepError) Error() string { return e.summary }
 
 // bakeCommand builds the command that produces a "bake" resource.
 //
-// The gateway never installs these: merging two checkpoints needs torch, which a static
+// The server never installs these: merging two checkpoints needs torch, which a static
 // binary cannot offer, and the result is ~10 GB, which does not belong in an HTTP install
 // request. The command carries real paths because "run the merge in ComfyUI" only leaves
 // the user guessing.

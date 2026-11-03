@@ -165,7 +165,7 @@ func (r *Runner) RunWorkflow(ctx context.Context, opts RunOptions) (*RunResult, 
 	return &RunResult{PromptID: promptID, Files: files, Workflow: finalGraph}, nil
 }
 
-// Collect re-attaches to a prompt that was submitted before the gateway restarted.
+// Collect re-attaches to a prompt that was submitted before the server restarted.
 //
 // ComfyUI is still working on it — or has finished it — and all the old process lost was the goroutine that
 // was watching. So nothing is submitted here: the prompt id on the task record is enough to ask what happened

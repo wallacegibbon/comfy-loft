@@ -31,7 +31,7 @@ type InputSpec struct {
 	Min      *float64 `json:"min,omitempty"`
 	Max      *float64 `json:"max,omitempty"`
 	Options  []string `json:"options,omitempty"`
-	// StrictOptions is set only where the gateway owns the value set (a quality preset name).
+	// StrictOptions is set only where the server owns the value set (a quality preset name).
 	// A sampler name, by contrast, is ComfyUI's vocabulary: the list in registry.json is a UI
 	// suggestion and must not reject a valid value the UI never offered.
 	StrictOptions bool   `json:"-"`
@@ -82,12 +82,12 @@ func (e *Entry) InputSpecs(limits InputLimits) []InputSpec {
 	}
 	add(InputSpec{Key: "background", Type: "string", Label: "Background"})
 	add(InputSpec{Key: "editCanvasSize", Type: "size", Label: "Edit canvas size"})
-	// The structured layout a MOSS workflow renders into its prompt; the gateway owns its shape, so
+	// The structured layout a MOSS workflow renders into its prompt; the server owns its shape, so
 	// it is passed through rather than described here.
 	add(InputSpec{Key: "layout", Type: "any", Label: "Layout"})
 	add(InputSpec{Key: "layoutEnabled", Type: "boolean", Label: "Layout enabled"})
 	// The LoRA stack is applied by the engine (ApplyLoraChain), not by a binding, so it is a
-	// gateway-owned input rather than a workflow one.
+	// server-owned input rather than a workflow one.
 	add(InputSpec{Key: "loras", Type: "any", Label: "LoRAs"})
 
 	// Declared parameters carry the workflow's own ranges. They are authoritative for numbers.
@@ -237,7 +237,7 @@ func validateInputValue(entry *Entry, spec InputSpec, value any) error {
 			return fail("must be true or false")
 		}
 	case "any":
-		// A structured value the gateway consumes itself (the MOSS layout) is passed through.
+		// A structured value the server consumes itself (the MOSS layout) is passed through.
 	default:
 		// An inferred binding type accepts anything the binding engine can coerce.
 	}

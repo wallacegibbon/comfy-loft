@@ -11,7 +11,7 @@ import (
 // or ask something. Both go into the agent's stdin, in this order — the choices first, then the words.
 //
 // Command is a name from AlayaCore's own vocabulary (`model_set`, `reasoning_level_set`, …) with the
-// args it expects; the gateway forwards the pair without knowing what either means. Either half may be
+// args it expects; the server forwards the pair without knowing what either means. Either half may be
 // empty: a setting change carries a command and no prompt, a question carries a prompt and no command.
 type Request struct {
 	Prompt  string
@@ -103,7 +103,7 @@ func turnStep(state *startup, frame *Frame, hasPrompt bool, emit func(Event)) (e
 		}
 	case TagAssistantF, TagUserF:
 		// A built-in tool runs inside AlayaCore: the call and its result both come back here, and the
-		// gateway answers neither. They are drawn, not acted on.
+		// server answers neither. They are drawn, not acted on.
 		event, ok := toolCall(frame.Value)
 		if frame.Tag == TagUserF {
 			event, ok = toolResult(frame.Value)

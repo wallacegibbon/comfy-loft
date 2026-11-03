@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * own knobs are the typed inputs.
  */
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
-vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: () => undefined, noteGatewayResponse: () => undefined }));
+vi.mock("@/services/api/server-status", () => ({ noteServerError: () => undefined, noteServerResponse: () => undefined }));
 
 // Media conversion is a browser concern; these tests are about the request the canvas builds. A generated
 // image is measured where it is served, not downloaded and re-uploaded (#173).
@@ -29,7 +29,7 @@ const CANVAS_ID = "40e8afb47f10";
 setActiveCanvas(CANVAS_ID);
 type Config = Parameters<typeof requestUpscale>[0];
 
-const gateway = () =>
+const server = () =>
     ({
         baseUrl: "http://127.0.0.1:8190/v1",
         apiKey: "local",
@@ -73,21 +73,21 @@ const succeeded = () =>
 
 type Call = { url: string; method: string; body: unknown };
 
-/** Where the gateway is in these cases: `gatewayProtocolRoot` strips the legacy `/v1`, nothing else. */
+/** Where the server is in these cases: `serverProtocolRoot` strips the legacy `/v1`, nothing else. */
 const ROOT = "http://127.0.0.1:8190";
 
-/** The name the gateway gives an uploaded file: its id is that name, not a handle of its own (#156). */
+/** The name the server gives an uploaded file: its id is that name, not a handle of its own (#156). */
 const UPLOAD_ID = "up-9f01ab2c.png";
 
 /**
  * Route a stubbed fetch by the **whole** URL, and answer `404` to anything else.
  *
  * This is deliberate. A stub that matched a path suffix (`url.endsWith("/runs")`) accepts a request sent
- * to the wrong place, and the test then passes on a URL the gateway does not serve — which is exactly how
+ * to the wrong place, and the test then passes on a URL the server does not serve — which is exactly how
  * `POST /api/runs` survived #156 until a browser click found it (#161). Here an unexpected address is a
  * failure the caller cannot miss.
  */
-function stubGateway(handlers: { status?: () => Response } = {}) {
+function stubServer(handlers: { status?: () => Response } = {}) {
     const calls: Call[] = [];
     const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
         calls.push({ url, method: String(init.method || "GET"), body: init.body });
@@ -115,9 +115,9 @@ describe("requestUpscale", () => {
     it("names a source that is already a canvas file instead of copying it", async () => {
         // The node's picture is a file of this canvas, and a run reads its media by name from the same canvas
         // (#156, #174): uploading it first would store the same bytes again under an `up-` name.
-        const { calls } = stubGateway();
+        const { calls } = stubServer();
 
-        await requestUpscale(gateway(), image("source.png", "files/up-abcdef12.png"), {
+        await requestUpscale(server(), image("source.png", "files/up-abcdef12.png"), {
             workflowId: "image-esrgan-upscale",
             params: { upscale_model: "RealESRGAN_x4plus.pth" },
         });
@@ -127,9 +127,9 @@ describe("requestUpscale", () => {
     });
 
     it("is one run with the source image uploaded by role", async () => {
-        const { calls } = stubGateway();
+        const { calls } = stubServer();
 
-        const upscaled = await requestUpscale(gateway(), image("source.png"), {
+        const upscaled = await requestUpscale(server(), image("source.png"), {
             workflowId: "image-esrgan-upscale",
             params: { upscale_model: "RealESRGAN_x4plus.pth" },
         });
@@ -152,14 +152,14 @@ describe("requestUpscale", () => {
         const body = runBody(calls);
         expect(body.workflow).toBe("image-esrgan-upscale");
         expect(body.inputs).toEqual({ upscale_model: "RealESRGAN_x4plus.pth" });
-        // An upload is referenced by the name the gateway gave it, which is its id.
+        // An upload is referenced by the name the server gave it, which is its id.
         expect(body.media).toEqual({ image: [UPLOAD_ID] });
     });
 
     it("sends no prompt: the workflow's own default is the prompt", async () => {
-        const { calls } = stubGateway();
+        const { calls } = stubServer();
 
-        await requestUpscale(gateway(), image("source.png"), { workflowId: "image-esrgan-upscale" });
+        await requestUpscale(server(), image("source.png"), { workflowId: "image-esrgan-upscale" });
 
         // An undeclared key is a 400 from the typed input contract, so a prompt here would break
         // every upscale that has its own text binding.
@@ -167,10 +167,10 @@ describe("requestUpscale", () => {
     });
 
     it("reports the run's failure as the request's failure", async () => {
-        stubGateway({
+        stubServer({
             status: () => json(run({ status: "failed", error: { code: "comfy_execution_failed", message: "Prompt outputs failed validation" } })),
         });
 
-        await expect(requestUpscale(gateway(), image("source.png"), { workflowId: "image-esrgan-upscale" })).rejects.toThrow("Prompt outputs failed validation");
+        await expect(requestUpscale(server(), image("source.png"), { workflowId: "image-esrgan-upscale" })).rejects.toThrow("Prompt outputs failed validation");
     });
 });

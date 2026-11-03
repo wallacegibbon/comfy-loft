@@ -5,7 +5,7 @@
 // side is the direction — a server reads masked frames and writes unmasked ones, and the handshake
 // answers instead of asking.
 //
-// Only what this gateway needs is here: one connection, text messages, the close handshake and ping.
+// Only what this server needs is here: one connection, text messages, the close handshake and ping.
 // No extensions, no subprotocols, no compression. A fragmented message is reassembled because a
 // browser is allowed to send one; nothing here fragments on the way out.
 package ws

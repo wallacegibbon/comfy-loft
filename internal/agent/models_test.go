@@ -26,7 +26,7 @@ func startupWith(t *testing.T, frame string) startup {
 }
 
 // The list a canvas can send is the list it was shown — and `model_sync` replaces *every* model from what
-// it is given. So the parts the canvas never saw have to come back from the gateway's own copy: deleting
+// it is given. So the parts the canvas never saw have to come back from the server's own copy: deleting
 // one model must not take the other's key, reasoning blocks or token caps with it.
 func TestModelSyncKeepsWhatTheCanvasCannotSee(t *testing.T) {
 	session := &Session{ID: "canvas:1", state: startupWith(t, modelListFrame)}

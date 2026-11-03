@@ -157,7 +157,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
     /**
      * Throw the conversation away on both sides, then open a new one.
      *
-     * The gateway decides: it refuses a session with a turn in flight and changes nothing, and on success
+     * The server decides: it refuses a session with a turn in flight and changes nothing, and on success
      * it has already released the agent and removed the file. Only then does this side drop the socket
      * and open a new one, which spawns an agent with nothing to replay. This panel draws its transcript
      * from that history, which is why an empty one is an empty panel rather than a second source of truth
@@ -165,12 +165,12 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
      */
     const clearHistory = async () => {
         // The button is disabled mid-turn, and this is the same refusal one layer down: the panel is not
-        // the authority on whether the agent is idle, the gateway is (docs/decisions.md #187).
+        // the authority on whether the agent is idle, the server is (docs/decisions.md #187).
         if (busy) return;
         try {
             await clearAgentConversation(config, session);
         } catch (error) {
-            // The gateway's own words: "the agent is in the middle of a turn" is actionable in a way that
+            // The server's own words: "the agent is in the middle of a turn" is actionable in a way that
             // "could not clear" is not, and nothing was changed, so the conversation is still usable.
             setMessages((current) => transcriptEvent(current, { type: "error", message: apiErrorMessage(error, t("canvas.agent.clearHistoryFailed")) }));
             return;

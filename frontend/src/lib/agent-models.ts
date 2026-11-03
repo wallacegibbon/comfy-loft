@@ -8,7 +8,7 @@ import type { AgentModel } from "@/services/api/agent";
  * sends is "these models, in this order", and a model that is missing is a model that is deleted.
  *
  * What a page cannot send is the part it has never been shown: `SM model_list` carries every `api_key` in
- * cleartext; the gateway strips them (`agent.Model`), and puts them back into the list a canvas edited
+ * cleartext; the server strips them (`agent.Model`), and puts them back into the list a canvas edited
  * before AlayaCore sees it (`agent.Sessions.ModelSync`). So an existing model travels by id and the four
  * fields on this screen, and a key travels only when this page has one to give: a model being created, or
  * one whose key the user has just retyped. An empty key field says nothing and changes nothing.

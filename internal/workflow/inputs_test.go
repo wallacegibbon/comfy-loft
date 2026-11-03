@@ -111,7 +111,7 @@ func TestValidateInputsPointsMediaAtTheMediaMap(t *testing.T) {
 }
 
 // The two video-only inputs belong to video workflows and nowhere else: on an image workflow they are
-// typos, and `interpolation` is a value the gateway itself executes, so its set is closed.
+// typos, and `interpolation` is a value the server itself executes, so its set is closed.
 func TestVideoOnlyInputs(t *testing.T) {
 	image := inputEntry()
 	if err := ValidateInputs(image, map[string]any{"prompt": "x", "frameMode": "first"}, InputLimits{}); err == nil {
@@ -123,7 +123,7 @@ func TestVideoOnlyInputs(t *testing.T) {
 	if err := ValidateInputs(video, map[string]any{"prompt": "x", "frameMode": "last"}, InputLimits{}); err != nil {
 		t.Errorf("video inputs rejected: %v", err)
 	}
-	// `interpolation` used to be accepted here as a gateway-executed input; raising a clip's frame
+	// `interpolation` used to be accepted here as a server-executed input; raising a clip's frame
 	// rate is now a run of its own workflow, so the key must be gone rather than silently ignored.
 	if err := ValidateInputs(video, map[string]any{"prompt": "x", "interpolation": "2x"}, InputLimits{}); err == nil {
 		t.Error("interpolation is still accepted as an input")

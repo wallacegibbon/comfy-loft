@@ -1,7 +1,7 @@
-# The gateway protocol
+# The server protocol
 
 Status: **landed.** Every media type, every canvas node and every tool action is on this protocol, and
-`/v1/*` is gone from the gateway. What is left of the migration notes below is the record of why the
+`/v1/*` is gone from the server. What is left of the migration notes below is the record of why the
 shape looks like this.
 
 > Since #156 a run belongs to a canvas and the canvas owns the media: submission is
@@ -22,7 +22,7 @@ shape looks like this.
   adapter on the same execution path.
 - Done: `inputs` is typed and checked at submission (closed key set, types, ranges, `required`,
   output container), with `GET /api/workflows/{id}/schema` publishing the same contract.
-- Done: the gateway no longer decides what belongs in a model list. A workflow is a workflow; the
+- Done: the server no longer decides what belongs in a model list. A workflow is a workflow; the
   canvas — the only client — offers the ones with a prompt as models and drives the rest from the
   buttons that supply their media. Every workflow is reported by the availability scan, so a missing
   node behind a tool is as visible as one behind a model.
@@ -39,7 +39,7 @@ shape looks like this.
   the multi-angle re-render and frame interpolation (`video-rife`: one clip in, one clip out).
 - Done: **`/v1/models` is gone.** `GET /api/workflows` carries the model ids each workflow answers to
   (`models: [{id, label, baseModel, baseModelLabel, imageInputs}]`), because an id like `img-zit-int8`
-  is a spelling the gateway builds and resolves. The canvas builds its picker from that list and
+  is a spelling the server builds and resolves. The canvas builds its picker from that list and
   filters it itself (buttons vs models, enabled, available).
 - Done: **`/v1/*` is empty — the adapters are deleted**, with their request shapes, their helpers and
   their tests. `POST /api/canvases/{id}/runs` is the only way to produce media; the prompt services and
@@ -58,9 +58,9 @@ instead of imitating someone else's API, and every compatibility branch we do no
 we would maintain forever.
 
 This is not ComfyUI's graph API with renamed fields. ComfyUI exchanges *graphs* (node ids, classes,
-every link); the gateway exchanges *workflow runs* (a workflow id, typed inputs, media roles). The
+every link); the server exchanges *workflow runs* (a workflow id, typed inputs, media roles). The
 two share the job skeleton — submit, id, poll, fetch — because the executor underneath is ComfyUI;
-the comparison, endpoint by endpoint, is in [`gateway.md`](gateway.md#relationship-to-comfyuis-http-api).
+the comparison, endpoint by endpoint, is in [`server.md`](server.md#relationship-to-comfyuis-http-api).
 
 ## Four resources
 
@@ -94,8 +94,8 @@ Every write names its canvas, and the two read paths for bytes are files of that
 | `POST` | `/api/canvases/import` | One exported canvas archive (a zip: `canvas.json`, `manifest.json`, `files/<name>`) in, one canvas out. The files keep the names the document uses, so nothing is rewritten. |
 
 `/health`, `/api/canvases*`, `/api/settings`, `/api/resources/*`, `/api/system/*` are the rest of the
-surface; they manage the gateway and the workspace, they do not run workflows
-([`gateway.md`](gateway.md) lists them all).
+surface; they manage the server and the workspace, they do not run workflows
+([`server.md`](server.md) lists them all).
 
 ## Submitting a run
 
@@ -130,7 +130,7 @@ surface; they manage the gateway and the workspace, they do not run workflows
   so an inpaint request means "source + mask" without the handler knowing the workflow.
 - No `wait`, no `stream`, no synchronous variant: see "The id is the contract" below.
 - **`askedBy` is optional, and only an agent sets it.** It names the conversation that asked for the
-  run, and the node it asked about, so the gateway can say what became of the run when it ends — as a
+  run, and the node it asked about, so the server can say what became of the run when it ends — as a
   message from the user, on that session (decisions #225). A body without it is a run the user started.
 
 Response (`202` in every case, including a run that finished instantly). `status` is the state at
@@ -213,7 +213,7 @@ repeat the status code.
 ## What a run may carry, exactly
 
 `GET /api/workflows/{id}/schema` returns `inputs`: the closed list of keys a run accepts, with type,
-required, range and (where the gateway owns the value set) the allowed options. A run is validated
+required, range and (where the server owns the value set) the allowed options. A run is validated
 against it **at submission**, so a mistake is a `400` now rather than a failed run minutes later.
 
 The list is assembled from three sources, so no workflow has to restate it:
@@ -226,7 +226,7 @@ The list is assembled from three sources, so no workflow has to restate it:
    name (`params.` + the key) or one with no source at all. A binding that derives its value from
    somewhere else (`size.width`, `seconds`, `quality.steps`) is not an input: it used to be
    advertised and silently ignored, which is the same failure as a typo that does not error.
-4. The request-level inputs the gateway itself reads: `background`, `layout`/`layoutEnabled` (the
+4. The request-level inputs the server itself reads: `background`, `layout`/`layoutEnabled` (the
    MOSS prompt), `loras` (applied by the engine), and — for video workflows — `frameMode` (which
    frames a request supplies).
 
@@ -236,7 +236,7 @@ Rules worth knowing:
   ignored silently, which is the worst possible outcome.
 - **Media keys are rejected with a pointer**: `refs` is a binding name, but media travels in
   `media.<role>`; the error says so.
-- **`quality` is a closed set** (the workflow's preset names plus `auto`) because the gateway owns
+- **`quality` is a closed set** (the workflow's preset names plus `auto`) because the server owns
   that vocabulary.
 - **Other `select` options are advisory.** A sampler list in `registry.json` is a UI suggestion;
   ComfyUI has more valid samplers than the canvas offers, and rejecting one would be wrong.
@@ -245,7 +245,7 @@ Rules worth knowing:
   ComfyUI a minute later. The quality value the selected container requires is filled in from the
   same declaration.
 - **A workflow may be a step, not a model.** `video-rife` has no prompt: it takes a clip and a
-  multiplier. The gateway does not care — it runs any registered workflow — but it also does not
+  multiplier. The server does not care — it runs any registered workflow — but it also does not
   pretend such a step is a model a client picks from a list.
 - Values reach the bindings unchanged, which is why a new workflow becomes runnable without a new
   route or a new struct.
@@ -274,7 +274,7 @@ id exists to remove.
 
 ## Execution model
 
-- Runs are queued and executed **one at a time**. ComfyUI owns a single GPU; parallel gateway
+- Runs are queued and executed **one at a time**. ComfyUI owns a single GPU; parallel server
   submissions would only queue inside ComfyUI anyway, with worse diagnostics.
 - Every run is persisted (`data/tasks.json`) and reconciled on boot: a run whose output file is
   still in its canvas becomes `succeeded`, a run that was in flight becomes `failed` with an
@@ -295,7 +295,7 @@ id exists to remove.
 | `mode`, `vquality`, `resolution_name`, `params` (JSON string) | declared `inputs` in the schema |
 | field names that must contain `image`/`frame` | explicit media roles |
 | `entry.ID == "video-h3-…"`, `image-qwen21`, `image-moss-*` branches in handlers | `accepts` / `inputs` / `outputs` in `registry.json` |
-| base64 bodies, `/{id}/content`, a gateway-wide `/files/{name}` | one file route per canvas: `GET /api/canvases/{id}/files/{name}` |
+| base64 bodies, `/{id}/content`, a server-wide `/files/{name}` | one file route per canvas: `GET /api/canvases/{id}/files/{name}` |
 
 The adapters were deleted one node type at a time, so no step left the canvas without a working path.
 What is worth keeping from them is the shape of the request they accepted: a caller who knew

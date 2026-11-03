@@ -1,20 +1,20 @@
 import { isToolWorkflow } from "@/lib/canvas/tool-workflows";
-import type { GatewayWorkflow } from "@/services/api/workflows";
+import type { ServerWorkflow } from "@/services/api/workflows";
 import type { ChannelModel, ModelCapability } from "@/stores/use-config-store";
 
 /**
- * The gateway's workflows as model entries for the picker.
+ * The server's workflows as model entries for the picker.
  *
  * A workflow is what runs; a model is what the user picks. One graph answers to several ids when it
- * offers more than one base model, and the gateway reports those ids because it is the side that
+ * offers more than one base model, and the server reports those ids because it is the side that
  * spells and resolves them (`img-zit-int8`). Everything else here is the client's own decision:
  * which media kinds are selectable, that a workflow the canvas drives from a button is not, and that a
  * disabled or unavailable workflow is left out rather than offered and then refused.
  */
 const CAPABILITIES: ModelCapability[] = ["image", "video", "audio"];
 
-/** The models one workflow contributes, in the order the gateway listed them. */
-export function modelsOf(workflow: GatewayWorkflow): ChannelModel[] {
+/** The models one workflow contributes, in the order the server listed them. */
+export function modelsOf(workflow: ServerWorkflow): ChannelModel[] {
     const capability = workflow.type as ModelCapability;
     if (!CAPABILITIES.includes(capability)) return [];
     if (workflow.enabled === false || workflow.availability?.available === false) return [];
@@ -36,8 +36,8 @@ export function modelsOf(workflow: GatewayWorkflow): ChannelModel[] {
     }));
 }
 
-/** Every selectable model the gateway offers. */
-export function gatewayModels(workflows: GatewayWorkflow[]) {
+/** Every selectable model the server offers. */
+export function serverModels(workflows: ServerWorkflow[]) {
     return workflows.flatMap(modelsOf);
 }
 
@@ -66,11 +66,11 @@ export function modelSignature(models: ChannelModel[]) {
 /**
  * Which workflow a fresh canvas starts on, per media kind.
  *
- * Not a model list — the gateway still decides what exists. This is the same kind of choice as
+ * Not a model list — the server still decides what exists. This is the same kind of choice as
  * `tool-workflows.ts`: the canvas is the only client, so which of several available workflows is the
- * sensible starting point is ours. The gateway's order is alphabetical, which puts
+ * sensible starting point is ours. The server's order is alphabetical, which puts
  * `video-h3-character-swap` first — a workflow that needs a source clip and a reference image, a poor
- * answer to "make me a video". A preferred id the gateway does not offer is ignored, so removing or
+ * answer to "make me a video". A preferred id the server does not offer is ignored, so removing or
  * renaming a workflow cannot leave the canvas pointing at nothing.
  */
 const PREFERRED_WORKFLOW: Partial<Record<ModelCapability, string>> = {

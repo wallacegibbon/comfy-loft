@@ -41,8 +41,8 @@ type Server struct {
 	registry   *workflow.Registry
 	tasks      *task.Store
 	uploads    *upload.Store
-	// canvases is the workspace: one directory per canvas, owned by the gateway and backed up by
-	// copying it. Nothing else in the gateway knows what a node is, and this is the reason.
+	// canvases is the workspace: one directory per canvas, owned by the server and backed up by
+	// copying it. Nothing else in the server knows what a node is, and this is the reason.
 	canvases *canvas.Store
 	// settings is the preferences document: opaque here, owned by the canvas, kept beside the data so
 	// it survives a cleared browser and travels with the workspace.
@@ -60,10 +60,10 @@ type Server struct {
 	startedAt time.Time
 }
 
-// New constructs the whole gateway. Everything is loaded before the first request,
+// New constructs the whole server. Everything is loaded before the first request,
 // so a half-initialized server can never answer.
 func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
-	// A gateway that was killed mid-write leaves its temporary file next to the target; nothing reads it
+	// A server that was killed mid-write leaves its temporary file next to the target; nothing reads it
 	// again, so startup is the one moment it can be swept safely.
 	util.SweepTempFiles(cfg.DataDir)
 	util.SweepTempFiles(cfg.CanvasRoot)
@@ -179,7 +179,7 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 	return server, nil
 }
 
-// Close stops what the gateway started that is not the main HTTP server: the bridge listener. Agents are
+// Close stops what the server started that is not the main HTTP server: the bridge listener. Agents are
 // released by their sockets closing, on the same shutdown path.
 func (s *Server) Close() { s.closeMCP() }
 

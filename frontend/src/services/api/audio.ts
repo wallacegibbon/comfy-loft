@@ -10,7 +10,7 @@ type RequestOptions = { signal?: AbortSignal; askedBy?: RunRequest["askedBy"] };
 
 /**
  * Hooks a canvas node needs to keep its generation alive across a reload: the run id arrives as soon
- * as the gateway accepts the job, and the progress ticks come from the run itself.
+ * as the server accepts the job, and the progress ticks come from the run itself.
  */
 type AudioRunHooks = {
     onRun?: (runId: string) => void;

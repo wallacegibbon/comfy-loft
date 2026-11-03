@@ -22,7 +22,7 @@ func TestCommandLineIsCopyPasteable(t *testing.T) {
 
 func TestCommandLineQuotesMetacharacters(t *testing.T) {
 	// Anything that a shell would interpret must be quoted, or pasting the logged
-	// line back would run something different from what the gateway ran.
+	// line back would run something different from what the server ran.
 	for _, unsafe := range []string{"a;rm -rf /", "a|b", "$HOME", "`whoami`", "a&b", "a>b", "a*b"} {
 		got := CommandLine("cmd", unsafe)
 		if got != "cmd '"+unsafe+"'" && got != `cmd '`+unsafe+`'` {

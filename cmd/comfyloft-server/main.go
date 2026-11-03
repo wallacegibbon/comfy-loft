@@ -1,4 +1,4 @@
-// Command comfyui-gateway is the local service behind Comfy Loft: it runs ComfyUI
+// Command comfyloft-server is the local service behind Comfy Loft: it runs ComfyUI
 // workflows and offers them to the canvas as models. It speaks its own protocol
 // (`/api/...`), not OpenAI's.
 //
@@ -35,18 +35,18 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	logger := logx.New("gateway")
+	logger := logx.New("server")
 
 	app, err := server.New(cfg, logger)
 	if err != nil {
 		return err
 	}
 
-	if !config.IsLoopbackHost(cfg.GatewayHost) {
-		logger.Warn("listening on %s with no authentication: anyone who can reach this address can run workflows, read their artifacts and drive a canvas's agent", cfg.GatewayHost)
+	if !config.IsLoopbackHost(cfg.ServerHost) {
+		logger.Warn("listening on %s with no authentication: anyone who can reach this address can run workflows, read their artifacts and drive a canvas's agent", cfg.ServerHost)
 	}
 
-	address := net.JoinHostPort(cfg.GatewayHost, fmt.Sprint(cfg.GatewayPort))
+	address := net.JoinHostPort(cfg.ServerHost, fmt.Sprint(cfg.ServerPort))
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return fmt.Errorf("cannot listen on %s: %w", address, err)
@@ -60,7 +60,7 @@ func run() error {
 		IdleTimeout: 120 * time.Second,
 	}
 
-	logger.Info("ComfyUI gateway %s listening on http://%s", config.Version, address)
+	logger.Info("ComfyUI server %s listening on http://%s", config.Version, address)
 	logger.Info("ComfyUI: %s | workflows: %s", cfg.ComfyURL, cfg.WorkflowDir)
 
 	// The cleaner is stopped, then waited for. Two channels, because a loop that closes its own "done"
@@ -111,7 +111,7 @@ func run() error {
 //
 // stop is closed by the shutdown path and done is closed by this function: the two are different
 // questions, and answering "it is not stopping" with the channel that means "it has stopped" is how the
-// gateway used to wait for the next tick on its way out.
+// server used to wait for the next tick on its way out.
 func taskCleanupLoop(cfg *config.Config, app *server.Server, logger *logx.Logger, stop, done chan struct{}) {
 	defer close(done)
 	interval := time.Duration(cfg.CleanupIntervalMs) * time.Millisecond

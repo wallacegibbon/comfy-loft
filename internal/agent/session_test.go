@@ -12,7 +12,7 @@ import (
 )
 
 // fakeAgent is a stand-in for the real binary that speaks the same wire, so these tests describe the
-// gateway's translation rather than a model's behaviour. The protocol facts it encodes (an api key in
+// server's translation rather than a model's behaviour. The protocol facts it encodes (an api key in
 // model_list, a CO per command, a task that ends the prompt, a task that reports tokens and speed) were
 // observed on the real agent.
 const fakeAgent = `#!/bin/sh
@@ -238,7 +238,7 @@ func TestSessionRelaysACommandAndTheAgentsStatement(t *testing.T) {
 	}
 }
 
-// A cancel carries the word the panel chose, and the gateway forwards it rather than translating it:
+// A cancel carries the word the panel chose, and the server forwards it rather than translating it:
 // `keep_steering` is AlayaCore's own argument, and the two fates it picks between — the queue dropped with
 // the task, or left to run as the next prompt — are AlayaCore's to carry out. An empty word is the bare
 // cancel the socket-closed path sends, and it has to stay an empty word rather than vanish: the frame the

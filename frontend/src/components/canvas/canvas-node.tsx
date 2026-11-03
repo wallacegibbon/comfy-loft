@@ -510,7 +510,7 @@ function LoadingContent({ theme, node }: Pick<NodeContentRendererProps, "theme" 
             </div>
         );
     }
-    // A run the gateway picked up after a restart has no progress to report: the step count and the preview
+    // A run the server picked up after a restart has no progress to report: the step count and the preview
     // frames came from the socket bound to the process that submitted. Saying so is the whole point — a
     // spinner with a frozen number reads as "stuck" (#236).
     const resumed = Boolean(node.metadata?.progressUnavailable);

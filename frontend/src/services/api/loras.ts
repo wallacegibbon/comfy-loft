@@ -1,8 +1,8 @@
-import { LOCAL_GATEWAY_BASE_URL } from "@/constant/app-mode";
+import { LOCAL_SERVER_BASE_URL } from "@/constant/app-mode";
 import { httpJson } from "@/services/api/http";
-import { localGatewayRoot } from "@/services/api/image";
+import { localServerRoot } from "@/services/api/image";
 
-const gatewayRoot = localGatewayRoot(LOCAL_GATEWAY_BASE_URL);
+const serverRoot = localServerRoot(LOCAL_SERVER_BASE_URL);
 
 /**
  * The LoRA files ComfyUI reports, by path (GET /api/loras).
@@ -12,9 +12,9 @@ const gatewayRoot = localGatewayRoot(LOCAL_GATEWAY_BASE_URL);
  * answers with whatever is installed, including files no workflow wants.
  */
 export async function fetchLoras(query = ""): Promise<string[]> {
-    if (!gatewayRoot) return [];
+    if (!serverRoot) return [];
     const suffix = query ? `?q=${encodeURIComponent(query)}` : "";
-    const data = await httpJson<{ loras?: unknown }>(`${gatewayRoot}/api/loras${suffix}`, { timeout: 8000 });
+    const data = await httpJson<{ loras?: unknown }>(`${serverRoot}/api/loras${suffix}`, { timeout: 8000 });
     const loras = Array.isArray(data?.loras) ? data.loras : [];
     return loras.filter((item): item is string => typeof item === "string" && item.length > 0);
 }

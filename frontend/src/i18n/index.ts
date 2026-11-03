@@ -13,7 +13,7 @@ const LOCALE_SETTING_KEY = "locale";
  * The workspace's language, read from the first-paint script (`GET /config.js`).
  *
  * It comes from `window.__RUNTIME_CONFIG__.SETTINGS` rather than a store, because i18next is
- * initialised at import time — before any React tree exists. The gateway puts the document in the
+ * initialised at import time — before any React tree exists. The server puts the document in the
  * script the page loads first (#155), so this is a synchronous read with nothing to wait for.
  *
  * A workspace that has never chosen a language opens in English, and English is also the fallback: a key

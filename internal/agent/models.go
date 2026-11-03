@@ -14,16 +14,16 @@ import (
 // every reasoning block beside it.
 const modelSyncCommand = "model_sync"
 
-// modelEditorFields are the fields an editor may replace on a model the gateway already knows. Everything
-// else in the stored entry — the reasoning blocks, the token caps, the fields this gateway has no control
-// for — is the gateway's to keep, because the canvas has never seen it.
+// modelEditorFields are the fields an editor may replace on a model the server already knows. Everything
+// else in the stored entry — the reasoning blocks, the token caps, the fields this server has no control
+// for — is the server's to keep, because the canvas has never seen it.
 var modelEditorFields = [...]string{"name", "protocol_type", "base_url", "model_name"}
 
 // mergeModelSync completes the list a canvas sent into the list `model_sync` expects.
 //
 // The canvas says which models stay, in which order, what is new and what changed:
 //
-//   - an id the gateway knows is rebuilt from the entry the agent announced, with the four fields above
+//   - an id the server knows is rebuilt from the entry the agent announced, with the four fields above
 //     replaced by whatever the canvas sent — so deleting one model does not take another's key or
 //     reasoning blocks with it;
 //   - an id nobody knows is new, and travels as sent, the `api_key` it carries included;
@@ -61,12 +61,12 @@ func (s *Session) mergeModelSync(args string) ([]modelObject, error) {
 	return merged, nil
 }
 
-// ModelSync is `mergeModelSync` for the gateway, plus the other half of one file shared by many processes.
+// ModelSync is `mergeModelSync` for the server, plus the other half of one file shared by many processes.
 //
 // `model.conf` is one file for the whole host and every agent process reads it into its own memory at
 // startup, so a list edited on one surface is wrong on every other until that process is replaced: the
 // canvas's own model picker would go on offering a model that was just deleted, and not the one that was
-// just added. The gateway is the only layer that knows both sides — it is about to write this list through
+// just added. The server is the only layer that knows both sides — it is about to write this list through
 // the agent — so it hands the list to the other sessions as well. Their `active` model is their own and is
 // left alone; if it is the model that went away, the agent finds out when it is next asked a question.
 //

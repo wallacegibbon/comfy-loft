@@ -1,7 +1,7 @@
 // Package sysinfo is the shape of the system panel's numbers: what the machine that runs ComfyUI
 // has left to give.
 //
-// It deliberately does not sample the gateway's own host. The gateway and ComfyUI are two machines
+// It deliberately does not sample the server's own host. The server and ComfyUI are two machines
 // as often as one, and a figure about the wrong machine is worse than no figure at all: it reads
 // "1.7 GB of VRAM free" next to a generation that just ran out of memory. ComfyUI already answers
 // the question about itself at /system_stats — this package turns that answer into the panel's

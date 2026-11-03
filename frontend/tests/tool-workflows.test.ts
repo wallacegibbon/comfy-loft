@@ -5,7 +5,7 @@ import { IMAGE_ANGLE_WORKFLOW, IMAGE_UPSCALE_WORKFLOW, isToolWorkflow, VIDEO_INT
 /**
  * Which workflows are actions rather than models.
  *
- * The gateway registers a workflow and reports whether it can run; whether it belongs in the model
+ * The server registers a workflow and reports whether it can run; whether it belongs in the model
  * dropdown is the client's decision, because the canvas is the only client. Every id listed here has
  * a button that supplies the media the workflow really needs.
  */

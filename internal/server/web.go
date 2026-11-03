@@ -11,18 +11,18 @@ import (
 )
 
 /**
- * The canvas bundle, served by the gateway.
+ * The canvas bundle, served by the server.
  *
- * The canvas used to be a second process — `vite preview` on :3000 talking to the gateway on :8190 — which
+ * The canvas used to be a second process — `vite preview` on :3000 talking to the server on :8190 — which
  * made every picture a cross-origin image. That was not a detail: `canvas.toDataURL()` refuses a canvas that
  * has drawn one ("tainted canvases may not be exported"), so InPaint, crop and split could not export what
  * they drew, CORS had to be listed per address, and a release could not ship at all because `vite` is a
  * development dependency. The bytes are static files that already sit beside the binary (`frontend/dist`),
- * so serving them from the gateway's own origin is one process, one port and one firewall rule (#219). The
- * one thing in that directory the gateway does not serve is `config.js`: that is a route, computed from
+ * so serving them from the server's own origin is one process, one port and one firewall rule (#219). The
+ * one thing in that directory the server does not serve is `config.js`: that is a route, computed from
  * `data/settings.json` (#220).
  *
- * This file is the only place in the gateway that knows the bundle exists, and it still does not know what a
+ * This file is the only place in the server that knows the bundle exists, and it still does not know what a
  * node is: what it serves is bytes. `/api/*` remains the whole protocol.
  */
 
@@ -34,7 +34,7 @@ func (s *Server) handleWeb(ctx *httpx.Ctx) error {
 		return notFound(ctx.R)
 	}
 	// An unknown API path stays JSON. A page is the worst answer to a service call: it parses as a
-	// response, so a typo in a path would look like a gateway that answers 200 to everything.
+	// response, so a typo in a path would look like a server that answers 200 to everything.
 	if strings.HasPrefix(ctx.R.URL.Path, "/api/") {
 		return notFound(ctx.R)
 	}

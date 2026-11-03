@@ -41,7 +41,7 @@ export function createCanvasNode(type: CanvasNodeTypeId, position: Position, met
  * (`hydrateCanvasImages`). `documentOf` puts the reference back before anything is written (#152, #156).
  *
  * The URL is derived from the reference through the canvas the node belongs to, not taken from whatever
- * address the run reported: a run's absolute URL is built from the gateway's `PUBLIC_BASE_URL`, which is
+ * address the run reported: a run's absolute URL is built from the server's `PUBLIC_BASE_URL`, which is
  * wrong for a page opened through a name or a proxy that address does not mention. `activeFileUrl` asks the
  * same question every other renderer asks ("where is this canvas's file served from"), so the thumbnail and
  * the lightbox cannot disagree.

@@ -24,9 +24,9 @@ import {
     type ResourcePack,
     type ResourceStatus,
 } from "@/services/api/resources";
-import { gatewayModelLabel, gatewayVariantLabel } from "@/lib/gateway-labels";
+import { serverModelLabel, serverVariantLabel } from "@/lib/server-labels";
 import { packZh, resourceZh } from "@/lib/resource-copy-zh";
-import { isGatewayDown } from "@/services/api/gateway-status";
+import { isServerDown } from "@/services/api/server-status";
 
 // The copy lives in the dictionaries with the rest of the UI. Taking the type from the
 // Chinese entry keeps what the inline object gave us for free: `copy.title` is checked, and
@@ -284,9 +284,9 @@ function WorkflowResourceRow({
 }
 
 export function ResourceCenterPanel({ compact = false, footer }: { compact?: boolean; footer?: React.ReactNode }) {
-    // A dropped gateway is reported by the shared banner; do not raise one error per request.
+    // A dropped server is reported by the shared banner; do not raise one error per request.
     const showError = (error: unknown) => {
-        if (isGatewayDown()) return;
+        if (isServerDown()) return;
         toast.error(error instanceof Error ? error.message : String(error));
     };
     const copy = useResourceCopy();
@@ -392,7 +392,7 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
                         if (next.status === "done") toast.success(copy.done);
                         else if (next.status === "error") toast.error(next.message || copy.failed);
                         await load(true);
-                        window.dispatchEvent(new Event("local-gateway-refresh-models"));
+                        window.dispatchEvent(new Event("local-server-refresh-models"));
                     }
                 } catch (pollError) {
                     stopPolling();
@@ -405,7 +405,7 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
         [copy.done, copy.failed, load, stopPolling],
     );
 
-    // Installs are local file writes, so a gateway on another machine can only download to
+    // Installs are local file writes, so a server on another machine can only download to
     // the wrong disk. They stay off until the deployment states otherwise
     // (INSTALL_INTO_COMFY=1); the server refuses too (code model_install_disabled), and this
     // keeps the buttons from offering something that cannot work.
@@ -504,7 +504,7 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
                       }
                     : current,
             );
-            window.dispatchEvent(new Event("local-gateway-refresh-models"));
+            window.dispatchEvent(new Event("local-server-refresh-models"));
         } catch (toggleError) {
             showError(toggleError);
         }
@@ -518,7 +518,7 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
             const file = await pickResourceReplacement(item.id);
             if (!file) return;
             setStatus(await setResourceReplacement(item.id, file));
-            window.dispatchEvent(new Event("local-gateway-refresh-models"));
+            window.dispatchEvent(new Event("local-server-refresh-models"));
             toast.success(copy.replaced);
         } catch (error) {
             showError(error);
@@ -531,7 +531,7 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
         setReplacementSaving(item.id);
         try {
             setStatus(await setResourceReplacement(item.id, ""));
-            window.dispatchEvent(new Event("local-gateway-refresh-models"));
+            window.dispatchEvent(new Event("local-server-refresh-models"));
         } catch (error) {
             showError(error);
         } finally {
@@ -780,7 +780,7 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
                     const extraOptionalMissing = extraOptionalItems.filter((item) => item.status !== "present");
                     const extraOptionalSize = extraOptionalMissing.reduce((sum, item) => sum + (item.size || 0), 0);
                     const selectedOptionalInPack = extraOptionalItems.filter((item) => selectedOptional.has(item.id) && item.status !== "present");
-                    // The gateway calls "required" everything the pack runs and "optional" only what no
+                    // The server calls "required" everything the pack runs and "optional" only what no
                     // graph names, so the pack button is the whole pack plus whatever alternates were
                     // ticked — no reconstruction of the dependency set on this side.
                     const packInstallable = (item: ResourceItem) => item.status !== "present" && item.type !== "bake" && !item.needsRestart;
@@ -891,7 +891,7 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
                                                                 <button type="button" className="min-w-0 flex-1 text-left" onClick={() => toggleWorkflow(workflow.id)} aria-expanded={workflowExpanded}>
                                                                     <div className="flex flex-wrap items-center gap-2">
                                                                         <span className={`text-xs font-medium ${workflow.enabled === false ? "text-stone-400 dark:text-stone-500" : "text-stone-800 dark:text-stone-100"}`}>
-                                                                            {gatewayModelLabel(workflow.id, workflow.label)}
+                                                                            {serverModelLabel(workflow.id, workflow.label)}
                                                                         </span>
                                                                         {workflow.recommended ? (
                                                                             <Tag color="blue" className="m-0">
@@ -905,7 +905,7 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
                                                                     {Object.values(workflow.variantLabels || {}).length ? (
                                                                         <div className="mt-0.5 truncate text-[10px] text-stone-400 dark:text-stone-500">
                                                                             {Object.entries(workflow.variantLabels || {})
-                                                                                .map(([mode, label]) => gatewayVariantLabel(mode, label))
+                                                                                .map(([mode, label]) => serverVariantLabel(mode, label))
                                                                                 .join(" · ")}
                                                                         </div>
                                                                     ) : null}

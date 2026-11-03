@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestBridgePathFindsABridgeOnPath: a gateway that was not installed anywhere has no bridge beside it —
+// TestBridgePathFindsABridgeOnPath: a server that was not installed anywhere has no bridge beside it —
 // `go run` puts the executable in a temporary directory that holds nothing — so the file it writes into
 // `mcp.conf` has to name one the agent can actually start. This test binary is in exactly that position.
 func TestBridgePathFindsABridgeOnPath(t *testing.T) {

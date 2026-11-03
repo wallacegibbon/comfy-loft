@@ -22,7 +22,7 @@ import { useEffectiveConfig } from "@/stores/use-config-store";
  * It is also where deleting has its consequences, because it is the only thing that deletes: the row menu,
  * the select bar and anything added later all end up here. Two of those consequences are invisible from the
  * list — the canvas you are standing on is now gone, and each canvas owns an agent conversation that lives
- * in a file on the gateway. Both used to be handled by the top bar's "delete current canvas", which went with
+ * in a file on the server. Both used to be handled by the top bar's "delete current canvas", which went with
  * the rest of the workspace commands (#196).
  */
 export function CanvasDeleteProjectsDialog({ currentId }: { currentId: string }) {
@@ -41,13 +41,13 @@ export function CanvasDeleteProjectsDialog({ currentId }: { currentId: string })
         try {
             await deleteCanvases(ids);
         } catch (error) {
-            // The list is only changed once the gateway agrees, so a failure here leaves the canvases
+            // The list is only changed once the server agrees, so a failure here leaves the canvases
             // where they were and says why. Deleting is not undoable, so silence is not an option.
             console.error(error);
             toast.error(t("canvas.deleteFailed"));
             return;
         }
-        // Each canvas also owns an agent conversation, which lives in a file on the gateway.
+        // Each canvas also owns an agent conversation, which lives in a file on the server.
         for (const id of ids) void forgetCanvasConversation(config, id);
         removeSelectedIds(ids);
         setDeleteIds([]);

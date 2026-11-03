@@ -75,13 +75,13 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
     };
 }
 
-/** The content a run produces: the three kinds the gateway generates into a node. */
+/** The content a run produces: the three kinds the server generates into a node. */
 const RUN_CONTENT_TYPES = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio];
 
 /**
  * A node whose run was still out when the page went away.
  *
- * The run belongs to the gateway, not to the page, so the only thing that has to survive is the id the
+ * The run belongs to the server, not to the page, so the only thing that has to survive is the id the
  * node keeps in `runId` — and the answer is the same for every kind of content. It used to be three
  * predicates with three names for the field and a status check on two of them, so a single failed check
  * left an audio or image node unable to re-attach at all, while video re-attached whatever its status
@@ -113,7 +113,7 @@ export function adoptLegacyRunIds(nodes: CanvasNodeData[]) {
  * What a failed watch leaves on the node: the words it shows, and whether the run id stays.
  *
  * Two very different things end a watch, and only one of them is about the run. `RunFailedError` is the
- * gateway answering — the run failed or was cancelled — so the node says that and lets the id go. Anything
+ * server answering — the run failed or was cancelled — so the node says that and lets the id go. Anything
  * else is the question not getting there: the run may be rendering still, so the node keeps the id, says it
  * could not confirm it, and the next canvas open picks the watch up (#235).
  *
@@ -135,7 +135,7 @@ export function failedWatch(error: unknown, fallback: string) {
 /**
  * What a node looks like when the page is opened on it again.
  *
- * A node that was waiting on a run keeps waiting — the run is the gateway's, and it is still out. Any
+ * A node that was waiting on a run keeps waiting — the run is the server's, and it is still out. Any
  * other node that was `loading` is told the truth instead of being left spinning: the work stopped with
  * the page, and the reason says so. Errors already on the canvas are left alone: they are what happened,
  * and clearing them on open is how a failure became invisible (#235).

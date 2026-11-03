@@ -2,9 +2,9 @@
 //
 // A canvas is a directory, not a row: <root>/<id>/ holds canvas.meta.json (the facts the list needs),
 // canvas.json (the document itself), files/ (the media its nodes point at) and, once somebody has talked
-// to its agent, session.alaya (the conversation). The gateway owns the
+// to its agent, session.alaya (the conversation). The server owns the
 // directory, the id and the timestamps; it does not read canvas.json — what a node is, is the
-// canvas's business, and a gateway that understood nodes would have to be redeployed every time one
+// canvas's business, and a server that understood nodes would have to be redeployed every time one
 // was added.
 //
 // Two rules make the directory safe to write on every keystroke. Writes go through a temporary file
@@ -344,7 +344,7 @@ func (s *Store) summaryOf(loaded meta) Summary {
 	return summary
 }
 
-// validateDocument is the only thing the gateway checks about a document: that it is an object, and
+// validateDocument is the only thing the server checks about a document: that it is an object, and
 // that it is not so big that the caller has inlined media. What the object holds is not its business.
 func validateDocument(document []byte) error {
 	trimmed := bytes.TrimSpace(document)

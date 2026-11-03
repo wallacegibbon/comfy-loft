@@ -17,7 +17,7 @@ import (
 	"unicode/utf8"
 )
 
-// Frames the gateway writes to the agent's stdin.
+// Frames the server writes to the agent's stdin.
 const (
 	// TagUserX is user content: a JSON content item (`{"type":"text","text":...}` or an image).
 	// It travels in both directions — the agent echoes it back on stdout with a history id.
@@ -25,11 +25,11 @@ const (
 	// TagUserEnd flushes the staged content as one user message.
 	TagUserEnd = "UE"
 	// TagCmdInput is the command plane: `{"command_id":...,"name":...,"args":...}`. `cancel` is the
-	// one the gateway sends.
+	// one the server sends.
 	TagCmdInput = "CI"
 )
 
-// Frames the gateway reads from the agent's stdout.
+// Frames the server reads from the agent's stdout.
 const (
 	TagAssistantX      = "AX" // complete assistant content
 	TagAssistantXDelta = "Ax" // assistant content delta (a JSON content item: text or reasoning)

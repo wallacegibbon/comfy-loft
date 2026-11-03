@@ -2,7 +2,7 @@
  * Workflows the canvas invokes as a node action instead of offering as a model.
  *
  * This list is a **presentation choice and it lives in the client**, because the canvas is the only
- * client. The gateway registers a workflow and reports whether it can run; whether it belongs in the
+ * client. The server registers a workflow and reports whether it can run; whether it belongs in the
  * model dropdown is ours to decide, and every id here has a button or a dialog that submits it with
  * the media it actually needs — an upscaler takes a clip, not a prompt.
  *

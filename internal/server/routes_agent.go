@@ -18,7 +18,7 @@ import (
 // A session is one agent process with one name, and the name is the client's — the canvas panel calls
 // its own `canvas:<canvasId>`, a node's panel calls its own `node:<id>`. The lifetimes differ (the
 // canvas's agent lives as long as its socket, a node's while its panel is open) and the client owns both,
-// because the client is what knows when a surface went away. The gateway only files processes under
+// because the client is what knows when a surface went away. The server only files processes under
 // names, and keeps the one conversation that has somewhere to go — a canvas's — inside that canvas.
 func (s *Server) routesAgent(mux *http.ServeMux) {
 	s.route(mux, "GET /api/agent/socket/{session}", s.handleAgentSocket)
@@ -60,7 +60,7 @@ func (s *Server) handleAgentSessionDelete(ctx *httpx.Ctx) error {
 }
 
 // agentOptions is what every spawn needs. The wording (skills) and the tools are passed through from
-// configuration: the gateway has no opinion about either.
+// configuration: the server has no opinion about either.
 //
 // Every spawn gets the same options, and `read_file` is the only tool: the H3 prompt rewrite works by
 // reading a `SKILL.md`, and an agent that could not read one could not load a skill at all. Nothing
@@ -71,7 +71,7 @@ func (s *Server) agentOptions() agent.SpawnOptions {
 		ConfigPath: s.cfg.AgentConfigPath,
 		Skills:     s.cfg.AgentSkills,
 		Tools:      "read_file",
-		// The one thing the gateway says on its own account: the rule that chooses between the canvas
+		// The one thing the server says on its own account: the rule that chooses between the canvas
 		// tools, which no single tool's description can state (`agent_instructions.go`).
 		System: []string{canvasInstructions},
 		Log:    s.logger,
@@ -85,12 +85,12 @@ type socketMessage struct {
 	Images  []string `json:"images"`
 	Command string   `json:"command"`
 	// Args is what a command carries, and — for a cancel — the one optional word AlayaCore accepts there
-	// (`keep_steering`). It is forwarded unchanged either way; the gateway does not read it.
+	// (`keep_steering`). It is forwarded unchanged either way; the server does not read it.
 	Args   string `json:"args"`
 	Cancel bool   `json:"cancel"`
 	// ToolResult is the canvas answering a `tool` event: what running the tool did. It is not the same
 	// pipe as the agent's own `tool_call` / `tool_result` events, which run inside AlayaCore and which
-	// the gateway only relays.
+	// the server only relays.
 	ToolResult *toolAnswer `json:"toolResult"`
 	// Close ends the conversation: the agent is released, history and all. Closing the tab is not this
 	// — a socket that goes away leaves the process running, which is what makes coming back a
@@ -110,7 +110,7 @@ type toolAnswer struct {
 //
 // Everything after the upgrade is a message, in both directions. That is why this route reports its
 // failures as messages rather than status codes — once the header is out, a status code has nowhere to
-// go, and a gateway that pretended otherwise would be lying with a 200.
+// go, and a server that pretended otherwise would be lying with a 200.
 func (s *Server) handleAgentSocket(ctx *httpx.Ctx) error {
 	// Origin is checked before the upgrade by the middleware, which treats an upgrade as the write it
 	// becomes: a cross-site page must not be able to talk to a canvas's agent.
@@ -131,7 +131,7 @@ func (s *Server) handleAgentSocket(ctx *httpx.Ctx) error {
 		return conn.WriteText(payload)
 	}
 
-	// Whether this name keeps a conversation is the client's answer, not the gateway's: a canvas panel is a
+	// Whether this name keeps a conversation is the client's answer, not the server's: a canvas panel is a
 	// dialogue with a history and asks for one, a node's reverse-prompt is one question and does not.
 	// File processes under names — do not teach it which names mean what.
 	history := ctx.R.URL.Query().Get("history") == "1"
@@ -225,14 +225,14 @@ func (s *Server) readSocket(conn *ws.Conn, session *agent.Session, send func(age
 		case message.Cancel:
 			// The optional word travels with it (`keep_steering`), so a stop can either take the queued
 			// messages with it or leave them to run as the next prompt. The panel decides which; the
-			// gateway forwards — see `agent.Session.Cancel`.
+			// server forwards — see `agent.Session.Cancel`.
 			if err := session.Cancel(message.Args); err != nil {
 				return
 			}
 		default:
 			request := agent.Request{Prompt: message.Prompt, Images: message.Images, Command: message.Command, Args: message.Args}
 			// A model list is the one argument the canvas cannot make complete on its own (see
-			// `agent.Sessions.ModelSync`): it may edit the four fields it can see, and the gateway puts back
+			// `agent.Sessions.ModelSync`): it may edit the four fields it can see, and the server puts back
 			// the key and the reasoning blocks it cannot — for the whole list, since `model_sync` replaces
 			// every model in the file.
 			if request.Command == "model_sync" {

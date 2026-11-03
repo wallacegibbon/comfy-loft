@@ -12,7 +12,7 @@ import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type 
 /**
  * The tools, as functions: one call in, one answer out, against the page's own state.
  *
- * The gateway advertises the tools and cannot run any of them: it holds the socket, not the nodes. So a
+ * The server advertises the tools and cannot run any of them: it holds the socket, not the nodes. So a
  * call arrives as `{\"type\":\"tool\",\"callId\":…,\"name\":…,\"arguments\":…}` at the canvas hook
  * (`use-canvas-agent-tools`), which hands it to `runTool` and answers on the session it came from.
  *
@@ -227,7 +227,7 @@ function setText(hands: CanvasHands, args: unknown): ToolAnswer {
  * word — a run id, or a reason — not from the absence of an error.
  *
  * The session travels with the generation for the message that comes later: it is the one thing that
- * knows which conversation asked, and the run carries it so the gateway can say how it went.
+ * knows which conversation asked, and the run carries it so the server can say how it went.
  *
  * The mode is the one the node's own panel would use: a content node generates what it is, and a config node
  * generates the kind its composer is set to (that is what pressing its button does).
@@ -392,7 +392,7 @@ function moveNode(hands: CanvasHands, args: unknown): ToolAnswer {
 /**
  * The most base64 this page will put in one socket message.
  *
- * The gateway refuses a message over 8 MiB and closes the socket when one arrives, and base64 costs a third
+ * The server refuses a message over 8 MiB and closes the socket when one arrives, and base64 costs a third
  * more than the bytes it carries: a 20 MB generated clip read back through `read_node` used to end the whole
  * conversation, with the agent's next question unanswered and nothing to say why. Above this bound the tool
  * answers with the file's size instead of its bytes — the file is not lost, it is on the canvas.

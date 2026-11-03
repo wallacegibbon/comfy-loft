@@ -1,11 +1,11 @@
 import type { AiConfig } from "@/stores/use-config-store";
 import { httpJson } from "@/services/api/http";
-import { gatewayProtocolRoot } from "@/services/api/runs";
+import { serverProtocolRoot } from "@/services/api/runs";
 
 /**
- * The gateway's workflow list (GET /api/workflows).
+ * The server's workflow list (GET /api/workflows).
  *
- * A workflow is what the gateway runs, and a run names one. This is the only description of them the
+ * A workflow is what the server runs, and a run names one. This is the only description of them the
  * canvas needs: `type` says which kind of media comes out, `parameters` carries the loader's option
  * lists, `availability` says whether ComfyUI can run it right now, and `models` lists the ids it
  * answers to. Which of them appear in a model dropdown, and which are driven from a button, is our
@@ -34,10 +34,10 @@ type WorkflowAvailability = {
  * One id a workflow answers to.
  *
  * The same graph can be run with different base models, and each combination has its own spelling
- * (`img-zit-int8`). That spelling is built and resolved by the gateway, so it arrives from there; the
+ * (`img-zit-int8`). That spelling is built and resolved by the server, so it arrives from there; the
  * canvas only decides that each one is worth an entry in the model picker.
  */
-type GatewayWorkflowModel = {
+type ServerWorkflowModel = {
     id: string;
     label?: string;
     baseModel?: string | null;
@@ -45,7 +45,7 @@ type GatewayWorkflowModel = {
     imageInputs?: number;
 };
 
-export type GatewayWorkflow = {
+export type ServerWorkflow = {
     id: string;
     name: string;
     type: string;
@@ -58,14 +58,14 @@ export type GatewayWorkflow = {
     /** The variant modes an image workflow offers (`t2i`, `edit`, `inpaint`, `outpaint`). */
     variantModes?: string[];
     variantLabels?: Record<string, string>;
-    models?: GatewayWorkflowModel[];
+    models?: ServerWorkflowModel[];
 };
 
-type WorkflowsPayload = { workflows?: GatewayWorkflow[] };
+type WorkflowsPayload = { workflows?: ServerWorkflow[] };
 
 /** Read every registered workflow. */
-export async function requestWorkflows(config: Pick<AiConfig, "baseUrl">, options: { signal?: AbortSignal } = {}): Promise<GatewayWorkflow[]> {
-    const payload = await httpJson<WorkflowsPayload>(`${gatewayProtocolRoot(config.baseUrl)}/api/workflows`, {
+export async function requestWorkflows(config: Pick<AiConfig, "baseUrl">, options: { signal?: AbortSignal } = {}): Promise<ServerWorkflow[]> {
+    const payload = await httpJson<WorkflowsPayload>(`${serverProtocolRoot(config.baseUrl)}/api/workflows`, {
         signal: options.signal,
         timeout: 8000,
     });

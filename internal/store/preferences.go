@@ -1,4 +1,4 @@
-// Package store holds the gateway's small JSON-backed state: the two user preference files
+// Package store holds the server's small JSON-backed state: the two user preference files
 // (workflow visibility, main models). Nothing here runs anything; it remembers what the user
 // chose.
 package store

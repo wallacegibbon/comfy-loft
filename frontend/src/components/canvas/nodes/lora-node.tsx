@@ -10,7 +10,7 @@ import type { CanvasNodeData, CanvasNodeMetadata } from "@/types/canvas";
  *
  * It is a card rather than a field on the generation panel because a LoRA is a *choice about the model*,
  * and the same choice usually applies to several generations: wiring one card into two config nodes is
- * how a stack gets reused. The node's whole payload is `metadata.params.loras` — the shape the gateway's
+ * how a stack gets reused. The node's whole payload is `metadata.params.loras` — the shape the server's
  * `ApplyLoraChain` already reads — so nothing downstream had to learn about this node (`lora.go`).
  *
  * Strength is snapped to 0.05 and the slider is eased around zero: ±1.0 takes the middle half of the

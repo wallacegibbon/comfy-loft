@@ -1,5 +1,5 @@
 import i18n from "@/i18n";
-import { LOCAL_GATEWAY_BASE_URL, isLocalGatewayUrl } from "@/constant/app-mode";
+import { LOCAL_SERVER_BASE_URL, isLocalServerUrl } from "@/constant/app-mode";
 import { channelModelOf, modelImageInputs, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { mediaIdOf } from "@/services/canvas-files";
@@ -19,10 +19,10 @@ type RequestOptions = {
     /** The exact prompt that was sent, once it is composed: the panel shows it back to the user. */
     onPrompt?: (prompt: string) => void;
     params?: Record<string, unknown>;
-    /** Reported as soon as the gateway accepts a run, so the node can resume it after a reload. */
+    /** Reported as soon as the server accepts a run, so the node can resume it after a reload. */
     onRun?: (runId: string) => void;
     onProgress?: (run: Run) => void;
-    /** The agent that asked for this generation, if one did: the gateway tells it when the run ends. */
+    /** The agent that asked for this generation, if one did: the server tells it when the run ends. */
     askedBy?: RunRequest["askedBy"];
 };
 
@@ -33,11 +33,11 @@ const IMAGE_MAX_PIXELS = 8294400;
 const IMAGE_MAX_EDGE = 3840;
 const IMAGE_MAX_RATIO = 3;
 
-export function localGatewayRoot(baseUrl: string) {
+export function localServerRoot(baseUrl: string) {
     const url = String(baseUrl || "")
         .trim()
         .replace(/\/+$/, "");
-    if (!isLocalGatewayUrl(url)) return "";
+    if (!isLocalServerUrl(url)) return "";
     try {
         return new URL(url).origin;
     } catch {
@@ -45,7 +45,7 @@ export function localGatewayRoot(baseUrl: string) {
     }
 }
 
-// Explicit cancellation against the local gateway: it does not rely on when the browser tears down the XHR.
+// Explicit cancellation against the local server: it does not rely on when the browser tears down the XHR.
 /** Only "transparent" is forwarded; any other value (incl. empty) means keep the default opaque background. */
 function normalizeBackground(background: string | undefined) {
     return background?.trim().toLowerCase() === "transparent" ? "transparent" : undefined;
@@ -121,7 +121,7 @@ function withSystemPrompt(config: AiConfig, prompt: string) {
     return systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 }
 
-async function requestGatewayImages(input: { config: AiConfig; prompt: string; references: ReferenceImage[]; size?: string; background?: string; imageMode?: string; params: Record<string, unknown>; options?: RequestOptions }): Promise<UploadedImage> {
+async function requestServerImages(input: { config: AiConfig; prompt: string; references: ReferenceImage[]; size?: string; background?: string; imageMode?: string; params: Record<string, unknown>; options?: RequestOptions }): Promise<UploadedImage> {
     const { config, prompt, references, size, background, imageMode, params, options } = input;
     const inputs: Record<string, unknown> = { prompt };
     if (size) inputs.size = size;
@@ -178,7 +178,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
     }
     const finalPrompt = withSystemPrompt(requestConfig, prompt);
     options?.onPrompt?.(finalPrompt);
-    return requestGatewayImages({
+    return requestServerImages({
         config: requestConfig,
         prompt: finalPrompt,
         references: [],
@@ -209,7 +209,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     }
     const finalPrompt = withSystemPrompt(requestConfig, requestPrompt);
     options?.onPrompt?.(finalPrompt);
-    return requestGatewayImages({
+    return requestServerImages({
         config: requestConfig,
         prompt: finalPrompt,
         references,
@@ -233,13 +233,13 @@ type ImageAngleParams = {
  *
  * The angle knobs are the workflow's own inputs (`horizontalAngle`, `pitchAngle`, `cameraDistance`),
  * so this is one run with the source image as its reference — the same path every other image edit
- * takes. `wideAngle` is a UI toggle the graph has no counterpart for, so it is not sent: the gateway
+ * takes. `wideAngle` is a UI toggle the graph has no counterpart for, so it is not sent: the server
  * rejects inputs a workflow does not declare, and a binding that reaches nothing would be worse than
  * leaving the knob out until the model can honour it.
  */
 export async function requestImageAngle(config: AiConfig, prompt: string, params: ImageAngleParams, references: ReferenceImage[], options?: RequestOptions): Promise<UploadedImage> {
-    const requestConfig = { ...resolveModelRequestConfig(config, config.imageModel || config.model), baseUrl: LOCAL_GATEWAY_BASE_URL, model: IMAGE_ANGLE_WORKFLOW };
-    return requestGatewayImages({
+    const requestConfig = { ...resolveModelRequestConfig(config, config.imageModel || config.model), baseUrl: LOCAL_SERVER_BASE_URL, model: IMAGE_ANGLE_WORKFLOW };
+    return requestServerImages({
         config: requestConfig,
         prompt,
         references,
@@ -263,7 +263,7 @@ type UpscaleOptions = { workflowId: string; params?: Record<string, unknown>; si
  * default, and sending an undeclared key would be rejected by the typed input contract.
  */
 export async function requestUpscale(config: AiConfig, image: ReferenceImage, options: UpscaleOptions) {
-    const requestConfig = { ...resolveModelRequestConfig(config, config.imageModel || config.model), baseUrl: LOCAL_GATEWAY_BASE_URL, model: options.workflowId };
+    const requestConfig = { ...resolveModelRequestConfig(config, config.imageModel || config.model), baseUrl: LOCAL_SERVER_BASE_URL, model: options.workflowId };
     try {
         const run = await createRun(requestConfig, {
             workflow: options.workflowId,

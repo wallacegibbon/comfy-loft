@@ -45,7 +45,7 @@ type Event struct {
 	Phase string `json:"phase,omitempty"`
 
 	// tool_call, tool_result: what the agent did between two sentences. A built-in tool runs inside
-	// AlayaCore, so both frames come back from it — the gateway relays them and answers neither.
+	// AlayaCore, so both frames come back from it — the server relays them and answers neither.
 	CallID string `json:"callId,omitempty"`
 	Name   string `json:"name,omitempty"`
 	Input  string `json:"input,omitempty"`
@@ -54,7 +54,7 @@ type Event struct {
 	// the step the canvas already drew needs one thing from the result — whether it worked.
 	IsError bool `json:"isError,omitempty"`
 
-	// tool: one of the gateway's own tools, on its way down to the canvas, which is the only thing that
+	// tool: one of the server's own tools, on its way down to the canvas, which is the only thing that
 	// can run it. The canvas answers with `{"toolResult":…}` on the same socket — see Session.CallTool.
 	Arguments json.RawMessage `json:"arguments,omitempty"`
 
@@ -79,7 +79,7 @@ type Event struct {
 //
 // `SM model_list` carries the whole `model.conf` entry in cleartext — the `api_key` above all, then the
 // `reasoning_N` blocks and the token caps. None of that travels: `HasKey` says a key is stored without
-// saying what it is, and the entry itself stays in the gateway (`modelObject`), which is where the list a
+// saying what it is, and the entry itself stays in the server (`modelObject`), which is where the list a
 // canvas edits is completed from (#75: the surface edits models, the key never leaves the adapter).
 type Model struct {
 	ID           int    `json:"id"`
@@ -94,12 +94,12 @@ type Model struct {
 // modelObject is one entry of `SM model_list`, exactly as the agent sent it.
 //
 // Kept whole, because `model_sync` takes the *whole list back* and AlayaCore writes `model.conf` from it:
-// any field the gateway did not keep is a field one edit silently deletes — the `api_key` first of all,
+// any field the server did not keep is a field one edit silently deletes — the `api_key` first of all,
 // then every `reasoning_N` block and token cap that no control in the canvas reaches. Holding the object
-// as it arrived means the gateway does not know those fields by name, so a field AlayaCore adds tomorrow
+// as it arrived means the server does not know those fields by name, so a field AlayaCore adds tomorrow
 // survives a round trip through a page that never heard of it.
 //
-// Values stay `json.RawMessage`: the ones that travel back must travel untouched. The gateway reads the
+// Values stay `json.RawMessage`: the ones that travel back must travel untouched. The server reads the
 // few a canvas is shown (`info`) and replaces the four an editor owns (`mergeModelSync`).
 type modelObject map[string]json.RawMessage
 

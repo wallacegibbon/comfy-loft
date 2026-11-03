@@ -4,12 +4,12 @@ export default {
         description: "Comfy Loft —— 本地 AI 创作工作台",
     },
     theme: { toggle: "切换主题" },
-    gateway: {
-        reconnecting: "本地网关没有回应。恢复后的第一条请求会自动撤掉这条提示。",
+    server: {
+        reconnecting: "本地服务没有回应。恢复后的第一条请求会自动撤掉这条提示。",
         // Workflow metadata arrives in English from workflows/registry.json; these are the
         // Chinese labels for the workflows that ship here, keyed by the model id and variant
-        // mode the gateway sends. Unknown ids fall back to the English text — see
-        // src/lib/gateway-labels.ts.
+        // mode the server sends. Unknown ids fall back to the English text — see
+        // src/lib/server-labels.ts.
         models: {
             "video-h3-ref2va": { label: "H3 多参（VDN）" },
             "video-h3-t2v": { label: "H3 文生视频（VDN）" },
@@ -99,9 +99,9 @@ export default {
         model: {
             select: "选择模型",
             withChannel: "{{model}}（{{channel}}）",
-            assign: "请先在网关里为{{capability}}指定模型",
+            assign: "请先在服务里为{{capability}}指定模型",
             noMatch: "暂无匹配的{{capability}}模型",
-            addFirst: "请先到设置里为网关添加模型",
+            addFirst: "请先到设置里为服务添加模型",
             defaultBase: "默认底模",
             capabilities: { image: "生图", video: "视频", text: "文本", audio: "音频" },
         },
@@ -245,11 +245,11 @@ export default {
             copyHint: "复制给 AI Agent",
             hintCopied: "已复制，直接发给你的 AI Agent",
             notReachable: "ComfyUI 当前未连接，资源状态可能不准确。",
-            installDisabled: "模型安装已关闭：还没有确认 Gateway 能写进 ComfyUI 的模型目录",
-            installDisabledBody: "模型是 Gateway 直接写进 ComfyUI 模型目录的。没有这条确认，下载只会落到当前机器的磁盘上，ComfyUI 那边仍然显示缺少——而且不会报错，只会白下载几个 GB。",
+            installDisabled: "模型安装已关闭：还没有确认 Server 能写进 ComfyUI 的模型目录",
+            installDisabledBody: "模型是 Server 直接写进 ComfyUI 模型目录的。没有这条确认，下载只会落到当前机器的磁盘上，ComfyUI 那边仍然显示缺少——而且不会报错，只会白下载几个 GB。",
             installDisabledHost: "ComfyUI 所在机器",
             installDisabledFix:
-                "如果 Gateway 就跑在 ComfyUI 这台机器上（或它的模型目录已经挂载到本机），在 .env 里设置 INSTALL_INTO_COMFY=1 并重启 gateway。如果 Gateway 在另一台机器上，请把它搬到 ComfyUI 所在机器上用同一份工作目录启动（画布可以留在浏览器这边，改一下网关地址即可）。",
+                "如果服务就跑在 ComfyUI 这台机器上（或它的模型目录已经挂载到本机），在 .env 里设置 INSTALL_INTO_COMFY=1 并重启服务。如果服务在另一台机器上，请把它搬到 ComfyUI 所在机器上用同一份工作目录启动（画布可以留在浏览器这边，改一下服务地址即可）。",
             indexError: "资源索引读取失败：",
             indexWarning: "资源索引提示：",
             selectHint: "选择需要安装的功能包；已具备的资源会自动跳过。",
@@ -362,9 +362,9 @@ export default {
         emptyDescription: "新建一个画布后，就可以独立保存节点、连线和画布外观。",
         collapsePanel: "收起面板",
         expandPanel: "展开面板",
-        createFailed: "画布没能创建：网关没有回应。",
-        deleteFailed: "画布没能删除：网关没有回应。",
-        gatewayUnavailable: "连不上网关，读不到画布列表。网关启动后刷新页面即可。",
+        createFailed: "画布没能创建：服务没有回应。",
+        deleteFailed: "画布没能删除：服务没有回应。",
+        serverUnavailable: "连不上服务，读不到画布列表。服务启动后刷新页面即可。",
         exportCurrent: "导出当前画布",
         undo: "撤销",
         redo: "重做",
@@ -447,7 +447,7 @@ export default {
             group: "组",
             nodeCount: "{{count}} 个节点",
             awaitingResult: "等待结果",
-            awaitingResultHint: "网关重启后重新接上了这次运行，进度暂时看不到",
+            awaitingResultHint: "服务重启后重新接上了这次运行，进度暂时看不到",
             generating: "生成中",
             failed: "生成失败",
             missingNode: "未知节点",
@@ -838,12 +838,12 @@ export default {
         darkTheme: "切换到深色主题",
     },
     config: {
-        settingsNote: "配置保存在工作区里（网关的 data/settings.json），换浏览器、换设备都还在。",
+        settingsNote: "配置保存在工作区里（服务端的 data/settings.json），换浏览器、换设备都还在。",
         channels: {
             localName: "本地 ComfyUI",
-            defaultName: "默认网关",
-            newName: "新网关",
-            indexedName: "网关 {{index}}",
+            defaultName: "默认服务",
+            newName: "新服务",
+            indexedName: "服务 {{index}}",
         },
         preferences: {
             title: "偏好设置",
@@ -857,7 +857,7 @@ export default {
             imageAspectRatio: "默认画幅",
             autoFocusOnSelect: "选中自动居中",
             agentModels: "Agent 模型",
-            agentModelsNote: "Agent 自己的模型列表，来自 AlayaCore 的 model.conf。增、改、删都会写入该文件；API Key 只留在网关。",
+            agentModelsNote: "Agent 自己的模型列表，来自 AlayaCore 的 model.conf。增、改、删都会写入该文件；API Key 只留在服务端。",
             agentModelsConnecting: "正在启动 Agent…",
             agentModelsUnavailable: "Agent 未能启动，因此无法列出它的模型。",
             noAgentModels: "还没有配置模型。",
@@ -872,13 +872,13 @@ export default {
             modelProtocol: "协议",
             modelApiKey: "API Key",
             apiKeyKeepHint: "留空则保留已保存的密钥",
-            apiKeyStored: "网关已保存密钥，且从不把它发到这个页面。",
+            apiKeyStored: "服务端已保存密钥，且从不把它发到这个页面。",
             apiKeyMissing: "无密钥",
             protocolOpenAI: "OpenAI Chat Completion",
             protocolAnthropic: "Anthropic Messages",
             speech: "语音输入",
             speechAddress: "语音识别地址",
-            speechNote: "OpenAI 兼容的 /v1/audio/transcriptions，只接收 WAV。由网关代为请求，所以填服务端所在机器能访问到的地址即可。",
+            speechNote: "OpenAI 兼容的 /v1/audio/transcriptions，只接收 WAV。由服务端代为请求，所以填它能访问到的地址即可。",
             systemPrompt: "系统提示词",
             systemPromptPlaceholder: "例如：你是一位擅长电影感写实摄影的视觉导演。",
         },

@@ -6,17 +6,17 @@ import { createSaveQueue, type SaveQueue } from "@/lib/canvas/save-queue";
 import { emptyCanvasDocument, requestCanvas, requestCanvasCreate, requestCanvasDelete, requestCanvasImport, requestCanvasSave, requestCanvases, type CanvasDocument, type CanvasSummary } from "@/services/api/canvases";
 
 /**
- * The canvases, as a cache over the directories the gateway owns.
+ * The canvases, as a cache over the directories the server owns.
  *
  * The store used to be the truth: everything lived in the browser, and IndexedDB was written on a
  * debounce. Since #152 the document lives in `<CANVAS_ROOT>/<id>/canvas.json`, so this holds two
  * different things and they must not be confused:
  *
- *   - `canvases` — the list the gateway reports. Metadata only: no nodes, no viewport. It is what the
+ *   - `canvases` — the list the server reports. Metadata only: no nodes, no viewport. It is what the
  *     top bar's switcher and the canvas list render, and it is refreshed, never merged into.
  *   - `projects` — the documents this session has actually loaded. A canvas that is not here has not
  *     been opened, and nothing may assume otherwise: the sweep that used to collect unused media by
- *     walking every project was deleted for exactly this reason (#154 brings it back on the gateway).
+ *     walking every project was deleted for exactly this reason (#154 brings it back on the server).
  *
  * Every write goes through `save-queue.ts`, which coalesces, serializes per canvas and retries with
  * `If-Match`. Nothing in here writes a document anywhere else.
@@ -34,7 +34,7 @@ type CanvasStore = {
     saveErrors: Record<string, string>;
     /**
      * Canvases whose copy on disk is not the one this tab holds: another tab saved, and this store
-     * refused to overwrite it. The value is the summary the gateway reported, so the dialog can say
+     * refused to overwrite it. The value is the summary the server reported, so the dialog can say
      * when it changed. Nothing on screen is lost until the person answers.
      */
     conflicts: Record<string, CanvasSummary>;
@@ -46,7 +46,7 @@ type CanvasStore = {
      */
     createCanvas: (title?: string, document?: CanvasDocument) => Promise<string>;
     /**
-     * Restore an exported canvas from its archive. The gateway unpacks it into a new canvas directory and
+     * Restore an exported canvas from its archive. The server unpacks it into a new canvas directory and
      * answers with that canvas, so this is one request: no files to rename here (decisions #172).
      */
     importCanvas: (archive: Blob) => Promise<string>;
@@ -129,7 +129,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
     conflicts: {},
 
     // `ready` flips even when the list cannot be read: the canvas page has its own reconnect banner,
-    // and a list that never becomes ready would hold the app on a blank screen while the gateway
+    // and a list that never becomes ready would hold the app on a blank screen while the server
     // starts. An empty list is a truthful answer to "what is there", and the retry is the banner's job.
     refresh: async () => {
         try {
@@ -162,7 +162,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
         return record.summary.id;
     },
 
-    // An archive is one canvas. Nothing in it names a canvas id, so the gateway picks a new one and the
+    // An archive is one canvas. Nothing in it names a canvas id, so the server picks a new one and the
     // document is stored as it came out of the zip.
     importCanvas: async (archive) => {
         const record = await requestCanvasImport(archive);
@@ -187,7 +187,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
     },
 
     // Deleting forgets the queue entry first: a queued save would otherwise land after the delete and
-    // answer 404 with a retry. The list is only changed once the gateway has agreed, so a failed delete
+    // answer 404 with a retry. The list is only changed once the server has agreed, so a failed delete
     // leaves the canvas where it was.
     deleteCanvases: async (ids) => {
         const removing = new Set(ids);
@@ -200,7 +200,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
     },
 
     // The one write path for a canvas that is open. `updatedAt` moves locally so the list re-sorts
-    // under the user's hand; the gateway's own timestamp replaces it when the save lands.
+    // under the user's hand; the server's own timestamp replaces it when the save lands.
     updateProject: (id, patch) => {
         const now = new Date().toISOString();
         set((state) => ({

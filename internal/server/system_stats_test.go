@@ -25,10 +25,10 @@ func TestSystemStatsReportComfysMachine(t *testing.T) {
 			"vram_free":  vramFree,
 		}},
 	}
-	gateway := httptest.NewServer(newTestGateway(t, fake).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServer(t, fake).Handler())
+	defer server.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodGet, gateway.URL+"/api/system/stats", nil)
+	status, payload := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/system/stats", nil)
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}
@@ -53,10 +53,10 @@ func TestSystemStatsReportComfysMachine(t *testing.T) {
 
 func TestSystemStatsAreAbsentWhenComfyReportsNoDevices(t *testing.T) {
 	fake := newFakeComfy(t)
-	gateway := httptest.NewServer(newTestGateway(t, fake).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServer(t, fake).Handler())
+	defer server.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodGet, gateway.URL+"/api/system/stats", nil)
+	status, payload := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/system/stats", nil)
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}
@@ -74,13 +74,13 @@ func TestSystemStatsAreAbsentWhenComfyReportsNoDevices(t *testing.T) {
 
 func TestSystemStatsAreAbsentWhenComfyIsGone(t *testing.T) {
 	fake := newFakeComfy(t)
-	srv := newTestGateway(t, fake)
-	gateway := httptest.NewServer(srv.Handler())
-	defer gateway.Close()
-	// The gateway keeps its ComfyUI client; the server it points at is what disappears.
+	srv := newTestServer(t, fake)
+	server := httptest.NewServer(srv.Handler())
+	defer server.Close()
+	// The server keeps its ComfyUI client; the server it points at is what disappears.
 	fake.server.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodGet, gateway.URL+"/api/system/stats", nil)
+	status, payload := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/system/stats", nil)
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}

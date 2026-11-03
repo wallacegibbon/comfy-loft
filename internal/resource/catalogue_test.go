@@ -1,6 +1,6 @@
 package resource
 
-// resources.json is the one file a human edits, and the workflow graphs are the thing the gateway
+// resources.json is the one file a human edits, and the workflow graphs are the thing the server
 // cannot afford to disagree with. These tests read both and check that they still describe the same
 // system — the check the hand-written dependency table never had.
 

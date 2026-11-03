@@ -28,7 +28,7 @@ const (
 
 // WSConn is a minimal client-side WebSocket connection.
 //
-// The gateway only needs to read JSON text frames from ComfyUI's /ws and answer
+// The server only needs to read JSON text frames from ComfyUI's /ws and answer
 // pings, so this implements exactly that: no extensions, no compression, no
 // server role. Staying dependency-free here removes a permanent upgrade burden.
 type WSConn struct {

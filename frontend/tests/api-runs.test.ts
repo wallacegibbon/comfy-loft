@@ -6,18 +6,18 @@ import type { Run } from "@/services/api/runs";
  * The run protocol client.
  *
  * Two properties matter and neither is visible in the browser: a relative output URL must resolve
- * against the gateway root (not the `/v1` API root), and polling must stop at a terminal state,
+ * against the server root (not the `/v1` API root), and polling must stop at a terminal state,
  * reporting failed runs and aborting without leaving a request in flight.
  */
 const t = vi.fn((key: string) => key);
 
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => t(key) } }));
 
-const noteGatewayError = vi.fn();
-vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: (...args: unknown[]) => noteGatewayError(...args), noteGatewayResponse: () => undefined }));
+const noteServerError = vi.fn();
+vi.mock("@/services/api/server-status", () => ({ noteServerError: (...args: unknown[]) => noteServerError(...args), noteServerResponse: () => undefined }));
 vi.mock("@/services/image-storage", () => ({ readImageSize: async () => ({ width: 512, height: 512 }) }));
 
-const { RunFailedError, createRun, factsOf, gatewayProtocolRoot, outputUrl, waitForRun } = await import("@/services/api/runs");
+const { RunFailedError, createRun, factsOf, serverProtocolRoot, outputUrl, waitForRun } = await import("@/services/api/runs");
 const { generatedImage } = await import("@/lib/canvas/generated-media");
 const { setActiveCanvas } = await import("@/services/canvas-files");
 const { imageMetadata } = await import("@/lib/canvas/canvas-node-factory");
@@ -27,7 +27,7 @@ const { generationClause } = await import("@/lib/canvas/node-generation-facts");
 const CANVAS = "40e8afb47f10";
 
 type Config = Parameters<typeof createRun>[0];
-const config = { baseUrl: "http://gateway.test:8190/v1", apiKey: "local" } as unknown as Config;
+const config = { baseUrl: "http://server.test:8190/v1", apiKey: "local" } as unknown as Config;
 
 const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
@@ -47,15 +47,15 @@ const run = (overrides: Partial<Run> = {}): Run => ({
 
 beforeEach(() => {
     t.mockClear();
-    noteGatewayError.mockClear();
+    noteServerError.mockClear();
     vi.unstubAllGlobals();
 });
 
-describe("gatewayProtocolRoot", () => {
-    it("strips the /v1 suffix so /api routes address the gateway, not its API prefix", () => {
-        expect(gatewayProtocolRoot("http://gateway.test:8190/v1")).toBe("http://gateway.test:8190");
-        expect(gatewayProtocolRoot("http://gateway.test:8190/v1/")).toBe("http://gateway.test:8190");
-        expect(gatewayProtocolRoot("http://gateway.test:8190/")).toBe("http://gateway.test:8190");
+describe("serverProtocolRoot", () => {
+    it("strips the /v1 suffix so /api routes address the server, not its API prefix", () => {
+        expect(serverProtocolRoot("http://server.test:8190/v1")).toBe("http://server.test:8190");
+        expect(serverProtocolRoot("http://server.test:8190/v1/")).toBe("http://server.test:8190");
+        expect(serverProtocolRoot("http://server.test:8190/")).toBe("http://server.test:8190");
     });
 });
 
@@ -73,7 +73,7 @@ describe("createRun", () => {
 
         expect(created.id).toBe("task_1");
         const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-        expect(url).toBe(`http://gateway.test:8190/api/canvases/${CANVAS}/runs`);
+        expect(url).toBe(`http://server.test:8190/api/canvases/${CANVAS}/runs`);
         expect(init.method).toBe("POST");
         expect(JSON.parse(String(init.body))).toEqual({
             workflow: "audio-minimax-music-3",
@@ -81,9 +81,9 @@ describe("createRun", () => {
         });
     });
 
-    it("says which conversation asked, so the gateway can tell it when the run ends", async () => {
+    it("says which conversation asked, so the server can tell it when the run ends", async () => {
         // `generate` answers at once, so the agent's turn can end with the run still going. The session
-        // and node travel with the request: that pairing is the mapping the gateway reports on (#225).
+        // and node travel with the request: that pairing is the mapping the server reports on (#225).
         const fetchMock = vi.fn(async () => json(run({ status: "queued" })));
         vi.stubGlobal("fetch", fetchMock);
 
@@ -113,7 +113,7 @@ describe("createRun", () => {
 describe("waitForRun", () => {
     // A read that fails ends the watch here, and that is on purpose: the node keeps the run id and says it
     // could not confirm the run, so opening the canvas again picks it up. Waiting inside the page would be
-    // three invisible minutes on a gateway that may never answer (#235).
+    // three invisible minutes on a server that may never answer (#235).
     it("ends the watch on a read that could not be made, so the node can say so and re-attach later", async () => {
         const fetchMock = vi.fn(async () => {
             throw new TypeError("Failed to fetch");
@@ -142,7 +142,7 @@ describe("waitForRun", () => {
         ]);
     });
 
-    it("throws the gateway's message when the run fails", async () => {
+    it("throws the server's message when the run fails", async () => {
         vi.stubGlobal(
             "fetch",
             vi.fn(async () => json(run({ status: "failed", error: { code: "comfy_execution_failed", message: "Prompt outputs failed validation" } }))),
@@ -162,7 +162,7 @@ describe("waitForRun", () => {
         await expect(waitForRun(config, "task_1", { signal: controller.signal, cancelOnAbort: true })).rejects.toMatchObject({ name: "AbortError" });
 
         const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-        expect(url).toBe("http://gateway.test:8190/api/runs/task_1");
+        expect(url).toBe("http://server.test:8190/api/runs/task_1");
         expect(init.method).toBe("DELETE");
     });
 
@@ -191,15 +191,15 @@ describe("a run's files", () => {
             ],
         });
 
-    it("resolves a relative output URL against the gateway root", () => {
+    it("resolves a relative output URL against the server root", () => {
         const output = finished().outputs![0];
-        expect(outputUrl(config, output)).toBe(`http://gateway.test:8190/api/canvases/${CANVAS}/files/task_1.png`);
+        expect(outputUrl(config, output)).toBe(`http://server.test:8190/api/canvases/${CANVAS}/files/task_1.png`);
     });
 
     it("names the file the way the document does", async () => {
         const image = await generatedImage(config, finished());
         expect(image.storageKey).toBe("files/task_1.png");
-        expect(image.url).toBe(`http://gateway.test:8190/api/canvases/${CANVAS}/files/task_1.png`);
+        expect(image.url).toBe(`http://server.test:8190/api/canvases/${CANVAS}/files/task_1.png`);
         expect(image).toMatchObject({ bytes: 12, mimeType: "image/png", width: 512, height: 512 });
     });
 

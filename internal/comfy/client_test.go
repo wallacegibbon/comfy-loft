@@ -230,7 +230,7 @@ func TestUploadImageMissingNameIsAnError(t *testing.T) {
 }
 
 func TestFolderPathsFailureIsNonFatal(t *testing.T) {
-	// Older ComfyUI builds lack this endpoint; the gateway must fall back silently.
+	// Older ComfyUI builds lack this endpoint; the server must fall back silently.
 	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	})

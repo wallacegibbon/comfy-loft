@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest";
  * Workflows into picker entries.
  *
  * The canvas used to read `GET /v1/models`, a list of workflows dressed as OpenAI models. The ids in it
- * were still the workflow's business — `img-zit-int8` is a spelling only the gateway can build — so
+ * were still the workflow's business — `img-zit-int8` is a spelling only the server can build — so
  * that information moved onto the workflow row (`models`) and the selection rules moved here, where
- * they are testable without a browser or a gateway.
+ * they are testable without a browser or a server.
  */
-const { gatewayModels, modelsOf, modelSignature } = await import("@/lib/gateway-models");
+const { serverModels, modelsOf, modelSignature } = await import("@/lib/server-models");
 
 type Workflow = Parameters<typeof modelsOf>[0];
 
@@ -77,7 +77,7 @@ describe("modelsOf", () => {
         expect(models[0].variantLabels).toEqual({ edit: "Multi-image edit" });
     });
 
-    it("contributes nothing when the gateway lists no ids", () => {
+    it("contributes nothing when the server lists no ids", () => {
         // A workflow whose base models are all missing is not selectable; it is also not a name to
         // guess at, so the workflow id is not used as a fallback.
         expect(modelsOf(workflow({ models: [] }))).toEqual([]);
@@ -85,16 +85,16 @@ describe("modelsOf", () => {
     });
 });
 
-describe("gatewayModels", () => {
-    it("flattens the workflows in the order the gateway sent them", () => {
-        const models = gatewayModels([workflow(), workflow({ id: "video-h3-t2v", name: "video-h3-t2v", type: "video", models: [{ id: "video-h3-t2v" }] }), workflow({ id: "video-rife", type: "video", models: [{ id: "video-rife" }] })]);
+describe("serverModels", () => {
+    it("flattens the workflows in the order the server sent them", () => {
+        const models = serverModels([workflow(), workflow({ id: "video-h3-t2v", name: "video-h3-t2v", type: "video", models: [{ id: "video-h3-t2v" }] }), workflow({ id: "video-rife", type: "video", models: [{ id: "video-rife" }] })]);
         expect(models.map((model) => model.name)).toEqual(["image-z-image-turbo", "video-h3-t2v"]);
     });
 });
 
 describe("modelSignature", () => {
     it("ignores a rebuilt but identical list", () => {
-        expect(modelSignature(gatewayModels([workflow()]))).toBe(modelSignature(gatewayModels([workflow()])));
+        expect(modelSignature(serverModels([workflow()]))).toBe(modelSignature(serverModels([workflow()])));
     });
 
     it("changes when a label changes, so an edited registry reaches the picker", () => {

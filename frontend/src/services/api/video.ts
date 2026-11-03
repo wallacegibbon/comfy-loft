@@ -42,7 +42,7 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
     const selectedModel = (config.model || config.videoModel).trim();
     const requestConfig = resolveModelRequestConfig(config, selectedModel);
     assertVideoConfig(requestConfig, requestConfig.model);
-    return createGatewayVideoTask(requestConfig, prompt, references, options);
+    return createServerVideoTask(requestConfig, prompt, references, options);
 }
 
 /**
@@ -72,7 +72,7 @@ export async function createVideoInterpolateTask(config: AiConfig, source: Video
     }
 }
 
-type GatewayVideoPlan = {
+type ServerVideoPlan = {
     mode: string;
     frameMode: string;
     images: ReferenceImage[];
@@ -80,7 +80,7 @@ type GatewayVideoPlan = {
     audios: ReferenceAudio[];
 };
 
-function planGatewayVideo(config: AiConfig, references: ReferenceImage[], options?: VideoMediaOptions): GatewayVideoPlan {
+function planServerVideo(config: AiConfig, references: ReferenceImage[], options?: VideoMediaOptions): ServerVideoPlan {
     const mode = resolveVideoMode(config.videoMode, references.length);
     return {
         mode,
@@ -96,11 +96,11 @@ function planGatewayVideo(config: AiConfig, references: ReferenceImage[], option
  *
  * Media goes in by role — `first_frame`/`last_frame` for a frame workflow, `reference` plus `video`
  * and `audio` for multi-reference — and the knobs are the workflow's own declared inputs. Nothing
- * here renames a field to a legacy multipart name, so a request that the gateway would reject is
+ * here renames a field to a legacy multipart name, so a request that the server would reject is
  * rejected at submission rather than minutes into the render.
  */
-async function createGatewayVideoTask(config: AiConfig, prompt: string, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
-    const plan = planGatewayVideo(config, references, options);
+async function createServerVideoTask(config: AiConfig, prompt: string, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
+    const plan = planServerVideo(config, references, options);
     const inputs: Record<string, unknown> = { prompt, mode: plan.mode };
     const seconds = normalizeVideoSeconds(config.videoSeconds);
     if (Number(seconds) > 0) inputs.seconds = Number(seconds);
@@ -110,7 +110,7 @@ async function createGatewayVideoTask(config: AiConfig, prompt: string, referenc
     Object.assign(inputs, { transition_step: config.videoSelfLiftMode === "quality" ? 5 : 6 }, options?.params || config.params || {});
 
     try {
-        const media = await gatewayVideoMedia(config, plan, options);
+        const media = await serverVideoMedia(config, plan, options);
         const run = await createRun(config, {
             workflow: config.model,
             inputs,
@@ -124,7 +124,7 @@ async function createGatewayVideoTask(config: AiConfig, prompt: string, referenc
 }
 
 /** Upload the planned media and return the role → upload id map a run request takes. */
-async function gatewayVideoMedia(config: AiConfig, plan: GatewayVideoPlan, options?: VideoMediaOptions): Promise<Record<string, string | string[]>> {
+async function serverVideoMedia(config: AiConfig, plan: ServerVideoPlan, options?: VideoMediaOptions): Promise<Record<string, string | string[]>> {
     const signal = options?.signal;
     const media: Record<string, string | string[]> = {};
     // A reference that is already a canvas file is named, not copied: the run reads media by name inside its
@@ -161,7 +161,7 @@ async function gatewayVideoMedia(config: AiConfig, plan: GatewayVideoPlan, optio
 /**
  * Watch the run that is producing this video.
  *
- * The run belongs to the gateway, so its id survives a reload: nothing is submitted again here, and
+ * The run belongs to the server, so its id survives a reload: nothing is submitted again here, and
  * the step count and preview frames come from the run itself. Starting the request and watching it
  * are separate calls for exactly this reason.
  */
@@ -199,7 +199,7 @@ async function waitForVideoRun(config: AiConfig, task: VideoGenerationTask, opti
         // The canvas clears a failed task id from this error, which is what stops it polling a run
         // that will never answer differently.
         // A run that ended is passed on as it is: `RunFailedError` is the one way every mode says "the
-        // gateway answered about the run", and it used to be rewrapped here under a video-only name.
+        // server answered about the run", and it used to be rewrapped here under a video-only name.
         if (error instanceof RunFailedError) throw error;
         throw new Error(apiErrorMessage(error, apiText("videoTaskQueryFailed")));
     }

@@ -1,7 +1,7 @@
 // Package comfy talks to ComfyUI over HTTP, plus a minimal WebSocket client used
 // only to receive preview frames and progress events.
 //
-// Zero third-party dependencies is deliberate: the gateway needs HTTP and one
+// Zero third-party dependencies is deliberate: the server needs HTTP and one
 // WebSocket client, which is a couple hundred lines we can own outright. That
 // removes a whole class of long-term dependency-rot risk.
 package comfy

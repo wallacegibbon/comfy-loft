@@ -28,11 +28,11 @@ const modelGroups: Array<{ capability: ModelCapability; modelKey: "imageModel" |
  * The preferences window: the default models and the generation defaults.
  *
  * There is nothing to apply. Every control writes into `use-config-store`, which mirrors the document to
- * the gateway as it changes (#155, #166), so closing the window loses nothing and a "Done" button would
+ * the server as it changes (#155, #166), so closing the window loses nothing and a "Done" button would
  * only be claiming to do what already happened.
  *
- * The gateway itself is not here. The channel is the gateway that served the page — its address comes from
- * the page and its models from `GET /api/workflows` (#71) — so the "Gateway" tab that let you rename it and
+ * The server itself is not here. The channel is the server that served the page — its address comes from
+ * the page and its models from `GET /api/workflows` (#71) — so the "Server" tab that let you rename it and
  * re-tag a model's media kind was a form over values nothing else could change.
  */
 export function PreferencesDialog() {
@@ -86,8 +86,8 @@ export function PreferencesDialog() {
             </Field>
             <AgentModelsSection />
             {/* Speech is the other way words get into the agent's prompt, and the one setting it has is where
-                the speech server listens. The gateway forwards to it, so the address only has to be true of the
-                machine the gateway runs on — the phone on the LAN never dials it itself. */}
+                the speech server listens. The server forwards to it, so the address only has to be true of the
+                machine the server runs on — the phone on the LAN never dials it itself. */}
             <div className="mb-4 border-t border-stone-200 pt-4 dark:border-stone-800">
                 <div className="mb-1 text-sm font-semibold">{t("config.preferences.speech")}</div>
                 <div className="mb-2 text-xs text-stone-500">{t("config.preferences.speechNote")}</div>

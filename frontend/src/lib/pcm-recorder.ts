@@ -30,6 +30,7 @@ export type PcmRecording = {
  * gesture that asked for it.
  */
 export async function startPcmRecording(): Promise<PcmRecording> {
+
     // Asked for by name because a speech model reads 16 kHz mono: every browser that honours it resamples
     // the microphone into the graph for free, and one that does not still arrives at the right rate in the
     // header (see `wavBytes`).

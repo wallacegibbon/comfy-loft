@@ -147,7 +147,7 @@ func writeJSON(w http.ResponseWriter, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-// imageFixture is the default workflow a test gateway serves: enough shape to run an
+// imageFixture is the default workflow a test server serves: enough shape to run an
 // image, with a prompt binding and a quality preset the tests can observe.
 func imageFixture() (string, map[string]any, map[string]any) {
 	graph := map[string]any{
@@ -172,18 +172,18 @@ func imageFixture() (string, map[string]any, map[string]any) {
 	return "test-image.json", graph, entry
 }
 
-// newTestGateway builds a gateway backed by a temporary workflow directory and a
+// newTestServer builds a server backed by a temporary workflow directory and a
 // fake ComfyUI. `options` are applied to its configuration, for the cases the address it publishes
 // (PUBLIC_BASE_URL) or the bundle it serves (WEB_DIR) decide.
-func newTestGateway(t *testing.T, fake *fakeComfy, options ...config.Option) *Server {
+func newTestServer(t *testing.T, fake *fakeComfy, options ...config.Option) *Server {
 	t.Helper()
 	file, graph, entry := imageFixture()
-	return newTestGatewayWith(t, fake, file, graph, entry, options...)
+	return newTestServerWith(t, fake, file, graph, entry, options...)
 }
 
-// newTestGatewayWith is newTestGateway with the workflow and registry entry supplied by the
+// newTestServerWith is newTestServer with the workflow and registry entry supplied by the
 // caller, so a test can exercise a non-image run without copying the setup.
-func newTestGatewayWith(t *testing.T, fake *fakeComfy, graphFile string, graph, entry map[string]any, options ...config.Option) *Server {
+func newTestServerWith(t *testing.T, fake *fakeComfy, graphFile string, graph, entry map[string]any, options ...config.Option) *Server {
 	t.Helper()
 
 	root := t.TempDir()
@@ -207,7 +207,7 @@ func newTestGatewayWith(t *testing.T, fake *fakeComfy, graphFile string, graph, 
 		config.WithDataDir(dataDir),
 		config.WithCanvasRoot(filepath.Join(root, "canvases")),
 		config.WithRuntimeConfigPath(filepath.Join(root, "config.js")),
-		config.WithGatewayHost("127.0.0.1"),
+		config.WithServerHost("127.0.0.1"),
 		config.WithoutScanOnStart(),
 		config.WithPollInterval(10),
 		config.WithRequestTimeout(5000),
@@ -244,8 +244,8 @@ func writeFixture(t *testing.T, path string, value any) {
 // canvasBase is the URL prefix a run or upload test posts to.
 //
 // A run belongs to a canvas: it is written into that canvas's files, and its artifact URLs point there
-// (docs/decisions.md #156). Each test gateway gets one canvas, created once and remembered by address,
-// so a test only has to say `canvasBase(t, gateway.URL)+"/runs"`.
+// (docs/decisions.md #156). Each test server gets one canvas, created once and remembered by address,
+// so a test only has to say `canvasBase(t, server.URL)+"/runs"`.
 func canvasBase(t *testing.T, base string) string {
 	t.Helper()
 	if id, ok := testCanvasIDs.Load(base); ok {
@@ -304,11 +304,11 @@ func doJSON(t *testing.T, client *http.Client, method, url string, body any) (in
 
 func TestHealthReportsWorkflowCount(t *testing.T) {
 	fake := newFakeComfy(t)
-	srv := newTestGateway(t, fake)
-	gateway := httptest.NewServer(srv.Handler())
-	defer gateway.Close()
+	srv := newTestServer(t, fake)
+	server := httptest.NewServer(srv.Handler())
+	defer server.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodGet, gateway.URL+"/health", nil)
+	status, payload := doJSON(t, server.Client(), http.MethodGet, server.URL+"/health", nil)
 	if status != http.StatusOK {
 		t.Fatalf("status = %d, want 200", status)
 	}
@@ -326,15 +326,15 @@ func TestHealthReportsWorkflowCount(t *testing.T) {
 }
 
 // The workflow list is where a client learns which model ids exist, so it must carry them: an id
-// like `img-zit-int8` is a spelling the gateway invents and resolves, not something a client can
+// like `img-zit-int8` is a spelling the server invents and resolves, not something a client can
 // derive from the workflow name.
 func TestWorkflowsReportTheirModelIds(t *testing.T) {
 	fake := newFakeComfy(t)
-	srv := newTestGateway(t, fake)
-	gateway := httptest.NewServer(srv.Handler())
-	defer gateway.Close()
+	srv := newTestServer(t, fake)
+	server := httptest.NewServer(srv.Handler())
+	defer server.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodGet, gateway.URL+"/api/workflows", nil)
+	status, payload := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/workflows", nil)
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -390,10 +390,10 @@ func TestWorkflowsReportOneIdPerBaseModel(t *testing.T) {
 			map[string]any{"file": "z_image_int8.safetensors", "id": "zit-int8", "label": "int8"},
 		},
 	}
-	gateway := httptest.NewServer(newTestGatewayWith(t, fake, file, graph, entry).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServerWith(t, fake, file, graph, entry).Handler())
+	defer server.Close()
 
-	_, payload := doJSON(t, gateway.Client(), http.MethodGet, gateway.URL+"/api/workflows", nil)
+	_, payload := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/workflows", nil)
 	rows, _ := payload["workflows"].([]any)
 	if len(rows) != 1 {
 		t.Fatalf("workflows = %v", rows)
@@ -423,19 +423,19 @@ func TestWorkflowsReportOneIdPerBaseModel(t *testing.T) {
 
 func TestWorkflowVisibilityToggles(t *testing.T) {
 	fake := newFakeComfy(t)
-	srv := newTestGateway(t, fake)
-	gateway := httptest.NewServer(srv.Handler())
-	defer gateway.Close()
+	srv := newTestServer(t, fake)
+	server := httptest.NewServer(srv.Handler())
+	defer server.Close()
 
-	status, _ := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/workflows/image-test/visibility",
+	status, _ := doJSON(t, server.Client(), http.MethodPost, server.URL+"/api/workflows/image-test/visibility",
 		map[string]any{"enabled": false})
 	if status != http.StatusOK {
 		t.Fatalf("visibility status = %d", status)
 	}
 
-	// The gateway reports the fact; dropping a hidden workflow from a model list is the client's
+	// The server reports the fact; dropping a hidden workflow from a model list is the client's
 	// decision. The row stays, with `enabled: false`.
-	_, payload := doJSON(t, gateway.Client(), http.MethodGet, gateway.URL+"/api/workflows", nil)
+	_, payload := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/workflows", nil)
 	rows, _ := payload["workflows"].([]any)
 	if len(rows) != 1 {
 		t.Fatalf("workflows = %v", rows)

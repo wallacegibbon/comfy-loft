@@ -14,7 +14,7 @@ import (
 const musicWorkflowID = "audio-minimax-music-3"
 
 // registryFile mirrors the on-disk registry document, which is what these tests read instead of going
-// through the gateway: the workflow files are the thing under test.
+// through the server: the workflow files are the thing under test.
 type registryFile struct {
 	Version   int               `json:"version"`
 	Workflows []json.RawMessage `json:"workflows"`

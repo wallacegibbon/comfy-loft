@@ -38,7 +38,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
     const cropImageNode = useCallback(
         async (node: CanvasNodeData, crop: CanvasImageCropRect) => {
             if (!node.metadata?.content) return;
-            // The source is re-drawn in the browser, so it can be refused (a file that is gone, a gateway
+            // The source is re-drawn in the browser, so it can be refused (a file that is gone, a server
             // that answers no CORS for it). Reporting that is better than a child node appearing empty.
             const cropped = await cropDataUrl(node.metadata.content, crop).catch(() => "");
             if (!cropped) return toast.error(t("common.imageReadFailed"));

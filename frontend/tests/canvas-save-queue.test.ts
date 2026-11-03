@@ -226,7 +226,7 @@ describe("a temporary failure", () => {
         state.snapshots.set("c1", snapshotOf("content"));
 
         queue.schedule("c1");
-        // The initial save plus both configured retries, then nothing: a gateway that is refusing this
+        // The initial save plus both configured retries, then nothing: a server that is refusing this
         // document will refuse it again, and a loop every debounce would only fill the console.
         await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 1000 + 2000 + 60_000);
 

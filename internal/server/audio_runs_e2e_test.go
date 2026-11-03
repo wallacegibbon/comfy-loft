@@ -60,27 +60,27 @@ func audioEntry() map[string]any {
 	}
 }
 
-func startAudioGateway(t *testing.T, fake *fakeComfy) *httptest.Server {
+func startAudioServer(t *testing.T, fake *fakeComfy) *httptest.Server {
 	t.Helper()
-	srv := newTestGatewayWith(t, fake, "test-audio.json", audioGraph(), audioEntry())
-	gateway := httptest.NewServer(srv.Handler())
-	t.Cleanup(gateway.Close)
-	return gateway
+	srv := newTestServerWith(t, fake, "test-audio.json", audioGraph(), audioEntry())
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	return server
 }
 
 // A music graph needs two texts, and both are ordinary declared inputs.
 func TestAudioRunTakesCaptionAndLyrics(t *testing.T) {
 	fake := audioFixture(t)
-	gateway := startAudioGateway(t, fake)
+	server := startAudioServer(t, fake)
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "audio-test",
 		"inputs":   map[string]any{"prompt": "calm piano", "lyrics": "[Verse]\nline one"},
 	})
 	if status != http.StatusAccepted {
 		t.Fatalf("submit status = %d, body = %v", status, payload)
 	}
-	finished := waitForRun(t, gateway, asString(payload["id"]))
+	finished := waitForRun(t, server, asString(payload["id"]))
 	if finished["status"] != "succeeded" {
 		t.Fatalf("run failed: %v", finished)
 	}
@@ -112,16 +112,16 @@ func TestAudioRunTakesCaptionAndLyrics(t *testing.T) {
 func TestAudioRunCarriesComfyUIsRejection(t *testing.T) {
 	fake := audioFixture(t)
 	fake.failSubmit = true
-	gateway := startAudioGateway(t, fake)
+	server := startAudioServer(t, fake)
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "audio-test",
 		"inputs":   map[string]any{"prompt": "calm piano"},
 	})
 	if status != http.StatusAccepted {
 		t.Fatalf("submit status = %d, body = %v", status, payload)
 	}
-	finished := waitForRun(t, gateway, asString(payload["id"]))
+	finished := waitForRun(t, server, asString(payload["id"]))
 	if finished["status"] != "failed" {
 		t.Fatalf("run = %v, want a failure", finished)
 	}

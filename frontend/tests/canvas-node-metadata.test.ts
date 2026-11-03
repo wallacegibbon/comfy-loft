@@ -46,7 +46,7 @@ describe("a node built from a finished file", () => {
     });
 
     test("is derived from the canvas it belongs to, not from the address a run reported", async () => {
-        // A run's absolute URL is built from the gateway's PUBLIC_BASE_URL, which need not be the address
+        // A run's absolute URL is built from the server's PUBLIC_BASE_URL, which need not be the address
         // the page was opened at (a LAN name, a reverse proxy). The canvas's own file URL is the one every
         // other renderer resolves, so the lightbox and the thumbnail cannot disagree about where it is.
         const { setActiveCanvas } = await import("../src/services/canvas-files");

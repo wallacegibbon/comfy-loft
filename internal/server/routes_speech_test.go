@@ -54,8 +54,8 @@ func fakeSpeech(t *testing.T, got *speechAnswer, reply func(w http.ResponseWrite
 	}))
 }
 
-// speechPost sends one recording through the gateway.
-func speechPost(t *testing.T, gateway *httptest.Server, fields map[string]string, audio []byte) (int, map[string]any) {
+// speechPost sends one recording through the server.
+func speechPost(t *testing.T, server *httptest.Server, fields map[string]string, audio []byte) (int, map[string]any) {
 	t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -76,12 +76,12 @@ func speechPost(t *testing.T, gateway *httptest.Server, fields map[string]string
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close multipart: %v", err)
 	}
-	request, err := http.NewRequest(http.MethodPost, gateway.URL+"/api/speech/transcriptions", &body)
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/api/speech/transcriptions", &body)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
 	request.Header.Set("Content-Type", writer.FormDataContentType())
-	response, err := gateway.Client().Do(request)
+	response, err := server.Client().Do(request)
 	if err != nil {
 		t.Fatalf("post speech: %v", err)
 	}
@@ -101,11 +101,11 @@ func TestSpeechForwardsTheRecordingToTheAddressItWasGiven(t *testing.T) {
 	})
 	defer speech.Close()
 
-	gateway := httptest.NewServer(newTestGateway(t, newFakeComfy(t)).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServer(t, newFakeComfy(t)).Handler())
+	defer server.Close()
 
 	audio := []byte("RIFF\x24\x00\x00\x00WAVEfmt " + string(make([]byte, 16)))
-	status, payload := speechPost(t, gateway, map[string]string{
+	status, payload := speechPost(t, server, map[string]string{
 		"url":      speech.URL + "/v1/audio/transcriptions",
 		"model":    "refine",
 		"language": "zh",
@@ -129,7 +129,7 @@ func TestSpeechForwardsTheRecordingToTheAddressItWasGiven(t *testing.T) {
 	if got.filename != "speech.wav" {
 		t.Errorf("filename = %q, want speech.wav", got.filename)
 	}
-	// The address is this gateway's business: a speech server that receives `url` is one that could be
+	// The address is this server's business: a speech server that receives `url` is one that could be
 	// pointed at itself by a field that was only ever meant to be a destination.
 	if got.url != "" {
 		t.Errorf("the forwarded request carries url = %q, want it dropped", got.url)
@@ -145,10 +145,10 @@ func TestSpeechPassesOnWhyTheServerRefused(t *testing.T) {
 	})
 	defer speech.Close()
 
-	gateway := httptest.NewServer(newTestGateway(t, newFakeComfy(t)).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServer(t, newFakeComfy(t)).Handler())
+	defer server.Close()
 
-	status, payload := speechPost(t, gateway, map[string]string{"url": speech.URL, "model": "refine"}, []byte("not a wav"))
+	status, payload := speechPost(t, server, map[string]string{"url": speech.URL, "model": "refine"}, []byte("not a wav"))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", status)
 	}
@@ -160,8 +160,8 @@ func TestSpeechPassesOnWhyTheServerRefused(t *testing.T) {
 }
 
 func TestSpeechRefusesWhatItCannotSend(t *testing.T) {
-	gateway := httptest.NewServer(newTestGateway(t, newFakeComfy(t)).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServer(t, newFakeComfy(t)).Handler())
+	defer server.Close()
 
 	cases := []struct {
 		name   string
@@ -175,7 +175,7 @@ func TestSpeechRefusesWhatItCannotSend(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			status, payload := speechPost(t, gateway, testCase.fields, testCase.audio)
+			status, payload := speechPost(t, server, testCase.fields, testCase.audio)
 			if status != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400: %v", status, payload)
 			}
@@ -190,15 +190,15 @@ func TestSpeechRefusesWhatItCannotSend(t *testing.T) {
 // An address that nothing is listening on is the likely failure of a hand-typed port, and the sentence has
 // to carry the address: "could not reach anything" leaves the user looking at the wrong setting.
 func TestSpeechSaysWhichAddressItCouldNotReach(t *testing.T) {
-	gateway := httptest.NewServer(newTestGateway(t, newFakeComfy(t)).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServer(t, newFakeComfy(t)).Handler())
+	defer server.Close()
 
 	// A closed port: opened and closed here, so it is a real refusal rather than a slow dial.
 	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	address := dead.URL + "/v1/audio/transcriptions"
 	dead.Close()
 
-	status, payload := speechPost(t, gateway, map[string]string{"url": address, "model": "refine"}, []byte("RIFF"))
+	status, payload := speechPost(t, server, map[string]string{"url": address, "model": "refine"}, []byte("RIFF"))
 	if status != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502: %v", status, payload)
 	}

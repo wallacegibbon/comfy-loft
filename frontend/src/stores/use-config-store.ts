@@ -2,8 +2,8 @@ import { create } from "zustand";
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
-import { gatewayModelLabel } from "@/lib/gateway-labels";
-import { gatewayRoot, LOCAL_GATEWAY_BASE_URL, LOCAL_GATEWAY_CHANNEL_ID } from "@/constant/app-mode";
+import { serverModelLabel } from "@/lib/server-labels";
+import { serverRoot, LOCAL_SERVER_BASE_URL, LOCAL_SERVER_CHANNEL_ID } from "@/constant/app-mode";
 import { mirrorToSettings, readSetting } from "@/stores/use-settings-store";
 
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -16,7 +16,7 @@ export type ChannelModel = {
     baseModel?: string;
     baseModelLabel?: string;
     variantModes?: string[];
-    /** Modes the gateway reports as blocked: they would fail inside ComfyUI, so they are not offered. */
+    /** Modes the server reports as blocked: they would fail inside ComfyUI, so they are not offered. */
     blockedModes?: string[];
     variantLabels?: Record<string, string>;
     imageInputs?: number;
@@ -51,7 +51,7 @@ export type AiConfig = {
      * Where the speech server listens, for the words dictated into the agent's prompt.
      *
      * An OpenAI-compatible `POST /v1/audio/transcriptions` that takes a WAV file and answers `{"text": …}`.
-     * The page posts the recording to the gateway and the gateway posts it here, because that server answers
+     * The page posts the recording to the server and the server posts it here, because that server answers
      * no CORS headers and is usually only reachable from this machine (`services/api/speech.ts`, #239).
      */
     asrUrl: string;
@@ -88,20 +88,20 @@ export const DEFAULT_SPEECH_ADDRESS = "http://127.0.0.1:18080/v1/audio/transcrip
 
 const CHANNEL_MODEL_SEPARATOR = "::";
 const localDefaultChannel: ModelChannel = {
-    id: LOCAL_GATEWAY_CHANNEL_ID,
+    id: LOCAL_SERVER_CHANNEL_ID,
     name: i18n.t("config.channels.localName"),
     nameKey: "config.channels.localName",
-    baseUrl: LOCAL_GATEWAY_BASE_URL,
+    baseUrl: LOCAL_SERVER_BASE_URL,
     models: [],
 };
 
 // One literal, no shared base to override: this build only ever talks to the
-// local gateway, so a second default config would be dead weight that has to be kept
+// local server, so a second default config would be dead weight that has to be kept
 // in sync field by field.
 export const defaultConfig: AiConfig = {
-    baseUrl: LOCAL_GATEWAY_BASE_URL,
+    baseUrl: LOCAL_SERVER_BASE_URL,
     channels: [localDefaultChannel],
-    // No workflow id is baked in as the default: the first image/video workflow the gateway reports
+    // No workflow id is baked in as the default: the first image/video workflow the server reports
     // becomes the selection (see `pickModel` below), so adding or renaming a workflow in the registry
     // never leaves the canvas pointing at a model that is gone.
     model: "",
@@ -158,7 +158,7 @@ const IMAGE_KEYWORDS = ["seedream", "gpt-image", "image", "dall-e", "dalle", "im
  * Best-effort capability for a bare model name.
  *
  * Only a stored config that predates `ChannelModel` can contain one: everything the canvas writes
- * today is an object with a capability, and the gateway reports the kind itself (`type`). It stays as
+ * today is an object with a capability, and the server reports the kind itself (`type`). It stays as
  * the fallback for that legacy shape rather than dropping the model.
  */
 function guessCapability(name: string): ModelCapability {
@@ -240,7 +240,7 @@ export function baseModelOptions(config: AiConfig, value: string) {
         .filter((model) => model.workflowId === workflowId)
         .map((model) => ({
             value: encodeChannelModel(found.channel.id, model.name),
-            label: gatewayModelLabel(model.name, model.baseModelLabel || model.label || model.name),
+            label: serverModelLabel(model.name, model.baseModelLabel || model.label || model.name),
             isDefault: !model.baseModel,
             name: model.name,
         }));
@@ -262,7 +262,7 @@ function isAiConfigReady(config: AiConfig, model: string) {
  * The stored document is whatever the last build wrote, so every field is re-derived rather than
  * trusted: channels are rebuilt from their ids and models, the model selections are re-picked from
  * what those channels actually offer, and the enums fall back to their defaults. The alternative is a
- * canvas pointing at a model that the gateway stopped reporting, which looks like a broken button.
+ * canvas pointing at a model that the server stopped reporting, which looks like a broken button.
  */
 function hydrateConfig(stored: Partial<AiConfig>): AiConfig {
     const config = { ...defaultConfig, ...stored };
@@ -383,8 +383,8 @@ function createModelChannel(channel?: Partial<ModelChannel>): ModelChannel {
     return {
         id: channel?.id?.trim() || nanoid(),
         name: name || i18n.t("config.channels.newName"),
-        // The stored address is the gateway root; an older config may still end in /v1.
-        baseUrl: gatewayRoot(channel?.baseUrl || defaultBaseUrl()),
+        // The stored address is the server root; an older config may still end in /v1.
+        baseUrl: serverRoot(channel?.baseUrl || defaultBaseUrl()),
         // An older config stored the translated default; adopt the key so the name follows the language.
         nameKey: channel?.nameKey || defaultChannelNameKey(name) || undefined,
         models: normalizeChannelModels(channel?.models),
@@ -410,9 +410,9 @@ export function modelOptionLabel(config: AiConfig, value: string) {
     if (!decoded) return value;
     const channel = config.channels.find((item) => item.id === decoded.channelId);
     const model = channel?.models.find((item) => item.name === decoded.model);
-    // The label arrives in English from the gateway registry; the dictionary supplies the
-    // Chinese one, keyed by the model id, and the gateway text is the fallback.
-    const label = gatewayModelLabel(decoded.model, model?.label);
+    // The label arrives in English from the server registry; the dictionary supplies the
+    // Chinese one, keyed by the model id, and the server text is the fallback.
+    const label = serverModelLabel(decoded.model, model?.label);
     if (label !== decoded.model) return label;
     return channel ? i18n.t("settingsPanels.model.withChannel", { model: decoded.model, channel: channelName(channel) }) : decoded.model;
 }
@@ -469,9 +469,9 @@ function normalizeChannels(config: AiConfig) {
     return channels;
 }
 
-/** Every channel in this build points at the local gateway; there is no cloud default. */
+/** Every channel in this build points at the local server; there is no cloud default. */
 function defaultBaseUrl() {
-    return LOCAL_GATEWAY_BASE_URL;
+    return LOCAL_SERVER_BASE_URL;
 }
 
 function uniqueModelOptions(models: string[]) {

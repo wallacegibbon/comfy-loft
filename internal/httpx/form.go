@@ -25,7 +25,7 @@ type FormData struct {
 // MaxUploadFiles mirrors the old multer limits.files = 12.
 const MaxUploadFiles = 12
 
-// MaxFileBytes is the per-file ceiling used when the caller does not name one (50MB). The gateway passes
+// MaxFileBytes is the per-file ceiling used when the caller does not name one (50MB). The server passes
 // its configured `MAX_UPLOAD_BYTES`, so raising that raises the ceiling rather than being silently capped
 // here — which is what a hardcoded limit amounts to when the parser is the one that reads the body.
 const MaxFileBytes = 50 << 20

@@ -14,27 +14,27 @@ import (
 )
 
 /**
- * The canvas bundle, from the gateway's own origin.
+ * The canvas bundle, from the server's own origin.
  *
- * `start.sh` used to run `vite preview` beside the gateway, which made every picture cross-origin: an editor
+ * `start.sh` used to run `vite preview` beside the server, which made every picture cross-origin: an editor
  * that drew one could not export what it drew. These tests hold the two halves of serving it here — a file
  * of the bundle answers, a client-side route answers with the entry point — and the two ways it must not
  * answer: an unknown `/api/*` path and a missing chunk are errors, never the page (#219).
  */
 
-// webGateway is a gateway with a bundle of its own: one page, one hashed asset, and the `config.js` template
+// webServer is a server with a bundle of its own: one page, one hashed asset, and the `config.js` template
 // a build puts there for a static host.
-func webGateway(t *testing.T) (*httptest.Server, string) {
+func webServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	dir := t.TempDir()
 	writeBundleFile(t, dir, "index.html", "<!doctype html><title>canvas</title>")
 	writeBundleFile(t, dir, "config.js", "window.__RUNTIME_CONFIG__ = {};")
 	writeBundleFile(t, dir, "assets/index-BlfT9xKg.js", "console.log(1);")
 
-	srv := newTestGateway(t, newFakeComfy(t), config.WithWebDir(dir))
-	gateway := httptest.NewServer(srv.Handler())
-	t.Cleanup(gateway.Close)
-	return gateway, dir
+	srv := newTestServer(t, newFakeComfy(t), config.WithWebDir(dir))
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	return server, dir
 }
 
 func writeBundleFile(t *testing.T, root, name, body string) {
@@ -49,9 +49,9 @@ func writeBundleFile(t *testing.T, root, name, body string) {
 }
 
 // get fetches a path and returns the response with the body read.
-func get(t *testing.T, gateway *httptest.Server, path string) (*http.Response, string) {
+func get(t *testing.T, server *httptest.Server, path string) (*http.Response, string) {
 	t.Helper()
-	response, err := gateway.Client().Get(gateway.URL + path)
+	response, err := server.Client().Get(server.URL + path)
 	if err != nil {
 		t.Fatalf("get %s: %v", path, err)
 	}
@@ -78,8 +78,8 @@ func errorCode(t *testing.T, body string) string {
 }
 
 func TestTheRootServesThePageAndIsNeverCached(t *testing.T) {
-	gateway, _ := webGateway(t)
-	response, body := get(t, gateway, "/")
+	server, _ := webServer(t)
+	response, body := get(t, server, "/")
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d (%s), want 200", response.StatusCode, body)
 	}
@@ -97,8 +97,8 @@ func TestTheRootServesThePageAndIsNeverCached(t *testing.T) {
 
 // A route the client owns is not a file, so it answers with the page and the client decides what it means.
 func TestAClientRouteAnswersWithThePage(t *testing.T) {
-	gateway, _ := webGateway(t)
-	response, body := get(t, gateway, "/canvas/349b70cf4764")
+	server, _ := webServer(t)
+	response, body := get(t, server, "/canvas/349b70cf4764")
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d (%s), want 200", response.StatusCode, body)
 	}
@@ -109,8 +109,8 @@ func TestAClientRouteAnswersWithThePage(t *testing.T) {
 
 // The hash in a name is a promise that the bytes never change, so the browser is told to keep them.
 func TestAHashedAssetIsCacheableForever(t *testing.T) {
-	gateway, _ := webGateway(t)
-	response, body := get(t, gateway, "/assets/index-BlfT9xKg.js")
+	server, _ := webServer(t)
+	response, body := get(t, server, "/assets/index-BlfT9xKg.js")
 	if response.StatusCode != http.StatusOK || body != "console.log(1);" {
 		t.Fatalf("status = %d, body = %q", response.StatusCode, body)
 	}
@@ -120,13 +120,13 @@ func TestAHashedAssetIsCacheableForever(t *testing.T) {
 }
 
 // The bundle carries a `config.js` of its own — the template `make frontend` copies from
-// `frontend/public/` for a static host — and the gateway must never serve it. What it serves is the
+// `frontend/public/` for a static host — and the server must never serve it. What it serves is the
 // document it is holding, computed per request (#220): a template answered from the bundle is exactly the
 // stale copy this route replaced.
 func TestTheFirstPaintScriptWinsOverTheTemplateInTheBundle(t *testing.T) {
-	gateway, dir := webGateway(t)
+	server, dir := webServer(t)
 	writeBundleFile(t, dir, "config.js", `window.__RUNTIME_CONFIG__ = {"STALE":"from the bundle"};`)
-	response, body := get(t, gateway, "/config.js")
+	response, body := get(t, server, "/config.js")
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d (%s), want 200", response.StatusCode, body)
 	}
@@ -141,8 +141,8 @@ func TestTheFirstPaintScriptWinsOverTheTemplateInTheBundle(t *testing.T) {
 // A missing chunk is a missing chunk. Answering with the page turns a broken bundle into a page that loads
 // and then does nothing, which is the one failure nobody can read from the network tab.
 func TestAMissingAssetIsNotThePage(t *testing.T) {
-	gateway, _ := webGateway(t)
-	response, body := get(t, gateway, "/assets/index-gone.js")
+	server, _ := webServer(t)
+	response, body := get(t, server, "/assets/index-gone.js")
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d (%s), want 404", response.StatusCode, body)
 	}
@@ -154,11 +154,11 @@ func TestAMissingAssetIsNotThePage(t *testing.T) {
 	}
 }
 
-// `/api/*` is a protocol, not a set of files: a typo there must not look like a gateway that answers 200 to
+// `/api/*` is a protocol, not a set of files: a typo there must not look like a server that answers 200 to
 // everything with a page.
 func TestAnUnknownAPIPathStaysJSONEvenWithABundle(t *testing.T) {
-	gateway, _ := webGateway(t)
-	response, body := get(t, gateway, "/api/canvases/nope/nonsense")
+	server, _ := webServer(t)
+	response, body := get(t, server, "/api/canvases/nope/nonsense")
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d (%s), want 404", response.StatusCode, body)
 	}
@@ -172,10 +172,10 @@ func TestAnUnknownAPIPathStaysJSONEvenWithABundle(t *testing.T) {
 
 // No bundle configured — a development server is serving the canvas — and `/` is the 404 it always was.
 func TestWithoutABundleTheRootIsStill404(t *testing.T) {
-	srv := newTestGateway(t, newFakeComfy(t))
-	gateway := httptest.NewServer(srv.Handler())
-	t.Cleanup(gateway.Close)
-	response, body := get(t, gateway, "/")
+	srv := newTestServer(t, newFakeComfy(t))
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	response, body := get(t, server, "/")
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d (%s), want 404", response.StatusCode, body)
 	}
@@ -184,13 +184,13 @@ func TestWithoutABundleTheRootIsStill404(t *testing.T) {
 // A request cannot name a file outside the bundle, however it is written: `path.Clean` resolves the `..`
 // against the root before anything is joined to it.
 func TestNothingOutsideTheBundleIsServed(t *testing.T) {
-	gateway, dir := webGateway(t)
+	server, dir := webServer(t)
 	secret := filepath.Join(filepath.Dir(dir), "secret.txt")
 	if err := os.WriteFile(secret, []byte("not yours"), 0o644); err != nil {
 		t.Fatalf("write secret: %v", err)
 	}
 	for _, path := range []string{"/../secret.txt", "/assets/../../secret.txt", "/..%2fsecret.txt"} {
-		response, body := get(t, gateway, path)
+		response, body := get(t, server, path)
 		if response.StatusCode == http.StatusOK && strings.Contains(body, "not yours") {
 			t.Errorf("%s served a file outside the bundle", path)
 		}

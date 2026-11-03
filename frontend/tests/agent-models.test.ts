@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
  * The list a canvas hands the agent to edit its models.
  *
  * `:model_sync` replaces every model in `model.conf` from what it is given, so this array *is* the file: a
- * model it leaves out is deleted, and a field it does not say is a field the gateway has to put back from
+ * model it leaves out is deleted, and a field it does not say is a field the server has to put back from
  * the entry the agent announced. These tests pin the bargain in both directions — what travels for a model
  * that exists (its four visible fields, and a key only when this page has one to give), and what travels
  * for one that is being created (everything, and nothing invented).

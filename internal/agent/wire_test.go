@@ -126,7 +126,7 @@ func TestRedactKeysKeepsTheShape(t *testing.T) {
 }
 
 // :model_sync's argument is the whole model list as a JSON string, so the keys inside it are escaped — and a
-// list edited from the canvas carries keys, because the gateway puts back the ones the canvas cannot see.
+// list edited from the canvas carries keys, because the server puts back the ones the canvas cannot see.
 func TestRedactKeysReachesInsideAnArgument(t *testing.T) {
 	frame := `{"args":"[{\"api_key\":\"sk-secret\",\"base_url\":\"http://h/v1\",\"name\":\"A\"}]"}`
 	got := redactKeys(frame)

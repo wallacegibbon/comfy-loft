@@ -24,7 +24,7 @@ func TestVisibilityPersists(t *testing.T) {
 		t.Error("image-b should not be hidden")
 	}
 
-	// Re-read from disk: the canvas restarts more often than the gateway.
+	// Re-read from disk: the canvas restarts more often than the server.
 	reloaded := NewVisibility(dir, quietLogger())
 	reloaded.Load()
 	if !reloaded.IsHidden("image-a") {

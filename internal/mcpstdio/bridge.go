@@ -2,7 +2,7 @@
 //
 // AlayaCore speaks MCP over stdin/stdout to whatever `mcp.conf` names, and this is what that name
 // points at: a process with no state of its own that reads one JSON-RPC message per line, hands it to
-// the gateway over loopback, and writes the answer back. The gateway is where the sessions live and
+// the server over loopback, and writes the answer back. The server is where the sessions live and
 // where a call is routed to a browser tab; this bridge only carries it there.
 //
 // Two rules make it correct, and both are about stdout:
@@ -29,14 +29,14 @@ import (
 	"time"
 )
 
-// Config is what one bridge run needs. Nothing here comes from a file: the gateway writes it into the
+// Config is what one bridge run needs. Nothing here comes from a file: the server writes it into the
 // environment of the process it spawns, and AlayaCore passes it on to us.
 type Config struct {
-	// Endpoint is the gateway's loopback base URL, e.g. http://127.0.0.1:41235.
+	// Endpoint is the server's loopback base URL, e.g. http://127.0.0.1:41235.
 	Endpoint string
 	// Session is the agent session this bridge belongs to — usually a canvas, sometimes one node.
 	Session string
-	// Version is the wire contract this build speaks. The gateway refuses a bridge it does not know,
+	// Version is the wire contract this build speaks. The server refuses a bridge it does not know,
 	// because with two binaries a mixed install is a real possibility.
 	Version string
 	// Timeout bounds one round trip. A tool that starts a generation answers at once; a tool that
@@ -45,7 +45,7 @@ type Config struct {
 	Timeout time.Duration
 }
 
-// Version is the bridge↔gateway contract. Bump it when the two sides stop understanding each other.
+// Version is the bridge↔server contract. Bump it when the two sides stop understanding each other.
 const Version = "1"
 
 // Run reads JSON-RPC from in and writes answers to out until in is exhausted.
@@ -94,7 +94,7 @@ func Run(in io.Reader, out io.Writer, cfg Config) error {
 	return nil
 }
 
-// forward hands one message to the gateway and returns its answer.
+// forward hands one message to the server and returns its answer.
 func forward(client *http.Client, cfg Config, message []byte) ([]byte, error) {
 	if cfg.Endpoint == "" {
 		return nil, errors.New("COMFYLOFT_MCP is not set, so this bridge has nowhere to send the call")
@@ -109,7 +109,7 @@ func forward(client *http.Client, cfg Config, message []byte) ([]byte, error) {
 
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("cannot reach the gateway at %s (%v) — it is not running, or it restarted and this bridge belongs to the previous one", cfg.Endpoint, err)
+		return nil, fmt.Errorf("cannot reach the server at %s (%v) — it is not running, or it restarted and this bridge belongs to the previous one", cfg.Endpoint, err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, 64<<20))
@@ -117,17 +117,17 @@ func forward(client *http.Client, cfg Config, message []byte) ([]byte, error) {
 		return nil, err
 	}
 	if response.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("the gateway refused the call: %s: %s", response.Status, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("the server refused the call: %s: %s", response.Status, strings.TrimSpace(string(body)))
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
-		return nil, errors.New("the gateway answered with an empty body")
+		return nil, errors.New("the server answered with an empty body")
 	}
 	return body, nil
 }
 
 // requestID reads the id out of a message and reports whether an answer is expected.
 //
-// A message that cannot be parsed counts as a request: the gateway owns the protocol and answers a broken
+// A message that cannot be parsed counts as a request: the server owns the protocol and answers a broken
 // line with `-32700`, and that answer is worth relaying. What must not happen is a message being dropped
 // because the bridge did not recognise it.
 func requestID(message []byte) (json.RawMessage, bool) {

@@ -1,15 +1,15 @@
 import i18n from "@/i18n";
-import { gatewayRoot } from "@/constant/app-mode";
+import { serverRoot } from "@/constant/app-mode";
 import { wavBytes } from "@/lib/wav";
 import { apiErrorMessage, httpJson, throwIfCanceled } from "@/services/api/http";
 import type { AiConfig } from "@/stores/use-config-store";
 
 /**
- * Speech to text, through the gateway.
+ * Speech to text, through the server.
  *
  * The page cannot call the speech server itself: it answers no CORS headers, so a request from this origin
  * can be sent and the answer can never be read — and on a phone opening the canvas over the LAN, `127.0.0.1`
- * is the phone. So the recording goes to `/api/speech/transcriptions` on the gateway, which is the one
+ * is the phone. So the recording goes to `/api/speech/transcriptions` on the server, which is the one
  * process that can reach the address, and the address travels with it (`internal/server/routes_speech.go`,
  * docs/decisions.md #239).
  *
@@ -25,7 +25,7 @@ const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiE
  * The model, as the server names it.
  *
  * Not a preference: this build supports one speech server, and `refine` is the model it exposes. The
- * gateway forwards whatever it is given and names nothing itself.
+ * server forwards whatever it is given and names nothing itself.
  */
 const SPEECH_MODEL = "refine";
 
@@ -52,7 +52,7 @@ export async function transcribeSpeech(config: AiConfig, samples: Float32Array, 
     body.append("file", new File([wavBytes(samples, sampleRate)], "speech.wav", { type: "audio/wav" }));
 
     try {
-        const payload = await httpJson<{ text?: string }>(`${gatewayRoot(config.baseUrl)}/api/speech/transcriptions`, {
+        const payload = await httpJson<{ text?: string }>(`${serverRoot(config.baseUrl)}/api/speech/transcriptions`, {
             method: "POST",
             body,
             signal: options.signal,

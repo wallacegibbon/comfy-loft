@@ -2,7 +2,7 @@ package server
 
 // A video run takes its media by role and its knobs as typed inputs, exactly like every other run.
 // Nothing here is about a graph: the fixture is a first/last-frame workflow, and the handler never
-// learns that. The one input the gateway keeps for itself is `interpolation`, which is applied to the
+// learns that. The one input the server keeps for itself is `interpolation`, which is applied to the
 // finished artifact.
 
 import (
@@ -13,8 +13,8 @@ import (
 	"time"
 )
 
-// videoRunGateway serves the frame workflow over a fake ComfyUI that produces an mp4.
-func videoRunGateway(t *testing.T) (*fakeComfy, *httptest.Server, *Server) {
+// videoRunServer serves the frame workflow over a fake ComfyUI that produces an mp4.
+func videoRunServer(t *testing.T) (*fakeComfy, *httptest.Server, *Server) {
 	t.Helper()
 	fake := newFakeComfy(t)
 	fake.outputs = map[string]any{
@@ -24,18 +24,18 @@ func videoRunGateway(t *testing.T) (*fakeComfy, *httptest.Server, *Server) {
 	fake.viewBody = "MP4DATA"
 
 	file, graph, entry := videoFixture()
-	srv := newTestGatewayWith(t, fake, file, graph, entry)
-	gateway := httptest.NewServer(srv.Handler())
-	t.Cleanup(gateway.Close)
-	return fake, gateway, srv
+	srv := newTestServerWith(t, fake, file, graph, entry)
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	return fake, server, srv
 }
 
 // waitForTerminalRun polls one run until the queue has finished with it.
-func waitForTerminalRun(t *testing.T, gateway *httptest.Server, id string) map[string]any {
+func waitForTerminalRun(t *testing.T, server *httptest.Server, id string) map[string]any {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		status, payload := doJSON(t, gateway.Client(), http.MethodGet, gateway.URL+"/api/runs/"+id, nil)
+		status, payload := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/runs/"+id, nil)
 		if status != http.StatusOK {
 			t.Fatalf("GET /api/runs/%s: %d %v", id, status, payload)
 		}
@@ -51,10 +51,10 @@ func waitForTerminalRun(t *testing.T, gateway *httptest.Server, id string) map[s
 }
 
 func TestRunVideoTakesFramesByRole(t *testing.T) {
-	fake, gateway, _ := videoRunGateway(t)
-	last := uploadID(t, gateway, "last.png", "image/png", []byte("PNG"))
+	fake, server, _ := videoRunServer(t)
+	last := uploadID(t, server, "last.png", "image/png", []byte("PNG"))
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "video-test",
 		"inputs": map[string]any{
 			"prompt": "a cat", "mode": "frames", "frameMode": "last",
@@ -68,7 +68,7 @@ func TestRunVideoTakesFramesByRole(t *testing.T) {
 
 	// One frame in `last` mode fills the last_frame socket, not the first one — the rule is the
 	// workflow's, the role in the request is the caller's.
-	run := waitForTerminalRun(t, gateway, payload["id"].(string))
+	run := waitForTerminalRun(t, server, payload["id"].(string))
 	if run["status"] != "succeeded" {
 		t.Fatalf("run = %v", run)
 	}
@@ -96,11 +96,11 @@ func TestRunVideoTakesFramesByRole(t *testing.T) {
 }
 
 func TestRunVideoRejectsBadMediaMix(t *testing.T) {
-	_, gateway, _ := videoRunGateway(t)
-	frame := uploadID(t, gateway, "frame.png", "image/png", []byte("PNG"))
+	_, server, _ := videoRunServer(t)
+	frame := uploadID(t, server, "frame.png", "image/png", []byte("PNG"))
 
 	// `both` is two frames, and the workflow says so.
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "video-test",
 		"inputs":   map[string]any{"prompt": "a cat", "frameMode": "both"},
 		"media":    map[string]any{"first_frame": frame},
@@ -109,7 +109,7 @@ func TestRunVideoRejectsBadMediaMix(t *testing.T) {
 		t.Fatalf("both frames with one image: %d %v", status, payload)
 	}
 
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload = doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "video-test",
 		"inputs":   map[string]any{"prompt": "a cat", "frameMode": "middle"},
 		"media":    map[string]any{"first_frame": frame},
@@ -120,9 +120,9 @@ func TestRunVideoRejectsBadMediaMix(t *testing.T) {
 }
 
 func TestRunVideoRejectsUndeclaredInputs(t *testing.T) {
-	_, gateway, _ := videoRunGateway(t)
+	_, server, _ := videoRunServer(t)
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "video-test",
 		"inputs":   map[string]any{"prompt": "a cat", "interpolation": "2x"},
 	})
@@ -163,19 +163,19 @@ func TestRunRifeInterpolationWorkflow(t *testing.T) {
 			"frame_rate": map[string]any{"node": "3", "input": "frame_rate", "from": "params.multiplier", "transform": "multiply", "factor": 24, "default": 48},
 		},
 	}
-	srv := newTestGatewayWith(t, fake, "test-rife.json", graph, entry)
-	gateway := httptest.NewServer(srv.Handler())
-	defer gateway.Close()
+	srv := newTestServerWith(t, fake, "test-rife.json", graph, entry)
+	server := httptest.NewServer(srv.Handler())
+	defer server.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "video-rife-test",
 		"inputs":   map[string]any{"multiplier": 3},
-		"media":    map[string]any{"video": uploadID(t, gateway, "clip.mp4", "video/mp4", []byte("ftyp"))},
+		"media":    map[string]any{"video": uploadID(t, server, "clip.mp4", "video/mp4", []byte("ftyp"))},
 	})
 	if status != http.StatusAccepted {
 		t.Fatalf("status = %d, want 202: %v", status, payload)
 	}
-	run := waitForTerminalRun(t, gateway, payload["id"].(string))
+	run := waitForTerminalRun(t, server, payload["id"].(string))
 	if run["status"] != "succeeded" {
 		t.Fatalf("run = %v", run)
 	}
@@ -198,11 +198,11 @@ func TestRunRifeInterpolationWorkflow(t *testing.T) {
 // `frameMode` belongs to video workflows; on an image run it is a typo, not a silent no-op.
 func TestRunRejectsFrameModeOnImageWorkflow(t *testing.T) {
 	fake := newFakeComfy(t)
-	srv := newTestGateway(t, fake)
-	gateway := httptest.NewServer(srv.Handler())
-	defer gateway.Close()
+	srv := newTestServer(t, fake)
+	server := httptest.NewServer(srv.Handler())
+	defer server.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat", "frameMode": "first"},
 	})

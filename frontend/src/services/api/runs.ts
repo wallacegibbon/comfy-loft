@@ -1,13 +1,13 @@
 import i18n from "@/i18n";
 import { activeCanvasId } from "@/services/canvas-files";
-import { gatewayRoot } from "@/constant/app-mode";
+import { serverRoot } from "@/constant/app-mode";
 import { apiErrorMessage, httpJson, throwIfCanceled } from "@/services/api/http";
 import type { AiConfig } from "@/stores/use-config-store";
 
 /**
- * The gateway's run protocol (docs/protocol.md): submit a workflow run, poll it, fetch its outputs.
+ * The server's run protocol (docs/protocol.md): submit a workflow run, poll it, fetch its outputs.
  *
- * This is the only path the canvas uses to produce media: a run is the shape the gateway exposes, so
+ * This is the only path the canvas uses to produce media: a run is the shape the server exposes, so
  * nothing here maps fields or guesses at a response envelope.
  */
 type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
@@ -38,7 +38,7 @@ export type Run = {
     started_at?: string | null;
     finished_at?: string | null;
     prompt_id?: string;
-    /** True for a run the gateway re-attached to after a restart: it has no progress to report (#236). */
+    /** True for a run the server re-attached to after a restart: it has no progress to report (#236). */
     resumed?: boolean;
 };
 
@@ -56,7 +56,7 @@ export type RunFacts = { workflow: string; finishedAt: string };
  * What a finished run leaves on its artifacts — or nothing, for a run that names no workflow to believe.
  *
  * `finished_at` is stamped under the same lock that marks the run terminal, so a poll that sees `succeeded`
- * sees it too; `created_at` is the fallback for a record that carries only that. `workflow` is the gateway's
+ * sees it too; `created_at` is the fallback for a record that carries only that. `workflow` is the server's
  * own id for what ran (`image-z-image-turbo`), which is not the same string as the model the user picked
  * (`default::image-z-image-turbo`): a pick can be renamed or deleted afterwards, and what ran cannot.
  */
@@ -74,7 +74,7 @@ export type RunRequest = {
      * The agent that asked for this run: the session to tell when it ends, and the node it asked about.
      *
      * A generation takes minutes and `generate` answers at once, so the agent's turn can end with the run
-     * still going. The mapping travels with the run — the gateway keeps it, and says what happened when
+     * still going. The mapping travels with the run — the server keeps it, and says what happened when
      * the run ends (docs/decisions.md #225). Absent for a run the user started: nobody has to be told
      * about their own button.
      */
@@ -88,13 +88,13 @@ type RunWaitOptions = {
     onProgress?: (run: Run) => void;
     onSteps?: (steps: { step: number; total: number }) => void;
     /**
-     * Cancel the run on the gateway when the caller aborts. Set for a generation the user started;
+     * Cancel the run on the server when the caller aborts. Set for a generation the user started;
      * leave unset when merely watching a run that should survive a page leaving.
      */
     cancelOnAbort?: boolean;
 };
 
-/** A terminal failure reported by the gateway, kept as a type so callers can tell it from a network error. */
+/** A terminal failure reported by the server, kept as a type so callers can tell it from a network error. */
 export class RunFailedError extends Error {
     constructor(readonly run: Run) {
         super(runErrorMessage(run));
@@ -105,13 +105,13 @@ export class RunFailedError extends Error {
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 const DEFAULT_INTERVAL_MS = 500;
 
-/** The gateway root for `/api/*`: the channel address, with any legacy `/v1` suffix removed. */
-export function gatewayProtocolRoot(baseUrl: string) {
-    return gatewayRoot(baseUrl);
+/** The server root for `/api/*`: the channel address, with any legacy `/v1` suffix removed. */
+export function serverProtocolRoot(baseUrl: string) {
+    return serverRoot(baseUrl);
 }
 
 function runUrl(config: AiConfig, path: string) {
-    return `${gatewayProtocolRoot(config.baseUrl)}${path}`;
+    return `${serverProtocolRoot(config.baseUrl)}${path}`;
 }
 
 /**
@@ -124,7 +124,7 @@ function runUrl(config: AiConfig, path: string) {
 function canvasApiUrl(config: AiConfig, path: string) {
     const canvas = activeCanvasId();
     if (!canvas) throw new Error(apiText("noCanvas"));
-    return `${gatewayProtocolRoot(config.baseUrl)}/api/canvases/${encodeURIComponent(canvas)}${path}`;
+    return `${serverProtocolRoot(config.baseUrl)}/api/canvases/${encodeURIComponent(canvas)}${path}`;
 }
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -145,7 +145,7 @@ export async function createRun(config: AiConfig, request: RunRequest): Promise<
     }
 }
 
-/** One media file uploaded to the gateway, ready to be referenced by a run. */
+/** One media file uploaded to the server, ready to be referenced by a run. */
 type UploadedMedia = { id: string; kind: string; mime: string; bytes: number; filename: string };
 
 /**
@@ -177,7 +177,7 @@ export async function uploadMedia(config: AiConfig, file: Blob, filename: string
  * A read that could not be made ends the watch. That is not the same as the run ending, and the canvas is
  * built for it: the node keeps the run id, says it could not confirm the run, and picks it up again when
  * the canvas is next opened (#235). Retrying here instead would mean a page that waits three minutes on a
- * gateway that may never answer, which is a state nobody can see or act on.
+ * server that may never answer, which is a state nobody can see or act on.
  */
 async function getRun(config: AiConfig, id: string): Promise<Run> {
     try {
@@ -188,7 +188,7 @@ async function getRun(config: AiConfig, id: string): Promise<Run> {
     }
 }
 
-/** Cancel a run. Idempotent on the gateway. */
+/** Cancel a run. Idempotent on the server. */
 export async function cancelRun(config: AiConfig, id: string): Promise<Run> {
     return httpJson<Run>(runUrl(config, `/api/runs/${encodeURIComponent(id)}`), {
         method: "DELETE",
@@ -199,12 +199,12 @@ export async function cancelRun(config: AiConfig, id: string): Promise<Run> {
 /**
  * Poll a run until it is terminal.
  *
- * Resolves with the finished run, throws `RunFailedError` when the gateway reports a failure or a
+ * Resolves with the finished run, throws `RunFailedError` when the server reports a failure or a
  * cancellation, and rethrows the abort error when the caller aborts (cancelling the run first if
  * `cancelOnAbort` is set).
  *
  * A read that fails is not a run that failed, and this is where the two are told apart: `RunFailedError`
- * means the gateway answered about the run, and anything else means the question did not get there. What to
+ * means the server answered about the run, and anything else means the question did not get there. What to
  * do about the second is the node's business — it keeps the run id and picks the watch up again on the next
  * open (#235).
  */
@@ -234,7 +234,7 @@ export async function waitForRun(config: AiConfig, id: string, options: RunWaitO
 /**
  * Where one output of a finished run is served from.
  *
- * The gateway answers with a path on itself; a run whose file lives elsewhere may answer with a URL, and
+ * The server answers with a path on itself; a run whose file lives elsewhere may answer with a URL, and
  * either is accepted. Nothing downloads: the file is already in the canvas the run belongs to, so a node
  * references it where it is (decisions #173).
  */

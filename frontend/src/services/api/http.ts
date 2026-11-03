@@ -1,5 +1,5 @@
 import i18n from "@/i18n";
-import { noteGatewayError, noteGatewayResponse } from "@/services/api/gateway-status";
+import { noteServerError, noteServerResponse } from "@/services/api/server-status";
 
 /**
  * The app's HTTP layer.
@@ -92,16 +92,16 @@ async function send(url: string, init: HttpInit): Promise<Response> {
 
     try {
         const response = await fetch(url, { ...rest, ...(keepalive ? { keepalive: true } : {}), signal: timeoutController ? timeoutController.signal : signal });
-        // Any answer — including a 4xx — means the gateway is back. This is the whole recovery check:
+        // Any answer — including a 4xx — means the server is back. This is the whole recovery check:
         // no probe, no timer (#157).
-        noteGatewayResponse(url);
+        noteServerResponse(url);
         return response;
     } catch (error) {
         // This is what an axios response interceptor used to do in `image.ts`: one failing
-        // request to the local gateway flips the shared "reconnecting" banner instead of
-        // raising one toast per node. `noteGatewayError` only reacts to network failures,
-        // and only for gateway URLs, so it can be called from here for every request.
-        noteGatewayError(error, url);
+        // request to the local server flips the shared "reconnecting" banner instead of
+        // raising one toast per node. `noteServerError` only reacts to network failures,
+        // and only for server URLs, so it can be called from here for every request.
+        noteServerError(error, url);
         throw error;
     } finally {
         if (timer !== undefined) clearTimeout(timer);
@@ -128,7 +128,7 @@ export async function httpJson<T>(url: string, init: HttpInit = {}): Promise<T> 
     try {
         return JSON.parse(text) as T;
     } catch {
-        // A 2xx that is not JSON is a gateway or proxy saying something we cannot use;
+        // A 2xx that is not JSON is a server or proxy saying something we cannot use;
         // surfacing the text is more useful than a JSON parse error.
         throw new ApiError(response.status, text);
     }

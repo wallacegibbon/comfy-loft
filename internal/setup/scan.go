@@ -98,15 +98,15 @@ func (m *Manager) Scan() (Status, error) {
 	// This is the only place graphs are registered — a deferred registration would be the
 	// same call with less context, which is why there is no separate "scan the workflow
 	// folder" endpoint and no background poller.
-	if gatewayScan, scanErr := m.registry.Scan(); scanErr != nil {
-		m.logger.Warn("failed to scan gateway workflows: %s", scanErr)
+	if scanResult, scanErr := m.registry.Scan(); scanErr != nil {
+		m.logger.Warn("failed to scan server workflows: %s", scanErr)
 	} else {
-		if n := len(gatewayScan.Skipped) + len(gatewayScan.Failed); n > 0 {
-			m.logger.Warn("workflow files left unregistered: %s", summariseScanFailures(gatewayScan))
+		if n := len(scanResult.Skipped) + len(scanResult.Failed); n > 0 {
+			m.logger.Warn("workflow files left unregistered: %s", summariseScanFailures(scanResult))
 		}
 		// Registered is not the same as usable: a graph with no output node or no prompt
 		// binding still runs, just not the way the user expects. Say so, once, per file.
-		for _, warning := range gatewayScan.Warnings {
+		for _, warning := range scanResult.Warnings {
 			m.logger.Warn("workflow registered with a caveat: %s", warning)
 		}
 	}
@@ -241,7 +241,7 @@ func comfyVersion(stats map[string]any) string {
 
 // noteComfyVersion records the version and logs it when it changes.
 //
-// One line, once per version, because "which ComfyUI is this gateway talking to" is the
+// One line, once per version, because "which ComfyUI is this server talking to" is the
 // first question whenever an install or a workflow misbehaves.
 func (m *Manager) noteComfyVersion(version string) {
 	m.mu.Lock()

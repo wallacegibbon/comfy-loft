@@ -24,7 +24,7 @@ reports a dependency.
 **Cost** No cgo libraries. The race detector needs cgo, so `make test-race` re-enables it for
 the test binary only; the shipped binary stays static.
 
-**Where** `Makefile`, `docs/gateway.md` (Why Go).
+**Where** `Makefile`, `docs/server.md` (Why Go).
 
 ---
 
@@ -130,7 +130,7 @@ a process whose only consumer is a dashboard, and would make logs unreadable in 
 
 **Cost** The frontend has to map codes to copy; unmapped errors surface in English.
 
-**Where** `internal/httpx`, `docs/gateway.md` (Language policy).
+**Where** `internal/httpx`, `docs/server.md` (Language policy).
 
 ---
 
@@ -222,7 +222,7 @@ change — pinned by `internal/resource/bake_test.go`.
 
 ## 14. The asset root is discovered, not hardcoded
 
-**Decision** `GATEWAY_ROOT` → working directory → executable directory, accepting the first that
+**Decision** `COMFYLOFT_SERVER_ROOT` → working directory → executable directory, accepting the first that
 contains `workflows/registry.json` or `resources/index.json`.
 
 **Why** The binary lives in `bin/`, which must not be mistaken for the asset root, and the
@@ -285,7 +285,7 @@ contribution from adding one more.
 data rather than copy, is #216), and a reviewer has to reject inline copy even when it works in
 the current UI language.
 
-**Where** `README.md` (Language), `docs/gateway.md` (Language policy),
+**Where** `README.md` (Language), `docs/server.md` (Language policy),
 decisions #8, #9 and #216.
 
 ---
@@ -313,9 +313,9 @@ unchanged — the built page still emits `class="css-1tzwyuk ant-app"` and
 
 ---
 
-## 19. `GATEWAY_HOST` is bound as given; there is no `ALLOW_REMOTE`
+## 19. `COMFYLOFT_SERVER_HOST` is bound as given; there is no `ALLOW_REMOTE`
 
-**Decision** The gateway listens on whatever `GATEWAY_HOST` says, loopback or LAN address, with no
+**Decision** The gateway listens on whatever `COMFYLOFT_SERVER_HOST` says, loopback or LAN address, with no
 second switch. `ALLOW_REMOTE` is gone, and so is the startup refusal it gated. What remains is
 a warning when the address is reachable from the network. (The `GATEWAY_TOKEN` this entry still
 mentioned went in #110; the warning is now the only thing that says the port is open.)
@@ -327,12 +327,12 @@ the gateway exited, and the UI showed "gateway disconnected". The real risk is n
 address but an unauthenticated `/api/*`, and that is what the warning names.
 
 **Cost** One keystroke less between a machine and the network. Anyone who wants the old
-behaviour back has `GATEWAY_HOST=127.0.0.1`, which is still the default. `CORS_ORIGINS` no longer
+behaviour back has `COMFYLOFT_SERVER_HOST=127.0.0.1`, which is still the default. `CORS_ORIGINS` no longer
 accepts `*` under any condition — the canvas origin is matched by host, so the wildcard was
 only ever an accident waiting to happen.
 
 **Where** `internal/config/config.go`, `internal/httpx/middleware.go` (`sameHostOrigin`),
-`main.go`, `.env.example`, `docs/gateway.md`.
+`main.go`, `.env.example`, `docs/server.md`.
 
 ---
 
@@ -404,7 +404,7 @@ that is the point, not a limitation to work around.
 
 **Where** `internal/config/config.go` (`boolValue`), `internal/resource/install_policy.go`,
 `internal/resource/jobs.go` (`Install`, `installHint`), `internal/resource/status.go`,
-`resource-center-panel.tsx`, `web/src/services/api/resources.ts`, `docs/gateway.md`,
+`resource-center-panel.tsx`, `web/src/services/api/resources.ts`, `docs/server.md`,
 `.env.example`, `README.md`.
 
 ---
@@ -1865,11 +1865,11 @@ what the canvas needs: a node stores a workflow id, not a graph.
 - Raw graph submission stays refused (`ui_workflow_not_supported`, `invalid_api_workflow`). The
   exposed surface is the capability set, not the executor.
 
-**The comparison to keep** `docs/gateway.md` → "Relationship to ComfyUI's HTTP API": endpoint
+**The comparison to keep** `docs/server.md` → "Relationship to ComfyUI's HTTP API": endpoint
 mapping, the eight differences, and the same request written both ways. Read it before changing the
 protocol; it is the shortest description of what we are and are not.
 
-**Where** `docs/gateway.md`, `docs/protocol.md`, `internal/comfy/client.go` (the endpoints we borrow),
+**Where** `docs/server.md`, `docs/protocol.md`, `internal/comfy/client.go` (the endpoints we borrow),
 `internal/workflow/bindings.go` (the translation), `internal/server/routes_runs.go`.
 
 ## 58. The canvas's first node lives on the run protocol
@@ -2024,7 +2024,7 @@ the request was accepted, the graph was built with the clip wired into `LoadVide
 machine, since the SeedVR2 custom node is not installed there.
 
 **Where** `canvas/web/src/services/api/video.ts`, `services/api/image.ts`,
-`pages/canvas/hooks/use-video-editors.ts`, `docs/protocol.md`, `docs/gateway.md`.
+`pages/canvas/hooks/use-video-editors.ts`, `docs/protocol.md`, `docs/server.md`.
 
 ## 62. Frame interpolation is a workflow, not a run input
 
@@ -2333,7 +2333,7 @@ page load syncs its models, generates an image, and lists the workflows with no 
 
 **Where** `internal/server/routes_generation.go`, `internal/server/routes_video.go` (deleted),
 `internal/server/runs.go`, `internal/server/server.go`, `internal/server/helpers.go`,
-`canvas/web/src/services/api/{image,video,audio}.ts`, `docs/protocol.md`, `docs/gateway.md`,
+`canvas/web/src/services/api/{image,video,audio}.ts`, `docs/protocol.md`, `docs/server.md`,
 `README.md`.
 
 ## 70. Saved names are keys, not translations
@@ -2393,7 +2393,7 @@ it is the only field with information the gateway does not have: a workflow whos
 user wants it to be.
 
 **Cost** Pointing the canvas at another gateway is a `dist/config.js` / `START.sh` job
-(`LOCAL_GATEWAY_URL`), not a settings-screen job. A saved config from a build with channels is repaired
+(`LOCAL_COMFYLOFT_SERVER_URL`), not a settings-screen job. A saved config from a build with channels is repaired
 on read: the first channel that points at this gateway wins, the rest are dropped, and a backup of the
 original blob is left in `localStorage` under `…:pre-local-only-backup`.
 
@@ -2575,7 +2575,7 @@ itself expensive — a rawio session reaches `SM session ready` in ~30 ms on thi
 the process after each request is cheaper than keeping one warm.
 
 **Tenancy is the security model** The gateway is **single-tenant**: one instance serves one person and
-uses **one** AlayaCore config directory — `os.UserConfigDir()/comfyui-gateway/alayacore` by default
+uses **one** AlayaCore config directory — `os.UserConfigDir()/comfyloft-server/alayacore` by default
 (`~/.config/...` on Linux, the right place on macOS and Windows), overridable with
 `AGENT_CONFIG_PATH`. The gateway does not create or validate it: the agent creates what it needs on
 first spawn, and a fresh directory comes with AlayaCore's own Ollama default, which exists to be
@@ -2596,7 +2596,7 @@ to read", and a request that could name its own tool list would let the caller u
 that decides whether the agent can run commands.
 
 **Security posture, stated plainly** No token is required to enable the agent, because there is no
-token at all (#110). `GATEWAY_HOST` defaults to loopback and binding anything else emits a startup
+token at all (#110). `COMFYLOFT_SERVER_HOST` defaults to loopback and binding anything else emits a startup
 warning. The one built-in tool the spawn enables is `read_file`, and it is not a field of a request:
 the H3 rewrite loads its `SKILL.md` with it, which is what changes the risk class of an exposed port
 from "uses your quota" to "reads your files".
@@ -2951,7 +2951,7 @@ other half: a session's model does not leak into another's, and asking for words
 
 **Decision** A session's agent is spawned with `--config-path` pointing at a directory of its own,
 `<DATA_DIR>/agent/<sanitised-session>-<hash8>`, holding a copy of the operator's `model.conf` and
-`runtime.conf` plus an `mcp.conf` that points its tool calls at `http://<GATEWAY_HOST>:<GATEWAY_PORT>/mcp/<workspace>`
+`runtime.conf` plus an `mcp.conf` that points its tool calls at `http://<COMFYLOFT_SERVER_HOST>:<COMFYLOFT_SERVER_PORT>/mcp/<workspace>`
 (see #87 for why it is that address and not loopback).
 The workspace name is derived from the session name, so `POST /mcp/{workspace}` finds the session that is
 asking by scanning the sessions that exist rather than through a registry beside them. The directory is
@@ -3044,7 +3044,7 @@ screenshot taken right after — and the panel showed one step, `调用 canvas_c
 
 ## 87. The tool URL is the address the gateway actually listens on
 
-**Decision** `mcp.conf` names the workspace at the gateway's **bind** address — `GATEWAY_HOST:GATEWAY_PORT`,
+**Decision** `mcp.conf` names the workspace at the gateway's **bind** address — `COMFYLOFT_SERVER_HOST:COMFYLOFT_SERVER_PORT`,
 not `127.0.0.1:<port>` — with a wildcard bind (`0.0.0.0`, `::`) replaced by loopback, since a wildcard has
 no address of its own to dial and loopback is what it reaches.
 
@@ -4320,7 +4320,7 @@ returns only #121–#127, which describe history.
 
 **Where** `catalogue.json` (moved), `internal/resource/{resource,jobs,helpers,status}.go`,
 `internal/config/config.go`, `internal/config/config_test.go`, `internal/resource/*_test.go`,
-`canvas/web/{src,tests}`, `README.md`, `docs/gateway.md`, `docs/known-issues.md`.
+`canvas/web/{src,tests}`, `README.md`, `docs/server.md`, `docs/known-issues.md`.
 
 ## 129. The file is `resources.json`, not `catalogue.json`
 
@@ -4346,7 +4346,7 @@ workflow row is called `resources`. Beside `workflows/` at the root it also stat
 `catalogue` now returns only #67, #121, #127 and #128, which are history.
 
 **Where** `resources.json` (moved), `internal/resource/`, `internal/config/`, `canvas/web/`,
-`README.md`, `docs/gateway.md`, `docs/known-issues.md`.
+`README.md`, `docs/server.md`, `docs/known-issues.md`.
 
 ## 130. A pack's dependencies are derived from its graphs, not written down three times
 
@@ -4619,7 +4619,7 @@ identity inside the subtree, not this repository's name for it.
 
 ## 138. The project is Comfy Loft
 
-**Decision** The project is called **Comfy Loft**. The gateway code keeps its module name `comfyui-gateway`
+**Decision** The project is called **Comfy Loft**. The gateway code keeps its module name `comfyloft-server`
 (that is the binary, not the product), and the repository slug is being renamed by the owner separately.
 
 **Why "Comfy" stays and the second word changed** "Comfy" is the searchable half: this is an abstraction layer
@@ -4646,7 +4646,7 @@ longer true:
 - `main.go` described the gateway as "OpenAI-compatible". There is no `/v1` route left; the README has said so
   for a while ("the gateway serves no `/v1/...` at all — that belongs to the model provider AlayaCore talks to"),
   and the package comment disagreed with it.
-- `docs/gateway.md` listed the runtime assets as `workflows/`, `resources/`, `prompts/`. `resources/` became
+- `docs/server.md` listed the runtime assets as `workflows/`, `resources/`, `prompts/`. `resources/` became
   `resources.json` at the root in #128–#129.
 - The README said "generate images and videos"; the music pack has been shipping audio since #124.
 
@@ -4660,7 +4660,7 @@ separate decision with its own consequences, not a rename.
 **Tested** `gofmt`, `go vet`, `go test ./internal/...`, `tsc --noEmit`, 134 canvas tests. A grep for
 `Infinite Canvas`/`ComfyUI Local` now finds nothing outside `canvas/` (upstream strings) and this log.
 
-**Where** `README.md`, `docs/gateway.md`, `main.go`.
+**Where** `README.md`, `docs/server.md`, `main.go`.
 
 ## 139. The old product names leave the canvas shell too
 
@@ -4750,7 +4750,7 @@ and `internal/` against this repository's **own first commit** — 22 of 182 fil
 102 in the gateway, +13,138/−15,007 and +11,077/−5,984 lines. The canvas half measures the right thing: that tree
 was imported from the fork. The gateway half does not. By the time of that first commit the gateway was already Go,
 so those numbers describe our own service evolving, not the distance to the project we forked — upstream shipped
-`comfyui-gateway/` in JavaScript. There is no line-for-line comparison to make, and the honest version is the
+`comfyloft-server/` in JavaScript. There is no line-for-line comparison to make, and the honest version is the
 sentence the README now carries.
 
 **What the licence file needed** Checking the claim "their copyright notices are kept verbatim" showed it was
@@ -4943,7 +4943,7 @@ release.
 
 - **The display name `Comfy Loft`** — README heading, window title, plugin descriptions. Two words read
   better than one, and this is the only place the product speaks as a name.
-- **The gateway binary `comfyui-gateway`** and the config directory `~/.config/comfyui-gateway/alayacore`
+- **The gateway binary `comfyloft-server`** and the config directory `~/.config/comfyloft-server/alayacore`
   (#138: "that is the binary, not the product"). The binary is named for what it faces; the config
   directory holds the operator's hand-written `model.conf` with a real API key in it, and moving it would
   make an agent silently lose its models.
@@ -4966,7 +4966,7 @@ logs no console errors.
 
 **Where** `go.mod`, 61 Go files' import paths, `canvas/plugins/canvas/{sdk,html,markdown,panorama,registry,sticky-note,svg,template}/**`,
 `canvas/web/{package.json,package-lock.json,src/{i18n/index.ts,lib/canvas/canvas-export.ts,services/localforage-databases.ts,stores/**,types/canvas-export.ts}}`,
-`docs/gateway.md`.
+`docs/server.md`.
 
 ## 147. The MCP edge is a bridge process, not a URL
 
@@ -4975,7 +4975,7 @@ speaks JSON-RPC on stdin/stdout and forwards each call to the gateway on a **loo
 The session is not in any address: the gateway spawns AlayaCore with `COMFYLOFT_MCP` and
 `COMFYLOFT_SESSION` in its environment, AlayaCore hands that environment to the bridge it starts, and the
 bridge puts the session in `X-Comfyloft-Session`. `mcp.conf` is one static file for every session, and the
-agent's configuration lives in one directory per host, `~/.config/comfyui-gateway/<host>/alayacore/`.
+agent's configuration lives in one directory per host, `~/.config/comfyloft-server/<host>/alayacore/`.
 
 **Why the names are one word** `COMFYLOFT_*` and `X-Comfyloft-*`, not `COMFY_LOFT_*`: an environment
 variable cannot contain a hyphen, so the hyphenated spelling would force three words with one of them
@@ -4989,12 +4989,12 @@ unreadable and unguessable-but-not-secret. AlayaCore supports stdio servers, whi
 root: the identity is a file descriptor's parent's environment, not a string in a path.
 
 **What the loopback listener is for** The old route sat on the main mux, which is served on whatever
-`GATEWAY_HOST` names — and a tool that creates nodes and starts generations was reachable from the network
+`COMFYLOFT_SERVER_HOST` names — and a tool that creates nodes and starts generations was reachable from the network
 with no token. The bridge endpoint is now a second listener bound to `127.0.0.1` on an ephemeral port, known
 only to the processes it was written into. Requiring a custom header also means a browser cannot reach it
 cross-site without a CORS preflight this server never answers.
 
-**Two binaries, and the rule that went with them** `make build` produces `comfyui-gateway` and
+**Two binaries, and the rule that went with them** `make build` produces `comfyloft-server` and
 `comfyloft-mcp`. The old "one self-contained binary" rule is retired: it was never true of the *release*
 (the canvas bundle, `workflows/`, `resources.json` and the external AlayaCore were always beside it), and
 with two binaries a mixed install is possible — so the bridge sends `X-Comfyloft-Bridge` and the gateway
@@ -5028,10 +5028,10 @@ loopback-only, and that a bridge from another build is refused with both version
 browser, with the real AlayaCore and a real model: `MCP servers initialized: 1 servers, 7 tools loaded`,
 then a tool call answered — the model's reply described the empty canvas it had just been told about.
 
-**Where** `cmd/{comfyui-gateway,comfyloft-mcp}/main.go`, `internal/mcpstdio/**`,
+**Where** `cmd/{comfyloft-server,comfyloft-mcp}/main.go`, `internal/mcpstdio/**`,
 `internal/server/{mcp_server.go,routes_mcp.go,agent_config.go,server.go,routes_agent.go}`,
 `internal/agent/{spawn.go,sessions.go}`, `internal/config/config.go`, `Makefile`, `start.sh`,
-`README.md`, `docs/gateway.md`.
+`README.md`, `docs/server.md`.
 
 ## 148. There is no plugin mechanism; a node type is a built-in
 
@@ -5113,7 +5113,7 @@ this move as before it; removing them is a separate decision about the credits, 
 console is clean.
 
 **Where** `canvas/**` (moved), `Makefile`, `start.sh`, `.gitignore`, `canvas/vite.config.ts`,
-`canvas/tests/resource-copy-zh.test.ts`, `README.md`, `docs/gateway.md`.
+`canvas/tests/resource-copy-zh.test.ts`, `README.md`, `docs/server.md`.
 
 ## 150. The two upstream leftovers go too
 
@@ -5214,11 +5214,11 @@ No agent session inside the canvas directory yet, same reason.
 "the refused write did not land", ids that are not ours refused before a path is built, non-object and
 oversized documents, delete twice, no temporary files left behind, a meta that belongs to another
 directory, an unreadable meta skipped by `List` but reported by `Read`), six route tests over HTTP, the
-whole `make check`, and `docs/gateway.md` now documents the layout, the five endpoints and the rev.
+whole `make check`, and `docs/server.md` now documents the layout, the five endpoints and the rev.
 
 **Where** `internal/canvas/{canvas.go,canvas_test.go}` (new), `internal/server/{routes_canvas.go,canvas_e2e_test.go}`
 (new), `internal/server/{server.go,routes_admin.go,e2e_test.go}`, `internal/config/{config.go,config_test.go}`,
-`docs/gateway.md`, `README.md`, `.env.example`, `.gitignore`.
+`docs/server.md`, `README.md`, `.env.example`, `.gitignore`.
 
 ## 153. There is no API key, because there is nothing to authenticate to
 
@@ -5401,7 +5401,7 @@ theme and the language wrote `settings.json` (`theme`, `locale`, `lastCanvas`, `
 `internal/{server/{server.go,routes_admin.go,e2e_test.go},config/config.go}`,
 `canvas/src/{services/api/settings.ts,stores/use-settings-store.ts}` (new),
 `canvas/src/{stores/{use-config-store.ts,use-theme-store.ts,canvas/use-canvas-side-panel-store.ts},lib/canvas/last-canvas.ts,i18n/index.ts,constant/runtime-config.ts,components/{layout/{app-providers,client-root-init,user-status-actions}.tsx,settings/{app-config-modal,resource-setup-gate}.tsx,canvas/canvas-node-hover-toolbar.tsx,kit/feedback.tsx}}`,
-`canvas/index.html`, `canvas/src/i18n/locales/*`, `start.sh`, `docs/gateway.md`.
+`canvas/index.html`, `canvas/src/i18n/locales/*`, `start.sh`, `docs/server.md`.
 
 ## 156. Media belongs to the canvas, and the gateway stops keeping scratch space
 
@@ -5464,7 +5464,7 @@ empty console.
 `internal/config/config.go`, `canvas/src/services/{canvas-files.ts (new),file-storage.ts,image-storage.ts}`,
 `canvas/src/stores/canvas/use-canvas-store.ts`, `canvas/src/lib/canvas/{canvas-export.ts,canvas-node-factory.ts,image-thumbnail.ts}`,
 `canvas/src/components/canvas/canvas-manager-dialog.tsx`, `canvas/src/pages/canvas/project.tsx`,
-`canvas/src/i18n/locales/*`, `canvas/package.json`, `docs/gateway.md`.
+`canvas/src/i18n/locales/*`, `canvas/package.json`, `docs/server.md`.
 
 ## 157. The gateway's liveness is learnt from the traffic, not probed
 
@@ -5565,7 +5565,7 @@ markup directory to the domain. `cmd/`, `internal/`, `frontend/` reads as one re
 
 **What it cost** A `git mv` and seven references: the `Makefile` (its `WEB_DIR`/`WEB_STAMP` variables
 became `FRONTEND_*`), `start.sh` (three paths and two hints), `.gitignore` (three build-output lines),
-`README.md` (the tree and four paths), `docs/gateway.md` (one), and the two places that tell a reader
+`README.md` (the tree and four paths), `docs/server.md` (one), and the two places that tell a reader
 what to run next (`internal/server/runtime_config.go`'s comment and `frontend/public/config.js`).
 
 **Not renamed** The `CANVAS_ROOT` variable, the `canvases/<id>/` layout and "back up your canvases" —
@@ -5873,7 +5873,7 @@ after SIGTERM it was still running.
 **Tested/measured** The fixed binary exits immediately on SIGTERM with `TASK_RETENTION_DAYS=1`; the previous
 build was still running six seconds later.
 
-**Where** `cmd/comfyui-gateway/main.go`.
+**Where** `cmd/comfyloft-server/main.go`.
 
 ## 169. A file that could not be added says so, and media too big to hand over is not sent
 
@@ -6207,7 +6207,7 @@ it on the next connection.
 
 **Where** `internal/canvas/canvas.go` (`AgentSessionName`, `SessionPath`, `ValidID`),
 `internal/server/agent_conversations.go`, `internal/server/{agent_config,routes_agent}.go`,
-`frontend/src/services/api/agent.ts`, `docs/gateway.md`.
+`frontend/src/services/api/agent.ts`, `docs/server.md`.
 
 ## 179. An image is stored, or it fails — never kept as an address
 
@@ -6351,7 +6351,7 @@ there's nothing to keep in step and no ambiguity about which version you meant".
 
 **Where** `internal/server/agent_instructions.go`, `internal/server/routes_agent.go`,
 `internal/server/routes_mcp.go`, `internal/agent/spawn.go`, `internal/agent/args_test.go`,
-`internal/server/mcp_test.go`, `docs/gateway.md`.
+`internal/server/mcp_test.go`, `docs/server.md`.
 
 ## 184. The agent can move a node
 
@@ -6605,7 +6605,7 @@ the same frame, no close button, and the skip footer with the new hint.
 `frontend/src/components/layout/user-status-actions.tsx`, `frontend/src/layouts/user-layout.tsx`,
 `frontend/src/stores/use-config-store.ts`, `frontend/src/hooks/use-local-gateway-sync.ts`,
 `frontend/src/pages/panel-entries.tsx`, `frontend/src/i18n/locales/*`, `frontend/scripts/check-*.cjs`,
-`frontend/tests/overlay-z-index.test.ts`, `docs/gateway.md`.
+`frontend/tests/overlay-z-index.test.ts`, `docs/server.md`.
 
 ## 191. The left column: one width, three stacked boxes
 
@@ -7244,7 +7244,7 @@ own words with the two ways out (drop the connection, or clear the box). Nothing
 **Where** `internal/server/agent_instructions.go`, `internal/server/routes_mcp.go`,
 `internal/server/mcp_test.go`, `frontend/src/components/canvas/canvas-node-generation.ts`,
 `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
-`frontend/tests/canvas-generation-context.test.ts`, `docs/gateway.md`.
+`frontend/tests/canvas-generation-context.test.ts`, `docs/server.md`.
 
 ## 204. The viewport follows what the answer is about
 
@@ -7270,7 +7270,7 @@ on it. In turn two the same agent declined to focus again ("The node is already 
 earlier). I'll just reply."), so the limit held without a second sentence. `make check`,
 `TestAgentSpawnCarriesTheCanvasRule` (which pins the new trigger's wording), `npm run check`, `npx vitest run`.
 
-**Where** `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`, `docs/gateway.md`.
+**Where** `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`, `docs/server.md`.
 
 ## 205. A connection's id is not a timestamp
 
@@ -7648,7 +7648,7 @@ browser against a real ComfyUI.
 **Where** `internal/server/web.go`, `internal/server/web_test.go`, `internal/config/config.go` (`WEB_DIR`,
 `PUBLIC_BASE_URL` explicitness), `internal/server/runtime_config.go`, `internal/server/routes_admin.go`,
 `frontend/src/constant/app-mode.ts`, `frontend/vite.config.ts`, `start.sh`, `Makefile`, `README.md`,
-`docs/gateway.md`.
+`docs/server.md`.
 
 ## 220. The first paint is computed from the settings document, not copied into the bundle
 
@@ -7688,7 +7688,7 @@ template in the bundle. `go test ./internal/...`, `make check`, `npm run check`,
 **Where** `internal/server/runtime_config.go`, `internal/server/routes_admin.go`,
 `internal/server/routes_settings.go`, `internal/server/server.go`, `internal/config/config.go`
 (`RuntimeConfigPath`), `start.sh`, `Makefile`, `frontend/index.html`, `frontend/public/config.js`,
-`frontend/src/constant/runtime-config.ts`, `docs/gateway.md`, `README.md`.
+`frontend/src/constant/runtime-config.ts`, `docs/server.md`, `README.md`.
 
 ## 221. A message is a list of parts, drawn in the order the frames arrived
 
@@ -7852,7 +7852,7 @@ not exercised against a live AlayaCore — the row was read off a replayed trans
 `frontend/src/lib/canvas/agent-usage.ts`, `frontend/tests/agent-usage.test.ts`,
 `frontend/src/services/api/agent.ts` (`AgentUsage`, `adopt`),
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
-`docs/gateway.md`.
+`docs/server.md`.
 
 ## 225. A run's end is a message to the agent that asked for it
 
@@ -7928,11 +7928,11 @@ that path is covered, but the round trip was read from a socket, not off a scree
 `internal/server/server.go`, `internal/server/routes_mcp.go`, `internal/agent/sessions.go` (`Tell`),
 `internal/server/agent_e2e_test.go`, `frontend/src/services/api/{runs,image,audio,video}.ts`,
 `frontend/src/pages/canvas/hooks/{use-canvas-agent-tools,use-generation-runs}.ts`,
-`frontend/src/pages/canvas/project.tsx`, `docs/protocol.md`, `docs/gateway.md`.
+`frontend/src/pages/canvas/project.tsx`, `docs/protocol.md`, `docs/server.md`.
 
 ## 226. The start script rebuilds the binaries too, not only the bundle
 
-**Decision** `./start.sh` runs `make build` when `bin/comfyui-gateway` or `bin/comfyloft-mcp` is missing or
+**Decision** `./start.sh` runs `make build` when `bin/comfyloft-server` or `bin/comfyloft-mcp` is missing or
 older than `cmd/`, `internal/`, `go.mod`, `go.sum` or the `Makefile`. It is the rule #181 already applies to
 the canvas bundle, and it replaces the check that only asked whether the gateway binary existed.
 
@@ -8726,3 +8726,52 @@ prompt is up records nothing, silently), and `getUserMedia` needs a secure conte
 `frontend/src/components/settings/preferences-dialog.tsx`, `frontend/src/stores/use-config-store.ts`,
 `frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
 `frontend/tests/{wav,agent-dictation,api-speech}.test.ts`.
+
+## 240. The binary is `comfyloft-server`, and nothing is called a gateway any more
+
+**Decision** The service is `comfyloft-server`. The binary, the package (`cmd/comfyloft-server`), the
+environment (`COMFYLOFT_SERVER_HOST` / `COMFYLOFT_SERVER_PORT` / `COMFYLOFT_SERVER_ROOT`), the per-host agent
+configuration directory (`<UserConfigDir>/comfyloft-server/<host>/alayacore`), the Go identifiers, the
+frontend identifiers and file names, and the documentation all say **server**. `bin/` is now
+`comfyloft-server` and `comfyloft-mcp` — one prefix, two programs, which is what it should have been.
+
+**Why** "Gateway" described one of the five things this process does, and the smallest one. It proxies
+ComfyUI's generation; it also serves the canvas bundle (`GET /`), answers `/config.js`, owns the canvases,
+uploads and preferences on disk, runs the loopback MCP listener the agent calls back through, and — as of
+#239 — carries a WAV to a speech server. A reader who meets "the gateway owns your canvases" has been told
+something false by the name. #138 had already drawn the line "that is the binary, not the product" and left
+`comfyui-gateway`; that was the right distinction applied to the wrong word.
+
+**No compatibility, on purpose** There are no users, so nothing here keeps the old spelling alive: no aliased
+environment variable, no fallback config directory, no shim binary. A single accepted name is the whole point;
+a migration path for a thing that has never been released is a permanent second source of truth paid for up
+front. This is also why the on-disk agent directory moves rather than being read from both places.
+
+**What was renamed, mechanically** 81 Go files, 78 frontend files, 8 moved files
+(`cmd/comfyui-gateway` → `cmd/comfyloft-server`, `docs/gateway.md` → `docs/server.md`,
+`services/api/gateway-status.ts` → `server-status.ts`, `lib/gateway-{labels,models}.ts` → `server-*.ts`,
+`hooks/use-local-gateway-sync.ts` → `use-local-server-sync.ts`,
+`components/layout/gateway-reconnect-banner.tsx` → `server-reconnect-banner.tsx`, and two test files). Go
+identifiers went with the rest: `cfg.GatewayHost` → `cfg.ServerHost`, `newTestGateway` → `newTestServer`,
+`LOCAL_GATEWAY_URL` → `LOCAL_SERVER_URL` (the wire name in `config.js` too — one rename, both sides), and a
+handful of locals that collided with the new name were given their own rather than a number.
+
+**What keeps the word** HTTP 502 is *Bad Gateway*, and the one string that reports it says so: the apiErrors
+key stays `badGateway`, Chinese keeps 「网关错误（502）」, English keeps "Gateway error (502)". That is the
+protocol's name for a status, not this program's name. `GATEWAY_TOKEN` survives only inside historical records
+that describe a token that no longer exists. No prose in `docs/decisions.md` before this entry was rewritten:
+the log records what was decided and in which words, and rewriting "the gateway" out of #1–#239 would be
+editing the past to look consistent. What *was* rewritten there is anything a reader follows — the ten
+`comfyui-gateway` paths, the `docs/gateway.md` links and the `GATEWAY_*` variable names — because a pointer to
+a file that no longer exists makes the whole log unfollowable (#137 made the same split for a directory move).
+
+**Tested** `make check` (19 packages; five test functions needed their two `startMCPServer` results
+disambiguated — both were called `gateway` and then `server`, so the blanket rename produced `server, server`),
+`npx vitest run` 311, `npm run check` (i18n 836/822 with `server.models` / `server.variants` declared as
+dynamic prefixes, 178 modules, prettier, tsc), `npm run build`. The page was then loaded from
+`http://127.0.0.1:8190` against the rebuilt binary and the agent socket connected — which is how #241 was
+found.
+
+**Where** `cmd/comfyloft-server`, `internal/{config,server,workflow,setup}`, `Makefile`, `start.sh`,
+`.env.example`, `docs/{server,protocol,known-issues,decisions}.md`, `README.md`, `frontend/src/**`,
+`frontend/{scripts,tests}/**`.

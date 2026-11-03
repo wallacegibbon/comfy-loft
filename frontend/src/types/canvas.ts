@@ -77,7 +77,7 @@ export type CanvasNodeMetadata = {
     generationType?: CanvasImageGenerationType;
     model?: string;
     /**
-     * The workflow the gateway ran for this node's content, as the run named itself
+     * The workflow the server ran for this node's content, as the run named itself
      * (`image-z-image-turbo`).
      *
      * Not the same string as `model`, which is the pick the user made (`default::image-z-image-turbo`):
@@ -86,7 +86,7 @@ export type CanvasNodeMetadata = {
      */
     workflow?: string;
     /**
-     * The instant the run that produced this node's content finished, as the gateway stamped it: ISO 8601
+     * The instant the run that produced this node's content finished, as the server stamped it: ISO 8601
      * in UTC, kept verbatim rather than re-formatted for a locale.
      *
      * The node is the only place it survives. The run record is pruned, and a finished image node clears
@@ -142,17 +142,17 @@ export type CanvasNodeMetadata = {
     bytes?: number;
     durationMs?: number;
     /**
-     * The gateway run producing this node's content, kept so the watch survives the page.
+     * The server run producing this node's content, kept so the watch survives the page.
      *
      * One field for every kind of content. It used to be three — `videoTaskId`, `audioRunId`, `imageRunId` —
-     * named after the order the three were moved onto the gateway, and the predicates that read them drifted
+     * named after the order the three were moved onto the server, and the predicates that read them drifted
      * with the names: video resumed on a reload whatever its status, audio and image only while they were
      * still `loading`. A canvas written before this keeps its old name until it is opened, where it is read
      * into this one (`adoptLegacyRunIds`).
      */
     runId?: string;
     /**
-     * Set while a run is being watched that cannot report progress — one the gateway picked up again after a
+     * Set while a run is being watched that cannot report progress — one the server picked up again after a
      * restart. The step count and preview frames come from the socket bound to the process that submitted,
      * so the node says it is waiting instead of drawing a bar that will not move (#236).
      */

@@ -16,9 +16,9 @@ import (
 
 // routes registers the full HTTP surface.
 func (s *Server) routes(mux *http.ServeMux) {
-	// The canvas itself, when this gateway is the one serving it. Both are `GET`, and a literal path is
+	// The canvas itself, when this server is the one serving it. Both are `GET`, and a literal path is
 	// more specific than the `GET /` subtree, so `/config.js` wins even though `WEB_DIR` usually holds a
-	// `config.js` of its own (the template `make frontend` copies for a static host): the gateway never
+	// `config.js` of its own (the template `make frontend` copies for a static host): the server never
 	// serves a stale copy of the preferences it is holding (#220).
 	s.route(mux, "GET /config.js", s.handleFirstPaint)
 	s.route(mux, "GET /", s.handleWeb)
@@ -30,7 +30,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	s.routesSpeech(mux)
 	s.routesAdmin(mux)
 	// The agent's MCP endpoint is NOT here: it lives on a second, loopback-only listener so a tool that
-	// creates nodes and starts generations is not reachable from whatever address GATEWAY_HOST names.
+	// creates nodes and starts generations is not reachable from whatever address COMFYLOFT_SERVER_HOST names.
 	// See mcp_server.go.
 }
 
@@ -103,7 +103,7 @@ func (s *Server) handleResourcesStatus(ctx *httpx.Ctx) error {
 	return nil
 }
 
-// handleResourcesRefresh implements POST /api/resources/refresh — the gateway's only rescan.
+// handleResourcesRefresh implements POST /api/resources/refresh — the server's only rescan.
 //
 // One entry point on purpose. It reloads the resource index, re-scans ComfyUI (nodes, models,
 // availability, and the graphs sitting in workflows/) and answers with the resource status the
@@ -186,7 +186,7 @@ func (s *Server) handleResourceReplacement(ctx *httpx.Ctx) error {
 // One row per workflow, carrying everything a client needs to offer it: the media kind, the typed
 // inputs, whether ComfyUI can run it, and the model ids it answers to. Those ids are not a second
 // concept — a workflow is the thing that runs, and a base model is one of its inputs — but the id
-// *spelling* (`img-zit-int8`) is built by the gateway and resolved by the gateway, so the gateway has
+// *spelling* (`img-zit-int8`) is built by the server and resolved by the server, so the server has
 // to report it. `/v1/models` used to be the only place that happened, wrapped in an OpenAI envelope.
 func (s *Server) handleWorkflows(ctx *httpx.Ctx) error {
 	s.registry.ReloadIfChanged()
@@ -294,7 +294,7 @@ func (s *Server) handleLoras(ctx *httpx.Ctx) error {
 // handleSystemStats implements GET /api/system/stats.
 //
 // Every number here comes from ComfyUI's own /system_stats: the panel is asked about the machine
-// that does the generating, and the gateway's host is only interesting when it is that machine —
+// that does the generating, and the server's host is only interesting when it is that machine —
 // which is not a question this handler can answer, so it does not try. When ComfyUI does not say,
 // `available` is false and the panel shows nothing rather than its own host's figures.
 func (s *Server) handleSystemStats(ctx *httpx.Ctx) error {
@@ -302,7 +302,7 @@ func (s *Server) handleSystemStats(ctx *httpx.Ctx) error {
 	defer cancel()
 	sample, _ := s.comfyHostStats(requestCtx)
 
-	// The last out-of-memory failure among the runs the gateway remembers. Nothing in this process
+	// The last out-of-memory failure among the runs the server remembers. Nothing in this process
 	// can see ComfyUI's log, so a run's recorded error is the only place that fact survives.
 	var lastOOM map[string]any
 	for _, stored := range s.tasks.List() {

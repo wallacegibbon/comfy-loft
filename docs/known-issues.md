@@ -25,7 +25,7 @@ audio through the interpolation. The media plan is declared in `registry.json` (
 The canvas fails on an export nobody imports (`scripts/check-exports.cjs`) and `tsc` fails on an unused local.
 Neither has a Go counterpart, so an exported function whose last caller a refactor removed stays behind:
 
-`Queue` (`internal/comfy`), `WithAudioTimeout` / `WithGatewayPort` / `WithMaxImportBytes` /
+`Queue` (`internal/comfy`), `WithAudioTimeout` / `WithServerPort` / `WithMaxImportBytes` /
 `WithPublicBaseURL` (`internal/config`), `WriteJSONError` (`internal/httpx`), `DerivedDependencies`
 (`internal/resource` — its comment still calls it "the single source of truth for a workflow's dependency
 list"), `IsAvailable` / `ModelCandidates` (`internal/setup`), `Snapshot` (`internal/store`),

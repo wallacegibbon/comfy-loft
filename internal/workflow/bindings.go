@@ -330,11 +330,11 @@ func applyFrameMode(next Graph, entry *Entry, ctx *Context, node Node, binding *
 	}
 
 	for _, target := range targets {
-		loadNodeID := nextGatewayLoadID(next)
+		loadNodeID := nextLoaderID(next)
 		next[loadNodeID] = map[string]any{
 			"class_type": "LoadImage",
 			"inputs":     map[string]any{"image": target.media.Reference()},
-			"_meta":      map[string]any{"title": "Gateway Frame " + target.input},
+			"_meta":      map[string]any{"title": "Comfy Loft Frame " + target.input},
 		}
 		inputs[target.input] = asLink(loadNodeID, 0)
 	}
@@ -406,19 +406,19 @@ func applyArrayBinding(next Graph, entry *Entry, ctx *Context, node Node, bindin
 	sourceLengthOutput := binding.Int(keySourceLengthOutput, 1)
 
 	for index, item := range selected {
-		loadNodeID := nextGatewayLoadID(next)
+		loadNodeID := nextLoaderID(next)
 
 		if nativeVideoLoader {
 			next[loadNodeID] = map[string]any{
 				"class_type": "LoadVideo",
 				"inputs":     map[string]any{"file": item.Reference()},
-				"_meta":      map[string]any{"title": fmt.Sprintf("Gateway Video %d", index+1)},
+				"_meta":      map[string]any{"title": fmt.Sprintf("Comfy Loft Video %d", index+1)},
 			}
-			componentsID := nextGatewayLoadID(next)
+			componentsID := nextLoaderID(next)
 			next[componentsID] = map[string]any{
 				"class_type": "GetVideoComponents",
 				"inputs":     map[string]any{"video": asLink(loadNodeID, 0)},
-				"_meta":      map[string]any{"title": fmt.Sprintf("Gateway Video Frames %d", index+1)},
+				"_meta":      map[string]any{"title": fmt.Sprintf("Comfy Loft Video Frames %d", index+1)},
 			}
 			inputs[fmt.Sprintf("%s%d", prefix, indexBase+index)] = asLink(componentsID, 0)
 			if sourceLengthInput != "" && ctx.SourceVideoFrames > 0 {
@@ -441,19 +441,19 @@ func applyArrayBinding(next Graph, entry *Entry, ctx *Context, node Node, bindin
 					"select_every_nth":  1,
 					"format":            "AnimateDiff",
 				},
-				"_meta": map[string]any{"title": fmt.Sprintf("Gateway Video %d", index+1)},
+				"_meta": map[string]any{"title": fmt.Sprintf("Comfy Loft Video %d", index+1)},
 			}
 		case isAudio:
 			next[loadNodeID] = map[string]any{
 				"class_type": "LoadAudio",
 				"inputs":     map[string]any{"audio": item.Reference()},
-				"_meta":      map[string]any{"title": fmt.Sprintf("Gateway Audio %d", index+1)},
+				"_meta":      map[string]any{"title": fmt.Sprintf("Server Audio %d", index+1)},
 			}
 		default:
 			next[loadNodeID] = map[string]any{
 				"class_type": "LoadImage",
 				"inputs":     map[string]any{"image": item.Reference()},
-				"_meta":      map[string]any{"title": fmt.Sprintf("Gateway Ref %d", index+1)},
+				"_meta":      map[string]any{"title": fmt.Sprintf("Server Ref %d", index+1)},
 			}
 		}
 
@@ -496,7 +496,7 @@ func applyImageBinding(next Graph, entry *Entry, ctx *Context, node Node, bindin
 	next[loadNodeID] = map[string]any{
 		"class_type": "LoadImage",
 		"inputs":     map[string]any{"image": media.Reference()},
-		"_meta":      map[string]any{"title": fmt.Sprintf("Gateway Load %d", index+1)},
+		"_meta":      map[string]any{"title": fmt.Sprintf("Server Load %d", index+1)},
 	}
 	node.Inputs()[input] = asLink(loadNodeID, 0)
 	return nil
@@ -626,8 +626,8 @@ func jsRound(value float64) float64 {
 	return math.Floor(value + 0.5)
 }
 
-// nextGatewayLoadID allocates a node id for an injected loader, starting at 9101.
-func nextGatewayLoadID(graph Graph) string {
+// nextLoaderID allocates a node id for an injected loader, starting at 9101.
+func nextLoaderID(graph Graph) string {
 	id := 9101
 	for {
 		candidate := strconv.Itoa(id)

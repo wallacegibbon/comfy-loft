@@ -322,7 +322,7 @@ function InfiniteCanvasPage() {
     /**
      * Say that this run cannot report progress.
      *
-     * A video's steps and previews come from ComfyUI's socket, which the gateway bound in the process that
+     * A video's steps and previews come from ComfyUI's socket, which the server bound in the process that
      * submitted it. A run it re-attached to after a restart has neither, so the node says it is waiting
      * rather than showing a count that has stopped (#236).
      */
@@ -1913,7 +1913,7 @@ function InfiniteCanvasPage() {
     /**
      * Pick up the runs that were out when the page went away.
      *
-     * One pass, once per opened canvas: a run belongs to the gateway, so the page has nothing to re-submit —
+     * One pass, once per opened canvas: a run belongs to the server, so the page has nothing to re-submit —
      * only to start watching again, with the poller for the kind of content it is. It used to be two effects
      * with two different gates (video resumed whatever its status said, audio and image only while they were
      * still `loading`), so one of the three could quietly not resume at all (#235).

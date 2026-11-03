@@ -2,13 +2,13 @@ package server
 
 // The agent's hands, on a socket only this machine can reach.
 //
-// A tool call arrives here from the bridge (`comfyloft-mcp`), which AlayaCore spawned; the gateway
+// A tool call arrives here from the bridge (`comfyloft-mcp`), which AlayaCore spawned; the server
 // routes it down the session's websocket to the browser tab that can actually run it. AlayaCore is
 // configured with one static `mcp.conf`, so the file cannot say which session a call belongs to —
 // the session travels in the spawned process's environment instead, and the bridge puts it in a header.
 //
 // The listener is a second, loopback-only one rather than a route on the main mux. Two reasons:
-// `/api` is served on whatever `GATEWAY_HOST` says, which can be a LAN address, and a tool that creates
+// `/api` is served on whatever `COMFYLOFT_SERVER_HOST` says, which can be a LAN address, and a tool that creates
 // nodes and starts generations has no business being reachable from the network with no token. And the
 // identity header makes a browser-driven cross-site POST impossible without a CORS preflight, which
 // this listener never answers.
@@ -68,7 +68,7 @@ func (s *Server) closeMCP() {
 
 // checkBridge refuses a bridge this build does not speak to.
 //
-// Two binaries means a mixed install is possible — a rebuilt bridge against a gateway process that has
+// Two binaries means a mixed install is possible — a rebuilt bridge against a server process that has
 // not been restarted. Without this the failure is a JSON-RPC parse error somewhere inside AlayaCore,
 // which tells a reader nothing about which half to replace.
 func (s *Server) checkBridge(r *http.Request) error {
@@ -77,20 +77,20 @@ func (s *Server) checkBridge(r *http.Request) error {
 		return nil
 	}
 	if version == "" {
-		return httpx.BadRequest("bridge_version_missing", "this endpoint is for comfyloft-mcp, which sends X-Comfyloft-Bridge; the gateway is not an MCP server for anything else")
+		return httpx.BadRequest("bridge_version_missing", "this endpoint is for comfyloft-mcp, which sends X-Comfyloft-Bridge; the server is not an MCP server for anything else")
 	}
-	return httpx.BadRequest("bridge_version_mismatch", fmt.Sprintf("comfyloft-mcp speaks bridge %s and this gateway speaks %s; rebuild both from the same source", version, mcpstdio.Version))
+	return httpx.BadRequest("bridge_version_mismatch", fmt.Sprintf("comfyloft-mcp speaks bridge %s and this server speaks %s; rebuild both from the same source", version, mcpstdio.Version))
 }
 
 // sessionOf is the session an MCP call belongs to, from the header the bridge wrote.
 //
-// An empty header is a bridge that was spawned by something other than this gateway; an unknown value is
+// An empty header is a bridge that was spawned by something other than this server; an unknown value is
 // a session that is gone — its browser tab closed, or its process was released. They are different
 // failures and they read differently, because the fix is different.
 func (s *Server) sessionOf(r *http.Request) (string, error) {
 	session := r.Header.Get("X-Comfyloft-Session")
 	if session == "" {
-		return "", httpx.BadRequest("bridge_session_missing", "the bridge sent no X-Comfyloft-Session; it was not spawned by this gateway")
+		return "", httpx.BadRequest("bridge_session_missing", "the bridge sent no X-Comfyloft-Session; it was not spawned by this server")
 	}
 	return session, nil
 }

@@ -1,6 +1,6 @@
 package server
 
-// What the gateway tells every agent, on top of whatever the operator configured.
+// What the server tells every agent, on top of whatever the operator configured.
 //
 // The agent's tools are described one by one (`routes_mcp.go`), and a description can say what one tool
 // does. It cannot say which one to reach for: that is a rule about the canvas rather than about a tool,

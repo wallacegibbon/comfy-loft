@@ -4,7 +4,7 @@ package workflow
 //
 // Availability scanning and runtime aliasing both read this table, so adding a new
 // loader node happens in exactly one place. Missing entries here used to make the
-// gateway report a workflow as ready and then fail inside ComfyUI, so the table is
+// server report a workflow as ready and then fail inside ComfyUI, so the table is
 // deliberately exhaustive rather than curated.
 var ModelLoaderSpecs = []struct {
 	ClassType string

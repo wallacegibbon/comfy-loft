@@ -13,7 +13,7 @@ import path from "node:path";
  *
  * The rule these tests state is the one the app already follows everywhere else: dialogs sit at
  * 1300+, and anything that must float above them — tooltips, selects, menus, a brush ring — sits
- * at 1400 or higher. (Drawers were the third layer, at 1350+, until the only one left — the gateway
+ * at 1400 or higher. (Drawers were the third layer, at 1350+, until the only one left — the server
  * channel editor — was deleted with its tab, #190.)
  */
 

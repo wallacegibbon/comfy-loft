@@ -27,7 +27,7 @@ export function ResourceSetupGate() {
                 // dialog never showed up at all.
                 if ((next.summary.missing || 0) > 0 && readSetting<boolean>(SKIP_KEY, false) !== true) setOpen(true);
             } catch {
-                // Stay out of the way while the gateway or ComfyUI is not ready; Add workflows can still be opened by hand.
+                // Stay out of the way while the server or ComfyUI is not ready; Add workflows can still be opened by hand.
             } finally {
                 if (!cancelled) setChecked(true);
             }

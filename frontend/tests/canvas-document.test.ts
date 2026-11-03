@@ -8,8 +8,8 @@ import type { CanvasNodeData } from "../src/types/canvas";
  * What a canvas document is.
  *
  * The save path and the export path both build it here, because what a zip carries has to be what the
- * gateway would have stored — the export used to serialise the in-memory project, absolute URLs and all,
- * which put this gateway's address into a file meant to travel (decisions #152, #171).
+ * server would have stored — the export used to serialise the in-memory project, absolute URLs and all,
+ * which put this server's address into a file meant to travel (decisions #152, #171).
  */
 
 function node(overrides: Partial<CanvasNodeData>): CanvasNodeData {

@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/kit/button";
 import { Dialog } from "@/components/kit/dialog";
 import { Spin } from "@/components/kit/display";
-import { LOCAL_GATEWAY_BASE_URL } from "@/constant/app-mode";
+import { LOCAL_SERVER_BASE_URL } from "@/constant/app-mode";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 
 type GpuStats = {
@@ -34,7 +34,7 @@ type FreeResult = {
     error?: string;
 };
 
-const gatewayBase = LOCAL_GATEWAY_BASE_URL;
+const serverBase = LOCAL_SERVER_BASE_URL;
 
 function gb(bytes: number) {
     return (bytes / 1024 ** 3).toFixed(1);
@@ -59,11 +59,11 @@ export function CanvasSystemStatus() {
 
     const refresh = useCallback(async () => {
         try {
-            const response = await fetch(`${gatewayBase}/api/system/stats`);
+            const response = await fetch(`${serverBase}/api/system/stats`);
             if (!response.ok) return;
             setStats(await response.json());
         } catch {
-            /* keep the last data while the gateway is not ready */
+            /* keep the last data while the server is not ready */
         }
     }, []);
 
@@ -83,7 +83,7 @@ export function CanvasSystemStatus() {
         setFreeError("");
         setFreeResult(null);
         try {
-            const response = await fetch(`${gatewayBase}/api/system/free-memory`, { method: "POST" });
+            const response = await fetch(`${serverBase}/api/system/free-memory`, { method: "POST" });
             const data = (await response.json().catch(() => ({}))) as FreeResult;
             if (!response.ok || data.ok === false) throw new Error(data.error || t("canvas.systemStatus.freeFailed"));
             setFreeResult(data);
@@ -98,7 +98,7 @@ export function CanvasSystemStatus() {
     const barStyle = (value: number) => ({ width: `${value}%`, background: value >= 90 ? "#dc2626" : theme.node.text });
 
     // The numbers are ComfyUI's, so there is nothing to show until it has told us what it has. The
-    // readout used to fall back on the gateway's own host, which was a different machine here and
+    // readout used to fall back on the server's own host, which was a different machine here and
     // read as free VRAM while a generation was out of memory.
     if (!stats?.available || !gpu) return null;
     const vramPercent = percent(gpu.memoryUsedMb, gpu.memoryTotalMb);

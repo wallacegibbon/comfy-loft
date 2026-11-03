@@ -9,7 +9,7 @@ import (
 
 // These two runs use the real agent, because the things they check are its behaviour and not ours:
 // what a startup looks like, and what it does with a model name that no longer exists. They skip
-// when the binary is not installed — this repository ships a gateway, not an agent.
+// when the binary is not installed — this repository ships a server, not an agent.
 
 func testCore(t *testing.T) string {
 	t.Helper()

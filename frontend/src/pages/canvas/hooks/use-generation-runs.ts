@@ -46,7 +46,7 @@ export type GenerationRun = {
      */
     /**
      * The agent that asked for this generation, if one did. It rides along to the run, which is where the
-     * gateway keeps "who is waiting to be told" — the tool call that started this is answered long before
+     * server keeps "who is waiting to be told" — the tool call that started this is answered long before
      * the run ends (docs/decisions.md #225).
      */
     askedBy?: RunRequest["askedBy"];
@@ -134,7 +134,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
     /**
      * What one poll tells the node about how far along it is.
      *
-     * `resumed` is the gateway saying it re-attached to a run whose watching it had lost: the step count and
+     * `resumed` is the server saying it re-attached to a run whose watching it had lost: the step count and
      * the previews came from the socket bound to the process that submitted, so there is nothing to show, and
      * the node says so instead of drawing a bar that will not move (#236). Ordinary runs are untouched — the
      * flag is only ever raised by a poll that reports one.
@@ -247,7 +247,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             let runEndedHere = false;
             let firstError = "";
 
-            // One run, one picture: the gateway writes the artifact into the canvas and the node names it by
+            // One run, one picture: the server writes the artifact into the canvas and the node names it by
             // reference (#173, #180).
             try {
                 const requestOptions = {
@@ -493,7 +493,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
     /**
      * Resume the run an audio node was waiting on when the page went away.
      *
-     * This is the reason audio was the first node migrated: the gateway keeps the run, so the canvas
+     * This is the reason audio was the first node migrated: the server keeps the run, so the canvas
      * only has to reattach to it. Nothing is re-submitted, and the same step ring is driven from the
      * run's own progress.
      */

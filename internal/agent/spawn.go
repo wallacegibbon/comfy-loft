@@ -17,7 +17,7 @@ import (
 // Process is one running `alayacore --rawio`, owned by one request.
 //
 // Nothing keeps it alive beyond that request: run.go releases it when the answer ends, and a
-// cancelled request sends `CI cancel` so the agent winds its own task down. The gateway does not
+// cancelled request sends `CI cancel` so the agent winds its own task down. The server does not
 // layer a timeout of its own on top — the process is what knows what a half-finished step means.
 type Process struct {
 	Cmd    *exec.Cmd
@@ -37,12 +37,12 @@ type Process struct {
 }
 
 // SpawnOptions is what one request may influence. Everything else is the operator's, fixed in the
-// gateway's configuration: the config directory, the tool list, the skill container.
+// server's configuration: the config directory, the tool list, the skill container.
 type SpawnOptions struct {
 	Binary     string
 	ConfigPath string
 	// Skills is the container of skill directories passed as `--skill`. The agent reads them itself;
-	// the gateway only says where they are.
+	// the server only says where they are.
 	Skills string
 	// Tools is the `--builtin-tools` list. Read-only file access is what a skill needs in order to be
 	// activated at all (the agent loads a skill by reading its SKILL.md); no other tool is enabled.
@@ -244,7 +244,7 @@ func (p *Process) Release() {
 }
 
 // stderrTail keeps the last few lines the child wrote. Bounded: a chatty child must not grow the
-// gateway's memory, and only the last line is ever quoted (that is where the reason is).
+// server's memory, and only the last line is ever quoted (that is where the reason is).
 type stderrTail struct {
 	mu    sync.Mutex
 	lines []string

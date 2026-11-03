@@ -1,5 +1,5 @@
 import i18n from "@/i18n";
-import { gatewayProtocolRoot } from "@/services/api/runs";
+import { serverProtocolRoot } from "@/services/api/runs";
 import { apiErrorMessage, httpJson } from "@/services/api/http";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { AiConfig } from "@/stores/use-config-store";
@@ -10,7 +10,7 @@ const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiE
 /**
  * One entry of the agent's own model list (`SM model_list`).
  *
- * `hasKey` rather than a key: the frame carries every `api_key` from `model.conf`, the gateway strips them,
+ * `hasKey` rather than a key: the frame carries every `api_key` from `model.conf`, the server strips them,
  * and what is left is whether there is one. `baseUrl` and `modelName` do travel — they are where a model
  * points, which is how two entries called the same thing are told apart.
  */
@@ -163,7 +163,7 @@ export function agentSession(name: string): AgentSession {
 /**
  * A session's name: the canvas panel's, one per canvas, and one per node panel.
  *
- * The canvas's name carries the canvas id because the conversation is kept inside that canvas: the gateway
+ * The canvas's name carries the canvas id because the conversation is kept inside that canvas: the server
  * reads the id out of the name and puts the file in the canvas's own directory, so the conversation is
  * deleted, copied and inspected with the canvas it belongs to (decisions #178). One name for every canvas
  * meant one conversation for every canvas — what was said on one showed up on the next.
@@ -181,7 +181,7 @@ export const nodeAgent = (nodeId: string) => `node:${nodeId}`;
 export const settingsAgent = "settings";
 
 function socketUrl(config: AiConfig, name: string, history: boolean): string {
-    const root = gatewayProtocolRoot(config.baseUrl);
+    const root = serverProtocolRoot(config.baseUrl);
     // `history=1` is this surface saying "this name is a conversation": the agent then keeps it in a file
     // that outlives the socket, inside the canvas the name points at. A node's one-shot question does not
     // ask, and leaves nothing behind.
@@ -226,7 +226,7 @@ export function openAgentSession(config: AiConfig, name: string, options?: { his
             }
             adopt(live, event);
 
-            // `closed` is the gateway saying this socket is no longer the one reading the session: a newer
+            // `closed` is the server saying this socket is no longer the one reading the session: a newer
             // tab took it over (#160), or the process died. Either way nothing else will arrive here, and a
             // socket left open would swallow every later question — the panel would sit on a turn that can
             // never end. Dropping it here means the next send opens a new connection, which is also what
@@ -454,7 +454,7 @@ export function endAgentSession(name: string): void {
         closeAgentSession(name);
         return;
     }
-    // The gateway closes the socket after releasing. Drop this side shortly after either way, so a dead
+    // The server closes the socket after releasing. Drop this side shortly after either way, so a dead
     // session cannot be mistaken for a live one.
     setTimeout(() => closeAgentSession(name), 1000);
 }
@@ -462,19 +462,19 @@ export function endAgentSession(name: string): void {
 /**
  * Forget a conversation: the file, and the agent holding it.
  *
- * The gateway answers first and this side acts second. It refuses a session with a turn in flight
+ * The server answers first and this side acts second. It refuses a session with a turn in flight
  * (`409 agent_busy`) and then changes nothing — so the socket is closed only after a delete that
  * happened, and a refusal leaves the conversation exactly as it is, which is what lets the panel go on
- * using it. On success the gateway has already released the process and removed the file; the next
+ * using it. On success the server has already released the process and removed the file; the next
  * connect spawns a fresh agent, which finds nothing to replay.
  */
 export async function clearAgentConversation(config: AiConfig, session: string): Promise<void> {
-    await httpJson(`${gatewayProtocolRoot(config.baseUrl)}/api/agent/session/${encodeURIComponent(session)}`, { method: "DELETE" });
+    await httpJson(`${serverProtocolRoot(config.baseUrl)}/api/agent/session/${encodeURIComponent(session)}`, { method: "DELETE" });
     closeAgentSession(session);
 }
 
 /**
- * Forget a canvas's conversation, on the gateway as well as here.
+ * Forget a canvas's conversation, on the server as well as here.
  *
  * The conversation is part of the canvas, so deleting the canvas already deletes it; this is the other half
  * — the running agent is released first, since a process left writing into a directory that is going away
@@ -489,9 +489,9 @@ export async function forgetCanvasConversation(config: AiConfig, canvasId: strin
     try {
         await clearAgentConversation(config, name);
     } catch (error) {
-        // Mid-turn the gateway refuses, and this canvas is going away regardless: the socket still has
+        // Mid-turn the server refuses, and this canvas is going away regardless: the socket still has
         // to close, or the process would outlive the directory it writes into.
-        console.warn(`agent: the gateway did not forget ${name}`, error);
+        console.warn(`agent: the server did not forget ${name}`, error);
     } finally {
         closeAgentSession(name);
     }

@@ -73,7 +73,7 @@ export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n
  * The bytes of one canvas file, or null when it is not there.
  *
  * `fetch` resolves for a 404 as readily as for a 200, so the status is checked before the body is read: a
- * missing file used to be zipped as whatever the gateway's error envelope said, and an import then restored
+ * missing file used to be zipped as whatever the server's error envelope said, and an import then restored
  * that JSON under a `.png` name.
  */
 async function fetchFileBlob(url: string): Promise<Blob | null> {

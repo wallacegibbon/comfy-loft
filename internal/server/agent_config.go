@@ -1,9 +1,9 @@
 package server
 
-// The agent's configuration, and the one file the gateway writes into it.
+// The agent's configuration, and the one file the server writes into it.
 //
-// There is one configuration directory per host, shared by every session: `<UserConfigDir>/comfyui-gateway/
-// <host>/alayacore/`. The operator's `model.conf` lives there and so does the `mcp.conf` this gateway
+// There is one configuration directory per host, shared by every session: `<UserConfigDir>/comfyloft-server/
+// <host>/alayacore/`. The operator's `model.conf` lives there and so does the `mcp.conf` this server
 // writes at startup; the host in the path exists because the URL in `mcp.conf` is the address an agent
 // dials, and a machine reachable at two addresses needs two answers.
 //
@@ -41,7 +41,7 @@ func (s *Server) writeMCPConf() {
 	}
 	bridge := s.mcpBridgePath()
 	if !bridgeExists(bridge) {
-		// Not fatal: the gateway is still a workflow runner without an agent. Every agent turn will fail,
+		// Not fatal: the server is still a workflow runner without an agent. Every agent turn will fail,
 		// so say where the file was expected rather than leaving the turn to explain it.
 		s.logger.Warn("agent: %s is missing; every agent session will fail at its MCP handshake (build it with `make build`, or point MCP_BIN at it)", bridge)
 	}
@@ -50,7 +50,7 @@ func (s *Server) writeMCPConf() {
 		s.logger.Warn("agent: cannot create %s: %s", s.cfg.AgentConfigPath, err)
 		return
 	}
-	// Written through a temporary file in the same directory: a session spawned while the gateway is
+	// Written through a temporary file in the same directory: a session spawned while the server is
 	// rewriting this must find either the old file or the new one, never half of either.
 	target := s.mcpConfPath()
 	temp := target + ".tmp"
@@ -78,7 +78,7 @@ func bridgeExists(bridge string) bool {
 // mcpBridgePath is the bridge binary: `MCP_BIN` when the operator says so, else beside this executable —
 // what an installed release looks like — and otherwise what `PATH` offers.
 //
-// The last step is for a gateway that was not installed anywhere: `go run` puts the gateway in a temporary
+// The last step is for a server that was not installed anywhere: `go run` puts the server in a temporary
 // directory that holds no bridge, and writing that directory into `mcp.conf` names a path that is gone the
 // moment the run ends. The same order `agent.findBinary` uses for the agent itself.
 func (s *Server) mcpBridgePath() string {

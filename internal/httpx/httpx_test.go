@@ -109,7 +109,7 @@ func TestCORSRejectsUnknownOrigin(t *testing.T) {
 	}
 }
 
-// The canvas and the gateway are two ports on one address. Requiring that pair to be listed in
+// The canvas and the server are two ports on one address. Requiring that pair to be listed in
 // CORS_ORIGINS is what made a LAN address fail with no useful error, so the same-host case is
 // allowed by rule; anything served from a different host still needs the list.
 func TestCORSSameHostOriginIsAllowed(t *testing.T) {
@@ -375,7 +375,7 @@ func TestBoolAndStringSliceHelpers(t *testing.T) {
 	}
 }
 
-// The ceiling is the deployment's, not the package's: a gateway configured with MAX_UPLOAD_BYTES smaller
+// The ceiling is the deployment's, not the package's: a server configured with MAX_UPLOAD_BYTES smaller
 // (or larger) than the default must be read at that value, or the knob is a label rather than a limit.
 func TestParseMultipartHonoursAConfiguredCeiling(t *testing.T) {
 	size := 2 << 20

@@ -20,7 +20,7 @@ import (
 // is not in the process — AlayaCore keeps it in the file named by `--session`, and the next process
 // replays it. Memory lives in the file; the process is only the hands that work on it.
 //
-// The key is whatever the client called it (the canvas id, in practice). The gateway does not know or
+// The key is whatever the client called it (the canvas id, in practice). The server does not know or
 // care what it means: it is a name a process is filed under, and the same name always finds the same
 // process.
 type Session struct {
@@ -52,7 +52,7 @@ type Session struct {
 	busyMu sync.Mutex
 	busy   bool
 
-	// pending is the tool calls waiting for the canvas to answer them, by the id the gateway gave them,
+	// pending is the tool calls waiting for the canvas to answer them, by the id the server gave them,
 	// and calls counts the ones asked so far. A tool call is a question only the page can answer, so it
 	// leaves through the same sink and comes back as a message on the same socket.
 	pending map[string]chan toolAnswer
@@ -99,7 +99,7 @@ func (s *Sessions) Connect(ctx context.Context, id string, opts SpawnOptions) (C
 
 	// The spawn is outside the lock on purpose. It ends at the agent's `ready`, which is model loading,
 	// not milliseconds — and this lock is also what `List` takes, which is how every MCP tool call finds
-	// its session. Holding it here would stop the whole gateway while one canvas's agent starts.
+	// its session. Holding it here would stop the whole server while one canvas's agent starts.
 	proc, err := Spawn(opts)
 	if err != nil {
 		return Connected{}, err
@@ -181,7 +181,7 @@ func (s *Sessions) Tell(id, text string) error {
 }
 
 // Close releases a session and the process with it. Called when the client says so, when the process
-// dies under it, and when the gateway is shutting down.
+// dies under it, and when the server is shutting down.
 func (s *Sessions) Close(id, reason string) {
 	s.mu.Lock()
 	session, ok := s.list[id]
@@ -288,7 +288,7 @@ type toolAnswer struct {
 	isError bool
 }
 
-// TextContent is a tool result that is only words, which is what the gateway says when it cannot get an
+// TextContent is a tool result that is only words, which is what the server says when it cannot get an
 // answer at all.
 func TextContent(text string) json.RawMessage {
 	content, err := json.Marshal([]map[string]string{{"type": "text", "text": text}})
@@ -302,7 +302,7 @@ func TextContent(text string) json.RawMessage {
 // never returns holds the agent's whole turn open, and a page that is not answering is not going to.
 const toolTimeout = 30 * time.Second
 
-// CallTool runs one of the gateway's tools by asking the canvas. The gateway knows the vocabulary, the
+// CallTool runs one of the server's tools by asking the canvas. The server knows the vocabulary, the
 // page knows the nodes, so the call goes down the session's socket and this waits for the answer.
 //
 // The answer is whatever content blocks the page produced, carried through untouched: the protocol says
@@ -432,7 +432,7 @@ func (s *Session) setBusy(busy bool) {
 // is the only value it declares (`commands.CancelArgKeepSteering`), and what it means is that the words
 // queued into the running task become the next prompt instead of being dropped with it. An empty word is
 // the drop — the behaviour a bare cancel has always had, and the only one a signal can ask for. Which of
-// the two a cancel means is the panel's decision, made where the queue is on screen; the gateway writes
+// the two a cancel means is the panel's decision, made where the queue is on screen; the server writes
 // what it was given and does not choose.
 func (s *Session) Cancel(args string) error {
 	s.write.Lock()

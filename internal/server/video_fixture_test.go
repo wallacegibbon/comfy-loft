@@ -1,6 +1,6 @@
 package server
 
-// Fixtures and plumbing shared by the run tests: a first/last-frame workflow nothing in the gateway
+// Fixtures and plumbing shared by the run tests: a first/last-frame workflow nothing in the server
 // knows by name, and a multipart poster for the upload route.
 
 import (

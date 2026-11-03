@@ -5,7 +5,7 @@ import { Toaster } from "sonner";
 
 import { ConfirmHost } from "@/components/kit/confirm";
 import { ClientRootInit } from "@/components/layout/client-root-init";
-import { GatewayReconnectBanner } from "@/components/layout/gateway-reconnect-banner";
+import { ServerReconnectBanner } from "@/components/layout/server-reconnect-banner";
 import type { AppLocale } from "@/i18n";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -46,7 +46,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
     return (
         <>
             <ClientRootInit>{children}</ClientRootInit>
-            <GatewayReconnectBanner />
+            <ServerReconnectBanner />
             {/* Toasts are rendered by `@/components/kit/toast` over sonner. Sticky
                 loading toasts rely on `duration: Infinity`; 3000 matches antd's old
                 default for the auto-dismissing ones so the pacing of the UI did not

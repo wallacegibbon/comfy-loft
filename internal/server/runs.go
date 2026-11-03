@@ -1,6 +1,6 @@
 package server
 
-// The gateway's single execution path. Everything that produces media is submitted here,
+// The server's single execution path. Everything that produces media is submitted here,
 // queued on the task store, and then read back by its id. The HTTP routes above this file
 // only translate their request shape into a runSpec and decide how to answer.
 
@@ -86,7 +86,7 @@ func defaultObjectExt(object string) string {
 	}
 }
 
-// resumeInterruptedRuns picks up the runs the gateway was watching when it stopped.
+// resumeInterruptedRuns picks up the runs the server was watching when it stopped.
 //
 // A task that was submitted and has a prompt id is handed back to the queue with a job that only collects:
 // ComfyUI has been rendering it all along, so nothing is submitted again and no GPU time is paid twice. The

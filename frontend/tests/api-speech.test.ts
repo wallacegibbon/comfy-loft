@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * Speech, from the page to the gateway.
+ * Speech, from the page to the server.
  *
  * Three things matter and none of them is visible in a browser until the feature already works: the address
- * the user configured travels *with* the request (it is not the gateway's setting), the body is a WAV file
+ * the user configured travels *with* the request (it is not the server's setting), the body is a WAV file
  * named as one, and a refusal from the speech server arrives as its own sentence rather than as "request
  * failed".
  */
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
-vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: () => undefined, noteGatewayResponse: () => undefined }));
+vi.mock("@/services/api/server-status", () => ({ noteServerError: () => undefined, noteServerResponse: () => undefined }));
 
 const { transcribeSpeech } = await import("@/services/api/speech");
 type Config = Parameters<typeof transcribeSpeech>[0];
@@ -52,7 +52,7 @@ beforeEach(() => {
 });
 
 describe("transcribeSpeech", () => {
-    it("sends the recording to the gateway, naming the address it was given", async () => {
+    it("sends the recording to the server, naming the address it was given", async () => {
         const text = await transcribeSpeech(config(), samples(), 16_000, "zh");
 
         expect(text).toBe("帮我画一只猫");

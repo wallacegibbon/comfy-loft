@@ -125,7 +125,7 @@ func CORS(cfg *config.Config) Middleware {
 	}
 }
 
-// Guard is the gateway's only protection: a browser may write only from an origin the operator
+// Guard is the server's only protection: a browser may write only from an origin the operator
 // allowed. There is no authentication, by design and by documentation — anybody who can reach the
 // port can run a workflow, read an artifact or drive an agent.
 func Guard(cfg *config.Config) Middleware {
@@ -190,8 +190,8 @@ func isLoopbackOrigin(origin string) bool {
 	return config.IsLoopbackHost(parsed.Hostname())
 }
 
-// sameHostOrigin reports whether the canvas and the gateway were reached under the same host
-// name, which is the normal single-machine layout (canvas on :3000, gateway on :8190, one
+// sameHostOrigin reports whether the canvas and the server were reached under the same host
+// name, which is the normal single-machine layout (canvas on :3000, server on :8190, one
 // address). That is what makes a LAN address work without maintaining a CORS_ORIGINS list per
 // ip:port pair, and it keeps the list meaningful: a page served from another host still has to
 // be listed explicitly.

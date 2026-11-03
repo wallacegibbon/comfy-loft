@@ -1,9 +1,9 @@
-# Build and test automation for the gateway, which is the whole repository: the Go
+# Build and test automation for the server, which is the whole repository: the Go
 # binaries live under cmd/, and the canvas frontend is a self-contained subtree
 # under frontend/.
 #
 # Two binaries, both statically linked:
-#   bin/comfyui-gateway  the service (HTTP API, workflows, the canvas's websocket)
+#   bin/comfyloft-server  the service (HTTP API, workflows, the canvas's websocket)
 #   bin/comfyloft-mcp    the stdio bridge AlayaCore spawns to reach the canvas tools
 #
 # CGO is disabled for both. That is not a micro optimisation: a cgo build would
@@ -12,9 +12,9 @@
 
 GO      ?= go
 BIN_DIR := bin
-BIN     := $(BIN_DIR)/comfyui-gateway
+BIN     := $(BIN_DIR)/comfyloft-server
 MCP_BIN := $(BIN_DIR)/comfyloft-mcp
-GATEWAY_PKG := ./cmd/comfyui-gateway
+SERVER_PKG := ./cmd/comfyloft-server
 MCP_PKG     := ./cmd/comfyloft-mcp
 
 # The frontend is a separate npm project under frontend/. `build` stays Go-only on
@@ -39,12 +39,12 @@ export CGO_ENABLED := 0
 
 build: ## Compile both binaries into bin/
 	@mkdir -p $(BIN_DIR)
-	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN) $(GATEWAY_PKG)
+	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN) $(SERVER_PKG)
 	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(MCP_BIN) $(MCP_PKG)
 	@echo "built $(BIN) $(MCP_BIN)"
 
-run: ## Run the gateway from source, serving the built canvas bundle
-	WEB_DIR=$(FRONTEND_DIR)/dist $(GO) run $(GATEWAY_PKG)
+run: ## Run the server from source, serving the built canvas bundle
+	WEB_DIR=$(FRONTEND_DIR)/dist $(GO) run $(SERVER_PKG)
 
 frontend-deps: ## Install frontend dependencies when node_modules is missing or stale
 	@if [ ! -f $(FRONTEND_STAMP) ] || [ $(FRONTEND_DIR)/package-lock.json -nt $(FRONTEND_STAMP) ]; then \
@@ -71,7 +71,7 @@ test: ## Run the test suite
 	$(GO) test $(PKGS)
 
 # The race detector needs cgo, so this target re-enables it for the test binary
-# only. The shipped gateway stays CGO_ENABLED=0 and fully static.
+# only. The shipped server stays CGO_ENABLED=0 and fully static.
 test-race: ## Run the test suite with the race detector (needs a C toolchain)
 	CGO_ENABLED=1 $(GO) test -race $(PKGS)
 

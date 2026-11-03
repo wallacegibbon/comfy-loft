@@ -4,8 +4,8 @@ import i18n from "@/i18n";
  * Chinese copy for the resource catalogue.
  *
  * `resources.json` is data and therefore English (docs/decisions.md #8, #66), but the resource
- * panel is UI: a Chinese reader should see Chinese. The gateway does not carry a second language, so
- * the translation lives here, keyed by the resource's stable id — exactly what `gateway-labels.ts`
+ * panel is UI: a Chinese reader should see Chinese. The server does not carry a second language, so
+ * the translation lives here, keyed by the resource's stable id — exactly what `server-labels.ts`
  * does for workflow labels. A pack or resource this file has never heard of (something you added
  * yourself) keeps the English text from the index, which is the right answer for an unknown id.
  *

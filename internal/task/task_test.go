@@ -51,7 +51,7 @@ func waitFor(t *testing.T, what string, condition func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
-// A panic inside a run is that run's failure, not the gateway's.
+// A panic inside a run is that run's failure, not the server's.
 //
 // Go has no per-goroutine recovery: an unrecovered panic in the worker kills the process, taking every
 // canvas and every other run with it. The run executes graph- and request-shaped data, so it is the place
@@ -506,7 +506,7 @@ func TestACancelledRunIsReportedOnce(t *testing.T) {
 	}
 }
 
-// The ask lives on the run record, which is on disk — so a gateway that comes back to a run it started
+// The ask lives on the run record, which is on disk — so a server that comes back to a run it started
 // still knows who was waiting. Nothing is reported for a record it merely found there: the agent that
 // asked went with the process, and a restart is not an ending anybody is left to hear about.
 func TestTheAskIsOnTheRecordAndAReplayedOneReportsNobody(t *testing.T) {
@@ -552,7 +552,7 @@ func TestTheAskIsOnTheRecordAndAReplayedOneReportsNobody(t *testing.T) {
 	}
 }
 
-// A run that was out when the gateway stopped is not a run that failed.
+// A run that was out when the server stopped is not a run that failed.
 //
 // The render belongs to ComfyUI and did not stop because this process did, so the record keeps its prompt id
 // and comes back marked `Resumed` for the server to re-attach to. A task that never got a prompt id was

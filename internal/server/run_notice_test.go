@@ -76,7 +76,7 @@ func TestRunNoticeNamesTheNodeAndWhatHappened(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			notice := runNotice(test.task)
 			if !strings.HasPrefix(notice, "[comfyloft] ") {
-				t.Errorf("notice = %q, want it marked as the gateway speaking", notice)
+				t.Errorf("notice = %q, want it marked as the server speaking", notice)
 			}
 			for _, want := range test.wants {
 				if !strings.Contains(notice, want) {

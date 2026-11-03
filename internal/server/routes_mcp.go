@@ -2,8 +2,8 @@ package server
 
 // The agent's hands.
 //
-// AlayaCore runs its own built-in tools, so the only way for it to do something this gateway knows
-// about is MCP (`mcp.conf` in its config directory). The gateway is already the process holding the
+// AlayaCore runs its own built-in tools, so the only way for it to do something this server knows
+// about is MCP (`mcp.conf` in its config directory). The server is already the process holding the
 // socket to the browser, so it is also the natural MCP server: a tool call arrives here, goes down the
 // session's socket, and comes back with whatever the canvas did.
 //
@@ -37,7 +37,7 @@ type mcpTool struct {
 //
 // The blocks are carried as the page produced them — `json.RawMessage` and not a struct, because the
 // protocol's content is self-describing and grows: text, image and audio carry their own `mimeType`,
-// `resource` carries a blob, and a field this gateway has never heard of is still a field the client may
+// `resource` carries a blob, and a field this server has never heard of is still a field the client may
 // need. Nothing here inspects them, and nothing converts one kind into another.
 type mcpResult struct {
 	Content json.RawMessage `json:"content"`
@@ -247,7 +247,7 @@ func (s *Server) mcpTools() []mcpTool {
 }
 
 // callMCPTool hands one call to the session's canvas, which is the only thing that can run it: the
-// gateway knows the vocabulary, the page knows the nodes.
+// server knows the vocabulary, the page knows the nodes.
 //
 // Everything that goes wrong is a tool result with `isError`, not a JSON-RPC error. The agent is holding
 // a turn open waiting for this write; telling it "the canvas did not answer" lets it say so, while a
@@ -259,13 +259,13 @@ func (s *Server) callMCPTool(sessionID, name string, args json.RawMessage) (mcpR
 		return mcpResult{Content: agent.TextContent("no agent is attached to " + sessionID + " any more — its canvas tab was closed or its process was released"), IsError: true}, nil
 	}
 	if !s.hasMCPTool(name) {
-		return mcpResult{Content: agent.TextContent("this gateway has no tool named " + name + "; it offers what tools/list advertises"), IsError: true}, nil
+		return mcpResult{Content: agent.TextContent("this server has no tool named " + name + "; it offers what tools/list advertises"), IsError: true}, nil
 	}
 	content, failed := session.CallTool(name, args)
 	return mcpResult{Content: content, IsError: failed}, nil
 }
 
-// hasMCPTool reports whether the advertised table contains this name: the gateway owns the vocabulary
+// hasMCPTool reports whether the advertised table contains this name: the server owns the vocabulary
 // even though the canvas is what runs a tool, so an unknown name is refused before it leaves.
 func (s *Server) hasMCPTool(name string) bool {
 	for _, tool := range s.mcpTools() {

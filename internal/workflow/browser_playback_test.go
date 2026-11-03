@@ -52,7 +52,7 @@ func TestShippedVideoWorkflowsAreBrowserPlayable(t *testing.T) {
 		}
 		var graph map[string]any
 		if err := json.Unmarshal(data, &graph); err != nil {
-			// A UI-format export is not a graph the gateway can use; skip it here.
+			// A UI-format export is not a graph the server can use; skip it here.
 			continue
 		}
 

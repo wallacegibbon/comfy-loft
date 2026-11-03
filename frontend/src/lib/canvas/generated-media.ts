@@ -13,7 +13,7 @@ import { readImageSize, type UploadedImage } from "@/services/image-storage";
  * picture's size, a clip's duration — and a browser reads that from the URL the run reports.
  *
  * The user's own files still go through `uploadCanvasFile`: those bytes are new, they have no name yet, and
- * picking one is the gateway's job.
+ * picking one is the server's job.
  */
 
 /** One output of a run, as the document names it. */

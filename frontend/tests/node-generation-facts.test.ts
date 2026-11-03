@@ -6,7 +6,7 @@ import { generationClause } from "../src/lib/canvas/node-generation-facts";
  * What a tool says about how a node's content was made.
  *
  * `list_nodes` and `read_node` both print this clause, and the agent's answer to "which model drew this,
- * and when" is only as good as the sentence they print. The stamp is the gateway's own instant, printed
+ * and when" is only as good as the sentence they print. The stamp is the server's own instant, printed
  * as recorded: a locale would make the same fact read differently for the model and for the user (#227).
  */
 describe("generationClause", () => {

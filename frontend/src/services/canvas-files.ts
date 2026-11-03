@@ -1,4 +1,4 @@
-import { LOCAL_GATEWAY_BASE_URL } from "@/constant/app-mode";
+import { LOCAL_SERVER_BASE_URL } from "@/constant/app-mode";
 import { httpJson } from "@/services/api/http";
 
 /**
@@ -52,7 +52,7 @@ export function mediaIdOf(reference: { storageKey?: string }): string {
 export function canvasFileUrl(canvasId: string, key: string | undefined): string {
     const name = fileNameOf(key);
     if (!canvasId || !name) return "";
-    return `${LOCAL_GATEWAY_BASE_URL}/api/canvases/${encodeURIComponent(canvasId)}/files/${encodeURIComponent(name)}`;
+    return `${LOCAL_SERVER_BASE_URL}/api/canvases/${encodeURIComponent(canvasId)}/files/${encodeURIComponent(name)}`;
 }
 
 /** The URL of a file in the canvas being edited. */
@@ -65,14 +65,14 @@ type UploadedCanvasFile = { key: string; name: string; url: string; mimeType: st
 /**
  * Put bytes into a canvas and get back the name they were given.
  *
- * The gateway names files, not the client: names are unique inside a canvas, and a client that picked
+ * The server names files, not the client: names are unique inside a canvas, and a client that picked
  * them would have to avoid collisions it cannot see (a run finishing in another tab, an import).
  */
 export async function uploadCanvasFile(canvasId: string, blob: Blob, filename: string, signal?: AbortSignal): Promise<UploadedCanvasFile> {
     if (!canvasId) throw new Error("no canvas is open");
     const body = new FormData();
     body.append("file", blob, filename);
-    const payload = await httpJson<{ upload?: { id?: string; url?: string; mime?: string; bytes?: number } }>(`${LOCAL_GATEWAY_BASE_URL}/api/canvases/${encodeURIComponent(canvasId)}/uploads`, {
+    const payload = await httpJson<{ upload?: { id?: string; url?: string; mime?: string; bytes?: number } }>(`${LOCAL_SERVER_BASE_URL}/api/canvases/${encodeURIComponent(canvasId)}/uploads`, {
         method: "POST",
         body,
         signal,

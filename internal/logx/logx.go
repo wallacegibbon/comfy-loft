@@ -18,7 +18,7 @@ type Logger struct {
 	mu     sync.Mutex
 }
 
-// New builds a logger; prefix is usually "gateway".
+// New builds a logger; prefix is usually "server".
 func New(prefix string) *Logger {
 	return &Logger{prefix: prefix, out: os.Stdout}
 }

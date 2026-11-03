@@ -10,7 +10,7 @@ import { Switch } from "@/components/kit/choice";
 import i18n from "@/i18n";
 import { type CanvasTheme } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
-import { gatewayVariantLabel } from "@/lib/gateway-labels";
+import { serverVariantLabel } from "@/lib/server-labels";
 import { channelModelOf } from "@/stores/use-config-store";
 import type { AiConfig } from "@/stores/use-config-store";
 
@@ -34,11 +34,11 @@ type CanvasImageSettingsPopoverProps = {
     autoAdjustOverflow?: boolean;
 };
 
-// Variant labels arrive from the gateway in English, because registry.json is data
-// (docs/decisions.md #8). `gatewayVariantLabel` answers with the Chinese one from the
-// dictionary when the UI is Chinese and hands back the gateway text — or the bare mode id —
+// Variant labels arrive from the server in English, because registry.json is data
+// (docs/decisions.md #8). `serverVariantLabel` answers with the Chinese one from the
+// dictionary when the UI is Chinese and hands back the server text — or the bare mode id —
 // otherwise, which is why the four strings are not repeated here.
-const qwenVariantLabel = (mode: string, labels: Record<string, string> | undefined) => labels?.[mode] || gatewayVariantLabel(mode, mode);
+const qwenVariantLabel = (mode: string, labels: Record<string, string> | undefined) => labels?.[mode] || serverVariantLabel(mode, mode);
 const editRatioOptions = ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"] as const;
 
 function qwenCanvasSize(resolution: string | number, ratio: string) {
@@ -53,7 +53,7 @@ function qwenCanvasSize(resolution: string | number, ratio: string) {
 /**
  * Which ratio pill the stored size came from, or "" for a size no pill wrote.
  *
- * The selected ratio used to be saved as its own param, `editCanvasRatio`, and travelled to the gateway
+ * The selected ratio used to be saved as its own param, `editCanvasRatio`, and travelled to the server
  * with every request — where it is not a workflow input, so the run was refused. Only `editCanvasSize` is
  * the workflow's, and the pill can be read back through the same table that wrote it.
  */

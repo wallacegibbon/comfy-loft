@@ -14,7 +14,7 @@ import { CanvasConflictError, CanvasMissingError, type CanvasDocument, type Canv
  *   - **Ordering.** One save per canvas at a time. A second flush while one is in flight does not
  *     start a second request: it marks the canvas dirty again, and the in-flight save schedules the
  *     next one when it finishes. That is what keeps `rev` meaningful — two saves racing each other
- *     would hand the gateway a stale `If-Match` on purpose.
+ *     would hand the server a stale `If-Match` on purpose.
  *   - **Deciding what a failure means.** A network error is temporary: retry with backoff and keep the
  *     canvas dirty. A 409 is neither temporary nor a network failure: the copy on disk moved on, which
  *     in a single-user build means another tab is editing the same canvas. Retrying with the new version

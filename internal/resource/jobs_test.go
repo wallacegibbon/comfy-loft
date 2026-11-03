@@ -18,7 +18,7 @@ import (
 	"comfyloft/internal/setup"
 )
 
-// comfyLayout stands in for the folder layout a running ComfyUI reports. The gateway no
+// comfyLayout stands in for the folder layout a running ComfyUI reports. The server no
 // longer takes a ComfyUI directory in its config, so tests speak the same language.
 func comfyLayout(t *testing.T, root string) map[string]any {
 	t.Helper()
@@ -351,7 +351,7 @@ func TestInstallJobFinishesWithDoneStatus(t *testing.T) {
 }
 
 // A manager without a setup has no ComfyUI to ask, and the status projection is what a unit test or a
-// gateway that never scanned sees. It has to answer — an empty catalogue, not a panic.
+// server that never scanned sees. It has to answer — an empty catalogue, not a panic.
 func TestStatusWithoutASetupAnswersInsteadOfPanicking(t *testing.T) {
 	manager := &Manager{
 		cfg:       &config.Config{RootDir: t.TempDir()},

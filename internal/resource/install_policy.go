@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-// InstallPolicy says whether this gateway may write into ComfyUI's folders.
+// InstallPolicy says whether this server may write into ComfyUI's folders.
 //
 // An install writes files into ComfyUI's model and custom_nodes folders, so it only works when
-// the gateway runs on the ComfyUI machine or sees those folders through a mount. That is a property of
+// the server runs on the ComfyUI machine or sees those folders through a mount. That is a property of
 // the deployment and cannot be discovered reliably from inside the process: a mount at a
 // different path looks exactly like a remote machine, and two hosts that both install to
 // /opt/ComfyUI look exactly like one. So it is stated in the environment, never guessed:
@@ -24,7 +24,7 @@ import (
 type InstallPolicy struct {
 	// Allowed is true only for INSTALL_INTO_COMFY=1.
 	Allowed bool `json:"allowed"`
-	// ComfyHost is COMFY_URL's host:port: the machine the gateway has to move to.
+	// ComfyHost is COMFY_URL's host:port: the machine the server has to move to.
 	ComfyHost string `json:"comfyHost"`
 }
 
@@ -62,9 +62,9 @@ func (m *Manager) installRootUnknownMessage() string {
 // named because the reader knows which one applies and the process does not.
 func installRefusedMessage(policy InstallPolicy) string {
 	return fmt.Sprintf(
-		"model installs are off: INSTALL_INTO_COMFY is not 1, so the gateway has not been told it may write "+
+		"model installs are off: INSTALL_INTO_COMFY is not 1, so the server has not been told it may write "+
 			"into ComfyUI's folders. Installs in this state would only fill this host's disk while ComfyUI kept "+
-			"reporting the model as missing. If the gateway runs on the ComfyUI machine (%s) or those folders "+
-			"are mounted here, set INSTALL_INTO_COMFY=1; otherwise run the gateway there instead.",
+			"reporting the model as missing. If the server runs on the ComfyUI machine (%s) or those folders "+
+			"are mounted here, set INSTALL_INTO_COMFY=1; otherwise run the server there instead.",
 		defaultString(policy.ComfyHost, "COMFY_URL"))
 }

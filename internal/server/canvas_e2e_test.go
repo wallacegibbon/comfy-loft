@@ -13,13 +13,13 @@ import (
 	"testing"
 )
 
-// canvasGateway is a gateway with a canvas root of its own, so a test never sees another test's
+// canvasServer is a server with a canvas root of its own, so a test never sees another test's
 // canvases (or the developer's).
-func canvasGateway(t *testing.T) *httptest.Server {
+func canvasServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	gateway := httptest.NewServer(newTestGateway(t, newFakeComfy(t)).Handler())
-	t.Cleanup(gateway.Close)
-	return gateway
+	server := httptest.NewServer(newTestServer(t, newFakeComfy(t)).Handler())
+	t.Cleanup(server.Close)
+	return server
 }
 
 // doJSONRev is doJSON with a body and an If-Match header.
@@ -77,11 +77,11 @@ func canvasOf(t *testing.T, payload map[string]any) (id, rev, document string) {
 }
 
 func TestCanvasLifecycleOverHTTP(t *testing.T) {
-	gateway := canvasGateway(t)
-	client := gateway.Client()
+	server := canvasServer(t)
+	client := server.Client()
 
 	// Create carries the document, so one request makes a canvas that is already something.
-	status, payload := doJSON(t, client, http.MethodPost, gateway.URL+"/api/canvases", map[string]any{
+	status, payload := doJSON(t, client, http.MethodPost, server.URL+"/api/canvases", map[string]any{
 		"title":    "First canvas",
 		"document": map[string]any{"nodes": []any{map[string]any{"id": "n1", "type": "text"}}, "viewport": map[string]any{"x": 0, "y": 0, "k": 1}},
 	})
@@ -97,7 +97,7 @@ func TestCanvasLifecycleOverHTTP(t *testing.T) {
 	}
 
 	// It is in the list.
-	status, payload = doJSON(t, client, http.MethodGet, gateway.URL+"/api/canvases", nil)
+	status, payload = doJSON(t, client, http.MethodGet, server.URL+"/api/canvases", nil)
 	if status != http.StatusOK {
 		t.Fatalf("list status = %d", status)
 	}
@@ -107,7 +107,7 @@ func TestCanvasLifecycleOverHTTP(t *testing.T) {
 	}
 
 	// Reading it back gives the same rev and document.
-	status, payload = doJSON(t, client, http.MethodGet, gateway.URL+"/api/canvases/"+id, nil)
+	status, payload = doJSON(t, client, http.MethodGet, server.URL+"/api/canvases/"+id, nil)
 	if status != http.StatusOK {
 		t.Fatalf("get status = %d", status)
 	}
@@ -117,7 +117,7 @@ func TestCanvasLifecycleOverHTTP(t *testing.T) {
 	}
 
 	// Saving with the rev that was just read is accepted and moves the rev on.
-	status, payload, _ = doJSONRev(t, client, http.MethodPut, gateway.URL+"/api/canvases/"+id, map[string]any{
+	status, payload, _ = doJSONRev(t, client, http.MethodPut, server.URL+"/api/canvases/"+id, map[string]any{
 		"document": map[string]any{"nodes": []any{}},
 	}, rev)
 	if status != http.StatusOK {
@@ -130,31 +130,31 @@ func TestCanvasLifecycleOverHTTP(t *testing.T) {
 	}
 
 	// Deleting it makes it not found, twice over.
-	if status, payload = doJSON(t, client, http.MethodDelete, gateway.URL+"/api/canvases/"+id, nil); status != http.StatusOK {
+	if status, payload = doJSON(t, client, http.MethodDelete, server.URL+"/api/canvases/"+id, nil); status != http.StatusOK {
 		t.Fatalf("delete status = %d: %v", status, payload)
 	}
-	if status, _ = doJSON(t, client, http.MethodGet, gateway.URL+"/api/canvases/"+id, nil); status != http.StatusNotFound {
+	if status, _ = doJSON(t, client, http.MethodGet, server.URL+"/api/canvases/"+id, nil); status != http.StatusNotFound {
 		t.Errorf("get after delete = %d, want 404", status)
 	}
-	if status, _ = doJSON(t, client, http.MethodDelete, gateway.URL+"/api/canvases/"+id, nil); status != http.StatusNotFound {
+	if status, _ = doJSON(t, client, http.MethodDelete, server.URL+"/api/canvases/"+id, nil); status != http.StatusNotFound {
 		t.Errorf("second delete = %d, want 404", status)
 	}
 }
 
 func TestCanvasSaveOnAStaleRevIsAConflictThatCarriesTheCurrentOne(t *testing.T) {
-	gateway := canvasGateway(t)
-	client := gateway.Client()
+	server := canvasServer(t)
+	client := server.Client()
 
-	_, payload, _ := doJSONRev(t, client, http.MethodPost, gateway.URL+"/api/canvases", map[string]any{"title": "shared"}, "")
+	_, payload, _ := doJSONRev(t, client, http.MethodPost, server.URL+"/api/canvases", map[string]any{"title": "shared"}, "")
 	id, rev, _ := canvasOf(t, payload)
 
-	status, saved, _ := doJSONRev(t, client, http.MethodPut, gateway.URL+"/api/canvases/"+id, map[string]any{"document": map[string]any{"winner": true}}, rev)
+	status, saved, _ := doJSONRev(t, client, http.MethodPut, server.URL+"/api/canvases/"+id, map[string]any{"document": map[string]any{"winner": true}}, rev)
 	if status != http.StatusOK {
 		t.Fatalf("first save = %d: %v", status, saved)
 	}
 	currentRev, _ := saved["summary"].(map[string]any)["rev"].(string)
 
-	status, payload, _ = doJSONRev(t, client, http.MethodPut, gateway.URL+"/api/canvases/"+id, map[string]any{"document": map[string]any{"loser": true}}, rev)
+	status, payload, _ = doJSONRev(t, client, http.MethodPut, server.URL+"/api/canvases/"+id, map[string]any{"document": map[string]any{"loser": true}}, rev)
 	if status != http.StatusConflict {
 		t.Fatalf("stale save = %d, want 409: %v", status, payload)
 	}
@@ -170,32 +170,32 @@ func TestCanvasSaveOnAStaleRevIsAConflictThatCarriesTheCurrentOne(t *testing.T) 
 }
 
 func TestCanvasSaveWithoutAPreconditionIsAccepted(t *testing.T) {
-	gateway := canvasGateway(t)
-	client := gateway.Client()
+	server := canvasServer(t)
+	client := server.Client()
 
-	_, payload := doJSON(t, client, http.MethodPost, gateway.URL+"/api/canvases", map[string]any{"title": "no rev"})
+	_, payload := doJSON(t, client, http.MethodPost, server.URL+"/api/canvases", map[string]any{"title": "no rev"})
 	id, _, _ := canvasOf(t, payload)
 
-	status, saved, _ := doJSONRev(t, client, http.MethodPut, gateway.URL+"/api/canvases/"+id, map[string]any{"document": map[string]any{"nodes": []any{}}}, "")
+	status, saved, _ := doJSONRev(t, client, http.MethodPut, server.URL+"/api/canvases/"+id, map[string]any{"document": map[string]any{"nodes": []any{}}}, "")
 	if status != http.StatusOK {
 		t.Fatalf("save without If-Match = %d: %v", status, saved)
 	}
 }
 
 func TestCanvasIdsAndDocumentsThatAreWrongAreBadRequests(t *testing.T) {
-	gateway := canvasGateway(t)
-	client := gateway.Client()
+	server := canvasServer(t)
+	client := server.Client()
 
-	_, payload := doJSON(t, client, http.MethodPost, gateway.URL+"/api/canvases", map[string]any{"title": "ok"})
+	_, payload := doJSON(t, client, http.MethodPost, server.URL+"/api/canvases", map[string]any{"title": "ok"})
 	id, rev, _ := canvasOf(t, payload)
 
 	for _, bad := range []string{"ABC", "zzzzzzzzzzzz", "..%2Fetc%2Fpasswd", "abcdefabcdef00"} {
-		if status, body := doJSON(t, client, http.MethodGet, gateway.URL+"/api/canvases/"+bad, nil); status != http.StatusBadRequest {
+		if status, body := doJSON(t, client, http.MethodGet, server.URL+"/api/canvases/"+bad, nil); status != http.StatusBadRequest {
 			t.Errorf("GET %q = %d (%v), want 400", bad, status, body)
 		}
 	}
 
-	status, body, _ := doJSONRev(t, client, http.MethodPut, gateway.URL+"/api/canvases/"+id, map[string]any{"document": []any{1, 2, 3}}, rev)
+	status, body, _ := doJSONRev(t, client, http.MethodPut, server.URL+"/api/canvases/"+id, map[string]any{"document": []any{1, 2, 3}}, rev)
 	if status != http.StatusBadRequest {
 		t.Errorf("array document = %d (%v), want 400", status, body)
 	}
@@ -205,16 +205,16 @@ func TestCanvasIdsAndDocumentsThatAreWrongAreBadRequests(t *testing.T) {
 }
 
 func TestCanvasSaveKeepsATitleItWasNotGiven(t *testing.T) {
-	gateway := canvasGateway(t)
-	client := gateway.Client()
+	server := canvasServer(t)
+	client := server.Client()
 
-	_, payload := doJSON(t, client, http.MethodPost, gateway.URL+"/api/canvases", map[string]any{"title": "do not lose me"})
+	_, payload := doJSON(t, client, http.MethodPost, server.URL+"/api/canvases", map[string]any{"title": "do not lose me"})
 	id, rev, _ := canvasOf(t, payload)
 
-	if status, body, _ := doJSONRev(t, client, http.MethodPut, gateway.URL+"/api/canvases/"+id, map[string]any{"document": map[string]any{"nodes": []any{}}}, rev); status != http.StatusOK {
+	if status, body, _ := doJSONRev(t, client, http.MethodPut, server.URL+"/api/canvases/"+id, map[string]any{"document": map[string]any{"nodes": []any{}}}, rev); status != http.StatusOK {
 		t.Fatalf("save = %d: %v", status, body)
 	}
-	_, payload = doJSON(t, client, http.MethodGet, gateway.URL+"/api/canvases/"+id, nil)
+	_, payload = doJSON(t, client, http.MethodGet, server.URL+"/api/canvases/"+id, nil)
 	if title, _ := payload["canvas"].(map[string]any)["title"].(string); title != "do not lose me" {
 		t.Errorf("title = %q, want it untouched by a save", title)
 	}
@@ -223,15 +223,15 @@ func TestCanvasSaveKeepsATitleItWasNotGiven(t *testing.T) {
 // Media belongs to a canvas: an upload lands in its files, is served from there, and is invisible from
 // any other canvas (docs/decisions.md #156).
 func TestCanvasFilesBelongToTheirCanvas(t *testing.T) {
-	gateway, _ := settingsGateway(t)
-	client := gateway.Client()
+	server, _ := settingsServer(t)
+	client := server.Client()
 
-	_, payload := doJSON(t, client, http.MethodPost, gateway.URL+"/api/canvases", map[string]any{"title": "with media"})
+	_, payload := doJSON(t, client, http.MethodPost, server.URL+"/api/canvases", map[string]any{"title": "with media"})
 	canvasID, _, _ := canvasOf(t, payload)
-	otherPayload := mustCreateCanvas(t, client, gateway.URL, "second")
+	otherPayload := mustCreateCanvas(t, client, server.URL, "second")
 	otherID, _, _ := canvasOf(t, otherPayload)
 
-	status, body := postUpload(t, gateway.URL+"/api/canvases/"+canvasID+"/uploads", "note.png", "image/png", []byte("PNG"))
+	status, body := postUpload(t, server.URL+"/api/canvases/"+canvasID+"/uploads", "note.png", "image/png", []byte("PNG"))
 	if status != http.StatusOK {
 		t.Fatalf("upload = %d %v", status, body)
 	}
@@ -242,7 +242,7 @@ func TestCanvasFilesBelongToTheirCanvas(t *testing.T) {
 		t.Fatalf("upload = %v", upload)
 	}
 
-	response, err := client.Get(gateway.URL + fileURL)
+	response, err := client.Get(server.URL + fileURL)
 	if err != nil {
 		t.Fatalf("get file: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestCanvasFilesBelongToTheirCanvas(t *testing.T) {
 	}
 
 	// Another canvas cannot read it.
-	response, err = client.Get(gateway.URL + "/api/canvases/" + otherID + "/files/" + name)
+	response, err = client.Get(server.URL + "/api/canvases/" + otherID + "/files/" + name)
 	if err != nil {
 		t.Fatalf("get from the other canvas: %v", err)
 	}
@@ -265,10 +265,10 @@ func TestCanvasFilesBelongToTheirCanvas(t *testing.T) {
 	}
 
 	// A run or an upload for a canvas that is not there is refused rather than written somewhere.
-	if status, _ := doJSON(t, client, http.MethodPost, gateway.URL+"/api/canvases/0123456789ab/runs", map[string]any{"workflow": "x"}); status != http.StatusNotFound {
+	if status, _ := doJSON(t, client, http.MethodPost, server.URL+"/api/canvases/0123456789ab/runs", map[string]any{"workflow": "x"}); status != http.StatusNotFound {
 		t.Errorf("run for an unknown canvas = %d, want 404", status)
 	}
-	if status, _ := postUpload(t, gateway.URL+"/api/canvases/0123456789ab/uploads", "a.png", "image/png", []byte("PNG")); status != http.StatusNotFound {
+	if status, _ := postUpload(t, server.URL+"/api/canvases/0123456789ab/uploads", "a.png", "image/png", []byte("PNG")); status != http.StatusNotFound {
 		t.Errorf("upload for an unknown canvas = %d, want 404", status)
 	}
 }
@@ -286,8 +286,8 @@ func mustCreateCanvas(t *testing.T, client *http.Client, base, title string) map
 // Importing is one archive in, one canvas out: the files keep the names the document uses, the document is
 // stored as it came out of the zip, and a failed import leaves nothing behind (decisions #172).
 func TestImportingAnArchiveRestoresTheCanvasAsItWasExported(t *testing.T) {
-	gateway := canvasGateway(t)
-	client := gateway.Client()
+	server := canvasServer(t)
+	client := server.Client()
 
 	document := map[string]any{
 		"nodes": []any{map[string]any{
@@ -305,7 +305,7 @@ func TestImportingAnArchiveRestoresTheCanvasAsItWasExported(t *testing.T) {
 		"files/up-a1b2c3d4.png": []byte("PNG-bytes"),
 	})
 
-	status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", archive)
+	status, payload := postArchive(t, client, server.URL+"/api/canvases/import", archive)
 	if status != http.StatusOK {
 		t.Fatalf("import = %d: %v", status, payload)
 	}
@@ -321,7 +321,7 @@ func TestImportingAnArchiveRestoresTheCanvasAsItWasExported(t *testing.T) {
 	}
 
 	// The file is there under the name the document uses, byte for byte.
-	response, err := client.Get(gateway.URL + "/api/canvases/" + id + "/files/up-a1b2c3d4.png")
+	response, err := client.Get(server.URL + "/api/canvases/" + id + "/files/up-a1b2c3d4.png")
 	if err != nil {
 		t.Fatalf("get file: %v", err)
 	}
@@ -336,8 +336,8 @@ func TestImportingAnArchiveRestoresTheCanvasAsItWasExported(t *testing.T) {
 // entry that is an empty directory: `zip -r`, Archive Utility and Explorer all write one. That entry is
 // not a canvas file and not an unexpected shape — the ordinary way of moving an export has to import.
 func TestAnImportAcceptsTheDirectoryEntriesARezipAdds(t *testing.T) {
-	gateway := canvasGateway(t)
-	client := gateway.Client()
+	server := canvasServer(t)
+	client := server.Client()
 
 	archive := buildImportArchive(t, map[string][]byte{
 		"manifest.json":         []byte(`{"app":"comfyloft","version":1,"title":"re-zipped"}`),
@@ -346,12 +346,12 @@ func TestAnImportAcceptsTheDirectoryEntriesARezipAdds(t *testing.T) {
 		"files/up-a1b2c3d4.png": []byte("PNG-bytes"),
 	})
 
-	status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", archive)
+	status, payload := postArchive(t, client, server.URL+"/api/canvases/import", archive)
 	if status != http.StatusOK {
 		t.Fatalf("import = %d: %v", status, payload)
 	}
 	id, _, _ := canvasOf(t, payload)
-	response, err := client.Get(gateway.URL + "/api/canvases/" + id + "/files/up-a1b2c3d4.png")
+	response, err := client.Get(server.URL + "/api/canvases/" + id + "/files/up-a1b2c3d4.png")
 	if err != nil {
 		t.Fatalf("get file: %v", err)
 	}
@@ -362,19 +362,19 @@ func TestAnImportAcceptsTheDirectoryEntriesARezipAdds(t *testing.T) {
 }
 
 func TestAnArchiveThatIsNotOneCanvasIsRefused(t *testing.T) {
-	gateway := canvasGateway(t)
-	client := gateway.Client()
+	server := canvasServer(t)
+	client := server.Client()
 
 	old := buildImportArchive(t, map[string][]byte{
 		"projects.json":                      []byte(`{"app":"comfyloft","version":3,"projects":[]}`),
 		"projects/abc/files/up-a1b2c3d4.png": []byte("PNG"),
 	})
-	if status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", old); status != http.StatusUnprocessableEntity || codeOf(payload) != "import_old_format" {
+	if status, payload := postArchive(t, client, server.URL+"/api/canvases/import", old); status != http.StatusUnprocessableEntity || codeOf(payload) != "import_old_format" {
 		t.Errorf("old format = %d %v, want 422 import_old_format", status, payload)
 	}
 
 	noDocument := buildImportArchive(t, map[string][]byte{"manifest.json": []byte(`{"title":"x"}`)})
-	if status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", noDocument); status != http.StatusBadRequest || codeOf(payload) != "import_no_document" {
+	if status, payload := postArchive(t, client, server.URL+"/api/canvases/import", noDocument); status != http.StatusBadRequest || codeOf(payload) != "import_no_document" {
 		t.Errorf("no document = %d %v, want 400 import_no_document", status, payload)
 	}
 
@@ -382,16 +382,16 @@ func TestAnArchiveThatIsNotOneCanvasIsRefused(t *testing.T) {
 		"canvas.json":         []byte(`{"nodes":[]}`),
 		"files/../escape.png": []byte("x"),
 	})
-	if status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", escaping); status != http.StatusUnprocessableEntity || codeOf(payload) != "import_invalid_entry" {
+	if status, payload := postArchive(t, client, server.URL+"/api/canvases/import", escaping); status != http.StatusUnprocessableEntity || codeOf(payload) != "import_invalid_entry" {
 		t.Errorf("escaping entry = %d %v, want 422 import_invalid_entry", status, payload)
 	}
 
-	if status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", []byte("not a zip")); status != http.StatusBadRequest || codeOf(payload) != "import_not_a_zip" {
+	if status, payload := postArchive(t, client, server.URL+"/api/canvases/import", []byte("not a zip")); status != http.StatusBadRequest || codeOf(payload) != "import_not_a_zip" {
 		t.Errorf("not a zip = %d %v, want 400 import_not_a_zip", status, payload)
 	}
 
 	// Nothing was created by any of that.
-	if _, payload := doJSON(t, client, http.MethodGet, gateway.URL+"/api/canvases", nil); len(payload["canvases"].([]any)) != 0 {
+	if _, payload := doJSON(t, client, http.MethodGet, server.URL+"/api/canvases", nil); len(payload["canvases"].([]any)) != 0 {
 		t.Errorf("a refused import left a canvas behind: %v", payload)
 	}
 }
@@ -469,21 +469,21 @@ func mustMarshal(t *testing.T, value any) []byte {
 // An import is bounded by its own number, and a refused one leaves no canvas behind: the archive is read
 // before anything is created, and the body is capped while it is still being copied.
 func TestAnImportPastTheLimitIsRefusedAndLeavesNothing(t *testing.T) {
-	gatewayServer := newTestGateway(t, newFakeComfy(t))
+	srv := newTestServer(t, newFakeComfy(t))
 	// A ceiling a real export could never fit under, so the limit is what refuses it.
-	gatewayServer.cfg.MaxImportBytes = 32
-	gateway := httptest.NewServer(gatewayServer.Handler())
-	t.Cleanup(gateway.Close)
-	client := gateway.Client()
+	srv.cfg.MaxImportBytes = 32
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	client := server.Client()
 
 	archive := buildImportArchive(t, map[string][]byte{
 		"canvas.json":           []byte(`{"nodes":[]}`),
 		"files/up-a1b2c3d4.png": []byte("more than thirty-two bytes of picture, certainly"),
 	})
-	if status, payload := postArchive(t, client, gateway.URL+"/api/canvases/import", archive); status != http.StatusRequestEntityTooLarge || codeOf(payload) != "import_too_large" {
+	if status, payload := postArchive(t, client, server.URL+"/api/canvases/import", archive); status != http.StatusRequestEntityTooLarge || codeOf(payload) != "import_too_large" {
 		t.Errorf("oversized archive = %d %v, want 413 import_too_large", status, payload)
 	}
-	if _, payload := doJSON(t, client, http.MethodGet, gateway.URL+"/api/canvases", nil); len(payload["canvases"].([]any)) != 0 {
+	if _, payload := doJSON(t, client, http.MethodGet, server.URL+"/api/canvases", nil); len(payload["canvases"].([]any)) != 0 {
 		t.Errorf("a refused import left a canvas behind: %v", payload)
 	}
 }

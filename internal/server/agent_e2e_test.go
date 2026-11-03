@@ -19,7 +19,7 @@ import (
 
 // The fake agent speaks AlayaCore's wire, including the part that matters for a reload: `--session <file>`
 // is the conversation. It replays that file before it says it is ready, and appends each finished turn to
-// it, which is the contract the gateway is written against.
+// it, which is the contract the server is written against.
 const fakeAgentScript = `#!/bin/sh
 printf '%s\n' "$$" >> "$FAKE_SPAWN_LOG"
 if [ -n "$FAKE_ENV_LOG" ]; then
@@ -103,8 +103,8 @@ while IFS= read -r line; do
 done
 `
 
-// startAgentGateway is a gateway whose agent is the fake binary, plus the file it appends its pid to.
-func startAgentGateway(t *testing.T) (*httptest.Server, string) {
+// startAgentServer is a server whose agent is the fake binary, plus the file it appends its pid to.
+func startAgentServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	dir := t.TempDir()
 	binary := filepath.Join(dir, "fake-agent")
@@ -113,16 +113,16 @@ func startAgentGateway(t *testing.T) (*httptest.Server, string) {
 	}
 	spawnLog := filepath.Join(dir, "spawned")
 	t.Setenv("FAKE_SPAWN_LOG", spawnLog)
-	// config.Load reads these; newTestGateway builds the config inside the call below.
+	// config.Load reads these; newTestServer builds the config inside the call below.
 	t.Setenv("ALAYACORE_BIN", binary)
 	t.Setenv("AGENT_CONFIG_PATH", t.TempDir())
 
-	gateway := httptest.NewServer(newTestGateway(t, newFakeComfy(t)).Handler())
-	t.Cleanup(gateway.Close)
-	return gateway, spawnLog
+	server := httptest.NewServer(newTestServer(t, newFakeComfy(t)).Handler())
+	t.Cleanup(server.Close)
+	return server, spawnLog
 }
 
-// spawns counts how many agent processes this gateway has started.
+// spawns counts how many agent processes this server has started.
 func spawns(t *testing.T, path string) int {
 	t.Helper()
 	raw, err := os.ReadFile(path)
@@ -134,9 +134,9 @@ func spawns(t *testing.T, path string) int {
 
 // canvasSession makes a canvas through the API and answers the name its panel gives the session: `canvas:`
 // and the canvas id, which is also the canvas whose directory keeps the conversation (#178).
-func canvasSession(t *testing.T, gateway *httptest.Server) string {
+func canvasSession(t *testing.T, server *httptest.Server) string {
 	t.Helper()
-	response, err := gateway.Client().Post(gateway.URL+"/api/canvases", "application/json", strings.NewReader(`{"title":"Talked to"}`))
+	response, err := server.Client().Post(server.URL+"/api/canvases", "application/json", strings.NewReader(`{"title":"Talked to"}`))
 	if err != nil {
 		t.Fatalf("create canvas: %v", err)
 	}
@@ -159,8 +159,8 @@ func canvasSession(t *testing.T, gateway *httptest.Server) string {
 }
 
 // socketURL is one session's socket: `history=1` is the client asking for its conversation back.
-func socketURL(gateway *httptest.Server, session string, history bool) string {
-	url := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/api/agent/socket/" + session
+func socketURL(server *httptest.Server, session string, history bool) string {
+	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/agent/socket/" + session
 	if history {
 		url += "?history=1"
 	}
@@ -169,9 +169,9 @@ func socketURL(gateway *httptest.Server, session string, history bool) string {
 
 // openSocket dials a conversation — the canvas panel's socket, which asks for a history — and drains the
 // startup broadcast and the replayed conversation, which is what a client does before it says anything.
-func openSocket(t *testing.T, gateway *httptest.Server, session string) *comfy.WSConn {
+func openSocket(t *testing.T, server *httptest.Server, session string) *comfy.WSConn {
 	t.Helper()
-	conn, err := comfy.DialWS(context.Background(), socketURL(gateway, session, true))
+	conn, err := comfy.DialWS(context.Background(), socketURL(server, session, true))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -240,8 +240,8 @@ func send(t *testing.T, conn *comfy.WSConn, message map[string]any) {
 }
 
 func TestSocketStartsWithTheModelList(t *testing.T) {
-	gateway, _ := startAgentGateway(t)
-	conn, err := comfy.DialWS(context.Background(), socketURL(gateway, canvasSession(t, gateway), false))
+	server, _ := startAgentServer(t)
+	conn, err := comfy.DialWS(context.Background(), socketURL(server, canvasSession(t, server), false))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -276,8 +276,8 @@ func TestSocketStartsWithTheModelList(t *testing.T) {
 }
 
 func TestSocketAnswersAPrompt(t *testing.T) {
-	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, canvasSession(t, gateway))
+	server, _ := startAgentServer(t)
+	conn := openSocket(t, server, canvasSession(t, server))
 
 	send(t, conn, map[string]any{"prompt": "hi"})
 	seen := until(t, conn, "done")
@@ -294,8 +294,8 @@ func TestSocketAnswersAPrompt(t *testing.T) {
 // TestSocketAnswersAgainOnTheSameConnection is what a conversation is: the second message goes to the
 // same process, so the agent still has the first in front of it.
 func TestSocketAnswersAgainOnTheSameConnection(t *testing.T) {
-	gateway, spawnLog := startAgentGateway(t)
-	conn := openSocket(t, gateway, canvasSession(t, gateway))
+	server, spawnLog := startAgentServer(t)
+	conn := openSocket(t, server, canvasSession(t, server))
 
 	for turn := 1; turn <= 2; turn++ {
 		send(t, conn, map[string]any{"prompt": "hi"})
@@ -312,11 +312,11 @@ func TestSocketAnswersAgainOnTheSameConnection(t *testing.T) {
 // one that opened last — the tab the person is looking at. The first is told it lost the session instead
 // of being left to wait for answers that will never arrive (#160).
 func TestTheNewestSocketTakesTheSessionOver(t *testing.T) {
-	gateway, _ := startAgentGateway(t)
-	session := canvasSession(t, gateway)
-	first := openSocket(t, gateway, session)
+	server, _ := startAgentServer(t)
+	session := canvasSession(t, server)
+	first := openSocket(t, server, session)
 
-	second, err := comfy.DialWS(context.Background(), socketURL(gateway, session, false))
+	second, err := comfy.DialWS(context.Background(), socketURL(server, session, false))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -345,11 +345,11 @@ func TestTheNewestSocketTakesTheSessionOver(t *testing.T) {
 // keep running for the tab that took over, or closing an old tab silently kills the conversation the
 // person is looking at.
 func TestTheReplacedSocketDoesNotTakeTheAgentWithIt(t *testing.T) {
-	gateway, spawnLog := startAgentGateway(t)
-	session := canvasSession(t, gateway)
-	first := openSocket(t, gateway, session)
+	server, spawnLog := startAgentServer(t)
+	session := canvasSession(t, server)
+	first := openSocket(t, server, session)
 
-	second, err := comfy.DialWS(context.Background(), socketURL(gateway, session, false))
+	second, err := comfy.DialWS(context.Background(), socketURL(server, session, false))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -382,8 +382,8 @@ func TestTheReplacedSocketDoesNotTakeTheAgentWithIt(t *testing.T) {
 // TestSocketRelaysTheUsersWordsOnce: the agent echoes what the canvas sent, and that echo — not a copy the
 // panel made — is what a user message is drawn from. Live and replayed arrive the same way.
 func TestSocketRelaysTheUsersWordsOnce(t *testing.T) {
-	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, canvasSession(t, gateway))
+	server, _ := startAgentServer(t)
+	conn := openSocket(t, server, canvasSession(t, server))
 
 	send(t, conn, map[string]any{"prompt": "remember the violet"})
 	seen := until(t, conn, "done")
@@ -402,8 +402,8 @@ func TestSocketRelaysTheUsersWordsOnce(t *testing.T) {
 // not a conversation, so it gets no file — one per node would live in the canvas forever, and an earlier
 // question would be carried into the next answer.
 func TestOneShotSessionKeepsNoFile(t *testing.T) {
-	gateway, server, _ := startMCPGateway(t)
-	conn, err := comfy.DialWS(context.Background(), socketURL(gateway, "node:n1", false))
+	server, api, _ := startMCPServer(t)
+	conn, err := comfy.DialWS(context.Background(), socketURL(server, "node:n1", false))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -420,16 +420,16 @@ func TestOneShotSessionKeepsNoFile(t *testing.T) {
 	until(t, conn, "done")
 
 	// There is nowhere for it to go: a conversation is kept inside its canvas, and this name is not one.
-	if file, err := server.sessionFile("node:n1"); err == nil {
+	if file, err := api.sessionFile("node:n1"); err == nil {
 		t.Fatalf("a one-shot session has a conversation file: %s", file)
 	}
 }
 
 // TestSocketRelaysTheSteeringQueue: a message sent into a running task is queued by the agent, which says so
-// and later says when it used it. The panel shows the difference; the gateway only carries it.
+// and later says when it used it. The panel shows the difference; the server only carries it.
 func TestSocketRelaysTheSteeringQueue(t *testing.T) {
-	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, canvasSession(t, gateway))
+	server, _ := startAgentServer(t)
+	conn := openSocket(t, server, canvasSession(t, server))
 
 	send(t, conn, map[string]any{"prompt": "write a long one"})
 	seen := until(t, conn, "done")
@@ -445,8 +445,8 @@ func TestSocketRelaysTheSteeringQueue(t *testing.T) {
 }
 
 func TestSocketRelaysASettingChange(t *testing.T) {
-	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, canvasSession(t, gateway))
+	server, _ := startAgentServer(t)
+	conn := openSocket(t, server, canvasSession(t, server))
 
 	send(t, conn, map[string]any{"command": "model_set", "args": "2"})
 	seen := until(t, conn, "command")
@@ -465,7 +465,7 @@ func TestSocketRelaysASettingChange(t *testing.T) {
 		t.Fatalf("messages = %v, want the agent's SM model and a successful CO", seen)
 	}
 
-	// A rejection is relayed as the agent worded it; the gateway has no opinion to add.
+	// A rejection is relayed as the agent worded it; the server has no opinion to add.
 	send(t, conn, map[string]any{"command": "model_set", "args": "99"})
 	seen = until(t, conn, "command")
 	message, _ := seen[len(seen)-1]["message"].(string)
@@ -479,12 +479,12 @@ func TestSocketRelaysASettingChange(t *testing.T) {
 // reaches the agent has to be the entry the agent announced, with the fields the canvas edited replaced —
 // and the list the command writes is one every other session is told about, since they read the same file.
 func TestModelSyncPutsBackWhatTheCanvasCannotSee(t *testing.T) {
-	gateway, _ := startAgentGateway(t)
+	server, _ := startAgentServer(t)
 	syncLog := filepath.Join(t.TempDir(), "sync")
 	t.Setenv("FAKE_SYNC_LOG", syncLog)
 
-	editor := openSocket(t, gateway, canvasSession(t, gateway))
-	watcher := openSocket(t, gateway, canvasSession(t, gateway))
+	editor := openSocket(t, server, canvasSession(t, server))
+	watcher := openSocket(t, server, canvasSession(t, server))
 
 	send(t, editor, map[string]any{
 		"command": "model_sync",
@@ -536,10 +536,10 @@ func TestModelSyncPutsBackWhatTheCanvasCannotSee(t *testing.T) {
 }
 
 // TestSocketRelaysTheToolItUsed: a built-in tool runs inside AlayaCore, so the call and its result are
-// both frames coming back. The gateway neither answers nor interprets them — it draws them.
+// both frames coming back. The server neither answers nor interprets them — it draws them.
 func TestSocketRelaysTheToolItUsed(t *testing.T) {
-	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, canvasSession(t, gateway))
+	server, _ := startAgentServer(t)
+	conn := openSocket(t, server, canvasSession(t, server))
 
 	send(t, conn, map[string]any{"prompt": "read it"})
 	seen := until(t, conn, "done")
@@ -563,13 +563,13 @@ func TestSocketRelaysTheToolItUsed(t *testing.T) {
 	}
 }
 
-// TestSocketRelaysTheSystemNoticeAndTheFailure: two frames the panel needs and the gateway used to drop.
+// TestSocketRelaysTheSystemNoticeAndTheFailure: two frames the panel needs and the server used to drop.
 // AlayaCore says what it is doing to itself as an SM `notify` (it is in no session file — it is the live
 // stream only), and a UF carries `is_error`, which is the one thing a tool result adds to the step the
 // canvas has already drawn.
 func TestSocketRelaysTheSystemNoticeAndTheFailure(t *testing.T) {
-	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, canvasSession(t, gateway))
+	server, _ := startAgentServer(t)
+	conn := openSocket(t, server, canvasSession(t, server))
 
 	send(t, conn, map[string]any{"prompt": "summarize please"})
 	seen := until(t, conn, "done")
@@ -593,9 +593,9 @@ func TestSocketRelaysTheSystemNoticeAndTheFailure(t *testing.T) {
 // TestSocketCloseReleasesTheAgent: closing the conversation is the one thing that ends an agent, and the
 // only way a canvas can say "I am done with this" rather than "I am not looking right now".
 func TestSocketCloseReleasesTheAgent(t *testing.T) {
-	gateway, spawnLog := startAgentGateway(t)
-	session := canvasSession(t, gateway)
-	conn := openSocket(t, gateway, session)
+	server, spawnLog := startAgentServer(t)
+	session := canvasSession(t, server)
+	conn := openSocket(t, server, session)
 	if got := spawns(t, spawnLog); got != 1 {
 		t.Fatalf("spawned %d agents, want 1", got)
 	}
@@ -609,7 +609,7 @@ func TestSocketCloseReleasesTheAgent(t *testing.T) {
 	}
 
 	// A new connection to the same name starts a new agent, which is what releasing it means.
-	openSocket(t, gateway, session)
+	openSocket(t, server, session)
 	if got := spawns(t, spawnLog); got != 2 {
 		t.Fatalf("spawned %d agents after closing, want a new one", got)
 	}
@@ -619,9 +619,9 @@ func TestSocketCloseReleasesTheAgent(t *testing.T) {
 // connection gets a new process that replays what was said from the session file. That is what makes a
 // reloaded page show the conversation it left, and it is the reason the process may be this short-lived.
 func TestSocketGoingAwayReplaysTheConversation(t *testing.T) {
-	gateway, spawnLog := startAgentGateway(t)
-	session := canvasSession(t, gateway)
-	conn := openSocket(t, gateway, session)
+	server, spawnLog := startAgentServer(t)
+	session := canvasSession(t, server)
+	conn := openSocket(t, server, session)
 	if got := spawns(t, spawnLog); got != 1 {
 		t.Fatalf("spawned %d agents, want 1", got)
 	}
@@ -635,7 +635,7 @@ func TestSocketGoingAwayReplaysTheConversation(t *testing.T) {
 	}
 
 	// A new connection: a new process, and the words from the file — not an empty conversation.
-	next, err := comfy.DialWS(context.Background(), socketURL(gateway, session, true))
+	next, err := comfy.DialWS(context.Background(), socketURL(server, session, true))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -682,13 +682,13 @@ func TestSocketGoingAwayReplaysTheConversation(t *testing.T) {
 // TestDeletingASessionForgetsTheConversation: the canvas can also end its conversation without ending
 // itself. The file goes, and the next connection starts clean.
 func TestDeletingASessionForgetsTheConversation(t *testing.T) {
-	gateway, server, _ := startMCPGateway(t)
-	session := canvasSession(t, gateway)
-	conn := openSocket(t, gateway, session)
+	server, api, _ := startMCPServer(t)
+	session := canvasSession(t, server)
+	conn := openSocket(t, server, session)
 	send(t, conn, map[string]any{"prompt": "remember the violet"})
 	until(t, conn, "done")
 
-	file, err := server.sessionFile(session)
+	file, err := api.sessionFile(session)
 	if err != nil {
 		t.Fatalf("session file: %v", err)
 	}
@@ -696,11 +696,11 @@ func TestDeletingASessionForgetsTheConversation(t *testing.T) {
 		t.Fatalf("the fake agent wrote no session file: %v", err)
 	}
 
-	request, err := http.NewRequest(http.MethodDelete, gateway.URL+"/api/agent/session/"+session, nil)
+	request, err := http.NewRequest(http.MethodDelete, server.URL+"/api/agent/session/"+session, nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	response, err := gateway.Client().Do(request)
+	response, err := server.Client().Do(request)
 	if err != nil {
 		t.Fatalf("delete: %v", err)
 	}
@@ -713,7 +713,7 @@ func TestDeletingASessionForgetsTheConversation(t *testing.T) {
 	}
 
 	// The next connection is a new conversation: nothing to replay.
-	next, err := comfy.DialWS(context.Background(), socketURL(gateway, session, true))
+	next, err := comfy.DialWS(context.Background(), socketURL(server, session, true))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -729,13 +729,13 @@ func TestDeletingASessionForgetsTheConversation(t *testing.T) {
 }
 
 // TestDeletingABusySessionIsRefused: a turn in flight is writing the next entry of the file a delete would
-// remove, so the gateway refuses and changes nothing — no release, no removal. The panel disables its
+// remove, so the server refuses and changes nothing — no release, no removal. The panel disables its
 // button for the same reason (#187); this is the rule it is being courteous about.
 func TestDeletingABusySessionIsRefused(t *testing.T) {
-	gateway, server, _ := startMCPGateway(t)
-	session := canvasSession(t, gateway)
-	conn := openSocket(t, gateway, session)
-	file, err := server.sessionFile(session)
+	server, api, _ := startMCPServer(t)
+	session := canvasSession(t, server)
+	conn := openSocket(t, server, session)
+	file, err := api.sessionFile(session)
 	if err != nil {
 		t.Fatalf("session file: %v", err)
 	}
@@ -744,7 +744,7 @@ func TestDeletingABusySessionIsRefused(t *testing.T) {
 	send(t, conn, map[string]any{"prompt": "answer slowly"})
 	time.Sleep(300 * time.Millisecond)
 
-	status, body := deleteSession(t, gateway, session)
+	status, body := deleteSession(t, server, session)
 	if status != http.StatusConflict || !strings.Contains(body, "agent_busy") {
 		t.Fatalf("delete during a turn answered %d %q, want 409 agent_busy", status, body)
 	}
@@ -757,7 +757,7 @@ func TestDeletingABusySessionIsRefused(t *testing.T) {
 
 	// The turn ends, and now the same request goes through.
 	until(t, conn, "done")
-	if status, body := deleteSession(t, gateway, session); status != http.StatusOK {
+	if status, body := deleteSession(t, server, session); status != http.StatusOK {
 		t.Fatalf("delete after the turn answered %d %q, want 200", status, body)
 	}
 	if _, err := os.Stat(file); !os.IsNotExist(err) {
@@ -765,14 +765,14 @@ func TestDeletingABusySessionIsRefused(t *testing.T) {
 	}
 }
 
-// deleteSession asks the gateway to forget a conversation and reports what it answered.
-func deleteSession(t *testing.T, gateway *httptest.Server, session string) (int, string) {
+// deleteSession asks the server to forget a conversation and reports what it answered.
+func deleteSession(t *testing.T, server *httptest.Server, session string) (int, string) {
 	t.Helper()
-	request, err := http.NewRequest(http.MethodDelete, gateway.URL+"/api/agent/session/"+session, nil)
+	request, err := http.NewRequest(http.MethodDelete, server.URL+"/api/agent/session/"+session, nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	response, err := gateway.Client().Do(request)
+	response, err := server.Client().Do(request)
 	if err != nil {
 		t.Fatalf("delete: %v", err)
 	}
@@ -785,14 +785,14 @@ func deleteSession(t *testing.T, gateway *httptest.Server, session string) (int,
 // TestDeletingACanvasTakesItsConversationWithIt: the conversation is part of the canvas, so deleting the
 // canvas is all it takes for the conversation to be gone — there is no second file anywhere to forget.
 func TestDeletingACanvasTakesItsConversationWithIt(t *testing.T) {
-	gateway, server, _ := startMCPGateway(t)
-	session := canvasSession(t, gateway)
+	server, api, _ := startMCPServer(t)
+	session := canvasSession(t, server)
 	id := strings.TrimPrefix(session, canvasSessionPrefix)
-	conn := openSocket(t, gateway, session)
+	conn := openSocket(t, server, session)
 	send(t, conn, map[string]any{"prompt": "remember the violet"})
 	until(t, conn, "done")
 
-	file, err := server.canvases.SessionPath(id)
+	file, err := api.canvases.SessionPath(id)
 	if err != nil {
 		t.Fatalf("SessionPath: %v", err)
 	}
@@ -800,15 +800,15 @@ func TestDeletingACanvasTakesItsConversationWithIt(t *testing.T) {
 		t.Fatalf("the fake agent wrote no conversation: %v", err)
 	}
 	// One directory holds the document, the media and the conversation.
-	if want := filepath.Join(server.cfg.CanvasRoot, id); filepath.Dir(file) != want {
+	if want := filepath.Join(api.cfg.CanvasRoot, id); filepath.Dir(file) != want {
 		t.Fatalf("conversation at %q, want a file in %q", file, want)
 	}
 
-	request, err := http.NewRequest(http.MethodDelete, gateway.URL+"/api/canvases/"+id, nil)
+	request, err := http.NewRequest(http.MethodDelete, server.URL+"/api/canvases/"+id, nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	response, err := gateway.Client().Do(request)
+	response, err := server.Client().Do(request)
 	if err != nil {
 		t.Fatalf("delete canvas: %v", err)
 	}
@@ -816,7 +816,7 @@ func TestDeletingACanvasTakesItsConversationWithIt(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("delete canvas: status %d", response.StatusCode)
 	}
-	if _, err := os.Stat(filepath.Join(server.cfg.CanvasRoot, id)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(api.cfg.CanvasRoot, id)); !os.IsNotExist(err) {
 		t.Fatalf("the canvas directory survived: %v", err)
 	}
 }
@@ -824,8 +824,8 @@ func TestDeletingACanvasTakesItsConversationWithIt(t *testing.T) {
 // TestSocketReportsADeadProcess: an agent killed under a live conversation has to be reported, not
 // waited on.
 func TestSocketReportsADeadProcess(t *testing.T) {
-	gateway, _ := startAgentGateway(t)
-	conn := openSocket(t, gateway, canvasSession(t, gateway))
+	server, _ := startAgentServer(t)
+	conn := openSocket(t, server, canvasSession(t, server))
 
 	// The fake agent exits on this prompt, which is what a crash looks like from here.
 	send(t, conn, map[string]any{"prompt": "die"})
@@ -844,13 +844,13 @@ func TestSocketReportsADeadProcess(t *testing.T) {
 // as a message from the user — it goes in as a prompt, the agent echoes it, and the socket relays that
 // echo, which is what makes the panel draw it like anything typed (docs/decisions.md #225).
 func TestARunFinishingTellsTheAgentThatAskedForIt(t *testing.T) {
-	gateway, _ := startAgentGateway(t)
-	session := canvasSession(t, gateway)
+	server, _ := startAgentServer(t)
+	session := canvasSession(t, server)
 	canvas := strings.TrimPrefix(session, "canvas:")
-	conn := openSocket(t, gateway, session)
+	conn := openSocket(t, server, session)
 
 	// The request the page submits after answering `generate`: the run, and who is waiting to hear of it.
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/canvases/"+canvas+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, server.URL+"/api/canvases/"+canvas+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 		"askedBy":  map[string]any{"session": session, "node": "n12"},
@@ -862,7 +862,7 @@ func TestARunFinishingTellsTheAgentThatAskedForIt(t *testing.T) {
 	if id == "" {
 		t.Fatalf("no run id: %v", payload)
 	}
-	if finished := waitForRun(t, gateway, id); finished["status"] != "succeeded" {
+	if finished := waitForRun(t, server, id); finished["status"] != "succeeded" {
 		t.Fatalf("the run did not succeed: %v", finished)
 	}
 
@@ -886,12 +886,12 @@ func TestARunFinishingTellsTheAgentThatAskedForIt(t *testing.T) {
 // TestARunNobodyAskedAboutTellsNoOne: a run the user started by pressing the button is not news to the
 // agent, and a message nobody is waiting for would be noise in the conversation.
 func TestARunNobodyAskedAboutTellsNoOne(t *testing.T) {
-	gateway, _ := startAgentGateway(t)
-	session := canvasSession(t, gateway)
+	server, _ := startAgentServer(t)
+	session := canvasSession(t, server)
 	canvas := strings.TrimPrefix(session, "canvas:")
-	conn := openSocket(t, gateway, session)
+	conn := openSocket(t, server, session)
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, gateway.URL+"/api/canvases/"+canvas+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, server.URL+"/api/canvases/"+canvas+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 	})
@@ -899,7 +899,7 @@ func TestARunNobodyAskedAboutTellsNoOne(t *testing.T) {
 		t.Fatalf("submit status = %d, body = %v", status, payload)
 	}
 	id, _ := payload["id"].(string)
-	waitForRun(t, gateway, id)
+	waitForRun(t, server, id)
 
 	// Nothing is said on the socket. A prompt the user typed would echo at once, so a short wait for one
 	// is what tells the two apart — and the fake agent answers everything it is sent.

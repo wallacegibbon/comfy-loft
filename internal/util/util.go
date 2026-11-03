@@ -54,7 +54,7 @@ func uuidV4() string {
 	var buf [16]byte
 	if _, err := rand.Read(buf[:]); err != nil {
 		// crypto/rand does not fail on Linux; fall back to a timestamp so that a
-		// pathological kernel never takes the whole gateway down.
+		// pathological kernel never takes the whole server down.
 		return strconv.FormatInt(time.Now().UnixNano(), 16)
 	}
 	buf[6] = (buf[6] & 0x0f) | 0x40
@@ -284,7 +284,7 @@ func DirExists(dir string) bool {
 }
 
 // NormalizeSlashes converts Windows separators to forward slashes, which is how
-// model paths are compared throughout the gateway.
+// model paths are compared throughout the server.
 func NormalizeSlashes(value string) string {
 	return strings.ReplaceAll(value, `\`, "/")
 }

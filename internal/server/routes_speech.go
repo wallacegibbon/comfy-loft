@@ -22,11 +22,11 @@ import (
  * **Why a route at all.** That address answers no CORS headers — an `OPTIONS` on it is a 404 and a `POST`
  * comes back without `Access-Control-Allow-Origin` — so a page on this origin can send the request and then
  * cannot read the answer. The address is also, usually, `127.0.0.1`, which is true of this machine and of no
- * other: a phone opening the canvas over the LAN would be asking itself for a speech server. The gateway is
+ * other: a phone opening the canvas over the LAN would be asking itself for a speech server. The server is
  * the one process that can reach it, so it carries the one file.
  *
  * **Why the address travels with the request** instead of being read out of `data/settings.json`. The
- * preferences document is the canvas's and the gateway deliberately understands no key in it
+ * preferences document is the canvas's and the server deliberately understands no key in it
  * (internal/settings); a route that parsed it would be the first exception, and it would have to parse it
  * again on every request. The page already knows the address, and passes it the way it passes the audio.
  *
@@ -136,7 +136,7 @@ func speechUpload(audio []byte, values map[string][]string) ([]byte, string, err
 	var buffer bytes.Buffer
 	writer := multipart.NewWriter(&buffer)
 	for name, entries := range values {
-		// `url` is this gateway's business and stops here.
+		// `url` is this server's business and stops here.
 		if name == "url" {
 			continue
 		}

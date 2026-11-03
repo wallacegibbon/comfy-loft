@@ -8,7 +8,7 @@ package server
 // typed into the panel, AlayaCore echoes it, and the panel draws it like any other message (#225).
 //
 // The pairing is on the run record, not in a page's memory, because the run is the thing that finishes
-// and the gateway is what finishes it: a reloaded tab, another tab, or a canvas reopened while a video
+// and the server is what finishes it: a reloaded tab, another tab, or a canvas reopened while a video
 // renders all find the same record and the same answer to "who is waiting to hear about this".
 
 import (
@@ -75,7 +75,7 @@ func runNotice(stored *task.Task) string {
 	case "cancelled":
 		return fmt.Sprintf("[comfyloft] %s you asked for was cancelled; nothing was produced.", what)
 	default:
-		reason := "the gateway did not say why"
+		reason := "the server did not say why"
 		if stored.Error != nil && strings.TrimSpace(*stored.Error) != "" {
 			reason = strings.TrimSpace(*stored.Error)
 		}

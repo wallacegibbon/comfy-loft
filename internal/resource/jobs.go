@@ -132,7 +132,7 @@ func (m *Manager) Install(ids, packs []string) (*Job, error) {
 		return nil, httpxBadRequest("nothing_selected", "select at least one resource or pack to install")
 	}
 
-	// An install writes into ComfyUI's own model folders, so a gateway on another machine can
+	// An install writes into ComfyUI's own model folders, so a server on another machine can
 	// only fill the wrong disk — and silently, since the write itself may well succeed. Installs
 	// stay off until the deployment states the folders are reachable.
 	if policy := m.InstallPolicy(); !policy.Allowed {
@@ -459,7 +459,7 @@ func (m *Manager) installOne(ctx context.Context, resource *Resource, item *JobI
 	target := m.targetPath(resource, root)
 	m.logger.Info("%s install target: %s", item.Label, m.displayPath(target, root))
 
-	// A file staged under payload/<target> ships with the gateway: it is copied
+	// A file staged under payload/<target> ships with the server: it is copied
 	// in-process, nothing is downloaded and no command runs. This is a convention, not a
 	// field, so "bundled" can only ever mean one thing.
 	if payload := m.payloadPath(resource.Target); util.Exists(payload) {
@@ -499,7 +499,7 @@ func (m *Manager) installNodeLike(ctx context.Context, resource *Resource, item 
 	m.logger.Info("%s install target: %s", item.Label, m.displayPath(destination, root))
 
 	// Same convention as models: a node directory staged under payload/<target>
-	// ships with the gateway and is copied as-is.
+	// ships with the server and is copied as-is.
 	if payload := m.payloadPath(resource.Target); util.DirExists(payload) {
 		if util.DirExists(destination) {
 			m.logger.Info("%s directory already exists, skipping", item.Label)
@@ -567,7 +567,7 @@ func (m *Manager) targetPath(resource *Resource, root string) string {
 
 // canWrite probes writability without leaving anything behind.
 func canWrite(dir string) bool {
-	probe := filepath.Join(dir, ".gateway-write-probe")
+	probe := filepath.Join(dir, ".server-write-probe")
 	file, err := os.OpenFile(probe, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return false
@@ -958,9 +958,9 @@ func installHint(err error) string {
 		// The wrong-machine case is refused before a byte moves (INSTALL_INTO_COMFY), so
 		// this is a folder that is missing, read-only, or owned by another user — including
 		// a mount that went away, which is why "disk full" was the wrong thing to say.
-		return "check that this folder exists, is mounted writable, and belongs to this user (docs/gateway.md)"
+		return "check that this folder exists, is mounted writable, and belongs to this user (docs/server.md)"
 	case strings.Contains(message, "missing a bundled file"):
-		return "reinstall the gateway: this release is incomplete"
+		return "reinstall the server: this release is incomplete"
 	}
 	return ""
 }

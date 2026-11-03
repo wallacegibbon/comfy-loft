@@ -21,7 +21,7 @@ import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
  * `replace` matters: without it the history keeps `/`, and every Back press bounces through the
  * redirect again.
  *
- * The list comes from the gateway now, so this waits for it and is allowed to fail: if the gateway is
+ * The list comes from the server now, so this waits for it and is allowed to fail: if the server is
  * unreachable the app stays here rather than inventing a canvas it cannot save.
  */
 export function CanvasEntry() {
@@ -52,7 +52,7 @@ export function CanvasEntry() {
             try {
                 setTargetId(await store.createCanvas(t("canvas.defaultTitle", { count: store.canvases.length + 1 })));
             } catch {
-                // No canvas and no way to make one: the gateway is down. Staying put is honest — a
+                // No canvas and no way to make one: the server is down. Staying put is honest — a
                 // canvas created optimistically would have nowhere to be saved.
                 setFailed(true);
             }
@@ -60,7 +60,7 @@ export function CanvasEntry() {
     }, [ready, t]);
 
     if (failed) {
-        return <div className="flex h-dvh items-center justify-center p-8 text-center text-sm text-stone-500">{t("canvas.gatewayUnavailable")}</div>;
+        return <div className="flex h-dvh items-center justify-center p-8 text-center text-sm text-stone-500">{t("canvas.serverUnavailable")}</div>;
     }
     if (!targetId) return null;
     return <Navigate replace to={`/canvas/${targetId}`} />;

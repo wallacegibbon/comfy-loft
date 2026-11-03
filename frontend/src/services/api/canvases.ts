@@ -1,10 +1,10 @@
-import { LOCAL_GATEWAY_BASE_URL } from "@/constant/app-mode";
+import { LOCAL_SERVER_BASE_URL } from "@/constant/app-mode";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { ApiError, KEEPALIVE_BYTES, httpJson, httpVoid } from "@/services/api/http";
 import type { CanvasAgentWindow, CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
 
 /**
- * The canvas documents, as the gateway keeps them.
+ * The canvas documents, as the server keeps them.
  *
  * A canvas is two halves on the wire and one object here. The server owns the summary — id, title,
  * timestamps and `rev` — and never looks inside `document`, which is the canvas's own shape
@@ -12,7 +12,7 @@ import type { CanvasAgentWindow, CanvasConnection, CanvasNodeData, ViewportTrans
  * that editing a node changes anything on the server before a save says so.
  */
 
-const BASE = `${LOCAL_GATEWAY_BASE_URL}/api/canvases`;
+const BASE = `${LOCAL_SERVER_BASE_URL}/api/canvases`;
 
 export type CanvasSummary = {
     id: string;
@@ -24,7 +24,7 @@ export type CanvasSummary = {
     bytes: number;
 };
 
-/** Everything a canvas holds that is the canvas's business rather than the gateway's. */
+/** Everything a canvas holds that is the canvas's business rather than the server's. */
 export type CanvasDocument = {
     nodes: CanvasNodeData[];
     connections: CanvasConnection[];
@@ -133,7 +133,7 @@ export async function requestCanvasCreate(title: string, document: CanvasDocumen
 /**
  * Restore an exported canvas from its archive.
  *
- * The body is the zip itself: the gateway unpacks `canvas.json`, `manifest.json` and `files/<name>` into a new
+ * The body is the zip itself: the server unpacks `canvas.json`, `manifest.json` and `files/<name>` into a new
  * canvas directory and keeps the names the document uses, so the client has nothing to rename or repair
  * (decisions #172). It answers with the canvas it created, exactly like a create.
  */
@@ -151,7 +151,7 @@ export async function requestCanvasImport(archive: Blob, signal?: AbortSignal): 
 /**
  * Save the document.
  *
- * `rev` is the version this save was made against, sent as `If-Match`. A gateway that has moved on
+ * `rev` is the version this save was made against, sent as `If-Match`. A server that has moved on
  * answers 409 with the current summary, which becomes a `CanvasConflictError` rather than a plain
  * failure: the caller has to decide something different for it than it would for a network error.
  */

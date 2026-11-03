@@ -11,7 +11,7 @@ import (
 func isolateEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
-		"GATEWAY_PORT", "GATEWAY_HOST", "COMFY_URL",
+		"COMFYLOFT_SERVER_PORT", "COMFYLOFT_SERVER_HOST", "COMFY_URL",
 		"INSTALL_INTO_COMFY",
 		"SCAN_ON_START",
 		"WORKFLOW_DIR", "DATA_DIR", "CANVAS_ROOT", "PUBLIC_BASE_URL", "CORS_ORIGINS",
@@ -19,7 +19,7 @@ func isolateEnv(t *testing.T) {
 		"COMFY_RETRY_ATTEMPTS", "COMFY_RETRY_DELAY_MS", "TASK_RETENTION_DAYS",
 		"MAX_STORED_TASKS", "CLEANUP_INTERVAL_MS",
 		"MAX_UPLOAD_BYTES", "MAX_WORKFLOW_BYTES",
-		"RESOURCE_CONCURRENCY", "GATEWAY_ROOT",
+		"RESOURCE_CONCURRENCY", "COMFYLOFT_SERVER_ROOT",
 	} {
 		t.Setenv(name, "")
 	}
@@ -28,7 +28,7 @@ func isolateEnv(t *testing.T) {
 func TestDefaults(t *testing.T) {
 	isolateEnv(t)
 	root := t.TempDir()
-	t.Setenv("GATEWAY_ROOT", root)
+	t.Setenv("COMFYLOFT_SERVER_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
 
 	cfg, err := Load()
@@ -36,8 +36,8 @@ func TestDefaults(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if cfg.GatewayPort != 8190 || cfg.GatewayHost != "127.0.0.1" {
-		t.Errorf("listen = %s:%d", cfg.GatewayHost, cfg.GatewayPort)
+	if cfg.ServerPort != 8190 || cfg.ServerHost != "127.0.0.1" {
+		t.Errorf("listen = %s:%d", cfg.ServerHost, cfg.ServerPort)
 	}
 	if cfg.ComfyURL != "http://127.0.0.1:8188" {
 		t.Errorf("ComfyURL = %q", cfg.ComfyURL)
@@ -59,32 +59,32 @@ func TestDefaults(t *testing.T) {
 	}
 }
 
-// GATEWAY_HOST is bound as given. A LAN address is how the workbench is reached from a phone, so there
-// is no second switch to remember: the only thing the gateway still refuses is a wildcard CORS
+// COMFYLOFT_SERVER_HOST is bound as given. A LAN address is how the workbench is reached from a phone, so there
+// is no second switch to remember: the only thing the server still refuses is a wildcard CORS
 // list, because that hands /v1/* to any page in the browser.
 func TestNonLoopbackHostIsAccepted(t *testing.T) {
 	isolateEnv(t)
 	root := t.TempDir()
-	t.Setenv("GATEWAY_ROOT", root)
+	t.Setenv("COMFYLOFT_SERVER_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
-	t.Setenv("GATEWAY_HOST", "192.168.3.232")
+	t.Setenv("COMFYLOFT_SERVER_HOST", "192.168.3.232")
 
 	cfg, err := Load()
 	if err != nil {
-		t.Fatalf("Load with a LAN GATEWAY_HOST: %v", err)
+		t.Fatalf("Load with a LAN COMFYLOFT_SERVER_HOST: %v", err)
 	}
-	if cfg.GatewayHost != "192.168.3.232" {
-		t.Errorf("gateway host = %q", cfg.GatewayHost)
+	if cfg.ServerHost != "192.168.3.232" {
+		t.Errorf("server host = %q", cfg.ServerHost)
 	}
 	if cfg.PublicBaseURL != "http://192.168.3.232:8190" {
-		t.Errorf("public base url = %q, want it derived from GATEWAY_HOST", cfg.PublicBaseURL)
+		t.Errorf("public base url = %q, want it derived from COMFYLOFT_SERVER_HOST", cfg.PublicBaseURL)
 	}
 }
 
 func TestCorsWildcardIsRejected(t *testing.T) {
 	isolateEnv(t)
 	root := t.TempDir()
-	t.Setenv("GATEWAY_ROOT", root)
+	t.Setenv("COMFYLOFT_SERVER_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
 	t.Setenv("CORS_ORIGINS", "*")
 
@@ -96,17 +96,17 @@ func TestCorsWildcardIsRejected(t *testing.T) {
 func TestInvalidNumbersFallBack(t *testing.T) {
 	isolateEnv(t)
 	root := t.TempDir()
-	t.Setenv("GATEWAY_ROOT", root)
+	t.Setenv("COMFYLOFT_SERVER_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
-	t.Setenv("GATEWAY_PORT", "not-a-number")
+	t.Setenv("COMFYLOFT_SERVER_PORT", "not-a-number")
 	t.Setenv("POLL_INTERVAL_MS", "-5")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.GatewayPort != 8190 {
-		t.Errorf("GatewayPort = %d, want the default", cfg.GatewayPort)
+	if cfg.ServerPort != 8190 {
+		t.Errorf("ServerPort = %d, want the default", cfg.ServerPort)
 	}
 	if cfg.PollIntervalMs != 750 {
 		t.Errorf("PollIntervalMs = %d, want the default", cfg.PollIntervalMs)
@@ -118,7 +118,7 @@ func TestInvalidNumbersFallBack(t *testing.T) {
 func TestInstallIntoComfyIsOptIn(t *testing.T) {
 	isolateEnv(t)
 	root := t.TempDir()
-	t.Setenv("GATEWAY_ROOT", root)
+	t.Setenv("COMFYLOFT_SERVER_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
 
 	cfg, err := Load()
@@ -155,7 +155,7 @@ func TestInstallIntoComfyIsOptIn(t *testing.T) {
 func TestCorsListParsing(t *testing.T) {
 	isolateEnv(t)
 	root := t.TempDir()
-	t.Setenv("GATEWAY_ROOT", root)
+	t.Setenv("COMFYLOFT_SERVER_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
 	t.Setenv("CORS_ORIGINS", " http://a , , http://b ")
 
@@ -214,11 +214,11 @@ func TestIsLoopbackHost(t *testing.T) {
 }
 
 // The canvas root is the workspace itself, so it is its own variable with its own default: DATA_DIR
-// is the gateway's bookkeeping, and moving it must not move somebody's canvases with it.
+// is the server's bookkeeping, and moving it must not move somebody's canvases with it.
 func TestCanvasRootHasItsOwnDefaultAndItsOwnVariable(t *testing.T) {
 	isolateEnv(t)
 	root := t.TempDir()
-	t.Setenv("GATEWAY_ROOT", root)
+	t.Setenv("COMFYLOFT_SERVER_ROOT", root)
 	t.Setenv("DATA_DIR", filepath.Join(root, "data"))
 
 	cfg, err := Load()

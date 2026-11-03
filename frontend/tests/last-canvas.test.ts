@@ -12,7 +12,7 @@ const { byCreatedAtDesc, newestCanvasId } = await import("../src/lib/canvas/last
 /**
  * Which canvas a bare visit opens.
  *
- * The interesting case is the one a string comparison gets wrong: the gateway writes timestamps with Go's
+ * The interesting case is the one a string comparison gets wrong: the server writes timestamps with Go's
  * RFC3339Nano, which drops trailing zeros, so `…34.9Z` and `…34.916503133Z` are the same second and compare
  * the wrong way round as text (`Z` > `1` — the one written *first* would win).
  */
@@ -50,7 +50,7 @@ describe("the canvas to open", () => {
         expect(newestCanvasId(canvases)).toBe("real");
     });
 
-    test("all of them unreadable keeps the gateway's order, newest first", () => {
+    test("all of them unreadable keeps the server's order, newest first", () => {
         const canvases = [
             { id: "first", updatedAt: "?" },
             { id: "second", updatedAt: "?" },

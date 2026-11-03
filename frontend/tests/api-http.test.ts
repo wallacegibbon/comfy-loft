@@ -12,8 +12,8 @@ const t = vi.fn((key: string) => key);
 
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => t(key) } }));
 
-const noteGatewayError = vi.fn();
-vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: (...args: unknown[]) => noteGatewayError(...args), noteGatewayResponse: () => undefined }));
+const noteServerError = vi.fn();
+vi.mock("@/services/api/server-status", () => ({ noteServerError: (...args: unknown[]) => noteServerError(...args), noteServerResponse: () => undefined }));
 
 const { ApiError, apiErrorMessage, httpJson, isCancelled, readApiErrorMessage } = await import("@/services/api/http");
 
@@ -24,7 +24,7 @@ const json = (body: unknown, status = 200) =>
     });
 
 beforeEach(() => {
-    noteGatewayError.mockClear();
+    noteServerError.mockClear();
     t.mockClear();
 });
 
@@ -47,14 +47,14 @@ describe("httpJson", () => {
         expect(apiErrorMessage(error, "fallback")).toBe("model not found");
     });
 
-    it("reports a local-gateway network failure to the reconnect banner", async () => {
+    it("reports a local-server network failure to the reconnect banner", async () => {
         // This is what the axios interceptor in image.ts used to do for every request.
         vi.stubGlobal("fetch", async () => {
             throw new TypeError("Failed to fetch");
         });
         const error = await httpJson("http://127.0.0.1:8190/v1/images/generations").catch((caught) => caught);
-        expect(noteGatewayError).toHaveBeenCalledTimes(1);
-        expect(noteGatewayError.mock.calls[0][1]).toBe("http://127.0.0.1:8190/v1/images/generations");
+        expect(noteServerError).toHaveBeenCalledTimes(1);
+        expect(noteServerError.mock.calls[0][1]).toBe("http://127.0.0.1:8190/v1/images/generations");
         expect(apiErrorMessage(error, "fallback")).toBe("apiErrors.requestFailed");
     });
 });

@@ -114,7 +114,7 @@ type Item struct {
 	// is restarted — a different situation from "not installed", and the only one where downloading
 	// again cannot help.
 	NeedsRestart bool `json:"needsRestart,omitempty"`
-	// ManualCommand is set for resources the gateway never installs itself (type
+	// ManualCommand is set for resources the server never installs itself (type
 	// "bake"): the exact command that produces the file.
 	ManualCommand string `json:"manualCommand,omitempty"`
 	Overridden    bool   `json:"overridden,omitempty"`
@@ -210,7 +210,7 @@ type PackStatus struct {
 
 // RuntimeDep is a Python package the user must install themselves.
 //
-// The gateway used to do this, and it regularly broke the user's venv. Telling the
+// The server used to do this, and it regularly broke the user's venv. Telling the
 // user exactly what to install is both safer and honest.
 type RuntimeDep struct {
 	ID       string   `json:"id"`
@@ -436,7 +436,7 @@ func validateIndex(index *Index) error {
 	return nil
 }
 
-// payloadPath is where a resource that ships with the gateway is staged.
+// payloadPath is where a resource that ships with the server is staged.
 //
 // The layout mirrors the target, so "bundled" is a convention rather than a field in the
 // index: payload/custom_nodes/<node> for a node, payload/<type>/<file> for a model. One
@@ -471,7 +471,7 @@ func (m *Manager) ComfyRoot() string {
 
 // modelDirs returns every directory a logical model type may live in.
 //
-// A nil setup (the gateway before Init, or a unit test that does not need ComfyUI) simply
+// A nil setup (the server before Init, or a unit test that does not need ComfyUI) simply
 // means no folder-path overrides: the configured ComfyUI directory still applies.
 func (m *Manager) modelDirs(dir, root string) []string {
 	var paths map[string]any
@@ -513,7 +513,7 @@ func normalizeRelName(value string) string {
 
 // loaderOptions is ComfyUI's option lists, or none when there is no ComfyUI to ask.
 //
-// A manager always has a setup in the gateway; a unit test (or a gateway that never scanned) may not,
+// A manager always has a setup in the server; a unit test (or a server that never scanned) may not,
 // and every reader of these lists is a status projection rather than a decision, so an empty answer is
 // the honest one instead of a panic.
 func (m *Manager) loaderOptions() workflow.LoaderOptions {

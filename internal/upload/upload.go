@@ -32,7 +32,7 @@ const (
 var ErrTooLarge = errors.New("upload: file exceeds the size limit")
 
 // extensionsByKind is the accepted container list per kind. It is a filter, not a converter: the
-// gateway never transcodes, so a file whose type it cannot place is refused at upload time instead
+// server never transcodes, so a file whose type it cannot place is refused at upload time instead
 // of failing inside ComfyUI later.
 var extensionsByKind = map[string][]string{
 	KindImage: {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"},
@@ -156,7 +156,7 @@ func comfyKey(canvasID, id string) string { return canvasID + "/" + id }
  *
  * Derived, not generated: the same upload always lands on the same file, and the upload endpoint is
  * called with `overwrite=true` (internal/comfy). That is what keeps ComfyUI's input directory bounded.
- * The gateway used to push under a random suffix per call, so every process restart left another copy
+ * The server used to push under a random suffix per call, so every process restart left another copy
  * of every reference image behind, and nothing on either side ever collected them.
  */
 func ComfyNameFor(canvasID, id string) string {

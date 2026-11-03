@@ -9,9 +9,9 @@ import type { CanvasNodeMetadata } from "@/types/canvas";
  * `generatedAt`); this is the one place they are put into words, so the two tools cannot word them
  * differently and a third caller gets the same sentence.
  *
- * The stamp is the gateway's own: an ISO 8601 instant in UTC, printed as it was recorded rather than
+ * The stamp is the server's own: an ISO 8601 instant in UTC, printed as it was recorded rather than
  * formatted for a locale. The same sentence is read by a model and by the user, and the user's machine is
- * not necessarily where the gateway runs — a `toLocaleString` here would be a different string for every
+ * not necessarily where the server runs — a `toLocaleString` here would be a different string for every
  * reader of the same fact.
  */
 export function generationClause(metadata: CanvasNodeMetadata | undefined): string {

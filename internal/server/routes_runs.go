@@ -10,7 +10,7 @@ package server
 //
 // Media goes in as upload ids (POST /api/canvases/{id}/uploads) and comes out as files in the same
 // canvas (GET /api/canvases/{id}/files/{name}), so a role is explicit and an artifact belongs to the
-// canvas that asked for it rather than to the gateway's scratch space (#156).
+// canvas that asked for it rather than to the server's scratch space (#156).
 
 import (
 	"context"
@@ -192,7 +192,7 @@ func (s *Server) handleRunCreate(ctx *httpx.Ctx) error {
 	case task.ObjectImage, task.ObjectVideo, task.ObjectAudio:
 	default:
 		return httpx.Errorf(http.StatusBadRequest, "unsupported_run_object",
-			"workflow %s produces %q, which the gateway cannot run yet", entry.Name, object)
+			"workflow %s produces %q, which the server cannot run yet", entry.Name, object)
 	}
 
 	// A transparent background and a MOSS layout change the prompt itself, exactly as they do in the
@@ -347,7 +347,7 @@ func (s *Server) resolveRunMedia(ctx *httpx.Ctx, canvasID string, entry *workflo
 //
 // The name is derived from the canvas and the upload (`upload.ComfyNameFor`), and the push asks ComfyUI
 // to overwrite. That pair is what keeps the directory bounded: with a name generated per call, every
-// gateway restart that touched a reference image left another copy behind, and nothing on either side
+// server restart that touched a reference image left another copy behind, and nothing on either side
 // ever collected them.
 func (s *Server) comfyMedia(ctx context.Context, canvasID string, file *upload.File) (workflow.Media, error) {
 	name := upload.ComfyNameFor(canvasID, file.ID)

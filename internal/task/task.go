@@ -2,7 +2,7 @@
 //
 // Video runs for minutes, so the canvas gets a job id immediately and polls. The
 // store persists to data/tasks.json and reloads on boot, which is why it also has
-// to reconcile records whose output file vanished while the gateway was down.
+// to reconcile records whose output file vanished while the server was down.
 package task
 
 import (
@@ -103,7 +103,7 @@ type Task struct {
 	UpdatedAt   string         `json:"updatedAt"`
 	CompletedAt *string        `json:"completedAt"`
 	PromptID    *string        `json:"promptId"`
-	// Resumed marks a task the gateway picked up again after restarting: it was submitted, the render kept
+	// Resumed marks a task the server picked up again after restarting: it was submitted, the render kept
 	// going on ComfyUI, and only the watching was lost. The canvas reads it to say "waiting for the result,
 	// progress unavailable" instead of showing a progress bar that will not move (#236).
 	Resumed  bool    `json:"resumed,omitempty"`
@@ -298,7 +298,7 @@ func (s *Store) reconcileLocked(task *Task) {
 			return
 		}
 		task.Status = "failed"
-		message := "the gateway restarted before the task finished"
+		message := "the server restarted before the task finished"
 		task.Error = &message
 		completed := util.NowIso()
 		task.CompletedAt = &completed
@@ -367,9 +367,9 @@ func (s *Store) Enqueue(task *Task, run RunFunc) {
 
 // SetOnFinish names what to do when a run ends, whether it worked, failed or was cancelled.
 //
-// It is set once, before the gateway serves anything, and it is called at most once per run: from the
+// It is set once, before the server serves anything, and it is called at most once per run: from the
 // worker that unwound it, or from the cancel that took it out of the queue or stopped it mid-flight —
-// whichever reached a terminal status first. A run the gateway finds already finished at startup is not
+// whichever reached a terminal status first. A run the server finds already finished at startup is not
 // reported: nobody is left from the moment it was asked for.
 func (s *Store) SetOnFinish(fn func(*Task)) {
 	s.mu.Lock()
@@ -401,7 +401,7 @@ func (s *Store) finish(task *Task) {
 	}
 	select {
 	case <-s.closed:
-		// Shutting down: the agents go with the gateway, so there is nobody left to tell.
+		// Shutting down: the agents go with the server, so there is nobody left to tell.
 		return
 	default:
 	}

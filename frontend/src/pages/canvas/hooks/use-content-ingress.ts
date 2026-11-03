@@ -50,7 +50,7 @@ export function useContentIngress(deps: ContentIngressDeps) {
     /**
      * Report a file that could not be added.
      *
-     * Uploading is a network write, so it can fail (the gateway is down, the file is past the size limit),
+     * Uploading is a network write, so it can fail (the server is down, the file is past the size limit),
      * and a drop or a paste has no form to show it in: without this the rejection ended in the console and
      * the person was left wondering why nothing appeared.
      */

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 /**
  * Which nodes pick their run back up when the canvas is opened.
  *
- * A run belongs to the gateway, so a node waiting on one must not be marked "interrupted" by the restore
+ * A run belongs to the server, so a node waiting on one must not be marked "interrupted" by the restore
  * pass — that is what the resume effect depends on. One rule for every kind of content, and the same rule
  * whatever the node's status says: a watch that could not ask leaves an error behind *and* keeps the id,
  * and a reload is how that node gets picked up again (#235).
@@ -95,7 +95,7 @@ describe("failedWatch", () => {
         expect(errorDetails).toBe("canvas.runtime.runUnwatched");
     });
 
-    it("lets the id go when the gateway says the run itself failed, and shows its reason", () => {
+    it("lets the id go when the server says the run itself failed, and shows its reason", () => {
         const { ended, errorDetails } = failedWatch(new RunFailedError(run), "fallback");
         expect(ended).toBe(true);
         expect(errorDetails).toBe("ComfyUI ran out of memory");

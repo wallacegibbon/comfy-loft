@@ -17,7 +17,7 @@ import (
 func TestSetupReportsToolWorkflowProblems(t *testing.T) {
 	fake := newFakeComfy(t)
 	file, graph, entry := imageFixture()
-	srv := newTestGatewayWith(t, fake, file, graph, entry)
+	srv := newTestServerWith(t, fake, file, graph, entry)
 
 	// A second workflow that needs a node class this ComfyUI does not have.
 	toolGraph := map[string]any{
@@ -60,11 +60,11 @@ func TestSetupReportsToolWorkflowProblems(t *testing.T) {
 // A workflow row no longer carries a presentation flag: the client decides what to offer.
 func TestWorkflowsExposeNoHiddenFlag(t *testing.T) {
 	fake := newFakeComfy(t)
-	srv := newTestGateway(t, fake)
-	gateway := httptest.NewServer(srv.Handler())
-	defer gateway.Close()
+	srv := newTestServer(t, fake)
+	server := httptest.NewServer(srv.Handler())
+	defer server.Close()
 
-	code, payload := doJSON(t, gateway.Client(), http.MethodGet, gateway.URL+"/api/workflows", nil)
+	code, payload := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/workflows", nil)
 	if code != http.StatusOK {
 		t.Fatalf("status = %d", code)
 	}

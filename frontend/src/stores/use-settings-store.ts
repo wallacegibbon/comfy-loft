@@ -4,7 +4,7 @@ import { RUNTIME_SETTINGS } from "@/constant/runtime-config";
 import { requestSettings, requestSettingsSave, type SettingsBlob } from "@/services/api/settings";
 
 /**
- * The workspace preferences: one document on the gateway, one copy in memory.
+ * The workspace preferences: one document on the server, one copy in memory.
  *
  * It used to be five `localStorage` keys and an IndexedDB database, which meant the preferences of a
  * workspace belonged to one browser on one machine — the phone on the LAN opened an English, light,
@@ -13,13 +13,13 @@ import { requestSettings, requestSettingsSave, type SettingsBlob } from "@/servi
  * canvas carries no persisted state at all.
  *
  * **Why there is no request at startup.** The page loads a script before its bundle (`/config.js`), and the
- * gateway answers it with this document (`internal/server/runtime_config.go`, #220), so it is available
+ * server answers it with this document (`internal/server/runtime_config.go`, #220), so it is available
  * synchronously, before the first frame. Without it the theme would arrive one paint late.
  * `load()` is therefore the fallback, not the path: it asks over HTTP only when the bootstrap is
  * missing, and until one of the two has produced a document the store refuses to save — writing
  * defaults over a document this build never read is the one failure worth a guard.
  *
- * **Writes are whole-document and debounced.** The gateway replaces the file; there is no per-key
+ * **Writes are whole-document and debounced.** The server replaces the file; there is no per-key
  * merge on either side. The debounce is what keeps a dragged panel width from being one request per
  * pixel.
  */
@@ -54,7 +54,7 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
             const settings = await requestSettings();
             set({ settings, ready: true, error: null });
         } catch (error) {
-            // Leave `ready` false: without a document of record, a save would replace the gateway's
+            // Leave `ready` false: without a document of record, a save would replace the server's
             // preferences with this build's defaults.
             set({ error: error instanceof Error ? error.message : String(error) });
         }
@@ -84,7 +84,7 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
 /**
  * Write the pending document, one request at a time.
  *
- * Serialised on purpose: the gateway replaces the whole file, so two requests in flight at once could
+ * Serialised on purpose: the server replaces the whole file, so two requests in flight at once could
  * land out of order and leave the older document as the one on disk. A change that arrives while a
  * request is on the wire is written by the next one; a failure is left for the next change (or `flush`)
  * to retry rather than looped on here.

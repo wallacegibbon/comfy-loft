@@ -44,7 +44,7 @@ func targetError(err error) error {
 	return fatal(fmt.Errorf("cannot write into ComfyUI's folders: %w", err))
 }
 
-// bundledError reports a failure to read something that ships with the gateway (a bundled
+// bundledError reports a failure to read something that ships with the server (a bundled
 // model file or node directory).
 //
 // It is deliberately not fatal: a release missing one bundled asset must not cancel the

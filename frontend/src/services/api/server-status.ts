@@ -1,7 +1,7 @@
-import { LOCAL_GATEWAY_ORIGIN } from "@/constant/app-mode";
+import { LOCAL_SERVER_ORIGIN } from "@/constant/app-mode";
 
 /**
- * The gateway's reachability, as the page learns it from its own traffic.
+ * The server's reachability, as the page learns it from its own traffic.
  *
  * There used to be a heartbeat here: after the first failure a timer probed `GET /health` every two
  * seconds until it answered, and then reloaded the page. Two things made that unnecessary (#157):
@@ -13,8 +13,8 @@ import { LOCAL_GATEWAY_ORIGIN } from "@/constant/app-mode";
  *     now refresh on their own. All it still did was throw away what the tab held: the undo stack,
  *     the selection, whatever was being dragged.
  *
- * So there is no timer, no probe and no reload. The state is derived: a gateway request that fails at
- * the network layer marks it down, any gateway response marks it up, and the banner follows. The
+ * So there is no timer, no probe and no reload. The state is derived: a server request that fails at
+ * the network layer marks it down, any server response marks it up, and the banner follows. The
  * `/health` endpoint still exists — it reports ComfyUI's reachability and the workflow count, which is
  * a question for an operator with `curl`, not for a page to ask itself over and over.
  */
@@ -29,11 +29,11 @@ function emit() {
     for (const listener of listeners) listener(down);
 }
 
-export function isGatewayDown() {
+export function isServerDown() {
     return down;
 }
 
-export function subscribeGatewayStatus(listener: Listener) {
+export function subscribeServerStatus(listener: Listener) {
     listeners.add(listener);
     listener(down);
     return () => {
@@ -41,24 +41,24 @@ export function subscribeGatewayStatus(listener: Listener) {
     };
 }
 
-function markGatewayDown() {
+function markServerDown() {
     if (down) return;
     down = true;
     emit();
 }
 
-/** The gateway answered something. Called from the HTTP layer, so every successful request counts. */
-function markGatewayUp() {
+/** The server answered something. Called from the HTTP layer, so every successful request counts. */
+function markServerUp() {
     if (!down) return;
     down = false;
     emit();
 }
 
-function isGatewayRequest(url: string) {
+function isServerRequest(url: string) {
     if (!url) return false;
     try {
-        const target = new URL(url, LOCAL_GATEWAY_ORIGIN || window.location.origin);
-        return Boolean(LOCAL_GATEWAY_ORIGIN) && target.origin === LOCAL_GATEWAY_ORIGIN;
+        const target = new URL(url, LOCAL_SERVER_ORIGIN || window.location.origin);
+        return Boolean(LOCAL_SERVER_ORIGIN) && target.origin === LOCAL_SERVER_ORIGIN;
     } catch {
         return false;
     }
@@ -67,28 +67,28 @@ function isGatewayRequest(url: string) {
 /**
  * Record what a response means for reachability.
  *
- * Any status counts, including an error one: a 400 from the gateway is a gateway that is answering.
+ * Any status counts, including an error one: a 400 from the server is a server that is answering.
  */
-export function noteGatewayResponse(url: string) {
-    if (isGatewayRequest(url)) markGatewayUp();
+export function noteServerResponse(url: string) {
+    if (isServerRequest(url)) markServerUp();
 }
 
-export function noteGatewayError(error: unknown, url = "") {
+export function noteServerError(error: unknown, url = "") {
     const maybe = error as { code?: string; response?: unknown; config?: { url?: string; baseURL?: string } } | null;
     const isNetworkError = error instanceof TypeError || (maybe?.code === "ERR_NETWORK" && !maybe?.response);
     if (!isNetworkError) return;
     const requestUrl = url || maybe?.config?.url || "";
     const requestBase = maybe?.config?.baseURL || "";
-    if (!requestUrl || isGatewayRequest(requestUrl) || isGatewayRequest(requestBase)) markGatewayDown();
+    if (!requestUrl || isServerRequest(requestUrl) || isServerRequest(requestBase)) markServerDown();
 }
 
-export async function gatewayFetch(input: RequestInfo | URL, init?: RequestInit) {
+export async function serverFetch(input: RequestInfo | URL, init?: RequestInit) {
     try {
         const response = await fetch(input, init);
-        noteGatewayResponse(String(input));
+        noteServerResponse(String(input));
         return response;
     } catch (error) {
-        noteGatewayError(error, String(input));
+        noteServerError(error, String(input));
         throw error;
     }
 }

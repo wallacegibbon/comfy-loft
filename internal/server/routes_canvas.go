@@ -14,7 +14,7 @@ import (
 
 // routesCanvas registers the canvas documents.
 //
-// These are the workspace: everything else the gateway serves is either a capability (workflows,
+// These are the workspace: everything else the server serves is either a capability (workflows,
 // models, LoRAs) or bookkeeping (runs, uploads). A canvas directory outlives all of it, which is why
 // this is the one endpoint whose data is meant to be backed up.
 func (s *Server) routesCanvas(mux *http.ServeMux) {

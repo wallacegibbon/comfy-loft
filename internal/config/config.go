@@ -16,15 +16,15 @@ import (
 // Version is what /health and the startup log report.
 const Version = "0.1.0"
 
-// Config holds every runtime parameter of the gateway. It is treated as
+// Config holds every runtime parameter of the server. It is treated as
 // immutable after construction, so it may be shared across goroutines.
 type Config struct {
 	RootDir string
-	// GatewayHost/GatewayPort are the gateway's own listen address, so they are named that way:
+	// ServerHost/ServerPort are the server's own listen address, so they are named that way:
 	// a bare HOST/PORT is what every other tool in an environment also sets, and picking those
-	// up by accident is a real bug (a stray PORT=3000 would move the gateway).
-	GatewayPort int
-	GatewayHost string
+	// up by accident is a real bug (a stray PORT=3000 would move the server).
+	ServerPort int
+	ServerHost string
 
 	ComfyURL         string
 	InstallIntoComfy bool // INSTALL_INTO_COMFY=1; installs are refused without it (internal/resource/install_policy.go)
@@ -33,23 +33,23 @@ type Config struct {
 
 	WorkflowDir string
 	DataDir     string
-	// RuntimeConfigPath, when set, is where the gateway also writes the first-paint script as a file, for a
-	// canvas published by a static host with no gateway in the request path (#220). It is a copy of what
+	// RuntimeConfigPath, when set, is where the server also writes the first-paint script as a file, for a
+	// canvas published by a static host with no server in the request path (#220). It is a copy of what
 	// `GET /config.js` answers; empty — the normal case — means nothing is written anywhere.
 	RuntimeConfigPath string
-	// WebDir, when set, is a canvas bundle this gateway serves itself (#219): `GET /` answers with its
+	// WebDir, when set, is a canvas bundle this server serves itself (#219): `GET /` answers with its
 	// `index.html` and any file under it. Empty means somebody else serves the canvas — a development
-	// server, typically — and the gateway answers only `/api/*`.
+	// server, typically — and the server answers only `/api/*`.
 	WebDir string
 	// CanvasRoot is where the canvases live, one directory each. It is the workspace itself, so it
-	// is named by its own variable rather than nested under DATA_DIR: data/ is the gateway's
+	// is named by its own variable rather than nested under DATA_DIR: data/ is the server's
 	// bookkeeping (tasks, uploads), and a user who backs up their work backs up this.
 	CanvasRoot string
 
 	PublicBaseURL string
 	// PublicBaseURLSet records that the operator named the address (PUBLIC_BASE_URL) instead of it being
 	// derived from the bind. It is what tells the first-paint script whether the canvas is served somewhere
-	// other than this gateway (#219): a page this gateway served knows its own origin, and that is the only
+	// other than this server (#219): a page this server served knows its own origin, and that is the only
 	// answer that stays right behind a LAN name, a phone or a reverse proxy.
 	PublicBaseURLSet bool
 	CorsOrigins      []string
@@ -66,12 +66,12 @@ type Config struct {
 	CleanupIntervalMs int
 
 	// The agent. Its own config directory holds model.conf and the skills the user installs; the
-	// gateway names it and never reads or writes it. An empty AgentBin means "find it" (see
+	// server names it and never reads or writes it. An empty AgentBin means "find it" (see
 	// AGENT_BIN_DISCOVERY in internal/agent).
 	AgentBin        string
 	AgentConfigPath string
-	// AgentSkills is the container of the skills this gateway ships (prompts/skills), passed to the
-	// agent so it can read them itself. The wording is the agent's business, not the gateway's.
+	// AgentSkills is the container of the skills this server ships (prompts/skills), passed to the
+	// agent so it can read them itself. The wording is the agent's business, not the server's.
 	AgentSkills string
 
 	MaxUploadBytes int64
@@ -86,21 +86,21 @@ type Config struct {
 // Option overrides a single field, mirroring the old loadConfig(overrides).
 type Option func(*Config)
 
-// WithGatewayPort overrides the listen port.
-func WithGatewayPort(port int) Option { return func(c *Config) { c.GatewayPort = port } }
+// WithServerPort overrides the listen port.
+func WithServerPort(port int) Option { return func(c *Config) { c.ServerPort = port } }
 
-// WithGatewayHost overrides the listen address.
-func WithGatewayHost(host string) Option { return func(c *Config) { c.GatewayHost = host } }
+// WithServerHost overrides the listen address.
+func WithServerHost(host string) Option { return func(c *Config) { c.ServerHost = host } }
 
 // WithComfyURL overrides the ComfyUI base URL.
 func WithComfyURL(url string) Option { return func(c *Config) { c.ComfyURL = url } }
 
-// WithWorkflowDir overrides the gateway workflow directory.
+// WithWorkflowDir overrides the server workflow directory.
 func WithWorkflowDir(dir string) Option { return func(c *Config) { c.WorkflowDir = dir } }
 
 // AgentHostDir is the per-host segment of the agent's configuration directory.
 //
-// It is the address the gateway is bound to, because that is what the agent is told to dial; a wildcard
+// It is the address the server is bound to, because that is what the agent is told to dial; a wildcard
 // bind has no address of its own, so it means loopback — the same substitution mcpURL makes.
 func AgentHostDir(host string) string {
 	host = strings.TrimSpace(host)
@@ -114,7 +114,7 @@ func AgentHostDir(host string) string {
 			return r
 		default:
 			// IPv6 literals and anything else a bind address can carry: a colon is not a Windows path
-			// segment, and this directory has to be creatable on every platform the gateway builds for.
+			// segment, and this directory has to be creatable on every platform the server builds for.
 			return '-'
 		}
 	}, strings.Trim(host, "[]"))
@@ -136,7 +136,7 @@ func WithCanvasRoot(dir string) Option { return func(c *Config) { c.CanvasRoot =
 // WithRuntimeConfigPath names a file to also write the first-paint script to, or turns that off with "".
 func WithRuntimeConfigPath(path string) Option { return func(c *Config) { c.RuntimeConfigPath = path } }
 
-// WithWebDir makes the gateway serve a canvas bundle from `dir` (tests, and a caller that does not want to
+// WithWebDir makes the server serve a canvas bundle from `dir` (tests, and a caller that does not want to
 // go through WEB_DIR). Empty leaves the canvas to whoever serves it now.
 func WithWebDir(dir string) Option { return func(c *Config) { c.WebDir = dir } }
 
@@ -155,7 +155,7 @@ func WithAudioTimeout(ms int) Option { return func(c *Config) { c.AudioTimeoutMs
 func WithPollInterval(ms int) Option { return func(c *Config) { c.PollIntervalMs = ms } }
 
 // WithPublicBaseURL overrides the externally visible base URL. Naming one also tells the first-paint script
-// that the canvas is served from that address rather than from this gateway (#219).
+// that the canvas is served from that address rather than from this server (#219).
 func WithPublicBaseURL(url string) Option {
 	return func(c *Config) {
 		c.PublicBaseURL = url
@@ -169,8 +169,8 @@ func Load(opts ...Option) (*Config, error) {
 
 	cfg := &Config{
 		RootDir:          root,
-		GatewayPort:      intValue(os.Getenv("GATEWAY_PORT"), 8190),
-		GatewayHost:      stringOr(os.Getenv("GATEWAY_HOST"), "127.0.0.1"),
+		ServerPort:       intValue(os.Getenv("COMFYLOFT_SERVER_PORT"), 8190),
+		ServerHost:       stringOr(os.Getenv("COMFYLOFT_SERVER_HOST"), "127.0.0.1"),
 		ComfyURL:         stringOr(os.Getenv("COMFY_URL"), "http://127.0.0.1:8188"),
 		InstallIntoComfy: boolValue(os.Getenv("INSTALL_INTO_COMFY")),
 		ScanOnStart:      os.Getenv("SCAN_ON_START") != "0",
@@ -196,7 +196,7 @@ func Load(opts ...Option) (*Config, error) {
 		AgentSkills:         filepath.Join(root, "prompts", "skills"),
 	}
 
-	// The agent keeps its own configuration; the gateway only says where. A default under the user's
+	// The agent keeps its own configuration; the server only says where. A default under the user's
 	// config directory (the platform's, not a hardcoded ~/.config) so a fresh directory is created by
 	// the agent itself on first spawn.
 	//
@@ -205,17 +205,17 @@ func Load(opts ...Option) (*Config, error) {
 	// different model behind each.
 	if cfg.AgentConfigPath == "" {
 		if dir, err := os.UserConfigDir(); err == nil {
-			cfg.AgentConfigPath = filepath.Join(dir, "comfyui-gateway", AgentHostDir(cfg.GatewayHost), "alayacore")
+			cfg.AgentConfigPath = filepath.Join(dir, "comfyloft-server", AgentHostDir(cfg.ServerHost), "alayacore")
 		}
 	}
 
 	cfg.WorkflowDir = absOrJoin(root, os.Getenv("WORKFLOW_DIR"), "workflows")
 	cfg.DataDir = absOrJoin(root, os.Getenv("DATA_DIR"), "data")
 	cfg.CanvasRoot = absOrJoin(root, os.Getenv("CANVAS_ROOT"), "canvases")
-	// No default: an empty value means "no file to write", and a gateway run outside a served bundle
+	// No default: an empty value means "no file to write", and a server run outside a served bundle
 	// should not invent one.
 	cfg.RuntimeConfigPath = strings.TrimSpace(os.Getenv("RUNTIME_CONFIG_PATH"))
-	// No default either, and for the mirror reason: a gateway that guessed a bundle would answer `/` with
+	// No default either, and for the mirror reason: a server that guessed a bundle would answer `/` with
 	// whatever an old build left there. `start.sh` names the one it built.
 	cfg.WebDir = strings.TrimSpace(os.Getenv("WEB_DIR"))
 
@@ -236,16 +236,16 @@ func Load(opts ...Option) (*Config, error) {
 	cfg.ComfyURL = strings.TrimRight(cfg.ComfyURL, "/")
 
 	if cfg.PublicBaseURL == "" {
-		cfg.PublicBaseURL = fmt.Sprintf("http://%s:%d", cfg.GatewayHost, cfg.GatewayPort)
+		cfg.PublicBaseURL = fmt.Sprintf("http://%s:%d", cfg.ServerHost, cfg.ServerPort)
 	}
 	cfg.PublicBaseURL = strings.TrimRight(cfg.PublicBaseURL, "/")
 
-	// GATEWAY_HOST is bound exactly as given: 192.168.3.232 is as much "local" as 127.0.0.1 for
-	// someone who wants their phone on the same network, and a gateway that refuses to start
+	// COMFYLOFT_SERVER_HOST is bound exactly as given: 192.168.3.232 is as much "local" as 127.0.0.1 for
+	// someone who wants their phone on the same network, and a server that refuses to start
 	// teaches nothing. main.go warns when the bind is reachable from the network and /api/*
 	// has no token, which is the part that actually matters.
 	if contains(cfg.CorsOrigins, "*") {
-		return nil, fmt.Errorf("CORS_ORIGINS must not be a wildcard; list the canvas origins explicitly (a canvas served from the same host as the gateway is allowed automatically)")
+		return nil, fmt.Errorf("CORS_ORIGINS must not be a wildcard; list the canvas origins explicitly (a canvas served from the same host as the server is allowed automatically)")
 	}
 
 	for _, dir := range []string{cfg.WorkflowDir, cfg.DataDir, cfg.CanvasRoot} {
@@ -261,13 +261,13 @@ func Load(opts ...Option) (*Config, error) {
 //
 // The old implementation used __dirname + "..", which was safe because the
 // source never moved. Once this ships as a single binary that assumption dies,
-// so probe GATEWAY_ROOT first, then the executable's directory, then the working
+// so probe COMFYLOFT_SERVER_ROOT first, then the executable's directory, then the working
 // directory, accepting the first one that actually looks like the asset root.
 func resolveRootDir() string {
-	if explicit := strings.TrimSpace(os.Getenv("GATEWAY_ROOT")); explicit != "" {
+	if explicit := strings.TrimSpace(os.Getenv("COMFYLOFT_SERVER_ROOT")); explicit != "" {
 		return absPath(explicit)
 	}
-	// The working directory comes first: launch scripts cd into the gateway root,
+	// The working directory comes first: launch scripts cd into the server root,
 	// and a binary sitting in bin/ must not treat bin/ as the asset root.
 	var candidates []string
 	if cwd, err := os.Getwd(); err == nil {
@@ -287,9 +287,9 @@ func resolveRootDir() string {
 	return "."
 }
 
-// hasMarker reports whether dir really is the gateway asset root.
+// hasMarker reports whether dir really is the server asset root.
 //
-// A bare "workflows" directory is not enough: the gateway creates its own workflow
+// A bare "workflows" directory is not enough: the server creates its own workflow
 // directory on startup, so a wrong guess would leave behind the very marker that
 // keeps justifying it. Requiring a known file makes the check self-correcting.
 func hasMarker(dir string) bool {

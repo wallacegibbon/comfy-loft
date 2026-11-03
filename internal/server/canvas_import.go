@@ -3,11 +3,11 @@ package server
 // Importing an exported canvas.
 //
 // One canvas is one zip: `canvas.json` (the document), `manifest.json` (the title and the format version) and
-// `files/<name>` for its media. The client posts the archive and the gateway unpacks it into a new canvas
+// `files/<name>` for its media. The client posts the archive and the server unpacks it into a new canvas
 // directory, which is the whole operation — the files keep the names the document uses, so nothing is
 // renamed and nothing is rewritten (decisions #172).
 //
-// The archive is the one thing this gateway parses out of user input, so the rules are explicit: only the
+// The archive is the one thing this server parses out of user input, so the rules are explicit: only the
 // three shapes above are accepted (plus the empty directory entries a re-zip adds), an entry may not leave
 // the directory, and the unpacked bytes are bounded by the same ceiling as the body.
 
@@ -27,7 +27,7 @@ import (
 
 const (
 	// importManifestName is the archive's own description of itself: format version and the title to
-	// restore. It is not the document, and the gateway is the one that reads it.
+	// restore. It is not the document, and the server is the one that reads it.
 	importManifestName = "manifest.json"
 	// maxImportEntries bounds an archive's file count. A canvas is built by hand, so a zip with tens of
 	// thousands of entries is a decompression bomb rather than somebody's work.
@@ -46,7 +46,7 @@ type importManifest struct {
 func (s *Server) handleCanvasImport(ctx *httpx.Ctx) error {
 	limit := s.cfg.MaxImportBytes
 	if limit <= 0 {
-		return httpx.NewError(http.StatusInternalServerError, "import_disabled", "this gateway has no import ceiling configured")
+		return httpx.NewError(http.StatusInternalServerError, "import_disabled", "this server has no import ceiling configured")
 	}
 	if ctx.R.Body == nil {
 		return httpx.BadRequest("import_empty", "the request carried no archive")

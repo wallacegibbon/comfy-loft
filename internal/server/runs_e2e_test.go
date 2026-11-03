@@ -28,9 +28,9 @@ func postUpload(t *testing.T, url, filename, mimeType string, content []byte) (i
 }
 
 // uploadID posts one file and returns the upload id.
-func uploadID(t *testing.T, gateway *httptest.Server, filename, mimeType string, content []byte) string {
+func uploadID(t *testing.T, server *httptest.Server, filename, mimeType string, content []byte) string {
 	t.Helper()
-	status, payload := postUpload(t, canvasBase(t, gateway.URL)+"/uploads", filename, mimeType, content)
+	status, payload := postUpload(t, canvasBase(t, server.URL)+"/uploads", filename, mimeType, content)
 	if status != http.StatusOK {
 		t.Fatalf("upload status = %d", status)
 	}
@@ -57,11 +57,11 @@ func getBytes(t *testing.T, url string) (int, []byte) {
 	return response.StatusCode, body
 }
 
-func waitForRun(t *testing.T, gateway *httptest.Server, id string) map[string]any {
+func waitForRun(t *testing.T, server *httptest.Server, id string) map[string]any {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		status, payload := doJSON(t, gateway.Client(), http.MethodGet, gateway.URL+"/api/runs/"+id, nil)
+		status, payload := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/runs/"+id, nil)
 		if status != http.StatusOK {
 			t.Fatalf("run status = %d, body = %v", status, payload)
 		}
@@ -97,10 +97,10 @@ func errorText(payload map[string]any) string {
 // fan out on a `count` input; a node holds one result now, so the run answers with one file (#180).
 func TestRunImageProducesOnePicture(t *testing.T) {
 	fake := newFakeComfy(t)
-	gateway := httptest.NewServer(newTestGateway(t, fake).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServer(t, fake).Handler())
+	defer server.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 	})
@@ -120,7 +120,7 @@ func TestRunImageProducesOnePicture(t *testing.T) {
 		t.Fatalf("no run id: %v", payload)
 	}
 
-	finished := waitForRun(t, gateway, id)
+	finished := waitForRun(t, server, id)
 	if finished["status"] != "succeeded" {
 		t.Fatalf("run failed: %v", finished)
 	}
@@ -136,17 +136,17 @@ func TestRunImageProducesOnePicture(t *testing.T) {
 		t.Errorf("mime = %v", output["mime"])
 	}
 	// The artifact is a file in the canvas, named after the run.
-	wantURL := "/api/canvases/" + canvasID(t, gateway.URL) + "/files/" + id + ".png"
+	wantURL := "/api/canvases/" + canvasID(t, server.URL) + "/files/" + id + ".png"
 	if output["url"] != wantURL {
 		t.Errorf("url = %v, want %s", output["url"], wantURL)
 	}
-	status, body := getBytes(t, gateway.URL+wantURL)
+	status, body := getBytes(t, server.URL+wantURL)
 	if status != http.StatusOK || string(body) != "PNGDATA" {
 		t.Errorf("output = %d %q", status, body)
 	}
 
 	// The list endpoint sees the same run, and completed is reported as succeeded.
-	status, list := doJSON(t, gateway.Client(), http.MethodGet, gateway.URL+"/api/runs?status=succeeded", nil)
+	status, list := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/runs?status=succeeded", nil)
 	if status != http.StatusOK {
 		t.Fatalf("list status = %d", status)
 	}
@@ -169,12 +169,12 @@ func TestRunResolvesUploadedMediaByRole(t *testing.T) {
 			"inputPrefix": "ref_images.ref_image_", "min": 1, "max": 1,
 		},
 	}
-	gateway := httptest.NewServer(newTestGatewayWith(t, fake, file, graph, entry).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServerWith(t, fake, file, graph, entry).Handler())
+	defer server.Close()
 
-	id := uploadID(t, gateway, "reference.png", "image/png", []byte("PNG"))
+	id := uploadID(t, server, "reference.png", "image/png", []byte("PNG"))
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 		"media":    map[string]any{"reference": []string{id}},
@@ -182,7 +182,7 @@ func TestRunResolvesUploadedMediaByRole(t *testing.T) {
 	if status != http.StatusAccepted {
 		t.Fatalf("submit status = %d, body = %v", status, payload)
 	}
-	finished := waitForRun(t, gateway, payload["id"].(string))
+	finished := waitForRun(t, server, payload["id"].(string))
 	if finished["status"] != "succeeded" {
 		t.Fatalf("run failed: %v", finished)
 	}
@@ -225,12 +225,12 @@ func TestRunImageUpscaleTakesOneImage(t *testing.T) {
 		"image":         map[string]any{"node": "1", "input": "image", "from": "image", "imageIndex": 0, "required": true},
 		"upscale_model": map[string]any{"node": "2", "input": "model_name", "from": "params.upscale_model", "default": "RealESRGAN_x2plus.pth"},
 	}
-	gateway := httptest.NewServer(newTestGatewayWith(t, fake, file, graph, entry).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServerWith(t, fake, file, graph, entry).Handler())
+	defer server.Close()
 
-	imageID := uploadID(t, gateway, "source.png", "image/png", []byte("PNG"))
+	imageID := uploadID(t, server, "source.png", "image/png", []byte("PNG"))
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-esrgan-upscale",
 		"inputs":   map[string]any{"upscale_model": "RealESRGAN_x4plus.pth"},
 		"media":    map[string]any{"image": []string{imageID}},
@@ -238,7 +238,7 @@ func TestRunImageUpscaleTakesOneImage(t *testing.T) {
 	if status != http.StatusAccepted {
 		t.Fatalf("submit status = %d, body = %v", status, payload)
 	}
-	finished := waitForRun(t, gateway, asString(payload["id"]))
+	finished := waitForRun(t, server, asString(payload["id"]))
 	if finished["status"] != "succeeded" {
 		t.Fatalf("run failed: %v", finished)
 	}
@@ -259,7 +259,7 @@ func TestRunImageUpscaleTakesOneImage(t *testing.T) {
 
 	// Without the image the same request is a 400 at submission, not a run that fails inside
 	// ComfyUI: the binding is required, and the contract is checked before queueing.
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload = doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-esrgan-upscale",
 		"inputs":   map[string]any{"upscale_model": "RealESRGAN_x4plus.pth"},
 	})
@@ -270,12 +270,12 @@ func TestRunImageUpscaleTakesOneImage(t *testing.T) {
 
 func TestRunRejectsBadMedia(t *testing.T) {
 	fake := newFakeComfy(t)
-	gateway := httptest.NewServer(newTestGateway(t, fake).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServer(t, fake).Handler())
+	defer server.Close()
 
-	audio := uploadID(t, gateway, "clip.mp3", "audio/mpeg", []byte("ID3"))
+	audio := uploadID(t, server, "clip.mp3", "audio/mpeg", []byte("ID3"))
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 		"media":    map[string]any{"plain": []string{audio}},
@@ -284,7 +284,7 @@ func TestRunRejectsBadMedia(t *testing.T) {
 		t.Errorf("unknown role: status = %d, body = %v", status, payload)
 	}
 
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload = doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 		"media":    map[string]any{"reference": []string{audio}},
@@ -293,7 +293,7 @@ func TestRunRejectsBadMedia(t *testing.T) {
 		t.Errorf("kind mismatch: status = %d, body = %v", status, payload)
 	}
 
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload = doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 		"media":    map[string]any{"reference": []string{"upl_missing"}},
@@ -302,7 +302,7 @@ func TestRunRejectsBadMedia(t *testing.T) {
 		t.Errorf("missing upload: status = %d, body = %v", status, payload)
 	}
 
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload = doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "nope",
 	})
 	if status != http.StatusNotFound {
@@ -322,12 +322,12 @@ func TestRunUsesFirstVariantByDefault(t *testing.T) {
 			"accepts": map[string]any{"images": map[string]any{"max": 0}},
 		},
 	}
-	gateway := httptest.NewServer(newTestGatewayWith(t, fake, file, graph, entry).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServerWith(t, fake, file, graph, entry).Handler())
+	defer server.Close()
 
-	imageID := uploadID(t, gateway, "reference.png", "image/png", []byte("PNG"))
+	imageID := uploadID(t, server, "reference.png", "image/png", []byte("PNG"))
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat"},
 		"media":    map[string]any{"reference": []string{imageID}},
@@ -336,7 +336,7 @@ func TestRunUsesFirstVariantByDefault(t *testing.T) {
 		t.Fatalf("the default variant's contract was not applied: status = %d, body = %v", status, payload)
 	}
 
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload = doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a cat", "mode": "nope"},
 	})
@@ -353,8 +353,8 @@ func TestRunValidatesTypedInputs(t *testing.T) {
 	entry["parameters"] = []any{
 		map[string]any{"key": "steps", "type": "number", "min": 1, "max": 8},
 	}
-	gateway := httptest.NewServer(newTestGatewayWith(t, fake, file, graph, entry).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServerWith(t, fake, file, graph, entry).Handler())
+	defer server.Close()
 
 	cases := []struct {
 		name   string
@@ -367,7 +367,7 @@ func TestRunValidatesTypedInputs(t *testing.T) {
 		{"declared range", map[string]any{"prompt": "x", "steps": 0}, "invalid_input"},
 	}
 	for _, testCase := range cases {
-		status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+		status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 			"workflow": "image-test",
 			"inputs":   testCase.inputs,
 		})
@@ -382,7 +382,7 @@ func TestRunValidatesTypedInputs(t *testing.T) {
 	}
 
 	// The same request with valid values is accepted.
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "x", "size": "1024x1024", "steps": 4},
 	})
@@ -394,10 +394,10 @@ func TestRunValidatesTypedInputs(t *testing.T) {
 // The schema endpoint is the contract a client builds a form from.
 func TestWorkflowSchemaListsInputs(t *testing.T) {
 	fake := newFakeComfy(t)
-	gateway := httptest.NewServer(newTestGateway(t, fake).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServer(t, fake).Handler())
+	defer server.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodGet, gateway.URL+"/api/workflows/image-test/schema", nil)
+	status, payload := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/workflows/image-test/schema", nil)
 	if status != http.StatusOK {
 		t.Fatalf("schema status = %d", status)
 	}
@@ -436,10 +436,10 @@ func TestRunRejectsUndeclaredOutputContainer(t *testing.T) {
 		"formatParam": "format",
 		"formats":     map[string]any{"png": map[string]any{}},
 	}
-	gateway := httptest.NewServer(newTestGatewayWith(t, fake, file, graph, entry).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServerWith(t, fake, file, graph, entry).Handler())
+	defer server.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "x", "format": "jpg"},
 	})
@@ -454,7 +454,7 @@ func TestRunRejectsUndeclaredOutputContainer(t *testing.T) {
 		t.Errorf("message = %v", problem["message"])
 	}
 
-	status, payload = doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload = doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "x", "format": "png"},
 	})
@@ -463,7 +463,7 @@ func TestRunRejectsUndeclaredOutputContainer(t *testing.T) {
 	}
 	// Let the run finish before the temporary data directory is removed: the queue persists its
 	// record asynchronously and would otherwise write into a directory that is already gone.
-	if finished := waitForRun(t, gateway, asString(payload["id"])); finished["status"] != "succeeded" {
+	if finished := waitForRun(t, server, asString(payload["id"])); finished["status"] != "succeeded" {
 		t.Fatalf("run did not succeed: %v", finished)
 	}
 }
@@ -479,17 +479,17 @@ func TestRunAppliesBackgroundPrompt(t *testing.T) {
 	fake := newFakeComfy(t)
 	file, graph, entry := imageFixture()
 	entry["backgroundPrompt"] = "rgba hint"
-	gateway := httptest.NewServer(newTestGatewayWith(t, fake, file, graph, entry).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServerWith(t, fake, file, graph, entry).Handler())
+	defer server.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs":   map[string]any{"prompt": "a glass", "background": "transparent"},
 	})
 	if status != http.StatusAccepted {
 		t.Fatalf("status = %d, body = %v", status, payload)
 	}
-	finished := waitForRun(t, gateway, asString(payload["id"]))
+	finished := waitForRun(t, server, asString(payload["id"]))
 	if finished["status"] != "succeeded" {
 		t.Fatalf("run did not succeed: %v", finished)
 	}
@@ -507,10 +507,10 @@ func TestRunAppliesMossLayoutPrompt(t *testing.T) {
 	fake := newFakeComfy(t)
 	file, graph, entry := imageFixture()
 	entry["promptInject"] = "moss-layout"
-	gateway := httptest.NewServer(newTestGatewayWith(t, fake, file, graph, entry).Handler())
-	defer gateway.Close()
+	server := httptest.NewServer(newTestServerWith(t, fake, file, graph, entry).Handler())
+	defer server.Close()
 
-	status, payload := doJSON(t, gateway.Client(), http.MethodPost, canvasBase(t, gateway.URL)+"/runs", map[string]any{
+	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "image-test",
 		"inputs": map[string]any{
 			"prompt":        "a quiet room",
@@ -528,7 +528,7 @@ func TestRunAppliesMossLayoutPrompt(t *testing.T) {
 	if status != http.StatusAccepted {
 		t.Fatalf("status = %d, body = %v", status, payload)
 	}
-	finished := waitForRun(t, gateway, asString(payload["id"]))
+	finished := waitForRun(t, server, asString(payload["id"]))
 	if finished["status"] != "succeeded" {
 		t.Fatalf("run did not succeed: %v", finished)
 	}

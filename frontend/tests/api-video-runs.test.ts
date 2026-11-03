@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const t = vi.fn((key: string) => key);
 
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => t(key) } }));
-vi.mock("@/services/api/gateway-status", () => ({ noteGatewayError: () => undefined, noteGatewayResponse: () => undefined }));
+vi.mock("@/services/api/server-status", () => ({ noteServerError: () => undefined, noteServerResponse: () => undefined }));
 
 // Media conversion is a browser concern; these tests are about the request the canvas builds.
 vi.mock("@/services/image-storage", () => ({ imageToDataUrl: async () => "data:image/png;base64,AAAA" }));
@@ -34,7 +34,7 @@ const CANVAS_ID = "40e8afb47f10";
 setActiveCanvas(CANVAS_ID);
 
 type Config = Parameters<typeof createVideoGenerationTask>[0];
-const gateway = (overrides: Record<string, unknown> = {}) =>
+const server = (overrides: Record<string, unknown> = {}) =>
     ({
         baseUrl: "http://127.0.0.1:8190/v1",
         apiKey: "local",
@@ -71,10 +71,10 @@ const run = (overrides: Record<string, unknown> = {}) => ({
     ...overrides,
 });
 
-/** Where the gateway is in these cases: `gatewayProtocolRoot` strips the legacy `/v1`, nothing else. */
+/** Where the server is in these cases: `serverProtocolRoot` strips the legacy `/v1`, nothing else. */
 const ROOT = "http://127.0.0.1:8190";
 
-/** The names the gateway gives uploaded files: an id is that name, not a handle of its own (#156). */
+/** The names the server gives uploaded files: an id is that name, not a handle of its own (#156). */
 const UPLOAD_ID = "up-2b7788de.png";
 const UPLOAD_ID_2 = "up-5b1c9e3f.png";
 const VIDEO_ID = "up-77aa01bc.mp4";
@@ -83,10 +83,10 @@ const VIDEO_ID = "up-77aa01bc.mp4";
  * Route a stubbed fetch by the **whole** URL, and answer `404` to anything else.
  *
  * A stub that matched a path suffix (`url.endsWith("/runs")`) accepts a request sent to the wrong place,
- * and the case then passes on a URL the gateway does not serve (#161). An unexpected address here is a
+ * and the case then passes on a URL the server does not serve (#161). An unexpected address here is a
  * failure the caller cannot miss, which is what makes the URLs in these cases worth asserting.
  */
-function stubGateway(handlers: { run?: () => Response; status?: () => Response; delete?: () => Response; output?: () => Response; upload?: (count: number) => Response } = {}) {
+function stubServer(handlers: { run?: () => Response; status?: () => Response; delete?: () => Response; output?: () => Response; upload?: (count: number) => Response } = {}) {
     const calls: Array<{ url: string; method: string; body: unknown }> = [];
     let uploads = 0;
     const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
@@ -120,9 +120,9 @@ beforeEach(() => {
 
 describe("createVideoGenerationTask", () => {
     it("submits one run with the frame uploaded by role", async () => {
-        const { calls } = stubGateway({});
+        const { calls } = stubServer({});
 
-        const task = await createVideoGenerationTask(gateway(), "a cat walks", [image("first.png")]);
+        const task = await createVideoGenerationTask(server(), "a cat walks", [image("first.png")]);
 
         expect(task.id).toBe("task_video_1");
         const body = runBody(calls);
@@ -135,17 +135,17 @@ describe("createVideoGenerationTask", () => {
     });
 
     it("sends the second image as the last frame when both are asked for", async () => {
-        const { calls } = stubGateway({});
+        const { calls } = stubServer({});
 
-        await createVideoGenerationTask(gateway({ frameMode: "both" }), "morph", [image("a.png"), image("b.png")]);
+        await createVideoGenerationTask(server({ frameMode: "both" }), "morph", [image("a.png"), image("b.png")]);
 
         expect(runBody(calls).media).toEqual({ first_frame: UPLOAD_ID, last_frame: UPLOAD_ID_2 });
     });
 
     it("references multi-modal media by role instead of by form field", async () => {
-        const { calls } = stubGateway({});
+        const { calls } = stubServer({});
 
-        await createVideoGenerationTask(gateway({ model: "video-h3-ref2va", videoModel: "video-h3-ref2va", videoMode: "reference" }), "same dancer", [image("a.png")], {
+        await createVideoGenerationTask(server({ model: "video-h3-ref2va", videoModel: "video-h3-ref2va", videoMode: "reference" }), "same dancer", [image("a.png")], {
             videos: [{ id: "v1", name: "ref.mp4", type: "video/mp4", storageKey: "k1" } as never],
             audios: [{ id: "a1", name: "ref.mp3", type: "audio/mpeg", storageKey: "k2" } as never],
         });
@@ -159,17 +159,17 @@ describe("createVideoGenerationTask", () => {
     });
 
     it("sends no interpolation: raising the frame rate is a run of its own", async () => {
-        const { calls } = stubGateway({});
+        const { calls } = stubServer({});
 
-        await createVideoGenerationTask(gateway(), "a cat", [image("a.png")]);
+        await createVideoGenerationTask(server(), "a cat", [image("a.png")]);
 
         expect(runBody(calls).inputs.interpolation).toBeUndefined();
     });
 
     it("sends no media for a text-to-video workflow", async () => {
-        const { calls } = stubGateway({});
+        const { calls } = stubServer({});
 
-        await createVideoGenerationTask(gateway({ model: "video-h3-t2v", videoModel: "video-h3-t2v", videoMode: "text" }), "a cat", [image("a.png")]);
+        await createVideoGenerationTask(server({ model: "video-h3-t2v", videoModel: "video-h3-t2v", videoMode: "text" }), "a cat", [image("a.png")]);
 
         const body = runBody(calls);
         expect(body.inputs.mode).toBe("text");
@@ -179,9 +179,9 @@ describe("createVideoGenerationTask", () => {
 
 describe("createVideoInterpolateTask", () => {
     it("is one run of the RIFE workflow with the clip and the multiplier", async () => {
-        const { calls } = stubGateway({ upload: () => json({ upload: { id: VIDEO_ID, kind: "video", mime: "video/mp4", bytes: 3, filename: "source.mp4" } }) });
+        const { calls } = stubServer({ upload: () => json({ upload: { id: VIDEO_ID, kind: "video", mime: "video/mp4", bytes: 3, filename: "source.mp4" } }) });
 
-        const task = await createVideoInterpolateTask(gateway(), { name: "clip.mp4", type: "video/mp4", storageKey: "k1" }, { multiplier: 2 });
+        const task = await createVideoInterpolateTask(server(), { name: "clip.mp4", type: "video/mp4", storageKey: "k1" }, { multiplier: 2 });
 
         expect(task).toMatchObject({ model: "video-rife" });
         const body = runBody(calls);
@@ -193,7 +193,7 @@ describe("createVideoInterpolateTask", () => {
 
 describe("waitForVideoGenerationTask", () => {
     it("reports steps and preview frames, then returns the run's video", async () => {
-        const { calls } = stubGateway({
+        const { calls } = stubServer({
             status: () =>
                 json(
                     run({
@@ -208,7 +208,7 @@ describe("waitForVideoGenerationTask", () => {
         const steps: Array<{ step: number; total: number }> = [];
         const previews: Array<{ url: string } | null> = [];
         const result = await waitForVideoGenerationTask(
-            gateway(),
+            server(),
             { id: "task_video_1", model: "video-h3-frames" },
             {
                 onSteps: (value) => steps.push(value),
@@ -233,22 +233,22 @@ describe("waitForVideoGenerationTask", () => {
         expect(calls.map((call) => call.url)).not.toContain(`${ROOT}/api/canvases/${CANVAS_ID}/files/task_video_1.mp4`);
     });
 
-    it("passes a run the gateway failed on as a run failure, the one shape every mode reads", async () => {
+    it("passes a run the server failed on as a run failure, the one shape every mode reads", async () => {
         // It used to be rewrapped under a video-only name. The node has to tell "the run ended" from "the
         // question did not get there", and one error type for all three modes is what makes that one rule
         // (#235).
-        stubGateway({ status: () => json(run({ status: "failed", error: { code: "comfy_execution_failed", message: "Prompt outputs failed validation" } })) });
+        stubServer({ status: () => json(run({ status: "failed", error: { code: "comfy_execution_failed", message: "Prompt outputs failed validation" } })) });
 
-        const error = await waitForVideoGenerationTask(gateway(), { id: "task_video_1", model: "video-h3-frames" }).catch((caught) => caught);
+        const error = await waitForVideoGenerationTask(server(), { id: "task_video_1", model: "video-h3-frames" }).catch((caught) => caught);
 
         expect(error.name).toBe("RunFailedError");
         expect(error.message).toBe("Prompt outputs failed validation");
     });
 
     it("cancels the run only when the user stopped it", async () => {
-        const { calls } = stubGateway({});
+        const { calls } = stubServer({});
         const controller = new AbortController();
-        const watching = waitForVideoGenerationTask(gateway(), { id: "task_video_1", model: "video-h3-frames" }, { signal: controller.signal });
+        const watching = waitForVideoGenerationTask(server(), { id: "task_video_1", model: "video-h3-frames" }, { signal: controller.signal });
         controller.abort("user-stop");
 
         await expect(watching).rejects.toMatchObject({ name: "AbortError" });
@@ -256,9 +256,9 @@ describe("waitForVideoGenerationTask", () => {
     });
 
     it("leaves the run alone when the page goes away", async () => {
-        const { calls } = stubGateway({});
+        const { calls } = stubServer({});
         const controller = new AbortController();
-        const watching = waitForVideoGenerationTask(gateway(), { id: "task_video_1", model: "video-h3-frames" }, { signal: controller.signal });
+        const watching = waitForVideoGenerationTask(server(), { id: "task_video_1", model: "video-h3-frames" }, { signal: controller.signal });
         controller.abort();
 
         await expect(watching).rejects.toMatchObject({ name: "AbortError" });

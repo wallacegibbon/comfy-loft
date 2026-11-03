@@ -9,7 +9,7 @@ import { Collapse } from "@/components/kit/nav";
 import { Segmented } from "@/components/kit/segmented";
 import { Select } from "@/components/kit/select";
 import { readImageMeta } from "@/lib/image-utils";
-import { requestWorkflows, type GatewayWorkflow, type WorkflowParameter } from "@/services/api/workflows";
+import { requestWorkflows, type ServerWorkflow, type WorkflowParameter } from "@/services/api/workflows";
 import type { AiConfig } from "@/stores/use-config-store";
 
 export type CanvasSuperResolveParams = { workflowId: string; params: Record<string, unknown> };
@@ -85,7 +85,7 @@ export function CanvasNodeSuperResolveDialog({
 }) {
     const { t } = useTranslation();
     const [image, setImage] = useState<{ width: number; height: number } | null>(null);
-    const [workflows, setWorkflows] = useState<GatewayWorkflow[]>([]);
+    const [workflows, setWorkflows] = useState<ServerWorkflow[]>([]);
     const [workflowId, setWorkflowId] = useState("");
     const [values, setValues] = useState<Record<string, unknown>>({});
     const [scale, setScale] = useState(2);
@@ -98,7 +98,7 @@ export function CanvasNodeSuperResolveDialog({
     const modelParameter = parameters.find((parameter) => parameter.key === "dit_model" || parameter.key === "upscale_model") || null;
     const resolutionParameter = parameters.find((parameter) => parameter.key === "resolution") || null;
     const advancedParameters = parameters.filter((parameter) => parameter !== modelParameter && parameter !== resolutionParameter);
-    // Whether ComfyUI can run it right now is the gateway's answer; showing the upscaler as a
+    // Whether ComfyUI can run it right now is the server's answer; showing the upscaler as a
     // choice is ours. An unavailable workflow stays listed with its problems, because "the node
     // pack is missing" is the reason the button is disabled.
     const available = workflow?.availability?.available === true;
@@ -125,7 +125,7 @@ export function CanvasNodeSuperResolveDialog({
         void readImageMeta(dataUrl).then(setImage);
         let alive = true;
         // An upscaler is an image workflow in the "upscale" category; which ones are offered is a
-        // presentation choice, so the filter lives here rather than in the gateway.
+        // presentation choice, so the filter lives here rather than in the server.
         requestWorkflows(config)
             .then((items) => {
                 if (!alive) return;

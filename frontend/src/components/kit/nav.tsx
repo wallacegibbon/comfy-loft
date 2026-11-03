@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
  * Collapse — the one piece of chrome that carries its content in antd's `items` array. Keeping that
  * shape means the `items` literal at the call site did not move; only what renders it changed.
  *
- * `Tabs` used to sit here too. It rendered the three tabs of the settings window (Gateway,
+ * `Tabs` used to sit here too. It rendered the three tabs of the settings window (Server,
  * Preferences, Add workflows); when the window was split into two, nothing else wanted tabs (#190).
  */
 

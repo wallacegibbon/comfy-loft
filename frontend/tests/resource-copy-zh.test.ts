@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *
  * `resources.json` is data, so it is English (`docs/decisions.md` #8, #66, #67). The Chinese a
  * reader of the Chinese UI expects lives beside the app, keyed by the resource's stable id — the same
- * arrangement `gateway-labels.ts` uses for workflow labels. These tests pin the two directions that
+ * arrangement `server-labels.ts` uses for workflow labels. These tests pin the two directions that
  * can silently break: Chinese leaking into the English UI, and the Chinese UI falling back to English
  * because an id is not in the table.
  */
