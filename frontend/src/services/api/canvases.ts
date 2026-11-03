@@ -1,5 +1,4 @@
 import { LOCAL_GATEWAY_BASE_URL } from "@/constant/app-mode";
-import { normalizeConnections } from "@/lib/canvas/canvas-document";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { ApiError, KEEPALIVE_BYTES, httpJson, httpVoid } from "@/services/api/http";
 import type { CanvasAgentWindow, CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
@@ -89,9 +88,7 @@ function readDocument(raw: unknown): CanvasDocument {
     const empty = emptyCanvasDocument();
     return {
         nodes: Array.isArray(source.nodes) ? source.nodes : empty.nodes,
-        // Repaired on the way in: an older document can hold two connections with one id, and the id is what
-        // selecting, highlighting and deleting go by (see `normalizeConnections`).
-        connections: normalizeConnections(source.connections),
+        connections: Array.isArray(source.connections) ? source.connections : empty.connections,
         backgroundMode: source.backgroundMode || empty.backgroundMode,
         showImageInfo: Boolean(source.showImageInfo),
         viewport: source.viewport && typeof source.viewport.k === "number" ? source.viewport : empty.viewport,

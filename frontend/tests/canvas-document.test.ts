@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { documentOf, normalizeConnections } from "../src/lib/canvas/canvas-document";
+import { documentOf } from "../src/lib/canvas/canvas-document";
 import type { CanvasDocument } from "../src/services/api/canvases";
 import type { CanvasNodeData } from "../src/types/canvas";
 
@@ -57,42 +57,5 @@ describe("a canvas document", () => {
         const document = documentWith([]);
         document.agent = { open: true, position: { x: 40, y: 60 }, size: { width: 640, height: 520 } };
         expect(documentOf(document).agent).toEqual({ open: true, position: { x: 40, y: 60 }, size: { width: 640, height: 520 } });
-    });
-});
-
-/**
- * A connection's id has to identify one connection.
- *
- * The agent wires several nodes inside one millisecond, so a document written before #205 holds several
- * connections with `conn-<Date.now()>` — and the id is what selecting, highlighting and deleting go by.
- * `canvases/3df8b7a65088/canvas.json` still had a pair when this was written, which is why reading repairs
- * it rather than waiting for the next gesture that mints one.
- */
-describe("the connections a document is read with", () => {
-    const connection = (id: string, fromNodeId = "text-1", toNodeId = "image-1") => ({ id, fromNodeId, toNodeId });
-
-    test("keeps one that is already whole", () => {
-        const stored = [connection("conn-a"), connection("conn-b", "text-1", "image-2")];
-        expect(normalizeConnections(stored)).toEqual(stored);
-    });
-
-    test("gives a duplicate id to a fresh one, and leaves the first alone", () => {
-        const [first, second] = normalizeConnections([connection("conn-1"), connection("conn-1", "text-1", "image-2")]);
-        expect(first.id).toBe("conn-1");
-        expect(second.id).not.toBe("conn-1");
-        expect(new Set([first.id, second.id]).size).toBe(2);
-        // The endpoints are what the connection means, and they are untouched.
-        expect(second).toMatchObject({ fromNodeId: "text-1", toNodeId: "image-2" });
-    });
-
-    test("names one that arrived without an id, and drops one that names no node", () => {
-        expect(normalizeConnections([{ fromNodeId: "a", toNodeId: "b" }])[0].id).toBeTruthy();
-        expect(normalizeConnections([{ fromNodeId: "a" }, { toNodeId: "b" }, connection("conn-c")])).toEqual([connection("conn-c")]);
-    });
-
-    test("is empty rather than broken for anything that is not a list", () => {
-        expect(normalizeConnections(undefined)).toEqual([]);
-        expect(normalizeConnections("files/x.png")).toEqual([]);
-        expect(normalizeConnections([null, 3, "conn-1"])).toEqual([]);
     });
 });

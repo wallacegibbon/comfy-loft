@@ -561,11 +561,9 @@ func (s *Store) Cancel(id string) *Task {
 // missing or outside the output directory.
 func (s *Store) OutputPath(canvasID, id string, index int) string {
 	s.mu.RLock()
-	// A snapshot, not the live record: the worker replaces Outputs when the run finishes, and reading the
-	// slice header from outside the lock raced exactly that assignment.
-	stored := s.tasks[id].snapshot()
+	stored, ok := s.tasks[id]
 	s.mu.RUnlock()
-	if stored == nil {
+	if !ok {
 		return ""
 	}
 	files := stored.Outputs
