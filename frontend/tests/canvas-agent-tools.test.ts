@@ -190,3 +190,46 @@ describe("a name this page does not know", () => {
         expect((answer.content[0] as { text: string }).text).toContain("the page in front of the user was built before the tool list you were given");
     });
 });
+
+/**
+ * A press that would carry nothing is refused before it is made.
+ *
+ * The page refuses it too, and a picture's refusal comes back through the press (`pressAndWait`). A text
+ * node's does not: it streams, so there is no run id to report and the agent would be told an answer is on
+ * its way. One function answers "what would this wire carry", asked here as well (#230).
+ */
+describe("generate: a wire that carries nothing", () => {
+    test("refuses in the page's own words, and starts nothing", async () => {
+        const { hands, written } = handsFor([node("text", { content: "" }), node("image", { prompt: "a brass compass" })], [{ id: "c1", fromNodeId: "text-1", toNodeId: "image-1" }]);
+        const { answer, text } = await textOf(hands, "generate", { nodeId: "image-1" });
+
+        expect(answer.isError).toBe(true);
+        expect(text).toMatch(/^text-1 .*holds nothing yet/);
+        expect(written.generated).toEqual([]);
+    });
+
+    test("refuses a text node's press the same way, because that press reports nothing back", async () => {
+        const { hands, written } = handsFor([node("image", {}), node("text", { prompt: "write about the forest" })], [{ id: "c1", fromNodeId: "image-1", toNodeId: "text-1" }]);
+        const { answer, text } = await textOf(hands, "generate", { nodeId: "text-1" });
+
+        expect(answer.isError).toBe(true);
+        expect(text).toMatch(/^image-1 .*holds nothing yet/);
+        expect(written.generated).toEqual([]);
+    });
+
+    test("presses when the wire does carry something", async () => {
+        const { hands, written } = handsFor([node("text", { content: "a red ceramic teapot" }), node("image", { prompt: "a brass compass" })], [{ id: "c1", fromNodeId: "text-1", toNodeId: "image-1" }]);
+        // The page reports the run as soon as it exists; a fake that stays silent would be answered with
+        // "no run was reported" after the press timeout, which is a different test.
+        hands.generateNode = async (nodeId, mode, prompt, options) => {
+            written.generated.push([nodeId, prompt]);
+            void mode;
+            options?.onStart?.({ started: true, runId: "run-1" });
+        };
+        const { answer, text } = await textOf(hands, "generate", { nodeId: "image-1" });
+
+        expect(answer.isError).not.toBe(true);
+        expect(text).toContain("run run-1 is out");
+        expect(written.generated).toEqual([["image-1", "a brass compass"]]);
+    });
+});

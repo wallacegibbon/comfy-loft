@@ -68,17 +68,39 @@ export function getGenerationResourceNodes(nodeId: string, nodes: CanvasNodeData
     return [];
 }
 
-function getContextInputNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+/**
+ * The nodes a run on `nodeId` would read, including the ones that hold nothing.
+ *
+ * `getGenerationResourceNodes` answers "which nodes are inputs" and leaves out a node that holds nothing,
+ * because there is nothing to read from it. This asks the same question with that filter removed — same
+ * config hub, same wires — so a run wired to an empty node can be refused by its name instead of quietly
+ * running without it (#230).
+ */
+export function generationInputCandidates(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): CanvasNodeData[] {
+    const hub = configHubOf(nodeId, nodes, connections);
+    const candidates = (hub ? incomingNodes(hub, nodes, connections) : incomingNodes(nodeId, nodes, connections)).filter((node) => node.id !== nodeId);
+    return [...new Map(candidates.map((node) => [node.id, node])).values()];
+}
+
+/** The config node this node is wired into, if any: its inputs are this node's inputs. */
+function configHubOf(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): string | undefined {
+    return connections.find((connection) => connection.fromNodeId === nodeId && nodes.find((node) => node.id === connection.toNodeId)?.type === CanvasNodeType.Config)?.toNodeId;
+}
+
+function incomingNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
     return connections
         .filter((connection) => connection.toNodeId === nodeId)
         .map((connection) => nodes.find((node) => node.id === connection.fromNodeId))
-        .filter((node): node is CanvasNodeData => Boolean(node && isCanvasReferenceNode(node, nodes)));
+        .filter((node): node is CanvasNodeData => Boolean(node));
+}
+
+function getContextInputNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+    return incomingNodes(nodeId, nodes, connections).filter((node) => isCanvasReferenceNode(node, nodes));
 }
 
 function getConnectedConfigInputNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
-    const configConnection = connections.find((connection) => connection.fromNodeId === nodeId && nodes.find((node) => node.id === connection.toNodeId)?.type === CanvasNodeType.Config);
-    if (!configConnection) return [];
-    return getContextInputNodes(configConnection.toNodeId, nodes, connections).filter((node) => node.id !== nodeId);
+    const hub = configHubOf(nodeId, nodes, connections);
+    return hub ? getContextInputNodes(hub, nodes, connections).filter((node) => node.id !== nodeId) : [];
 }
 
 function hasGroupResources(node: CanvasNodeData, nodes: CanvasNodeData[]) {

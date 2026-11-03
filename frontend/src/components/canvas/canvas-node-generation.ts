@@ -6,7 +6,7 @@ import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
-import { getGenerationResourceNodes, getGroupResourceNodes } from "@/lib/canvas/canvas-resource-references";
+import { generationInputCandidates, getGenerationResourceNodes, getGroupResourceNodes } from "@/lib/canvas/canvas-resource-references";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 
 type NodeLora = { name: string; strength: number };
@@ -203,10 +203,7 @@ function readNodeGenerationResource(node: CanvasNodeData): NodeGenerationResourc
  */
 export function inputsHoldingNothing(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): EmptyInput[] {
     return (
-        connections
-            .filter((connection) => connection.toNodeId === nodeId)
-            .map((connection) => nodes.find((node) => node.id === connection.fromNodeId))
-            .filter((node): node is CanvasNodeData => Boolean(node))
+        generationInputCandidates(nodeId, nodes, connections)
             // A config node is a selector rather than a source, and has no handle to draw a wire from; a wire
             // that names one is not an input to read. Everything else wired in must hold what it promised.
             .filter((node) => node.type !== CanvasNodeType.Config && carriesNothing(node, nodes))

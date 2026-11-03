@@ -8171,10 +8171,15 @@ What follows from that:
   else, which is how an empty picture node came to offer the words it was asked as though they were
   something it held.
 - A run refuses a wire that would carry nothing, and names the node: `inputsHoldingNothing` +
-  `describeEmptyInputs` in `canvas-node-generation.ts`, used at the top of `handleGenerateNode`. A person
-  reads a toast in their own language; the agent reads a sentence through #225's refusal channel, which
-  already says "there is nothing to wait for, and why". The refusal tells empty, still being made and last
-  run failed apart, because what to do about them is different.
+  `describeEmptyInputs` in `canvas-node-generation.ts`, asked at the top of `handleGenerateNode` and again by
+  the agent's `generate` before it presses. A person reads a toast in their own language; the agent reads a
+  sentence through #225's refusal channel, which already says "there is nothing to wait for, and why". The
+  refusal tells empty, still being made and last run failed apart, because what to do about them is
+  different. It follows the same road the request does — a node wired into a config node takes its inputs
+  from that config's other wires (`generationInputCandidates`) — so a wire to an empty node one hop away is
+  still refused. The tool asks as well because a text node's press reports nothing back: it streams, so
+  there is no run id to report, and without the pre-check the agent would be told an answer was on its way
+  when nothing had started.
 - `applyPromptResult` (the panel's optimize path) writes the prompt and nothing else. It was the last place
   the pre-#229 model survived: one sentence written into `content`, `prompt` and `composerContent` at once.
 - `generateImageFromTextNode` reads `nodeContentOf` and no longer stamps the same words on the text node's
@@ -8227,9 +8232,10 @@ box must not pretend to be one.
 labelled the field as the question it will be asked next so the agent can use it deliberately. `read_node`,
 which is how the agent *reads a node*, still answers with content only.
 
-**Tested** `npx vitest run` (260: 7 new — a wire from an unwritten card carries nothing, a picture carries
+**Tested** `npx vitest run` (265: 13 new — a wire from an unwritten card carries nothing, a picture carries
 itself and not its words, a wired node that holds nothing is named with its state, a group is read by what is
-inside it, a config node is never a source; and 1 for a tool name the page does not know). `npm run check`
+inside it, a config node is never a source, a wire through a config hub is followed, `generate` refuses
+before pressing for both a picture and a text node, and a tool name the page does not know). `npm run check`
 (i18n 849/835, no dead keys; exports: no export without a caller). `npm run build`. `make check`, whose
 system-prompt assertion now also requires the wire rule. Not exercised in a browser: the toast wording, the
 refusal naming a node the user is looking at, and whether the strict card reads well on a canvas written

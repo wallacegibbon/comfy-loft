@@ -1,5 +1,5 @@
 import { getNodeSpec } from "@/constant/canvas";
-import { repeatedConnectedText } from "@/components/canvas/canvas-node-generation";
+import { describeEmptyInputs, inputsHoldingNothing, repeatedConnectedText } from "@/components/canvas/canvas-node-generation";
 import { resolveMediaUrl } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ToolContent } from "@/services/api/agent";
@@ -237,6 +237,13 @@ async function pressGenerate(hands: CanvasHands, args: unknown, session: string)
     // A content node generates what it is; a config node generates the kind its composer is set to.
     const mode: string = node.type === CanvasNodeType.Config ? node.metadata?.generationMode || "image" : node.type;
     if (!GENERATE_MODES.includes(mode)) return { content: [textBlock(`a ${node.type} node has nothing to generate`)], isError: true };
+
+    // Ask the question the page is about to ask, before pressing. A wire into a node that holds nothing
+    // carries nothing (#230), and the page refuses a press like that — but a text node's press reports
+    // nothing back at all (it streams, so there is no run id to report), and the agent would be told an
+    // answer was on its way when nothing was started. The rule is one function, asked here as well.
+    const blocked = inputsHoldingNothing(node.id, hands.nodes(), hands.connections());
+    if (blocked.length) return { content: [textBlock(describeEmptyInputs(blocked))], isError: true };
 
     // A text node is answered by its own agent, which writes into the node: there is no run behind it and
     // so nothing to be told about later.
