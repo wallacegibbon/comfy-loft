@@ -43,6 +43,8 @@ const TEST_ONLY = new Map([
         "src/stores/use-config-store.ts:normalizeChannelModels",
         "the normalisation `createModelChannel` runs while hydrating a stored document; hydration is behind the module-level store singleton, so the test pins the rule (a stored capability survives) directly rather than by seeding a settings document",
     ],
+    ["src/lib/wav.ts:WAV_HEADER_BYTES", "the size of the canonical PCM header is part of the format contract the encoder is tested against; no product code needs the number itself, it only writes through it"],
+    ["src/lib/canvas/agent-dictation.ts:MIN_SPEECH_SECONDS", "the shortest gesture worth a request is the rule under test — `isSpeakable` is its only product reader, and a test that restated 0.2 would stop noticing when the threshold moved"],
 ]);
 
 function walk(dir, out = []) {

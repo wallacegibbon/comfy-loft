@@ -47,6 +47,14 @@ export type AiConfig = {
     audioFormat: string;
     audioSpeed: string;
     audioInstructions: string;
+    /**
+     * Where the speech server listens, for the words dictated into the agent's prompt.
+     *
+     * An OpenAI-compatible `POST /v1/audio/transcriptions` that takes a WAV file and answers `{"text": …}`.
+     * The page posts the recording to the gateway and the gateway posts it here, because that server answers
+     * no CORS headers and is usually only reachable from this machine (`services/api/speech.ts`, #239).
+     */
+    asrUrl: string;
     videoSeconds: string;
     vquality: string;
     videoGenerateAudio: string;
@@ -68,6 +76,15 @@ export type AiConfig = {
     seedFixed?: string;
     params?: Record<string, unknown>;
 };
+
+/**
+ * The speech server this build was measured against: a local audio.cpp server.
+ *
+ * It is filled in rather than left blank because the field is the only setting the feature has, and a blank
+ * one would make a working setup look like a missing one. Any OpenAI-compatible `/v1/audio/transcriptions`
+ * that takes WAV works — that is the whole of the protocol this build knows (#239).
+ */
+export const DEFAULT_SPEECH_ADDRESS = "http://127.0.0.1:18080/v1/audio/transcriptions";
 
 const CHANNEL_MODEL_SEPARATOR = "::";
 const localDefaultChannel: ModelChannel = {
@@ -96,6 +113,10 @@ export const defaultConfig: AiConfig = {
     audioFormat: "mp3",
     audioSpeed: "1",
     audioInstructions: "",
+    // The local audio.cpp speech server: the address the panel's dictation was built and measured against
+    // (rtf ≈ 0.12, WAV in, `{"text": …}` out). It is a default and not a constant because a speech server
+    // is somewhere else on somebody else's machine, so the field is the setting.
+    asrUrl: DEFAULT_SPEECH_ADDRESS,
     videoSeconds: "6",
     vquality: "720",
     videoGenerateAudio: "true",

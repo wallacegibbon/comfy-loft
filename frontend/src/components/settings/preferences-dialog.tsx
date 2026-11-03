@@ -10,7 +10,7 @@ import { imageAspectOptions } from "@/components/image-settings-panel";
 import { videoResolutionOptions } from "@/components/video-settings-panel";
 import { AgentModelsSection } from "@/components/settings/agent-models-section";
 import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaScaleOptions, parseVideoResolution } from "@/lib/media-size";
-import { useConfigStore, type ModelCapability } from "@/stores/use-config-store";
+import { useConfigStore, DEFAULT_SPEECH_ADDRESS, type ModelCapability } from "@/stores/use-config-store";
 
 /**
  * The media kinds with a default model to pick.
@@ -85,6 +85,16 @@ export function PreferencesDialog() {
                 </div>
             </Field>
             <AgentModelsSection />
+            {/* Speech is the other way words get into the agent's prompt, and the one setting it has is where
+                the speech server listens. The gateway forwards to it, so the address only has to be true of the
+                machine the gateway runs on — the phone on the LAN never dials it itself. */}
+            <div className="mb-4 border-t border-stone-200 pt-4 dark:border-stone-800">
+                <div className="mb-1 text-sm font-semibold">{t("config.preferences.speech")}</div>
+                <div className="mb-2 text-xs text-stone-500">{t("config.preferences.speechNote")}</div>
+                <Field label={t("config.preferences.speechAddress")} className="mb-0">
+                    <Input value={config.asrUrl} placeholder={DEFAULT_SPEECH_ADDRESS} onChange={(event) => updateConfig("asrUrl", event.target.value)} />
+                </Field>
+            </div>
             <Field label={t("config.preferences.systemPrompt")} className="mb-0">
                 <Input.TextArea rows={4} value={config.systemPrompt} placeholder={t("config.preferences.systemPromptPlaceholder")} onChange={(event) => updateConfig("systemPrompt", event.target.value)} />
             </Field>

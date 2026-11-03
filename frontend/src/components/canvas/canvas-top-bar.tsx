@@ -90,8 +90,7 @@ export function CanvasTopBar({
                     <Shortcut keys={[t("canvas.shortcut.zoomSlider")]} value={t("canvas.shortcut.preciseZoom")} />
                     <Shortcut keys={[t("canvas.shortcut.drag")]} value={t("canvas.shortcut.boxSelect")} />
                     <Shortcut keys={["Shift / Cmd", t("canvas.shortcut.click")]} value={t("canvas.shortcut.addSelection")} />
-                    <Shortcut keys={["Ctrl / Cmd", "A"]} value={t("canvas.shortcut.selectAll")} />
-                    <Shortcut keys={["Ctrl / Cmd", "C / V"]} value={t("canvas.shortcut.copyPaste")} />
+                    <Shortcut keys={["Ctrl / Cmd", "A"]} value={t("canvas.shortcut.selectAll")} /> <Shortcut keys={["Ctrl / Cmd", "C / V"]} value={t("canvas.shortcut.copyPaste")} />
                     <Shortcut keys={["Ctrl / Cmd", "G"]} value={t("canvas.shortcut.group")} />
                     <Shortcut keys={["Ctrl / Cmd", "Shift", "G"]} value={t("canvas.shortcut.ungroup")} />
                     <Shortcut keys={["Ctrl / Cmd", "Z"]} value={t("canvas.undo")} />
@@ -100,6 +99,9 @@ export function CanvasTopBar({
                     <Shortcut keys={["Delete / Backspace"]} value={t("canvas.shortcut.delete")} />
                     <Shortcut keys={["Esc"]} value={t("canvas.shortcut.escape")} />
                     <Shortcut keys={[t("canvas.shortcut.dropMedia")]} value={t("canvas.shortcut.upload")} />
+                    {/* Not a canvas gesture, but this is the only place the app lists its keys, and a
+                        hold-to-talk nobody can discover is a feature nobody has. */}
+                    <Shortcut keys={["Ctrl / Cmd", "'"]} value={t("canvas.shortcut.talk")} />
                 </div>
             </Dialog>
         </>

@@ -8657,3 +8657,72 @@ arrive as the next prompt (`delivered`, which the panel already uses to clear th
 **Where** `internal/agent/sessions.go`, `internal/server/routes_agent.go`, `internal/agent/session_test.go`,
 `frontend/src/services/api/agent.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`,
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`.
+
+## 239. Speech is a hop: the gateway carries one file to the address the page names
+
+**Decision** The agent's prompt can be filled by talking. Holding `Ctrl`/`⌘` + `'`, or holding the microphone
+button in the panel, records while it is held and puts the transcript in **at the caret** when it is released.
+There is one speech server supported: an OpenAI-compatible `POST /v1/audio/transcriptions` that takes a WAV
+file and answers `{"text": …}`, with `http://127.0.0.1:18080/v1/audio/transcriptions` filled in as the default
+and the address as the only setting (`config.preferences.speech`).
+
+**Why the browser cannot make that request** Measured against the server this was built on (an audio.cpp
+build, `model=refine`, a Qwen3-ASR-0.6B): it answers **no CORS headers** — `OPTIONS` is a 404 and a `POST`
+comes back without `Access-Control-Allow-Origin` — so a page on the gateway's origin can send the request and
+can never read the answer. The address is also usually `127.0.0.1`, which is true of this machine and of no
+other: a canvas opened on a phone over the LAN would be asking the phone for a speech server. So the page
+posts to `/api/speech/transcriptions` on the gateway, and the gateway posts to the address the page named.
+The address travels **in the request** rather than being read out of `data/settings.json`: the gateway
+deliberately understands no key in the preferences document (`internal/settings`), and this route has no
+reason to become the first exception.
+
+**Why only WAV, and why the encoder is ours** The same server refuses anything that is not a real WAV file —
+`MediaRecorder` produces webm/opus (Chrome) or mp4 (Safari) and both are refused by name, and renaming the
+file does not help because the bytes are what gets sniffed ("input is Matroska/WebM, not WAV"). So the panel
+captures raw samples through the Web Audio graph (`ScriptProcessorNode` — deprecated, and still the shortest
+path that starts inside the gesture with no second module to load) and writes the 44-byte header itself
+(`lib/wav.ts`). No resampling on this side: the server was measured transcribing 24, 44.1 and 48 kHz files
+with the reported duration intact, so the true rate in the header is less code and less to be wrong about.
+
+**Why `Ctrl`/`⌘` + `'`** A quote is what a person uses to quote speech, and the chord collides with nothing
+here: `Space` is the canvas's temporary tool, `Shift` alone is additive selection, `Ctrl` alone is the
+temporary tool and the multi-select click, and a printable in the chord means it cannot be started by accident
+the way a held modifier can. `Ctrl+'` types nothing and is bound by no browser; `⌘+'` is Firefox's quick-find
+on macOS, which is why `Ctrl` is said first. Repeats are dropped (`event.repeat`) and the window losing focus
+ends the recording — the one failure worth code, a held key whose keyup arrives on a page that is not
+listening.
+
+**Why the caret** Speaking is another way of typing, so it does what typing does: the words go in at the
+caret, replacing a selection, and the caret ends up after them (`lib/canvas/agent-dictation.ts`, a pure
+function of the draft and a range, which is the only way it can be tested without a DOM). The range is the
+box's own selection — a textarea keeps it while unfocused, which is exactly the state it is in, since the
+gesture started on the canvas — with the end of the draft as the answer for a box never touched. A gesture
+that produced less than 0.2 s of sound is dropped silently rather than being sent and refused.
+
+**The language is a hint, and that was measured rather than assumed** `language` follows the interface
+(`zh`/`en`), which raised the obvious question — an English interface and a Chinese sentence. Tested on the
+same server: English audio transcribed correctly with a `zh`, a `Chinese` and a garbage `English-zh` hint alike,
+and Japanese audio transcribed correctly with `ja`, `zh`, `en` and auto; the field is advisory on this model
+("Recognition language code or label. Omit to detect language automatically"). A wrong hint does not corrupt an
+answer, so the interface language is a safe default and the field is one line to change if a server is ever
+found where it is not.
+
+**The cost of the hop** `make check` covers it: the audio arrives at the configured address as a multipart
+`file`, the fields the page sent are the ones that got there (and `url` is **not** among them — a destination
+that is echoed back to the server is a destination that could be pointed anywhere), a refusal comes back in
+the speech server's own words with the 4xx/5xx distinction kept, an unreachable address names the address, and
+a missing or non-http one is a 400 with nothing sent. `npx vitest run` covers the encoder (header, sizes,
+rates, clamping), the insertion (caret, selection, out-of-range) and the request body.
+
+**Not verified here** A real microphone: there is no browser in this tree and no DOM in the tests, so the
+capture path, the permission prompt and the feel of the gesture are for a person to try. Two limits worth
+knowing: the very first press of a session waits on the permission prompt (a gesture that ends while the
+prompt is up records nothing, silently), and `getUserMedia` needs a secure context — `127.0.0.1` is one,
+`http://192.168.x.x` on the LAN is not, so on a phone the button works only over https or on localhost.
+
+**Where** `internal/server/routes_speech.go` (+`_test.go`), `routes_admin.go`, `frontend/src/lib/{wav,pcm-recorder}.ts`,
+`frontend/src/lib/canvas/agent-dictation.ts`, `frontend/src/services/api/speech.ts`,
+`frontend/src/components/canvas/{use-hold-to-talk.ts,canvas-agent-panel.tsx}`,
+`frontend/src/components/settings/preferences-dialog.tsx`, `frontend/src/stores/use-config-store.ts`,
+`frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
+`frontend/tests/{wav,agent-dictation,api-speech}.test.ts`.

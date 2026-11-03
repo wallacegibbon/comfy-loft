@@ -1,8 +1,9 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUp, Bot, ChevronRight, CircleCheck, CircleDashed, CircleX, Eraser, Info, LoaderCircle, Square, Wrench, X } from "lucide-react";
+import { ArrowUp, Bot, ChevronRight, CircleCheck, CircleDashed, CircleX, Eraser, Info, LoaderCircle, Mic, Square, Wrench, X } from "lucide-react";
 
 import { citationLabel, mentionResolver, referenceBlock, referenceLine, type Citation, type MentionSegment } from "@/lib/canvas/agent-references";
+import { insertSpoken } from "@/lib/canvas/agent-dictation";
 import { textOf, transcriptEvent, transcriptWindow, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
 import { contextSegment, speedSegment } from "@/lib/canvas/agent-usage";
 import { nodeTitle } from "@/lib/canvas/node-title";
@@ -14,6 +15,8 @@ import { confirm } from "@/components/kit/confirm";
 import { apiErrorMessage } from "@/services/api/http";
 import { AgentSettingsControls } from "./agent-settings-controls";
 import { AgentMarkdown } from "./agent-markdown";
+import { useHoldToTalk } from "./use-hold-to-talk";
+import { transcribeSpeech } from "@/services/api/speech";
 import { agentSession, cancelAgentSession, canvasAgent, clearAgentConversation, closeAgentSession, onAgentEvent, openAgentSession, sendAgentMessage, subscribeAgentSessions, type AgentEvent } from "@/services/api/agent";
 import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
 import { useEffectiveConfig } from "@/stores/use-config-store";
@@ -52,7 +55,7 @@ const TOOL_FAILED = "#ef4444";
 const MESSAGE_WINDOW = 20;
 
 export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: Props) {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const theme = useCanvasTheme();
     const config = useEffectiveConfig();
     const agentWindow = useCanvasAgentStore((state) => state.windows[canvasId]);
@@ -330,6 +333,39 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         (event.target as HTMLElement).releasePointerCapture?.(event.pointerId);
     };
 
+    // --- dictation --------------------------------------------------------------------------------------
+    /**
+     * The caret the box last showed.
+     *
+     * Speaking is another way of typing, so the words go where typing would have gone — and by the time they
+     * arrive the box has not had the focus for several seconds, because the gesture started on the canvas or
+     * on a button. A textarea keeps its selection while unfocused, so the box itself is the answer while it is
+     * open (`onSelect` keeps this in step); the end of the draft is the answer for a box that has never been
+     * touched, which is where a first keystroke would land.
+     */
+    const caretPointRef = useRef<{ start: number; end: number } | null>(null);
+
+    /** What was said, put in at the caret — and the panel opens, because that is where the words went. */
+    const insertSpeech = (text: string) => {
+        const selection = caretPointRef.current ?? { start: draft.length, end: draft.length };
+        const { value, caret } = insertSpoken(draft, text, selection);
+        caretPointRef.current = { start: caret, end: caret };
+        caretRef.current = caret;
+        setDraft(value);
+        setOpen(canvasId, true);
+    };
+
+    /**
+     * Hold `Ctrl`/`⌘` and `'`, or hold the microphone button: the words land in the box at the caret.
+     *
+     * The sound's language follows the one the interface is written in, which is a hint and not a
+     * constraint — the model answers in the language it hears either way (`services/api/speech.ts`).
+     */
+    const speech = useHoldToTalk({
+        transcribe: (samples, sampleRate) => transcribeSpeech(config, samples, sampleRate, i18n.language?.toLowerCase().startsWith("zh") ? "zh" : "en"),
+        onWords: insertSpeech,
+    });
+
     // --- citations --------------------------------------------------------------------------------------
     /** The `@` a pick is answering, so the label lands where it was typed. */
     const pickAtRef = useRef<number>(-1);
@@ -562,10 +598,30 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                         {t("canvas.agent.steeringQueued", { count: steering })}
                     </p>
                 ) : null}
+                {/* What the microphone is doing, in the place the words are about to appear. A failure is
+                    the speech server's own sentence, verbatim: "only WAV audio uploads are supported" is
+                    actionable where "dictation failed" is not. */}
+                {speech.phase !== "idle" ? (
+                    <p className="flex items-center gap-1.5 px-1 pb-1 text-[11px] opacity-60">
+                        {speech.phase === "listening" ? <Mic className="size-3 animate-pulse" /> : <LoaderCircle className="size-3 animate-spin" />}
+                        {speech.phase === "listening" ? t("canvas.agent.dictating") : t("canvas.agent.transcribing")}
+                    </p>
+                ) : null}
+                {speech.error ? (
+                    <p className="px-1 pb-1 text-[11px] leading-4" style={{ color: TOOL_FAILED }}>
+                        {speech.error}
+                    </p>
+                ) : null}
                 <textarea
                     ref={inputRef}
                     value={draft}
                     onChange={(event) => onChange(event.target.value)}
+                    // The whole event: a click, an arrow key and a typed character all move the caret, and the
+                    // words have to land where the last of them left it.
+                    onSelect={() => {
+                        const input = inputRef.current;
+                        if (input) caretPointRef.current = { start: input.selectionStart, end: input.selectionEnd };
+                    }}
                     onKeyDown={(event) => {
                         if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                             event.preventDefault();
@@ -592,6 +648,26 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                         </p>
                     ) : null}
                     <div className="ml-auto flex items-center gap-1">
+                        {/* Holding this is the same gesture as holding the key: press, speak, let go — the
+                            only way to dictate on a device with no keyboard, and the way anyone finds out the
+                            key exists. `preventDefault` keeps the focus and the caret in the box below, so
+                            the words land where they would have been typed. */}
+                        <button
+                            type="button"
+                            className="rounded-full p-2 hover:opacity-80"
+                            style={speech.phase === "listening" ? { background: TOOL_FAILED, color: "#fff" } : { background: theme.node.fill, border: `1px solid ${theme.node.stroke}` }}
+                            onPointerDown={(event) => {
+                                event.preventDefault();
+                                event.currentTarget.setPointerCapture?.(event.pointerId);
+                                speech.start();
+                            }}
+                            onPointerUp={() => speech.stop()}
+                            onPointerCancel={() => speech.stop()}
+                            title={t("canvas.agent.holdToTalk")}
+                            aria-label={t("canvas.agent.holdToTalk")}
+                        >
+                            <Mic className="size-4" />
+                        </button>
                         {busy ? (
                             <button
                                 type="button"
