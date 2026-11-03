@@ -2,6 +2,7 @@ import { saveAs } from "file-saver";
 
 import i18n from "@/i18n";
 import { documentOf } from "@/lib/canvas/canvas-document";
+import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import { createZip } from "@/lib/zip";
 import { activeFileUrl, canvasFileUrl, fileNameOf } from "@/services/canvas-files";
 import type { CanvasExportManifest } from "@/types/canvas-export";
@@ -54,7 +55,7 @@ export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n
                 const blob = await fetchFileBlob(activeFileUrl(storageKey));
                 if (blob) return void zipFiles.push({ name: uniqueName(title, fileExtension(blob.type)), data: blob });
             }
-            if (node.type === CanvasNodeType.Text) return void zipFiles.push({ name: uniqueName(title, "txt"), data: node.metadata?.content || node.metadata?.prompt || "" });
+            if (node.type === CanvasNodeType.Text) return void zipFiles.push({ name: uniqueName(title, "txt"), data: nodeContentOf(node) });
             const content = node.metadata?.content;
             if (content && content.startsWith("data:")) {
                 const blob = await (await fetch(content)).blob();

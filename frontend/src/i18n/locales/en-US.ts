@@ -611,6 +611,8 @@ export default {
             retryPromptMissing: "No prompt found for retry",
             referenceMissing: "The reference image is missing, so retry cannot continue",
             emptyTextImage: "The text node is empty, so an image cannot be generated",
+            nothingToSend: "There is nothing to send: write a prompt, or connect a node that holds something",
+            connectionHoldsNothing: "{{name}} holds nothing yet, so this connection carries nothing: fill it in, or remove the connection",
             untitledCanvas: "Untitled canvas",
             imageDetails: "Image details",
             clearTitle: "Clear canvas?",

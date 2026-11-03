@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { Popover } from "@/components/kit/floating";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { getGroupResourceNodes } from "@/lib/canvas/canvas-resource-references";
+import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import { getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
@@ -114,5 +115,6 @@ function ReferencePreview({ node, content }: { node: CanvasNodeData; content?: s
     if ((resource?.kind === "video" || node.type === CanvasNodeType.Video) && content) return <video src={content} className="max-h-52 w-72 rounded-lg" muted controls />;
     if ((resource?.kind === "audio" || node.type === CanvasNodeType.Audio) && content) return <audio src={content} className="w-72" controls />;
     if (resource?.kind === "lora") return <div className="max-h-52 w-72 overflow-auto text-sm">{resource.loras?.map((lora) => `${lora.name} · ${lora.strength.toFixed(2)}`).join("\n") || node.title}</div>;
-    return <div className="max-h-52 w-72 overflow-auto whitespace-pre-wrap text-sm">{resource?.text || node.metadata?.content || node.metadata?.prompt || node.title || t("canvas.references.empty")}</div>;
+    // The words the node holds — never its prompt, which is what it was asked (#230).
+    return <div className="max-h-52 w-72 overflow-auto whitespace-pre-wrap text-sm">{nodeContentOf(node) || node.title || t("canvas.references.empty")}</div>;
 }

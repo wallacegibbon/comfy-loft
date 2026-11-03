@@ -616,6 +616,8 @@ export default {
             retryPromptMissing: "找不到提示词，无法重试",
             referenceMissing: "参考图片已丢失，无法继续重试",
             emptyTextImage: "文本节点为空，无法生图",
+            nothingToSend: "没有可发送的内容：写点提示词，或者连接一个已经有内容的节点",
+            connectionHoldsNothing: "{{name}} 还没有内容，这条连线传不过去：先把它填上，或者断开这条线",
             untitledCanvas: "未命名画布",
             imageDetails: "图片详情",
             clearTitle: "清空画布？",

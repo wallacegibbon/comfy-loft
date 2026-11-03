@@ -9,7 +9,7 @@ import { toast } from "@/components/kit/toast";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { exportCanvasNodes } from "@/lib/canvas/canvas-export";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
-import { nodeWords } from "@/lib/canvas/node-prompt-field";
+import { nodeContentOf, nodeWords } from "@/lib/canvas/node-prompt-field";
 import { cn } from "@/lib/utils";
 import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision } from "@/services/image-storage";
 import { useCanvasSidePanelStore } from "@/stores/canvas/use-canvas-side-panel-store";
@@ -45,7 +45,8 @@ const STATUS_COLOR: Record<string, string> = {
 const NODE_FILTER_VALUES = ["all", CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Text, CanvasNodeType.Audio, CanvasNodeType.Config, CanvasNodeType.Group];
 
 function nodePreviewText(node: CanvasNodeData) {
-    if (node.type === CanvasNodeType.Text) return node.metadata?.content || node.metadata?.prompt || "";
+    // The words the node holds. Its prompt is what it was asked, which is not a preview of anything (#230).
+    if (node.type === CanvasNodeType.Text) return nodeContentOf(node);
     return getNodeDefinition(node.type)?.title || node.type;
 }
 

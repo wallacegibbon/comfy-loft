@@ -6,6 +6,7 @@ import { citationLabel, mentionSegments, referenceBlock, referenceLine, type Cit
 import { textOf, transcriptEvent, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
 import { contextSegment, speedSegment } from "@/lib/canvas/agent-usage";
 import { nodeTitle } from "@/lib/canvas/node-title";
+import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { confirm } from "@/components/kit/confirm";
 import { apiErrorMessage } from "@/services/api/http";
@@ -651,6 +652,9 @@ function withMentions(text: string, mentions: Citation[], nodes: CanvasNodeData[
 function describeNode(node: CanvasNodeData | undefined, label: string): string {
     if (!node) return "";
     const kind = NODE_LABEL[node.type] || node.type;
-    const prompt = (node.metadata?.prompt || node.metadata?.texts?.[0]?.content || "").slice(0, 200);
-    return referenceLine(node.id, kind, label, prompt);
+    // What the node holds, never what it was asked: a prompt is private, and the node's own title is the
+    // only other thing it says out loud. A picture has no words, so its line names it and stops there —
+    // the agent reads the node itself when it needs the picture (#230).
+    const words = (nodeContentOf(node) || node.title || "").slice(0, 200);
+    return referenceLine(node.id, kind, label, words);
 }

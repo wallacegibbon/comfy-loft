@@ -1,6 +1,7 @@
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import i18n from "@/i18n";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
+import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { imageToDataUrl } from "@/services/image-storage";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
@@ -133,12 +134,16 @@ function isResourceNode(node: CanvasNodeData) {
     return Boolean(resourceKind(node));
 }
 
+/**
+ * The words a node holds, for a reference: its content, and never its prompt.
+ *
+ * A prompt is private — it is what the node was asked, not what it says — so nothing outside the node
+ * may read it. This used to answer `content || composerContent || prompt`, which made an empty text node
+ * look like a text node with something to give, and put one node's question into another node's request
+ * (#230).
+ */
 function resourceText(node: CanvasNodeData): string | undefined {
-    if (node.type === CanvasNodeType.Text) {
-        const texts = node.metadata?.texts || [];
-        const primary = texts.find((text) => text.id === node.metadata?.primaryTextId) || texts[0];
-        return primary?.content || node.metadata?.content || node.metadata?.composerContent || node.metadata?.prompt;
-    }
+    if (node.type === CanvasNodeType.Text) return nodeContentOf(node) || undefined;
     const resource = getNodeDefinition(node.type)?.resource?.(node);
     return resource?.kind === "text" ? resource.text : undefined;
 }
@@ -147,7 +152,7 @@ function resourceKind(node: CanvasNodeData): CanvasResourceKind | null {
     if (node.type === CanvasNodeType.Image && node.metadata?.content) return "image";
     if (node.type === CanvasNodeType.Video && node.metadata?.content) return "video";
     if (node.type === CanvasNodeType.Audio && node.metadata?.content) return "audio";
-    if (node.type === CanvasNodeType.Text && (node.metadata?.content || node.metadata?.prompt || node.metadata?.composerContent || node.metadata?.texts?.some((text) => text.content))) return "text";
+    if (node.type === CanvasNodeType.Text && nodeContentOf(node)) return "text";
     // A node declares what it contributes through definition.resource.
     return getNodeDefinition(node.type)?.resource?.(node)?.kind || null;
 }

@@ -47,7 +47,7 @@ import { CanvasNodeOutpaintDialog } from "@/components/canvas/canvas-node-outpai
 import { CanvasNodeMossLayoutDialog } from "@/components/canvas/canvas-node-moss-layout-dialog";
 import { CanvasNodeSplitDialog } from "@/components/canvas/canvas-node-split-dialog";
 import { CanvasNodeSuperResolveDialog } from "@/components/canvas/canvas-node-super-resolve-dialog";
-import { buildNodeGenerationContext, buildNodeGenerationInputs, hydrateNodeGenerationContext, type NodeGenerationInput } from "@/components/canvas/canvas-node-generation";
+import { buildNodeGenerationContext, buildNodeGenerationInputs, describeEmptyInputs, hydrateNodeGenerationContext, inputsHoldingNothing, type NodeGenerationInput } from "@/components/canvas/canvas-node-generation";
 import { CanvasNodeHoverToolbar, CanvasNodeInfoModal } from "@/components/canvas/canvas-node-hover-toolbar";
 import { CanvasSelectionToolbar } from "@/components/canvas/canvas-selection-toolbar";
 import { InfiniteCanvas } from "@/components/canvas/infinite-canvas";
@@ -62,7 +62,7 @@ import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
 import { rememberLastCanvas } from "@/lib/canvas/last-canvas";
 import { setActiveCanvas } from "@/services/canvas-files";
 import { useCanvasStore, flushCanvasSaves } from "@/stores/canvas/use-canvas-store";
-import { promptPatch } from "@/lib/canvas/node-prompt-field";
+import { nodeContentOf, promptPatch } from "@/lib/canvas/node-prompt-field";
 import { useCanvasAgentTools } from "@/pages/canvas/hooks/use-canvas-agent-tools";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { exportCanvas } from "@/lib/canvas/canvas-export";
@@ -1961,6 +1961,15 @@ function InfiniteCanvasPage() {
                 onStart?.(report);
             };
             const sourceNode = nodesRef.current.find((node) => node.id === nodeId);
+            // A wire that carries nothing is not a smaller request, it is a request this run cannot keep:
+            // refuse and name the node rather than quietly generate something else (#230). The person who
+            // pressed the button reads it in their language; the agent is answered with the full sentence.
+            const emptyInputs = inputsHoldingNothing(nodeId, nodesRef.current, connectionsRef.current);
+            if (emptyInputs.length) {
+                toast.warning(t("canvas.runtime.connectionHoldsNothing", { name: emptyInputs.map((input) => input.node.title || input.node.id).join(", ") }));
+                start({ started: false, reason: describeEmptyInputs(emptyInputs) });
+                return;
+            }
             const generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode);
             // Text is answered by the agent, which needs nothing configured here; media needs a workflow.
             if (mode !== "text" && !isAiConfigReady(generationConfig, generationConfig.model)) {
@@ -2134,7 +2143,9 @@ function InfiniteCanvasPage() {
 
     const generateImageFromTextNode = useCallback(
         (node: CanvasNodeData) => {
-            const prompt = (node.metadata?.content || node.metadata?.prompt || "").trim();
+            // The words, and only the words: a text node that has not been written on holds nothing, so
+            // there is nothing to send — its prompt is what it would be asked, not what it says (#230).
+            const prompt = nodeContentOf(node);
             if (!prompt) {
                 toast.warning(t("canvas.runtime.emptyTextImage"));
                 return;
@@ -2156,7 +2167,7 @@ function InfiniteCanvasPage() {
                 },
             );
             const connection = { id: nanoid(), fromNodeId: sourceNode.id, toNodeId: configNode.id };
-            const nextNodes = nodesRef.current.map((item) => (item.id === sourceNode.id ? { ...item, metadata: { ...item.metadata, content: prompt, prompt, status: NODE_STATUS_SUCCESS } } : item)).concat(configNode);
+            const nextNodes = nodesRef.current.map((item) => (item.id === sourceNode.id ? { ...item, metadata: { ...item.metadata, content: prompt, status: NODE_STATUS_SUCCESS } } : item)).concat(configNode);
             const nextConnections = [...connectionsRef.current, connection];
             nodesRef.current = nextNodes;
             connectionsRef.current = nextConnections;

@@ -173,23 +173,27 @@ export function CanvasNodePromptPanel({
         return () => document.removeEventListener("pointerdown", commitOnOutsidePointer, true);
     }, []);
 
+    // Applying an optimized prompt writes the prompt — the question — and nothing else.
+    //
+    // For a text node this used to write the words into `content`, `prompt` and `composerContent` at once:
+    // the last place the old "one sentence, three fields" model survived (#229), and a way for the panel
+    // to overwrite a card nobody asked it to touch. The card is not the prompt's to rewrite (#230).
     const applyPromptResult = (value: string) => {
         setDraft(value);
         setPrompt(value);
-        if (mode === "text" && node.type === CanvasNodeType.Text) {
-            const texts = node.metadata?.texts || [];
-            const primaryId = node.metadata?.primaryTextId || texts[0]?.id;
-            const nextTexts = texts.length ? texts.map((text) => (text.id === primaryId ? { ...text, content: value } : text)) : undefined;
-            onConfigChange(node.id, { content: value, prompt: value, composerContent: value, ...(nextTexts ? { texts: nextTexts } : {}) });
-            return;
-        }
         onConfigChange(node.id, promptPatch(node, value));
     };
 
     const submit = () => {
         const text = draft.trim();
         if (isRunning) return;
-        if (!text && !connectedText) return;
+        // Nothing typed and nothing holding words on the other end. An empty node is not an input — a wire
+        // carries content (#230) — so this is the state a half-wired canvas reaches, and a button that does
+        // nothing is the one answer nobody can act on.
+        if (!text && !connectedText) {
+            toast.warning(t("canvas.runtime.nothingToSend"));
+            return;
+        }
         if (textVideoHasReferences) {
             toast.warning(t("canvas.promptPanel.videoTextRefsWarning"));
             return;

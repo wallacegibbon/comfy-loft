@@ -68,7 +68,14 @@ export async function runTool(name: string, args: unknown, hands: CanvasHands, s
         case "move_node":
             return moveNode(hands, args);
         default:
-            return { content: [textBlock(`this canvas has no tool called ${name}`)], isError: true };
+            // Not "no such tool": the tool list the agent was handed is the server's, and this switch is the
+            // page's, so a name missing here is a page older than its own tools. Saying which is what makes
+            // the failure fixable — an agent told only "no such tool" retries, or works around a bug that is
+            // not there (#230).
+            return {
+                content: [textBlock(`no tool called ${name} on this canvas: the page in front of the user was built before the tool list you were given. Ask them to reload it — if it still does not know ${name}, the frontend needs rebuilding`)],
+                isError: true,
+            };
     }
 }
 

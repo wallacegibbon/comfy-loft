@@ -173,3 +173,20 @@ describe("create_node: what this canvas can make", () => {
         expect(seen).toEqual([{ content: card }]);
     });
 });
+
+/**
+ * A tool the page does not know is a page older than its own tools.
+ *
+ * The list the agent is handed comes from the server and the switch behind it is the page's, so they can be
+ * built at different times — which is exactly what happened when `set_text` was answered with "this canvas
+ * has no tool called set_text" and the agent spent a conversation working around a tool that existed (#230).
+ */
+describe("a name this page does not know", () => {
+    test("says the page is older than the tool list, not that the tool does not exist", async () => {
+        const { hands } = handsFor([]);
+        const answer = await runTool("set_node", { nodeId: "text-1", text: "x" }, hands, "canvas:test");
+
+        expect(answer.isError).toBe(true);
+        expect((answer.content[0] as { text: string }).text).toContain("the page in front of the user was built before the tool list you were given");
+    });
+});

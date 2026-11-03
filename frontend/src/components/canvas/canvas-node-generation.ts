@@ -1,6 +1,8 @@
 import { imageToDataUrl } from "@/services/image-storage";
 import i18n from "@/i18n";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
+import { NODE_STATUS_ERROR, NODE_STATUS_LOADING } from "@/lib/canvas/canvas-node-status";
+import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
@@ -183,17 +185,70 @@ function readNodeGenerationResource(node: CanvasNodeData): NodeGenerationResourc
         return [{ nodeId: node.id, type: "audio", title: node.title, audio: { id: node.id, name: mediaFileName(node.title, node.id, "mp3"), type: node.metadata?.mimeType || "audio/mpeg", url: resource.url, storageKey: node.metadata?.storageKey } }];
     if (resource?.kind === "lora" && resource.loras?.length) return [{ nodeId: node.id, type: "lora", title: node.title, loras: resource.loras }];
     if (resource?.kind === "text" && resource.text) return [{ nodeId: node.id, type: "text", title: node.title, text: resource.text }];
-    const text = readNodeTextInput(node);
+    // The words, and only the words this node holds. Asked here rather than only through the node's
+    // definition so a module that has not registered the built-in definitions — a test, a fresh import —
+    // answers the same way, and both roads lead through `nodeContentOf` (#230).
+    const text = nodeContentOf(node);
     return text ? [{ nodeId: node.id, type: "text", title: node.title, text }] : [];
+}
+
+/**
+ * The wires into a node that would carry nothing, and why.
+ *
+ * A wire is a promise — "use this" — so a node that holds nothing is not a smaller input, it is a promise
+ * the run cannot keep. Until #230 the run went ahead anyway and made something up: an empty image node
+ * offered its prompt as though the words it was asked were something it had, which is the same
+ * substitution that put one node's question into another node's request. Now the run refuses, and names
+ * the node, so the answer is the same whether a person or the agent pressed the button.
+ */
+export function inputsHoldingNothing(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): EmptyInput[] {
+    return (
+        connections
+            .filter((connection) => connection.toNodeId === nodeId)
+            .map((connection) => nodes.find((node) => node.id === connection.fromNodeId))
+            .filter((node): node is CanvasNodeData => Boolean(node))
+            // A config node is a selector rather than a source, and has no handle to draw a wire from; a wire
+            // that names one is not an input to read. Everything else wired in must hold what it promised.
+            .filter((node) => node.type !== CanvasNodeType.Config && carriesNothing(node, nodes))
+            .map((node) => ({ node, state: emptyInputStateOf(node) }))
+    );
+}
+
+type EmptyInput = {
+    node: CanvasNodeData;
+    /** Empty, still being made, or the last run failed — what the refusal tells the reader to do about it. */
+    state: "empty" | "running" | "failed";
+};
+
+/** A group carries what its children hold; every other node carries what `readNodeGenerationResource` finds. */
+function carriesNothing(node: CanvasNodeData, nodes: CanvasNodeData[]): boolean {
+    if (node.type === CanvasNodeType.Group) return getGroupResourceNodes(node.id, nodes).length === 0;
+    return readNodeGenerationResource(node).length === 0;
+}
+
+function emptyInputStateOf(node: CanvasNodeData): EmptyInput["state"] {
+    if (node.metadata?.status === NODE_STATUS_LOADING) return "running";
+    if (node.metadata?.status === NODE_STATUS_ERROR) return "failed";
+    return "empty";
+}
+
+/**
+ * The refusal in the words the agent is answered with: one sentence per node, saying what it has not got
+ * and the two ways out. The person who pressed generate reads the same fact in their own language.
+ */
+export function describeEmptyInputs(inputs: EmptyInput[]): string {
+    return inputs
+        .map(({ node, state }) => {
+            const name = node.title ? `${node.id} (${node.title})` : node.id;
+            if (state === "running") return `${name} is still being made, so the connection from it carries nothing yet: wait for it to finish, or remove the connection`;
+            if (state === "failed") return `${name}'s last run failed, so the connection from it carries nothing: run it again, or remove the connection`;
+            return `${name} holds nothing yet, so the connection from it carries nothing: fill it in first, or remove the connection`;
+        })
+        .join("; ");
 }
 
 export async function hydrateNodeGenerationContext(context: NodeGenerationContext) {
     return { ...context, referenceImages: await Promise.all(context.referenceImages.map(async (image) => ({ ...image, dataUrl: await imageToDataUrl(image) }))) };
-}
-
-function readNodeTextInput(node: CanvasNodeData) {
-    if (node.type === CanvasNodeType.Text) return node.metadata?.content || node.metadata?.prompt || "";
-    return node.metadata?.prompt || "";
 }
 
 function textBlock(label: string, text: string) {

@@ -8155,3 +8155,89 @@ placeholder text, and the agent's own choice between `set_text` and `set_prompt`
 `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`, `frontend/src/pages/canvas/project.tsx`,
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts`, `internal/server/{routes_mcp.go,agent_instructions.go}`,
 `internal/server/mcp_test.go`, `frontend/tests/{node-prompt-field,canvas-agent-view,canvas-agent-tools}.test.ts`.
+
+## 230. A wire carries what a node holds — never what it was asked
+
+**Decision** A node gives away its content and only its content. Every reader that is not the node itself —
+a wire into another node, the reference bar, the @ list, the side panel, the export, the agent's citation
+block, the "make a picture from this text" button — answers through `nodeContentOf`. A node's prompt is
+private: it is what the node was asked, it is read only by the node (its own panel, its own run, its own
+Info popover), and it never travels down a wire. There is no fallback and no substitution: a node that holds
+nothing gives nothing.
+
+What follows from that:
+
+- `readNodeTextInput` is gone. It returned `content || prompt` for a text node and `prompt` for everything
+  else, which is how an empty picture node came to offer the words it was asked as though they were
+  something it held.
+- A run refuses a wire that would carry nothing, and names the node: `inputsHoldingNothing` +
+  `describeEmptyInputs` in `canvas-node-generation.ts`, used at the top of `handleGenerateNode`. A person
+  reads a toast in their own language; the agent reads a sentence through #225's refusal channel, which
+  already says "there is nothing to wait for, and why". The refusal tells empty, still being made and last
+  run failed apart, because what to do about them is different.
+- `applyPromptResult` (the panel's optimize path) writes the prompt and nothing else. It was the last place
+  the pre-#229 model survived: one sentence written into `content`, `prompt` and `composerContent` at once.
+- `generateImageFromTextNode` reads `nodeContentOf` and no longer stamps the same words on the text node's
+  `prompt`, which nothing had asked it.
+- The panel says `nothingToSend` instead of returning silently when there is nothing typed and nothing on
+  the other end holding words. An empty node is not an input, so that is the state a half-wired canvas
+  reaches, and a button that does nothing is the one answer nobody can act on.
+- `runTool`'s unknown-tool answer names the real cause: the page in front of the user was built before the
+  tool list the agent was given. The old wording — "this canvas has no tool called set_text" — sent an agent
+  hunting for a naming bug that was not there.
+- The agent's system prompt states the rule in one paragraph, next to "say a thing once", because that is
+  the paragraph it already reads when it is about to wire something up.
+
+**Why** The rule is the user's, and it is one sentence: *the node above hands its content down the wire; its
+prompt is private*. Ten places broke it, all with the same shape — `content || prompt`, and in the @ list
+`content || composerContent || prompt` — because #229 gave the canvas `nodeContentOf` and then only taught
+the agent's tools to use it. What that produced was not cosmetic:
+
+- an empty picture node's prompt became a `【参考文本】` block inside the downstream request: the user wired a
+  reference and got a sentence;
+- an unwritten text card's question did the same;
+- a text node with no card still counted as a text resource, so the @ list offered its question as its words;
+- the export wrote the question into the `.txt`;
+- the agent's citation line quoted the prompt of the node the user had pointed at.
+
+And it is what the screenshot after #229 shows: asked to take the text out of three pictures, the agent wrote
+`set_prompt` and then `set_text` with the same words. Its own reasoning says why — *"the connection adds the
+text node's text (not its prompt) to the image generation, so I need to also update the text content"* — which
+is a correct reading of a canvas that had told it two different things about where a text node's words live.
+The first `set_text` had been refused by a page older than its tool list, so it did the thing that still
+worked, and then the thing that was right. Both landed, and the card and the box ended up saying the same
+sentence: no longer a lie about what the node holds, but a question nobody asked.
+
+**Cost** `readNodeTextInput` deleted; two exports added (`inputsHoldingNothing`, `describeEmptyInputs`); the
+`EmptyInput` type stays internal. One i18n key pair (`connectionHoldsNothing`) and one more
+(`nothingToSend`). A stale page now says what it is instead of what it is not.
+
+**What this does not do** It does not collapse a text node to one field. The card and the question stay two
+fields, for the reason #229 gave: a card needs the question it answered to stand beside it, and
+`composerContent` is what lets a node holding a result take an instruction without losing it. What changes is
+who may read which.
+
+There is no migration. A text node whose words were only ever in `prompt` now shows an empty card and gives
+nothing away — the words are still in its panel box, so the fix is to write them on the card (double-click,
+or `set_text`), or to let the node answer the question. That is the strict reading the user chose over the
+alternative that let the typing box also write the card: the card is the answer to a run, and typing in the
+box must not pretend to be one.
+
+`list_nodes` still prints `prompt:`. The agent is not another node — it is the operator's hands, and #229
+labelled the field as the question it will be asked next so the agent can use it deliberately. `read_node`,
+which is how the agent *reads a node*, still answers with content only.
+
+**Tested** `npx vitest run` (260: 7 new — a wire from an unwritten card carries nothing, a picture carries
+itself and not its words, a wired node that holds nothing is named with its state, a group is read by what is
+inside it, a config node is never a source; and 1 for a tool name the page does not know). `npm run check`
+(i18n 849/835, no dead keys; exports: no export without a caller). `npm run build`. `make check`, whose
+system-prompt assertion now also requires the wire rule. Not exercised in a browser: the toast wording, the
+refusal naming a node the user is looking at, and whether the strict card reads well on a canvas written
+before this.
+
+**Where** `frontend/src/components/canvas/canvas-node-generation.ts` (the rule and the refusal),
+`frontend/src/pages/canvas/project.tsx` (the refusal in front of every run, and the text-to-picture button),
+`frontend/src/lib/canvas/{canvas-resource-references,canvas-export,canvas-agent-tools}.ts`,
+`frontend/src/components/canvas/{nodes/builtin-nodes.tsx,canvas-side-panel-elements.tsx,canvas-node-reference-bar.tsx,canvas-node-prompt-panel.tsx,canvas-agent-panel.tsx}`,
+`frontend/src/i18n/locales/{en-US,zh-CN}.ts`, `internal/server/{agent_instructions.go,mcp_test.go}`,
+`frontend/tests/{canvas-generation-context,canvas-agent-tools}.test.ts`.

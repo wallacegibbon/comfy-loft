@@ -4,17 +4,25 @@ import i18n from "@/i18n";
 
 import { NODE_SPECS } from "@/constant/canvas";
 import { registerNodeDefinitions } from "@/lib/canvas/node-registry";
+import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import { loraResource } from "@/components/canvas/nodes/lora-node";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 import type { CanvasNodeDefinition, CanvasNodeResource } from "@/types/canvas-node";
 
 // Extensible metadata for built-in nodes, reusing NODE_SPECS for size and initial metadata.
 // Rendering remains in canvas-node's internal renderer, so no Content component is provided.
+//
+// What a node gives away is its content and only its content: a picture gives the picture, a text node
+// gives the words on its card, a LoRA gives its choice — and a node that holds nothing gives nothing. Its
+// prompt is what it was asked, which is nobody else's business (#230).
 function builtinResource(node: CanvasNodeData): CanvasNodeResource | null {
     if (node.type === CanvasNodeType.Image && node.metadata?.content) return { kind: "image", url: node.metadata.content };
     if (node.type === CanvasNodeType.Video && node.metadata?.content) return { kind: "video", url: node.metadata.content };
     if (node.type === CanvasNodeType.Audio && node.metadata?.content) return { kind: "audio", url: node.metadata.content };
-    if (node.type === CanvasNodeType.Text && (node.metadata?.content || node.metadata?.prompt)) return { kind: "text", text: node.metadata.content || node.metadata.prompt };
+    if (node.type === CanvasNodeType.Text) {
+        const text = nodeContentOf(node);
+        return text ? { kind: "text", text } : null;
+    }
     return null;
 }
 

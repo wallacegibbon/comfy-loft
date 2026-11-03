@@ -173,7 +173,7 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 	server := newTestGateway(t, newFakeComfy(t))
 
 	system := strings.Join(server.agentOptions().System, "\n")
-	for _, want := range []string{"canvas_connect", "copy", "canvas_focus_node", "leave that node's own prompt empty", "the node the user asked about", "canvas_set_text"} {
+	for _, want := range []string{"canvas_connect", "copy", "canvas_focus_node", "leave that node's own prompt empty", "the node the user asked about", "canvas_set_text", "carries nothing"} {
 		if !strings.Contains(system, want) {
 			t.Fatalf("the agent's system prompt does not mention %q: %q", want, system)
 		}
