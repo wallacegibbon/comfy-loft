@@ -2540,7 +2540,6 @@ function InfiniteCanvasPage() {
                     onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
                     onToggleDialog={(node) => setDialogNodeId((current) => (current === node.id ? null : node.id))}
                     onGenerateImage={generateImageFromTextNode}
-                    onUpload={(node) => handleUploadRequest(node.id)}
                     onInterpolateVideo={(node) => void interpolateVideoNode(node)}
                     onDownload={downloadNodeImage}
                     onMaskEdit={(node) => openNodeTool("maskEdit", node.id)}

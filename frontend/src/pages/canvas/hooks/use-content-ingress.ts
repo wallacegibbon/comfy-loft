@@ -9,7 +9,6 @@ import { VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH } from "@/lib/canvas/canvas
 import { audioMetadata, createCanvasNode, imageMetadata, videoMetadata } from "@/lib/canvas/canvas-node-factory";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
 import { NODE_STATUS_SUCCESS } from "@/lib/canvas/canvas-node-status";
-import { NO_MAKER } from "@/lib/canvas/node-generation-facts";
 import { uploadMediaFile } from "@/services/file-storage";
 import { uploadImage } from "@/services/image-storage";
 import { CanvasNodeType, type CanvasNodeData, type ContextMenuState, type Position } from "@/types/canvas";
@@ -35,6 +34,11 @@ export type ContentIngressDeps = {
     getCanvasCenter: () => Position;
 };
 
+/** The files a drop, a paste or the picker may carry: what this canvas knows how to hold. */
+function acceptedFiles(list: FileList | null): File[] {
+    return Array.from(list || []).filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/") || isAudioFile(file));
+}
+
 export function useContentIngress(deps: ContentIngressDeps) {
     const { setNodes, setSelectedNodeIds, setSelectedConnectionId, setDialogNodeId, setContextMenu, containerRef, size, screenToCanvas, getCanvasCenter } = deps;
     const { t } = useTranslation();
@@ -42,8 +46,6 @@ export function useContentIngress(deps: ContentIngressDeps) {
     // The hidden <input type="file"> in the page's JSX. Not a dependency the page passes in: the
     // module owns the picker, so it owns the element the picker clicks.
     const imageInputRef = useRef<HTMLInputElement>(null);
-    // Which node — if any — the picker was opened to replace. Cleared on every change.
-    const uploadTargetRef = useRef<{ nodeId?: string; position?: Position } | null>(null);
 
     /**
      * Report a file that could not be added.
@@ -160,166 +162,60 @@ export function useContentIngress(deps: ContentIngressDeps) {
         if (createTextNodeFromClipboard(text)) toast.success(t("canvas.runtime.clipboardTextAdded"));
     }, [createImageFileNode, createTextNodeFromClipboard, failAdd, getCanvasCenter, t]);
 
-    const handleUploadRequest = useCallback((nodeId?: string, position?: Position) => {
-        uploadTargetRef.current = { nodeId, position };
+    /**
+     * Open the picker. Every file it returns becomes a node of its own, exactly as a dropped or pasted one
+     * does: a node's media is made with the node — a run's output, or the user's own file
+     * (docs/decisions.md #228). There is no "put this file into that node": to keep a node's place in the
+     * graph and change what is in it, the agent makes a node and rewires it, which is the same thing with
+     * every step visible.
+     */
+    const handleUploadRequest = useCallback(() => {
         imageInputRef.current?.click();
     }, []);
 
-    const addPickedFiles = useCallback(
-        async (event: ChangeEvent<HTMLInputElement>) => {
-            const files = Array.from(event.target.files || []).filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/") || isAudioFile(f));
-            if (!files.length) {
-                uploadTargetRef.current = null;
-                event.target.value = "";
-                return;
-            }
-
-            const target = uploadTargetRef.current;
-            const basePosition = target?.position || screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
-            const STAGGER = 40; // Offset between multiple imported files.
-
-            // When replacing a target node, use the first file as the replacement and create the rest nearby.
-            if (target?.nodeId) {
-                const [first, ...rest] = files;
-
-                // Replace the target node with the first file.
-                if (isAudioFile(first)) {
-                    const audio = await uploadMediaFile(first, "audio");
-                    const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
-                    setNodes((prev) =>
-                        prev.map((node) =>
-                            node.id === target.nodeId
-                                ? {
-                                      ...node,
-                                      type: CanvasNodeType.Audio,
-                                      title: first.name,
-                                      position: { x: node.position.x + node.width / 2 - spec.width / 2, y: node.position.y + node.height / 2 - spec.height / 2 },
-                                      width: spec.width,
-                                      height: spec.height,
-                                      metadata: { ...node.metadata, ...audioMetadata(audio), errorDetails: undefined, ...NO_MAKER },
-                                  }
-                                : node,
-                        ),
-                    );
-                    setSelectedNodeIds(new Set([target.nodeId]));
-                    setSelectedConnectionId(null);
-                } else if (first.type.startsWith("video/")) {
-                    const video = await uploadMediaFile(first, "video");
-                    const nextSize = fitNodeSize(video.width || 1280, video.height || 720, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-                    setNodes((prev) =>
-                        prev.map((node) =>
-                            node.id === target.nodeId
-                                ? {
-                                      ...node,
-                                      type: CanvasNodeType.Video,
-                                      title: first.name,
-                                      position: { x: node.position.x + node.width / 2 - nextSize.width / 2, y: node.position.y + node.height / 2 - nextSize.height / 2 },
-                                      width: nextSize.width,
-                                      height: nextSize.height,
-                                      metadata: { ...node.metadata, ...videoMetadata(video), errorDetails: undefined, ...NO_MAKER },
-                                  }
-                                : node,
-                        ),
-                    );
-                    setSelectedNodeIds(new Set([target.nodeId]));
-                    setSelectedConnectionId(null);
+    /**
+     * Put files on the canvas: one node each, staggered from where they arrived.
+     *
+     * The body of a drop and of the picker (a paste is one image, at the centre, and already its own line).
+     * Everything the user brings in becomes a node here or beside here: nothing in this module hands a file
+     * to a node that already exists, because a node's media is made with the node (docs/decisions.md #228).
+     */
+    const addFiles = useCallback(
+        (files: File[], base: Position) => {
+            const STAGGER = 40; // Offset between multiple incoming files.
+            for (let i = 0; i < files.length; i++) {
+                const position = { x: base.x + i * STAGGER, y: base.y + i * STAGGER };
+                const file = files[i];
+                if (isAudioFile(file)) {
+                    void createAudioFileNode(file, position).catch(failAdd);
+                } else if (file.type.startsWith("video/")) {
+                    void createVideoFileNode(file, position).catch(failAdd);
                 } else {
-                    const image = await uploadImage(first);
-                    const s = fitNodeSize(image.width, image.height);
-                    setNodes((prev) =>
-                        prev.map((node) =>
-                            node.id === target.nodeId
-                                ? {
-                                      ...node,
-                                      type: CanvasNodeType.Image,
-                                      title: first.name,
-                                      width: s.width,
-                                      height: s.height,
-                                      metadata: {
-                                          ...node.metadata,
-                                          ...imageMetadata(image),
-                                          errorDetails: undefined,
-                                          freeResize: false,
-                                          generationType: undefined,
-                                          model: undefined,
-                                          ...NO_MAKER,
-                                          size: undefined,
-                                          quality: undefined,
-                                          references: undefined,
-                                      },
-                                  }
-                                : node,
-                        ),
-                    );
-                    setSelectedNodeIds(new Set([target.nodeId]));
-                    setSelectedConnectionId(null);
-                }
-
-                // Create the remaining files near the target node.
-                for (let i = 0; i < rest.length; i++) {
-                    const offsetPos = { x: basePosition.x + (i + 1) * STAGGER, y: basePosition.y + (i + 1) * STAGGER };
-                    const f = rest[i];
-                    if (isAudioFile(f)) {
-                        void createAudioFileNode(f, offsetPos).catch(failAdd);
-                    } else if (f.type.startsWith("video/")) {
-                        void createVideoFileNode(f, offsetPos).catch(failAdd);
-                    } else {
-                        void createImageFileNode(f, offsetPos).catch(failAdd);
-                    }
-                }
-            } else {
-                // Without a replacement target, create all files near the canvas center.
-                for (let i = 0; i < files.length; i++) {
-                    const offsetPos = { x: basePosition.x + i * STAGGER, y: basePosition.y + i * STAGGER };
-                    const f = files[i];
-                    if (isAudioFile(f)) {
-                        void createAudioFileNode(f, offsetPos).catch(failAdd);
-                    } else if (f.type.startsWith("video/")) {
-                        void createVideoFileNode(f, offsetPos).catch(failAdd);
-                    } else {
-                        void createImageFileNode(f, offsetPos).catch(failAdd);
-                    }
+                    void createImageFileNode(file, position).catch(failAdd);
                 }
             }
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, failAdd, screenToCanvas, size.height, size.width],
+        [createAudioFileNode, createImageFileNode, createVideoFileNode, failAdd],
     );
 
     const handleImageInputChange = useCallback(
-        async (event: ChangeEvent<HTMLInputElement>) => {
-            try {
-                await addPickedFiles(event);
-            } catch (error) {
-                failAdd(error);
-            } finally {
-                uploadTargetRef.current = null;
-                event.target.value = "";
-            }
+        (event: ChangeEvent<HTMLInputElement>) => {
+            const files = acceptedFiles(event.target.files);
+            // Cleared before the uploads start, so picking the same file twice fires a change both times.
+            event.target.value = "";
+            if (!files.length) return;
+            const box = containerRef.current?.getBoundingClientRect();
+            addFiles(files, screenToCanvas((box?.left || 0) + size.width / 2, (box?.top || 0) + size.height / 2));
         },
-        [addPickedFiles, failAdd],
+        [addFiles, containerRef, screenToCanvas, size.height, size.width],
     );
 
     const handleDrop = useCallback(
         (event: DragEvent<HTMLDivElement>) => {
             event.preventDefault();
-            const files = Array.from(event.dataTransfer.files).filter((item) => item.type.startsWith("image/") || item.type.startsWith("video/") || isAudioFile(item));
-            if (!files.length) return;
-
-            const basePos = screenToCanvas(event.clientX, event.clientY);
-            const STAGGER = 40;
-            for (let i = 0; i < files.length; i++) {
-                const pos = { x: basePos.x + i * STAGGER, y: basePos.y + i * STAGGER };
-                const f = files[i];
-                if (isAudioFile(f)) {
-                    void createAudioFileNode(f, pos).catch(failAdd);
-                } else if (f.type.startsWith("video/")) {
-                    void createVideoFileNode(f, pos).catch(failAdd);
-                } else {
-                    void createImageFileNode(f, pos).catch(failAdd);
-                }
-            }
+            addFiles(acceptedFiles(event.dataTransfer.files), screenToCanvas(event.clientX, event.clientY));
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, failAdd, screenToCanvas],
+        [addFiles, screenToCanvas],
     );
 
     return { imageInputRef, handleUploadRequest, handleImageInputChange, handleDrop, pasteSystemClipboard };

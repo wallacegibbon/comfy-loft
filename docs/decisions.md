@@ -7964,9 +7964,8 @@ with `bin/comfyloft-mcp` removed → exit 1 with the sentence above. The script 
 
 **Decision** A node's metadata carries two more facts about its own content — `workflow` (the gateway's id
 for what ran: `image-z-image-turbo`) and `generatedAt` (the instant that run finished, ISO 8601 in UTC,
-kept verbatim). They are written when the run's file becomes the node's content, and erased when the node's
-content stops being a run's output: a picked file replacing a generated one, or a node whose picture is
-being replaced by a new run.
+kept verbatim). They are written when the run's file becomes the node's content, and erased while a node's
+picture is being replaced by a new run — the old one is gone, and the run that made it describes nothing.
 
 The facts ride on the *artifact* rather than being passed to each node patch. `Run` already answers both —
 `workflow` and `finished_at` — so `factsOf(run)` (`services/api/runs.ts`) puts them on what
@@ -8007,9 +8006,9 @@ a `read_node` per node, and that answer carries the picture's bytes.
 What this does not cover: a text node's answer is not a run (its own agent writes it), so it has no
 `generatedAt`; it keeps `model` and nothing else. Nodes written before this decision have neither field and
 their tools say nothing about a maker — there is no backfill, and inventing one from the filename would put
-a guess where every other fact here is a record. `model` on a node that was *replaced* by an uploaded clip
-or sound is still the old generation model: the image branch has always cleared it, the audio and video
-branches have not, and that pre-existing inconsistency is untouched here.
+a guess where every other fact here is a record. The one other way a node's content could once change
+without a run — the user putting their own file into an existing node — no longer exists (#228), which is
+also why `model` no longer has to be scrubbed from a clip or a sound that a picked file replaced.
 
 **Tested** `frontend/tests/api-runs.test.ts`: `factsOf` — the workflow with `finished_at`, the `created_at`
 fallback, nothing for a run that names no workflow, nothing for one with no time; the artifact carries the
@@ -8027,6 +8026,55 @@ sentences are unit-tested.
 `frontend/src/services/image-storage.ts`, `frontend/src/services/file-storage.ts`,
 `frontend/src/lib/canvas/generated-media.ts`, `frontend/src/lib/canvas/canvas-node-factory.ts`,
 `frontend/src/lib/canvas/node-generation-facts.ts`, `frontend/src/types/canvas.ts`,
-`frontend/src/pages/canvas/hooks/{use-canvas-agent-tools,use-generation-runs,use-content-ingress}.ts`,
+`frontend/src/pages/canvas/hooks/{use-canvas-agent-tools,use-generation-runs}.ts`,
 `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`, the two locales,
 `internal/server/routes_mcp.go` (the two tool descriptions).
+
+## 228. A file enters the canvas as a node, never into a node
+
+**Decision** A node is never handed a file. Every file the user brings — dropped, pasted, or chosen in the
+picker — becomes a node of its own, made complete in one step: the bytes are uploaded and the node is built
+with the media already in it. The per-node upload is gone: the image quick tool `replace`, the empty image
+node's upload button, and the clip's and the sound's `替换视频` / `替换音频`. What is left of the picker is
+one entry in the canvas menu, and it makes new nodes exactly as a drop does.
+
+**Why** The feature was inherited, not decided: it came in with the initial import, and no entry in this
+file ever argued for it. What it did was put a new file into a node that already held one, so every claim
+that node made about its content had to be scrubbed — `model`, `size`, `quality`, `generationType`,
+`references`, a `mask` storage key, the run id it was still polling, the preview of a frame being drawn —
+and the three branches that did it (image, clip, sound) each scrubbed a different subset. None scrubbed all
+of it: an image node replaced by a clip kept `imageMode`, `outpaint`, `layout` and a mask the cleanup then
+kept alive forever; a clip replaced by a sound kept `videoTaskId`. The picker also took *any* kind of file
+for *any* node, so choosing a video for a sound node silently changed that node's type and left both kinds'
+fields on it. Adding `workflow`/`generatedAt` (#227) would have meant a fourth thing to scrub in three
+places, which is what surfaced the whole shape.
+
+None of it is needed. What replacement bought was the node's id — its connections, its group, its position
+— and that is a *graph* edit, not a content edit. Graph edits are what the agent already does:
+`create_node`, `connect`, `move_node`, `delete_node`, `focus_node`. "Use my picture instead, and keep the
+wiring" is therefore a thing it can already say, one visible step at a time, and a person can do the same
+by hand. What no amount of scrubbing recovers is a node claiming the wrong maker for what it holds — and
+that is what this removes: on a canvas where the core is the agent's workflow, the old feature's only
+remaining product was the debris the agent would then be told about as fact.
+
+**Cost** Three entry points with their handlers, and `use-content-ingress`'s entire target mechanism
+(`uploadTargetRef`, the three replacement branches — about ninety lines), whose file filtering and
+staggered placement collapsed into one `addFiles` that the drop and the picker share (a paste is one image
+at the centre and was already its own line). Six i18n keys. One image quick tool.
+
+What is lost: a node that is already placed, wired and grouped can no longer take a local file in place —
+the file becomes its own node, and the old one is deleted or rewired. If that gesture turns out to be
+missed, it should come back as *dropping a file onto a node*: one gesture, one meaning, and only then does
+the question "what does the node keep?" have to be answered. A settings blob that still lists the `replace`
+quick tool is harmless: `normalizeImageQuickToolIds` returns only the ids it knows, so the stored one drops
+out by itself.
+
+**Tested** `npm run check` — the i18n script found exactly the six keys this removes and nothing else;
+`npx vitest run` (222, unchanged: no test covered the removed paths); `npm run build`; `make check`. Not
+exercised in a browser: the four gestures (drop, paste, menu picker, and the buttons that no longer exist)
+were read, not clicked.
+
+**Where** `frontend/src/pages/canvas/hooks/use-content-ingress.ts`,
+`frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`,
+`frontend/src/components/canvas/canvas-image-toolbar-tools.tsx`,
+`frontend/src/pages/canvas/project.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.

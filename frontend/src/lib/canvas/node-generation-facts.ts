@@ -24,11 +24,12 @@ export function generationClause(metadata: CanvasNodeMetadata | undefined): stri
 }
 
 /**
- * What a node forgets when its content stops being a run's output: a picture the user picked over the one
- * that was generated, a clip they replaced, a node whose run is running again.
+ * What a node forgets while its content is being replaced by a new run: the workflow and the time that
+ * described the picture which is now gone.
  *
  * Spread into a patch to erase both fields (`undefined` overwrites, and the document drops the key when it
- * is serialized). A node that claims a workflow and a time for content nothing made is worse than one that
- * says nothing: the agent would report the old model with the new picture's confidence (#227).
+ * is serialized). A run that fails leaves the node with no content, and a node that claims a maker for
+ * content it does not hold is worse than one that says nothing: the agent would report the old model with
+ * the new picture's confidence (#227).
  */
 export const NO_MAKER: Partial<CanvasNodeMetadata> = { workflow: undefined, generatedAt: undefined };
