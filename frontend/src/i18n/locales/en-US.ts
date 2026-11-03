@@ -701,6 +701,8 @@ export default {
             send: "Send",
             stop: "Stop",
             holdToTalk: "Hold to talk (Ctrl / Cmd + '); the words land at the caret",
+            microphoneUnavailable:
+                "No microphone on this address: browsers only allow recording over https or on localhost. Either allow this origin in chrome://flags/#unsafely-treat-insecure-origin-as-secure, or open the canvas over https / from 127.0.0.1.",
             dictating: "Listening… release to finish",
             transcribing: "Transcribing…",
             close: "Close",

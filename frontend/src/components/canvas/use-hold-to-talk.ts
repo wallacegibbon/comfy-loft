@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { isSpeakable } from "@/lib/canvas/agent-dictation";
-import { startPcmRecording, type PcmRecording } from "@/lib/pcm-recorder";
+import { canOpenMicrophone, startPcmRecording, type PcmRecording } from "@/lib/pcm-recorder";
 
 /**
  * Hold a key, say a sentence, let go: the words come back.
@@ -43,6 +44,7 @@ type HoldToTalk = {
 };
 
 export function useHoldToTalk({ transcribe, onWords }: Options): HoldToTalk {
+    const { t } = useTranslation();
     const [phase, setPhase] = useState<DictationPhase>("idle");
     const [error, setError] = useState("");
 
@@ -61,6 +63,13 @@ export function useHoldToTalk({ transcribe, onWords }: Options): HoldToTalk {
 
     const start = useCallback(() => {
         if (heldRef.current || busyRef.current) return;
+        // A page a browser will not open a microphone on is the first thing to check: the answer is a sentence
+        // about the address, not a `TypeError` from inside the recorder (#242). Nothing starts, nothing looks
+        // like it started, and the microphone is never asked for.
+        if (!canOpenMicrophone()) {
+            setError(t("canvas.agent.microphoneUnavailable"));
+            return;
+        }
         heldRef.current = true;
         setError("");
         setPhase("listening");
@@ -83,7 +92,7 @@ export function useHoldToTalk({ transcribe, onWords }: Options): HoldToTalk {
             }
             recordingRef.current = recording;
         })();
-    }, []);
+    }, [t]);
 
     const stop = useCallback(() => {
         if (!heldRef.current) return;

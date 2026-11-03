@@ -26,10 +26,24 @@ export type PcmRecording = {
 };
 
 /**
+ * Whether this page can open the microphone at all.
+ *
+ * A browser only offers `navigator.mediaDevices` in a **secure context** — https, `localhost`, or an origin
+ * Chrome has been told to trust. Opened as `http://192.168.3.232:8190` the object is not there: not a denied
+ * permission but `undefined`, and calling into it is a `TypeError` that says nothing about the reason. That is
+ * a property of the address and not of the microphone, so the panel asks this first and says what would make
+ * it work instead of reporting a broken microphone (#242).
+ */
+export function canOpenMicrophone(): boolean {
+    return typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function";
+}
+
+/**
  * Start recording. The promise resolves when the microphone is open, so a caller can await it inside the
  * gesture that asked for it.
  */
 export async function startPcmRecording(): Promise<PcmRecording> {
+    if (!canOpenMicrophone()) throw new Error("the microphone is not available on this origin");
 
     // Asked for by name because a speech model reads 16 kHz mono: every browser that honours it resamples
     // the microphone into the graph for free, and one that does not still arrives at the right rate in the

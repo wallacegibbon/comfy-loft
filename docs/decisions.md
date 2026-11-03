@@ -8802,3 +8802,29 @@ assertions, `✓` on the models) so it pins the bug rather than the fix. `npm ru
 `make check`, `npm run build`.
 
 **Where** `frontend/src/stores/use-config-store.ts`, `frontend/tests/server-address.test.ts`.
+
+## 242. A page that cannot have a microphone says so, instead of throwing
+
+**Decision** Before a gesture asks for the microphone, the panel asks whether this page can have one:
+`navigator.mediaDevices.getUserMedia` only exists in a **secure context** — https, `localhost`, or an origin
+Chrome has been told to trust. When it is missing, the panel shows a sentence naming the address and the two
+ways out, and no permission prompt is raised.
+
+**The report** `Cannot read properties of undefined (reading 'getUserMedia')`, from the run documented in #239,
+on `http://192.168.3.232:8190/canvas/2dfdadcd440f`. The page was served over plain http from a LAN address, so
+the browser had not "denied the microphone" — it never offered the API at all, which is why the error was a
+`TypeError` about a missing object rather than a rejected promise. A browser will not give a page a microphone
+on an insecure origin, and no code can change that; what code can do is not blame the microphone.
+
+**Why the sentence carries the workaround** The two fixes are both outside the app — trust the origin in
+`chrome://flags/#unsafely-treat-insecure-origin-as-secure`, or open the canvas over https / from `127.0.0.1` —
+so a shorter message ("microphone unavailable") would leave the reader with a feature that is simply gone.
+The same check also covers the practical case that follows from it: recording works on the desktop and not on
+the phone until the canvas is served over https, which is stated in #239 and is nobody's bug.
+
+**Tested** `npm run check` (i18n 837/823), `npx vitest run` 314, `make check`, `npm run build`. Not testable
+here in the only way that matters: the predicate itself is one expression over a browser global, and the
+browser is not in this tree — the run that reported the error is the test.
+
+**Where** `frontend/src/lib/pcm-recorder.ts`, `frontend/src/components/canvas/use-hold-to-talk.ts`,
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts`.
