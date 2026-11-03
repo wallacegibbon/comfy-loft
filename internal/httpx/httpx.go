@@ -96,7 +96,7 @@ func OK(w http.ResponseWriter, value any) { JSON(w, http.StatusOK, value) }
 func WriteError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	code := "internal_error"
-	message := "Internal error"
+	var message string
 	var details any
 
 	var appErr *Error
@@ -107,6 +107,11 @@ func WriteError(w http.ResponseWriter, err error) {
 		details = appErr.Details
 	} else {
 		message = err.Error()
+	}
+	// An error with nothing to say still has to say something: the canvas renders `message` and an empty
+	// one is a blank toast with no way to tell it from a rendering bug.
+	if strings.TrimSpace(message) == "" {
+		message = "Internal error"
 	}
 	if status < 400 {
 		status = http.StatusInternalServerError

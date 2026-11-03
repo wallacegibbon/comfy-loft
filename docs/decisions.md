@@ -8977,3 +8977,47 @@ stored key, `/config.js` carries no key.
 `frontend/src/stores/use-config-store.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
 `frontend/tests/api-speech.test.ts`, `docs/server.md`, `README.md`.
 
+## 247. Sweep after #246: two gates the rename left red, a silent error, a map nobody read
+
+**Decision** Four things the sweep found and fixed, and one it did not touch.
+
+**The rename left two gates failing (#240's tail).** `frontend/scripts/check-i18n.cjs` still listed
+`ZH_ONLY_PREFIXES = ["gateway.models.", "gateway.variants."]`, so after the rename to `server.*` fourteen keys
+(`server.models.*.label`, `server.variants.*`) were reported as "only in zh-CN" and the gate exited 1 — with
+the summary line `failed: 0 dead key(s), 0 missing key(s)` printed just above it, which is how it went
+unnoticed: the counts read clean and the exit code was not looked at. `check-exports.cjs` still had its
+`TEST_ONLY` reason keyed to `src/lib/gateway-models.ts:modelsOf`, which the rename had moved to
+`src/lib/server-models.ts`, so the same run reported that export as having only a test's caller. Both are
+strings in scripts that nothing compiles, and the only thing that can catch them is running the gates —
+which is the whole reason `npm run check` is a gate. Fixed, and the two comments that still said
+`lib/gateway-labels.ts` now name `lib/server-labels.ts`.
+
+**An error with nothing to say rendered as an empty message.** `httpx.WriteError` opened with
+`message := "Internal error"` and then assigned it on both branches, so `ineffassign` flagged the literal as
+dead — and it *was* dead: an error whose `Error()` is `""` (or a `*httpx.Error` with a blank message) reached
+the canvas as `{"message":""}`, a blank toast that cannot be told from a broken renderer. The literal is now
+the fallback it was always meant to be, with a test over both spellings of a silent error.
+
+**`Hub.promptByRequest` was written and deleted and never read** (`internal/generate/preview.go`) — a map kept
+in step with `progressByPrompt` by hand, and one more thing for a future change to keep in step for no reason.
+Removed.
+
+**Verified and left as it stands.** `go vet`, `gofmt`, `go test -race ./internal/...` and `golangci-lint`
+(errcheck, govet, ineffassign, staticcheck, unused) are clean, the last two having nothing to report but the
+`ineffassign` above and two SA5011 false positives in tests that are guarded by `t.Fatal`. No `@ts-ignore`, no
+`as any`, no `console.log` in `frontend/src`. No `comfyui-gateway` string anywhere outside `docs/decisions.md`.
+The missing timeouts are deliberate and documented where they are: `internal/comfy` puts a deadline on each
+request rather than on the client ("that is what allows a 10-minute video job"), `cmd/comfyloft-server` sets
+`ReadHeaderTimeout`/`IdleTimeout` and no global write timeout for the same reason. Uploads are bounded twice
+(`MaxUploadBytes` per file, `ParseMultipart` stopping at the ceiling rather than spooling).
+
+**Docs brought back in line.** `docs/known-issues.md` #2's list of exported Go symbols with no caller was
+stale in two entries — `WithPublicBaseURL` and `OutputPath` are called by tests — and is now eleven, verified
+symbol by symbol; it also records why a `deadcode` scan cannot run here (`proxy.golang.org` unreachable).
+`README.md` and `docs/server.md` name the new file where they inventory the data directory.
+
+**Tested** `make check` 19 packages, `npx vitest run` 321, `npm run check` (843 zh / 829 en, 178 modules,
+prettier and `tsc` clean), `npm run build` 556.94 kB, `make build`.
+
+**Where** `frontend/scripts/{check-i18n,check-exports}.cjs`, `internal/httpx/httpx.go` (+`_test.go`),
+`internal/generate/preview.go`, `docs/{known-issues,server}.md`, `README.md`.

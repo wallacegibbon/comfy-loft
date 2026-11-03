@@ -173,7 +173,7 @@ function classify(node) {
     return false;
 }
 
-// `chinese(...)` in lib/gateway-labels.ts asks the zh dictionary only, so those keys have no en entry.
+// `chinese(...)` in lib/server-labels.ts asks the zh dictionary only, so those keys have no en entry.
 const KEY_FNS = new Set(["t", "chinese"]);
 
 for (const file of walk(SRC)) {
@@ -214,10 +214,10 @@ const missingEn = missing(en);
 if (missingZh.length) problems.push(`missing keys (referenced by code, absent from zh-CN):\n${missingZh.map((k) => `    ${k}`).join("\n")}`);
 if (missingEn.length) problems.push(`missing keys (referenced by code, absent from en-US):\n${missingEn.map((k) => `    ${k}`).join("\n")}`);
 
-// Both dictionaries have to describe the same screen, except here: `chinese()` in lib/gateway-labels.ts
+// Both dictionaries have to describe the same screen, except here: `chinese()` in lib/server-labels.ts
 // reads the zh-CN dictionary only, to give the English model/variant ids in registry.json a Chinese label.
 // The English screen shows the registry's own English text, so having no entry there is correct.
-const ZH_ONLY_PREFIXES = ["gateway.models.", "gateway.variants."];
+const ZH_ONLY_PREFIXES = ["server.models.", "server.variants."];
 const zhOnlyByDesign = (key) => ZH_ONLY_PREFIXES.some((prefix) => key.startsWith(prefix));
 
 const onlyZh = [...zh.leaves].filter((k) => !en.leaves.has(k) && !zhOnlyByDesign(k)).sort();

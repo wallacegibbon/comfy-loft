@@ -74,6 +74,27 @@ func TestWriteErrorAcceptsPlainError(t *testing.T) {
 	}
 }
 
+// An error that says nothing still has to say something: `message` is what the canvas renders, and an empty
+// one is a blank toast that cannot be told from a broken renderer.
+func TestWriteErrorSaysSomethingWhenTheErrorIsSilent(t *testing.T) {
+	for _, err := range []error{errors.New(""), NewError(http.StatusBadRequest, "bad_thing", "  ")} {
+		recorder := httptest.NewRecorder()
+		WriteError(recorder, err)
+
+		var body struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if body.Error.Message != "Internal error" {
+			t.Errorf("message = %q, want Internal error", body.Error.Message)
+		}
+	}
+}
+
 func TestCORSLoopbackIsAllowed(t *testing.T) {
 	cfg := testConfig(t)
 	handler := CORS(cfg)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

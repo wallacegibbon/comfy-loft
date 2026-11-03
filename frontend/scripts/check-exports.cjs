@@ -32,7 +32,7 @@ const TEST_ONLY = new Map([
         "src/lib/canvas/save-queue.ts:SaveSnapshot",
         "the save queue's input snapshot: the queue's own `snapshot` callback returns it and its `save` callback takes it, but no product code names the type (it is always inferred), so only a test has to construct one by name",
     ],
-    ["src/lib/gateway-models.ts:modelsOf", "the mapping from one workflow to its candidate entries — the unit under test itself; gatewayModels is only its fold"],
+    ["src/lib/server-models.ts:modelsOf", "the mapping from one workflow to its candidate entries — the unit under test itself; serverModels is only its fold"],
     ["src/services/api/http.ts:ApiError", "the error type http.ts throws; the tests use it to assert the shape of status and body"],
     ["src/services/api/http.ts:readApiErrorMessage", "the parser is the unit under test: the table covers msg / message / error / detail / serialised JSON / HTML; going through apiErrorMessage would mix in the status-code fallback"],
     [

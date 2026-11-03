@@ -61,7 +61,6 @@ type Hub struct {
 	mu               sync.RWMutex
 	previews         map[string]*Preview
 	progressByPrompt map[string]*Progress
-	promptByRequest  map[string]string
 	sockets          map[string]*socketEntry
 }
 
@@ -82,7 +81,6 @@ func NewHub(comfyURL string, logger *logx.Logger) *Hub {
 		ttl:              defaultPreviewTTL,
 		previews:         map[string]*Preview{},
 		progressByPrompt: map[string]*Progress{},
-		promptByRequest:  map[string]string{},
 		sockets:          map[string]*socketEntry{},
 	}
 	go hub.reapLoop()
@@ -325,9 +323,6 @@ func (h *Hub) createProgressLocked(entry *socketEntry, promptID string) *Progres
 		record.AbsoluteNodes = map[string]bool{}
 	}
 	h.progressByPrompt[promptID] = record
-	if record.RequestID != "" {
-		h.promptByRequest[record.RequestID] = promptID
-	}
 	return record
 }
 
@@ -528,9 +523,6 @@ func (h *Hub) closeIdle() {
 			continue
 		}
 		delete(h.progressByPrompt, promptID)
-		if record.RequestID != "" {
-			delete(h.promptByRequest, record.RequestID)
-		}
 	}
 }
 

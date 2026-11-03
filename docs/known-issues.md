@@ -20,18 +20,39 @@ audio through the interpolation. The media plan is declared in `registry.json` (
 
 ---
 
-## 2. The Go half has no "nothing calls this" gate, and thirteen exported symbols have no caller
+## 2. The Go half has no "nothing calls this" gate, and eleven exported symbols have no caller
 
 The canvas fails on an export nobody imports (`scripts/check-exports.cjs`) and `tsc` fails on an unused local.
 Neither has a Go counterpart, so an exported function whose last caller a refactor removed stays behind:
 
-`Queue` (`internal/comfy`), `WithAudioTimeout` / `WithServerPort` / `WithMaxImportBytes` /
-`WithPublicBaseURL` (`internal/config`), `WriteJSONError` (`internal/httpx`), `DerivedDependencies`
-(`internal/resource` — its comment still calls it "the single source of truth for a workflow's dependency
-list"), `IsAvailable` / `ModelCandidates` (`internal/setup`), `Snapshot` (`internal/store`),
-`NormalizeModelPath` (`internal/workflow/helpers.go`), `ReadGraphFile` (`internal/workflow/registry.go`),
-`OutputPath` and the two helpers only it uses (`internal/task`). `Hub.promptByRequest` (`internal/generate`)
-is written and never read.
+`Queue` (`internal/comfy`), `WithAudioTimeout` / `WithServerPort` / `WithMaxImportBytes` (`internal/config`),
+`WriteJSONError` (`internal/httpx`), `DerivedDependencies` (`internal/resource` — its comment still calls it
+"the single source of truth for a workflow's dependency list"), `IsAvailable` / `ModelCandidates`
+(`internal/setup`), `Snapshot` (`internal/store`), `NormalizeModelPath` (`internal/workflow/helpers.go`),
+`ReadGraphFile` (`internal/workflow/registry.go`).
 
 **Fix to decide** Delete them, or add a check to `make check` that fails on an exported Go identifier with no
-reference outside its own file.
+reference outside its own file (`golangci-lint`'s `unused` only sees unexported names; `deadcode` needs the
+Network — `proxy.golang.org` was unreachable from here).
+
+**Checked** `WithPublicBaseURL` (`internal/config`) and `OutputPath` (`internal/task`) left this list: a test
+calls each. `golangci-lint` (default linters: errcheck, govet, ineffassign, staticcheck, unused) reports
+nothing else in the product code, and `Hub.promptByRequest` (`internal/generate`) — a map written and deleted
+and never read — was removed (#247).
+
+---
+
+## 3. An agent process can outlive the server that started it
+
+**Symptom** `pgrep alayacore` finds a process whose server has been gone for hours. One was running here with
+a ten-hour elapsed time and a parent id belonging to a shell that no longer had a server under it.
+
+**Cause** Shutdown releases every session, and a released session kills its process — but that only runs when
+the process is asked to stop. A server that is `SIGKILL`ed, or that dies on a panic outside the handler, leaves
+its children behind: `internal/agent/spawn.go` starts them with `exec.Command` and no `Setpgid`, so nothing
+else can find them as a group either, and nothing at startup looks for a previous run's leftovers.
+
+**Fix to decide** A pid file written next to `mcp.conf` and read at startup, killing what it names; or
+`Setpgid` per spawn plus a kill of the group on start. The first needs the file to be removed on a clean stop
+(and to tolerate a recycled pid); the second needs the server's own group to be distinguishable from another
+server's. Neither is a one-liner, which is why this is written down rather than guessed at.
