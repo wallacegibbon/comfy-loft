@@ -7867,6 +7867,14 @@ The store reports a run once (`Store.SetOnFinish`, guarded by a flag that is nev
 whichever side reached a terminal status first: the worker that unwound it, or a cancel that took it out of
 the queue before a worker ever saw it.
 
+The tool's own answer carries the same distinction, because the agent's next move depends on it. A press
+reports one of three things, from the moment the run exists rather than later: a **run id**, so a message is
+coming; a **refusal with the page's own reason** — no model set, nothing to generate from, stopped before it
+started — which is also a failed call, since a quiet success would leave the agent waiting for a message
+that will never come; or, if the page says nothing within 15 s, that **no run has been reported** and it may
+still be setting up (a reference uploading, a node hydrating), with both outcomes named. The middle of those
+is the reason this answer exists at all: "started" has to mean a run id, not the absence of an error.
+
 **Why** `generate` is answered the moment the run is queued, because a picture takes minutes and a tool call
 is not a progress bar. So the agent's turn can end — usually does end — with the work still going, and the
 tool's own answer said only "the node shows its own progress". The agent that started a two-minute video
@@ -7884,7 +7892,13 @@ and a finished run is the kind of thing a person would tell it. Anything else wo
 frame.
 
 **Cost** One more optional field on the run body, threaded from the tool handler through `handleGenerateNode`
-and the four generation modes to each API helper (`askedBy` on `RunRequest`), and one hook on the task store.
+and the four generation modes to each API helper (`askedBy` on `RunRequest`), one hook on the task store, and
+a callback the other way for "a run exists" (`onStart`, fed from the `onRun` hooks the canvas already had
+and from the video task's own return). The tool call now blocks until that word arrives — a second at most in
+practice, capped at 15 s against the MCP call's own 30.
+
+What this serves is the canvas conversation. A node panel's agent is one-shot: its session is released with
+its answer, so a run it started has nobody left to tell and reports into the log.
 A session that is gone when the run ends hears nothing, and the log says so: the message is not queued for
 the next process. The ask is a *name*, which is what lets it survive a reload — and also what lets it
 outlive a conversation cleared mid-run, whose successor under the same name would be told about a run it
@@ -7902,9 +7916,11 @@ body parsing, and the three sentences. `internal/agent/session_test.go`:
 `TestTellReportsASessionThatIsGone`. `internal/server/agent_e2e_test.go`:
 `TestARunFinishingTellsTheAgentThatAskedForIt` — a real run on the fake ComfyUI, the socket relaying the
 echo and the fake agent's reply — and `TestARunNobodyAskedAboutTellsNoOne`, where nothing is said on the
-socket at all. `frontend/tests/api-runs.test.ts`: the body carries `askedBy`, and does not carry it when
-nobody asked. `go test ./internal/...`, `make check`, `npx vitest run` (206), `npm run check`, `npm run
-build`. In the browser: not exercised — the panel shows the notice because it shows every user message, and
+socket at all. `frontend/tests/api-runs.test.ts`: the body carries `askedBy`, and does not carry it when nobody asked.
+`frontend/tests/agent-generate.test.ts` (4): the three answers — a run id with no claim of failure, a refusal
+carrying the page's reason *and* "nothing to wait for", and the unmatched case naming both outcomes — plus
+the flag that makes a refusal a failed call. `go test ./internal/...`, `make check`, `npx vitest run` (210),
+`npm run check`, `npm run build`. In the browser: not exercised — the panel shows the notice because it shows every user message, and
 that path is covered, but the round trip was read from a socket, not off a screen.
 
 **Where** `internal/task/task.go` (`Ask`, `SetOnFinish`, `finishedLocked`, `finish`),

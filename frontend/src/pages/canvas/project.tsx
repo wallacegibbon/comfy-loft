@@ -10,6 +10,7 @@ import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
 import { requestEdit, requestGeneration } from "@/services/api/image";
 import type { RunRequest } from "@/services/api/runs";
+import type { GenerateOptions, GenerateStart } from "@/lib/canvas/agent-generate";
 import { createVideoGenerationTask, isVideoTaskFailed, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
 import { useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { uploadImage } from "@/services/image-storage";
@@ -254,7 +255,7 @@ function InfiniteCanvasPage() {
     const selectedNodeIdsRef = useRef(selectedNodeIds);
     const viewportRef = useRef(viewport);
     const focusAnimRef = useRef<number | null>(null);
-    const generateNodeRef = useRef<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, askedBy?: RunRequest["askedBy"]) => Promise<void>) | null>(null);
+    const generateNodeRef = useRef<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, options?: GenerateOptions) => Promise<void>) | null>(null);
     const connectingParamsRef = useRef(connectingParams);
     const connectionTargetNodeIdRef = useRef(connectionTargetNodeId);
     const selectionBoxRef = useRef(selectionBox);
@@ -334,19 +335,24 @@ function InfiniteCanvasPage() {
         setNodes((prev) => prev.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, stepProgress: steps } } : item)));
     }, []);
 
+    /** What a video run may be told beyond the request itself. */
+    type CompleteVideoOptions = {
+        /** The conversation to tell when the run ends (#225). */
+        askedBy?: RunRequest["askedBy"];
+        /** Called with the run id the moment it exists — what the tool's answer waits on. */
+        started?: (runId: string) => void;
+        extra?: CanvasNodeData["metadata"];
+        videos?: ReferenceVideo[];
+        audios?: ReferenceAudio[];
+    };
+
     const completeVideoNodeTask = useCallback(
-        async (
-            nodeId: string,
-            config: Parameters<typeof buildGenerationConfig>[0],
-            prompt: string,
-            images: Parameters<typeof createVideoGenerationTask>[2],
-            signal: AbortSignal,
-            askedBy: RunRequest["askedBy"] | undefined,
-            extra: CanvasNodeData["metadata"] = {},
-            videos: ReferenceVideo[] = [],
-            audios: ReferenceAudio[] = [],
-        ) => {
+        async (nodeId: string, config: Parameters<typeof buildGenerationConfig>[0], prompt: string, images: Parameters<typeof createVideoGenerationTask>[2], signal: AbortSignal, options: CompleteVideoOptions = {}) => {
+            const { askedBy, started, extra = {}, videos = [], audios = [] } = options;
             const task = await createVideoGenerationTask(config, prompt, images, { signal, videos, audios, askedBy });
+            // The run is out, which is the one thing the agent holding the tool call needs: it is told
+            // before the minutes of rendering, not after (#225).
+            started?.(task.id);
             setNodes((prev) =>
                 prev.map((item) =>
                     item.id === nodeId
@@ -1943,12 +1949,27 @@ function InfiniteCanvasPage() {
     }, [projectLoaded, projectId, pollAudioRun, pollImageRun]);
 
     const handleGenerateNode = useCallback(
-        async (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, askedBy?: RunRequest["askedBy"]) => {
+        async (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, options?: GenerateOptions) => {
+            const { askedBy, onStart } = options ?? {};
+            /**
+             * Whether a run went out, said once — the first word is the only one that matters.
+             *
+             * The tool's answer is built on this: "a run exists" is what tells the agent to expect a
+             * message later rather than wait, and a refusal says why and that there is nothing to wait
+             * for. Announcing it here rather than inside each mode is what keeps every early exit honest.
+             */
+            let announced = false;
+            const start = (report: GenerateStart) => {
+                if (announced) return;
+                announced = true;
+                onStart?.(report);
+            };
             const sourceNode = nodesRef.current.find((node) => node.id === nodeId);
             const generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode);
             // Text is answered by the agent, which needs nothing configured here; media needs a workflow.
             if (mode !== "text" && !isAiConfigReady(generationConfig, generationConfig.model)) {
                 openPreferences();
+                start({ started: false, reason: `no model is set for ${mode} generation on this canvas, and the node's panel opened its settings` });
                 return;
             }
 
@@ -1957,7 +1978,10 @@ function InfiniteCanvasPage() {
             const builtinPanel = sourceNode ? getNodeDefinition(sourceNode.type)?.useBuiltinPanel : undefined;
             if (sourceNode && builtinPanel?.writeBackToSelf && builtinPanel.mode === "image") {
                 const scene = prompt.trim();
-                if (!scene) return;
+                if (!scene) {
+                    start({ started: false, reason: "the node has no prompt to generate from" });
+                    return;
+                }
                 setRunningNodeId(nodeId);
                 const controller = startGenerationRequest(nodeId, nodeId, nodeId);
                 setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt: scene, status: NODE_STATUS_LOADING, errorDetails: undefined } } : node)));
@@ -1966,7 +1990,8 @@ function InfiniteCanvasPage() {
                     const context = await hydrateNodeGenerationContext(buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, fullPrompt));
                     if (context.loras.length) generationConfig.params = { ...(generationConfig.params || {}), loras: context.loras };
                     const refs = context.referenceImages;
-                    const image = refs.length ? await requestEdit(generationConfig, context.prompt, refs, { signal: controller.signal, askedBy }) : await requestGeneration(generationConfig, context.prompt, { signal: controller.signal, askedBy });
+                    const runOptions = { signal: controller.signal, askedBy, onRun: (runId: string) => start({ started: true, runId }) };
+                    const image = refs.length ? await requestEdit(generationConfig, context.prompt, refs, runOptions) : await requestGeneration(generationConfig, context.prompt, runOptions);
                     const uploaded = image;
                     setNodes((prev) =>
                         prev.map((node) =>
@@ -1998,12 +2023,14 @@ function InfiniteCanvasPage() {
             if (runController.signal.aborted) {
                 finishGenerationRequest(nodeId, runController);
                 setRunningNodeId(null);
+                start({ started: false, reason: "the generation was stopped before it started" });
                 return;
             }
             const markSourceStatus = sourceNode?.type !== CanvasNodeType.Image;
             if (!effectivePrompt && (mode === "text" || mode === "audio")) {
                 finishGenerationRequest(nodeId, runController);
                 setRunningNodeId(null);
+                start({ started: false, reason: "the node has no prompt to generate from" });
                 return;
             }
             const run: GenerationRun = {
@@ -2016,6 +2043,7 @@ function InfiniteCanvasPage() {
                 runController,
                 pendingChildIds: [],
                 askedBy,
+                start,
             };
             if (markSourceStatus)
                 setNodes((prev) =>
@@ -2042,8 +2070,12 @@ function InfiniteCanvasPage() {
 
                 await runTextGeneration(run);
             } catch (error) {
-                if (isGenerationCanceled(error)) return;
+                if (isGenerationCanceled(error)) {
+                    start({ started: false, reason: "the generation was stopped before it started" });
+                    return;
+                }
                 const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
+                start({ started: false, reason: errorDetails });
                 toast.error(errorDetails);
                 setNodes((prev) =>
                     prev.map((node) =>

@@ -324,6 +324,10 @@ session, which AlayaCore echoes and answers like any other message, so the panel
 (decisions #225). Nothing waits for the agent to be idle — AlayaCore queues a prompt into the run already
 in progress. A run the user started carries no `askedBy` and is not reported to anybody.
 
+`generate`'s answer carries the other half of it, because that is what the agent's next move depends on: a
+run id means the message is coming, a refusal says why nothing was started (and fails the call), and a press
+that reports no run within 15 s says so rather than guessing either way.
+
 Media, runs and files:
 
 | Method | Path                              | Purpose                                                                                                    |

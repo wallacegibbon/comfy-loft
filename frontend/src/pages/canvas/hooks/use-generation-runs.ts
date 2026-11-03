@@ -9,6 +9,7 @@ import { requestEdit, requestGeneration } from "@/services/api/image";
 import { nodeAgent } from "@/services/api/agent";
 import { requestPromptChat } from "@/services/api/prompts";
 import { waitForRun, type Run, type RunProgress, type RunRequest } from "@/services/api/runs";
+import type { GenerateStart } from "@/lib/canvas/agent-generate";
 import { generatedAudio, generatedImage } from "@/lib/canvas/generated-media";
 import { isVideoTaskFailed } from "@/services/api/video";
 import { resolveModelRequestConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
@@ -50,6 +51,11 @@ export type GenerationRun = {
      * the run ends (docs/decisions.md #225).
      */
     askedBy?: RunRequest["askedBy"];
+    /**
+     * Says whether a run exists, the moment it does. The tool's answer waits on this — "a run went out"
+     * is the one thing that tells the agent whether to expect a message later (#225).
+     */
+    start: (start: GenerateStart) => void;
 };
 
 export type GenerationRunDeps = {
@@ -70,10 +76,14 @@ export type GenerationRunDeps = {
         prompt: string,
         images: Parameters<typeof import("@/services/api/video").createVideoGenerationTask>[2],
         signal: AbortSignal,
-        askedBy: RunRequest["askedBy"] | undefined,
-        extra?: CanvasNodeData["metadata"],
-        videos?: ReferenceVideo[],
-        audios?: ReferenceAudio[],
+        options?: {
+            askedBy?: RunRequest["askedBy"];
+            /** Called with the run id the moment it exists, before the wait for its result. */
+            started?: (runId: string) => void;
+            extra?: CanvasNodeData["metadata"];
+            videos?: ReferenceVideo[];
+            audios?: ReferenceAudio[];
+        },
     ) => Promise<void>;
 };
 
@@ -257,7 +267,10 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                     onProgress: (state: Run) => setRunStepProgress(rootId, state.progress),
                     // The id arrives at submission, before a single artifact exists: it is what a
                     // reload reattaches to.
-                    onRun: (runId: string) => setNodes((prev) => prev.map((node) => (node.id === rootId ? { ...node, metadata: { ...node.metadata, imageRunId: runId } } : node))),
+                    onRun: (runId: string) => {
+                        setNodes((prev) => prev.map((node) => (node.id === rootId ? { ...node, metadata: { ...node.metadata, imageRunId: runId } } : node)));
+                        run.start({ started: true, runId });
+                    },
                 };
                 const result = referenceImages.length ? await requestEdit(generationConfig, effectivePrompt, referenceImages, requestOptions) : await requestGeneration(generationConfig, effectivePrompt, requestOptions);
                 await fillImage(rootId, result);
@@ -338,14 +351,10 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             if (!reuseVideoNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: videoId }]);
             const controller = startGenerationRequest(videoId, nodeId, nodeId, runController);
             try {
-                await completeVideoNodeTask(
-                    videoId,
-                    generationConfig,
-                    effectivePrompt,
-                    generationContext.referenceImages,
-                    controller.signal,
-                    run.askedBy,
-                    {
+                await completeVideoNodeTask(videoId, generationConfig, effectivePrompt, generationContext.referenceImages, controller.signal, {
+                    askedBy: run.askedBy,
+                    started: (runId) => run.start({ started: true, runId }),
+                    extra: {
                         size: generationConfig.size,
                         seconds: generationConfig.videoSeconds,
                         vquality: generationConfig.vquality,
@@ -354,9 +363,9 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                         videoMode: generationConfig.videoMode,
                         references: generationReferenceUrls(generationContext),
                     },
-                    generationContext.referenceVideos,
-                    generationContext.referenceAudios,
-                );
+                    videos: generationContext.referenceVideos,
+                    audios: generationContext.referenceAudios,
+                });
             } finally {
                 finishGenerationRequest(videoId, controller);
             }
@@ -394,7 +403,10 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                     signal: controller.signal,
                     askedBy: run.askedBy,
                     // The id lands on the node before the first poll, so a reload can resume it.
-                    onRun: (runId) => setNodes((prev) => prev.map((node) => (node.id === audioId ? { ...node, metadata: { ...node.metadata, audioRunId: runId } } : node))),
+                    onRun: (runId) => {
+                        setNodes((prev) => prev.map((node) => (node.id === audioId ? { ...node, metadata: { ...node.metadata, audioRunId: runId } } : node)));
+                        run.start({ started: true, runId });
+                    },
                     onProgress: (run) => setRunStepProgress(audioId, run.progress),
                 });
                 setNodes((prev) =>
@@ -639,18 +651,20 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                         prompt,
                         retryImages,
                         controller.signal,
-                        // A retry is the user pressing the button again, not the agent asking.
-                        undefined,
+                        // A retry is the user pressing the button again: nobody is holding a turn open on
+                        // whether it started, and nobody asked to be told how it went.
                         {
-                            size: generationConfig.size,
-                            seconds: generationConfig.videoSeconds,
-                            vquality: generationConfig.vquality,
-                            generateAudio: generationConfig.videoGenerateAudio,
-                            watermark: generationConfig.videoWatermark,
-                            videoMode: generationConfig.videoMode,
+                            extra: {
+                                size: generationConfig.size,
+                                seconds: generationConfig.videoSeconds,
+                                vquality: generationConfig.vquality,
+                                generateAudio: generationConfig.videoGenerateAudio,
+                                watermark: generationConfig.videoWatermark,
+                                videoMode: generationConfig.videoMode,
+                            },
+                            videos: context?.referenceVideos || [],
+                            audios: context?.referenceAudios || [],
                         },
-                        context?.referenceVideos || [],
-                        context?.referenceAudios || [],
                     );
                     return;
                 }

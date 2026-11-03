@@ -5,7 +5,7 @@ import { repeatedConnectedText } from "@/components/canvas/canvas-node-generatio
 import { resolveMediaUrl } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
 import { onAnyAgentEvent, sendAgentMessage, type ToolContent } from "@/services/api/agent";
-import type { RunRequest } from "@/services/api/runs";
+import { generateAnswer, GENERATE_START_WAIT_MS, type GenerateOptions, type GenerateStart } from "@/lib/canvas/agent-generate";
 import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type Position } from "@/types/canvas";
 
 /**
@@ -84,7 +84,7 @@ type CanvasHands = {
     nodes: () => CanvasNodeData[];
     connections: () => CanvasConnection[];
     createNode: (type: CanvasNodeTypeId, position?: Position, patch?: CanvasNodeMetadata) => CanvasNodeData;
-    generateNode: (nodeId: string, mode: CanvasGenerationMode, prompt: string, askedBy?: RunRequest["askedBy"]) => Promise<void>;
+    generateNode: (nodeId: string, mode: CanvasGenerationMode, prompt: string, options?: GenerateOptions) => Promise<void>;
     setNodePrompt: (nodeId: string, prompt: string) => void;
     connectNodes: (firstNodeId: string, secondNodeId: string, firstHandleType: "source" | "target") => boolean;
     deleteNodes: (nodeIds: string[]) => void;
@@ -232,17 +232,19 @@ function setPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
 /**
  * Press one node's generate button — the same function the node's own panel presses.
  *
- * It is not waited on: a picture takes minutes, and the tool's job is to start it, not to be the progress
- * bar. The node itself shows what is happening, which is where the user will look anyway — and when the
- * run ends, the agent that asked is told, as a message from the user (docs/decisions.md #225).
+ * The run is not waited on: a picture takes minutes, and the tool's job is to start it, not to be the
+ * progress bar. What *is* waited on is whether it started at all, because that is what the agent's next
+ * move depends on: a run that is out means a message will come when it ends, and a refusal means there is
+ * nothing to wait for and why (docs/decisions.md #225). The answer is therefore built from the page's own
+ * word — a run id, or a reason — not from the absence of an error.
  *
- * The session travels with the generation for exactly that: it is the one thing that knows which
- * conversation asked, and the run carries it so the gateway can say how it went long after this answer.
+ * The session travels with the generation for the message that comes later: it is the one thing that
+ * knows which conversation asked, and the run carries it so the gateway can say how it went.
  *
  * The mode is the one the node's own panel would use: a content node generates what it is, and a config node
  * generates the kind its composer is set to (that is what pressing its button does).
  */
-function pressGenerate(hands: CanvasHands, args: unknown, session: string): ToolAnswer {
+async function pressGenerate(hands: CanvasHands, args: unknown, session: string): Promise<ToolAnswer> {
     const node = namedNode(hands, args);
     if (!node) return noSuchNode(args);
 
@@ -250,13 +252,40 @@ function pressGenerate(hands: CanvasHands, args: unknown, session: string): Tool
     const mode: string = node.type === CanvasNodeType.Config ? node.metadata?.generationMode || "image" : node.type;
     if (!GENERATE_MODES.includes(mode)) return { content: [textBlock(`a ${node.type} node has nothing to generate`)], isError: true };
 
-    void hands.generateNode(node.id, mode as CanvasGenerationMode, wordsOf(node), { session, node: node.id });
     // A text node is answered by its own agent, which writes into the node: there is no run behind it and
     // so nothing to be told about later.
     if (mode === CanvasNodeType.Text) {
+        void hands.generateNode(node.id, mode as CanvasGenerationMode, wordsOf(node));
         return { content: [textBlock(`pressed generate on ${node.id} (text). The node writes the answer itself as it streams — canvas_read_node it to see how far it has got.`)], isError: false };
     }
-    return { content: [textBlock(`pressed generate on ${node.id} (${mode}). It will take a while: you will be sent a message when it finishes, so do not wait for it or poll the node — carry on with something else, or answer me now.`)], isError: false };
+
+    const start = await pressAndWait(hands, node.id, mode as CanvasGenerationMode, wordsOf(node), session);
+    // A refusal is a failed call: the agent asked for something that did not happen, and a quiet success
+    // would leave it waiting for a message that will never come.
+    return { content: [textBlock(generateAnswer(node.id, mode, start))], isError: start?.started === false };
+}
+
+/**
+ * Press generate, and answer with the first word about the run — or with nothing, if it takes too long.
+ *
+ * The wait is bounded because the agent is holding a turn open on this answer, and because a press that is
+ * slow to report is not the same thing as a press that failed (`generateAnswer` says so in its own words).
+ */
+function pressAndWait(hands: CanvasHands, nodeId: string, mode: CanvasGenerationMode, words: string, session: string): Promise<GenerateStart | undefined> {
+    return new Promise((resolve) => {
+        let settled = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const finish = (start: GenerateStart | undefined) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(start);
+        };
+        timer = setTimeout(() => finish(undefined), GENERATE_START_WAIT_MS);
+        // A press that fails on its way to a run is a refusal with the page's own reason; a promise the
+        // page rejects is the same thing, and silence would leave the agent waiting.
+        void hands.generateNode(nodeId, mode, words, { askedBy: { session, node: nodeId }, onStart: finish }).catch((error: unknown) => finish({ started: false, reason: error instanceof Error ? error.message : String(error) }));
+    });
 }
 
 const GENERATE_MODES: string[] = [CanvasNodeType.Text, CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio];
