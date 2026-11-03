@@ -161,7 +161,7 @@ export function CanvasCanvasesSection({ projectId }: { projectId: string }) {
                 {!ready ? (
                     <div className="pt-16 text-center text-sm opacity-40">{t("canvas.loading")}</div>
                 ) : ordered.length ? (
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                         {ordered.map((canvas) => {
                             const current = canvas.id === projectId;
                             const editing = editingId === canvas.id;
@@ -170,15 +170,25 @@ export function CanvasCanvasesSection({ projectId }: { projectId: string }) {
                             // One height for every mode the row can be in — two lines of text and their padding. The
                             // rename input is shorter than the title and date it replaces, so a row that sized itself
                             // pulled the rest of the list up by eight pixels when it was pressed (#200).
+                            //
+                            // The row's inset and the text's are separate, and deliberately so: the row keeps 0.5rem
+                            // for its own edge, and the click target carries another 0.5rem, so a highlighted row's
+                            // first glyph sits a full 1rem inside the rounded corner. The two had been 0.25rem and
+                            // nothing — fine for Latin, whose glyphs carry a left side bearing, and visibly clipped
+                            // for Chinese, whose glyphs fill the em box edge to edge.
                             return (
-                                <div key={canvas.id} data-canvas-row className="group flex h-13 items-center gap-1 rounded-lg pl-1 pr-0.5 transition" style={active ? { background: theme.toolbar.activeBg } : undefined}>
+                                <div key={canvas.id} data-canvas-row className="group flex h-14 items-center gap-1 rounded-lg pl-2 pr-1.5 transition" style={active ? { background: theme.toolbar.activeBg } : undefined}>
                                     {selectMode ? (
                                         <button type="button" onClick={() => toggleSelected(canvas.id, !checked)} className="grid size-6 shrink-0 place-items-center" aria-label={t("canvas.project.select", { name: canvas.title })}>
                                             <CheckMark checked={checked} theme={theme} />
                                         </button>
                                     ) : null}
+                                    {/* The field begins where the title began: the input insets its own text by 0.7rem
+                                        (`px-2.5` plus the border), so the row's 0.5rem and 0.25rem here land the first
+                                        glyph within a pixel of the title's — a rename does not jump sideways as it
+                                        opens (#200). */}
                                     {editing ? (
-                                        <div className="flex min-w-0 flex-1 items-center gap-1">
+                                        <div className="flex min-w-0 flex-1 items-center gap-1 pl-1">
                                             <div className="min-w-0 flex-1">
                                                 <Input
                                                     autoFocus
@@ -217,7 +227,7 @@ export function CanvasCanvasesSection({ projectId }: { projectId: string }) {
                                             </Tooltip>
                                         </div>
                                     ) : (
-                                        <button type="button" onClick={() => (selectMode ? toggleSelected(canvas.id, !checked) : enterCanvas(canvas.id))} className="min-w-0 flex-1 py-2 text-left">
+                                        <button type="button" onClick={() => (selectMode ? toggleSelected(canvas.id, !checked) : enterCanvas(canvas.id))} className="min-w-0 flex-1 space-y-0.5 px-2 py-2 text-left">
                                             <span className="flex min-w-0 items-center gap-1.5">
                                                 <span className="truncate text-sm font-medium leading-snug">{canvas.title}</span>
                                                 {/* The canvas you are in, marked: the column is always on screen, so "where am I" has to be. */}
