@@ -8916,7 +8916,8 @@ no model"), and the **credential** — which is stored on this server, `data/spe
 sent as `Authorization: Bearer` on the request this server makes. The page can ask whether one is stored
 (`GET /api/speech/key`), replace it, or clear it (`PUT /api/speech/key`); it never receives it. A refusal from
 the speech server now keeps its **status** as well as its words: 401, 413 and 429 pass through as themselves,
-and only a 5xx becomes 502.
+and only a 5xx becomes 502. This replaces one sentence of #239 — the address is no longer "the only setting" —
+and leaves the rest of it standing: the hop, the WAV, the gesture and the caret are unchanged.
 
 **Why the model had to stop being a constant.** Measured against `127.0.0.1:18080` (audio.cpp) and against
 OpenAI's OpenAPI spec:
