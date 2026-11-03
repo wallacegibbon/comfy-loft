@@ -191,6 +191,9 @@ func (s *Server) Handler() http.Handler {
 	// A catch-all on the mux itself keeps routing inside net/http, which is what
 	// populates r.PathValue for the {id} patterns. Wrapping the mux and calling its
 	// handler directly would leave those values empty.
+	//
+	// Only the methods and paths `GET /` does not take reach it: the canvas bundle answers a GET, and
+	// everything else is a 404 in the same envelope (`web.go`, `notFound`).
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, httpx.NotFound("not_found", "Not found: "+r.Method+" "+r.URL.Path))
 	})

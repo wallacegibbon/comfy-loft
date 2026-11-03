@@ -6,12 +6,14 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"comfyloft/internal/config"
 )
 
 // settingsGateway is a gateway with a canvas root and a first-paint file of its own.
-func settingsGateway(t *testing.T) (*httptest.Server, *Server) {
+func settingsGateway(t *testing.T, options ...config.Option) (*httptest.Server, *Server) {
 	t.Helper()
-	srv := newTestGateway(t, newFakeComfy(t))
+	srv := newTestGateway(t, newFakeComfy(t), options...)
 	gateway := httptest.NewServer(srv.Handler())
 	t.Cleanup(gateway.Close)
 	return gateway, srv
@@ -96,9 +98,10 @@ func TestSettingsRejectWhatIsNotAnObject(t *testing.T) {
 }
 
 // The first-paint file is what keeps the theme and the language from arriving one frame late, so it
-// has to be written at start and rewritten on every save.
+// has to be written at start and rewritten on every save — and it carries the gateway's address when the
+// operator named one, which is how a canvas served from somewhere else finds the gateway (#219).
 func TestTheFirstPaintFileCarriesTheAddressAndTheSettings(t *testing.T) {
-	gateway, srv := settingsGateway(t)
+	gateway, srv := settingsGateway(t, config.WithPublicBaseURL("http://127.0.0.1:8190"))
 	path := srv.cfg.RuntimeConfigPath
 	if path == "" {
 		t.Fatal("the test gateway has no runtime config path")
@@ -108,8 +111,8 @@ func TestTheFirstPaintFileCarriesTheAddressAndTheSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("no first-paint file after start: %v", err)
 	}
-	if !strings.Contains(string(atStart), "LOCAL_GATEWAY_URL") {
-		t.Errorf("start file has no gateway address:\n%s", atStart)
+	if !strings.Contains(string(atStart), `"LOCAL_GATEWAY_URL":"http://127.0.0.1:8190"`) {
+		t.Errorf("start file does not carry the address the operator named:\n%s", atStart)
 	}
 	if !strings.Contains(string(atStart), "SETTINGS") {
 		t.Errorf("start file has no settings:\n%s", atStart)
@@ -134,5 +137,28 @@ func TestTheFirstPaintFileCarriesTheAddressAndTheSettings(t *testing.T) {
 	}
 	if !strings.HasSuffix(strings.TrimSpace(text), ");") {
 		t.Errorf("the file does not end with the assignment:\n%s", text)
+	}
+}
+
+// A gateway that serves the canvas itself names no address (#219).
+//
+// The page came from this origin, and its own origin is the only address that stays right behind a LAN
+// name, a phone, or a reverse proxy — so writing `host:port` from the bind would replace a correct answer
+// with a guess. A gateway that serves no bundle keeps saying where it is, for a canvas served elsewhere.
+func TestTheFirstPaintFileSaysNoAddressWhenTheGatewayServesTheCanvas(t *testing.T) {
+	_, srv := settingsGateway(t, config.WithWebDir(t.TempDir()))
+	path := srv.cfg.RuntimeConfigPath
+	if path == "" {
+		t.Fatal("the test gateway has no runtime config path")
+	}
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("no first-paint file after start: %v", err)
+	}
+	if strings.Contains(string(written), "LOCAL_GATEWAY_URL") {
+		t.Errorf("a gateway serving the canvas wrote an address of its own:\n%s", written)
+	}
+	if !strings.Contains(string(written), "SETTINGS") {
+		t.Errorf("the settings half is still owed to the page:\n%s", written)
 	}
 }

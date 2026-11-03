@@ -7,12 +7,25 @@ import { RUNTIME_LOCAL_GATEWAY_HOST, RUNTIME_LOCAL_GATEWAY_PORT, RUNTIME_LOCAL_G
  * endpoint is under `/api`, so the suffix was carried around and stripped again by each caller. What
  * is left is a URL `fetch` can append `/api/...` to, and an address a deployment can point at another
  * gateway (docs/decisions.md #72).
+ *
+ * Who answers this changed with #219: the gateway serves the canvas bundle itself, so the page knows
+ * where the gateway is — it came from it. The address is taken from `config.js` only when the operator
+ * named one (`PUBLIC_BASE_URL`, for a canvas served from another origin), because `hostname:8190` is a
+ * guess that is wrong behind a LAN name, a phone or a reverse proxy, which is exactly the case it used
+ * to be written for.
  */
 function runtimeGatewayBaseUrl() {
     if (RUNTIME_LOCAL_GATEWAY_URL) return gatewayRoot(RUNTIME_LOCAL_GATEWAY_URL);
-    const host = RUNTIME_LOCAL_GATEWAY_HOST || pageHostname() || "127.0.0.1";
-    const port = RUNTIME_LOCAL_GATEWAY_PORT || "8190";
-    return `http://${host}:${port}`;
+    if (RUNTIME_LOCAL_GATEWAY_HOST || RUNTIME_LOCAL_GATEWAY_PORT) {
+        const host = RUNTIME_LOCAL_GATEWAY_HOST || pageHostname() || "127.0.0.1";
+        const port = RUNTIME_LOCAL_GATEWAY_PORT || "8190";
+        return `http://${host}:${port}`;
+    }
+    // Nothing named: this page came from the gateway, so it is this origin — the only answer that
+    // survives a LAN name, a phone or a reverse proxy. Outside a browser there is no page to be relative
+    // to, and every caller here builds an absolute URL (`new URL`, `localGatewayRoot`), so the loopback
+    // address the gateway defaults to is the honest answer.
+    return pageOrigin() || "http://127.0.0.1:8190";
 }
 
 /**
@@ -28,11 +41,17 @@ export function gatewayRoot(url: string) {
         .replace(/\/v1$/i, "");
 }
 
+/** The origin this page was served from — the gateway's own, once the gateway serves the bundle (#219). */
+function pageOrigin(): string {
+    if (typeof window === "undefined") return "";
+    return window.location?.origin || "";
+}
+
 // The gateway listens on the machine that serves this bundle, so the page's own hostname is
 // the right address for it: a canvas opened as http://192.168.3.232:3000 must reach
 // http://192.168.3.232:8190, not the loopback of whatever device holds the browser. Only a
-// non-browser context (and a wildcard bind, which start.sh cannot turn into a URL) falls back
-// to 127.0.0.1.
+// non-browser context falls back to 127.0.0.1. This is left for a `config.js` that names a host and
+// no port — the shape a hand-written channel entry still can have.
 function pageHostname(): string {
     if (typeof window === "undefined") return "";
     return window.location?.hostname || "";

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Starts what this project runs: the gateway (default :8190) and a static server for the
-# canvas bundle (default :3000). Ctrl+C stops both; there is no crash recovery.
+# Starts what this project runs: one gateway process, which also serves the canvas bundle from its own
+# origin (docs/decisions.md #219). Ctrl+C stops it; there is no crash recovery.
+#
+# There used to be a second process here — `vite preview` on :3000 — and with it two origins, a CORS
+# allow-list to maintain, and every picture a cross-origin image that a canvas could not export. The
+# bundle is static files, so the gateway serves it.
 #
 # ComfyUI is external and stays that way: nothing here starts, stops or waits for it. It may
 # be on another machine, in a container, or under whatever manager the user prefers — the
@@ -29,45 +33,33 @@ fi
 export COMFY_URL="${COMFY_URL:-http://127.0.0.1:8188}"
 export GATEWAY_HOST="${GATEWAY_HOST:-127.0.0.1}"
 export GATEWAY_PORT="${GATEWAY_PORT:-8190}"
-CANVAS_HOST="${CANVAS_HOST:-127.0.0.1}"
-CANVAS_PORT="${CANVAS_PORT:-3000}"
 
-VITE_BIN="$ROOT/frontend/node_modules/.bin/vite"
 GATEWAY_BIN="$ROOT/bin/comfyui-gateway"
 MCP_BIN="$ROOT/bin/comfyloft-mcp"
 DIST_INDEX="$ROOT/frontend/dist/index.html"
 
-command -v node >/dev/null 2>&1 || { echo "node not found; install Node.js first" >&2; exit 1; }
-[ -x "$VITE_BIN" ] || { echo "missing $VITE_BIN; run: make frontend-deps" >&2; exit 1; }
-
 # The bundle is build output: `frontend/src` moves on, `dist/` does not, and a start script that served
 # the old one changed the meaning of "restart it and try again". Rebuild when the bundle is missing or
 # older than anything that goes into it — before serving, and before the gateway writes `dist/config.js`,
-# so the runtime address still lands in the file the browser reads first (docs/decisions.md #180).
+# so the workspace preferences still land in the file the browser reads first (docs/decisions.md #155).
 if [ ! -f "$DIST_INDEX" ] || [ -n "$(find "$ROOT/frontend/src" "$ROOT/frontend/public" "$ROOT/frontend/index.html" \
   "$ROOT/frontend/vite.config.ts" "$ROOT/frontend/package.json" "$ROOT/frontend/package-lock.json" \
   -newer "$DIST_INDEX" -print -quit 2>/dev/null)" ]; then
+  command -v node >/dev/null 2>&1 || { echo "node not found; install Node.js first" >&2; exit 1; }
   echo "→ building the canvas bundle (missing, or older than its sources)"
   ( cd "$ROOT" && make frontend ) || { echo "canvas build failed" >&2; exit 1; }
 fi
 
+# The canvas itself: the gateway answers `GET /` with this directory (#219). It is the same bundle the
+# gateway writes `config.js` into, served from the origin the page will then talk to — so there is no
+# address to inject and no origin to allow.
+export WEB_DIR="$ROOT/frontend/dist"
+
 # The canvas's first paint. The gateway writes this file on every start and after every settings save,
-# with the address a browser should use plus the workspace preferences (docs/decisions.md #155), so the
-# theme and the language are known before the first frame. `make frontend` restores the template from
-# frontend/public/config.js, which is what a page served before the gateway is up reads.
+# with the workspace preferences (docs/decisions.md #155), so the theme and the language are known before
+# the first frame. `make frontend` restores the template from frontend/public/config.js, which is what a
+# page served before the gateway is up reads.
 export RUNTIME_CONFIG_PATH="$ROOT/frontend/dist/config.js"
-
-# The gateway accepts a canvas served from its own host already; this covers a canvas on
-# another machine or a name that differs from the address the browser used for the gateway.
-export CORS_ORIGINS="${CORS_ORIGINS:-http://localhost:${CANVAS_PORT},http://127.0.0.1:${CANVAS_PORT},http://${CANVAS_HOST}:${CANVAS_PORT},http://localhost:8188,http://127.0.0.1:8188}"
-
-pids=()
-cleanup() {
-  trap - EXIT INT TERM
-  for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done
-  wait 2>/dev/null || true
-}
-trap cleanup EXIT INT TERM
 
 # The gateway is a static binary: build it once when it is missing, then startup is instant.
 # `make build` produces both it and the bridge.
@@ -79,12 +71,10 @@ fi
 # The bridge is spawned by AlayaCore from the static mcp.conf, which names it beside the gateway binary.
 [ -x "$MCP_BIN" ] || { echo "missing $MCP_BIN; run: make build" >&2; exit 1; }
 
+echo "→ canvas    http://${GATEWAY_HOST}:${GATEWAY_PORT}   (served by the gateway)"
 echo "→ gateway   http://${GATEWAY_HOST}:${GATEWAY_PORT}   (ComfyUI at ${COMFY_URL})"
-( cd "$ROOT" && exec "$GATEWAY_BIN" ) & pids+=($!)
-
-echo "→ canvas    http://${CANVAS_HOST}:${CANVAS_PORT}"
-( cd "$ROOT/frontend" && exec "$VITE_BIN" preview --host "$CANVAS_HOST" --port "$CANVAS_PORT" ) & pids+=($!)
-
 echo
-echo "Both services are up. Ctrl+C stops them."
-wait
+echo "Up. Ctrl+C stops it."
+# From the gateway root: workflows/, resources.json and prompts/ are found from there.
+cd "$ROOT"
+exec "$GATEWAY_BIN"

@@ -173,16 +173,17 @@ func imageFixture() (string, map[string]any, map[string]any) {
 }
 
 // newTestGateway builds a gateway backed by a temporary workflow directory and a
-// fake ComfyUI.
-func newTestGateway(t *testing.T, fake *fakeComfy) *Server {
+// fake ComfyUI. `options` are applied to its configuration, for the cases the address it publishes
+// (PUBLIC_BASE_URL) or the bundle it serves (WEB_DIR) decide.
+func newTestGateway(t *testing.T, fake *fakeComfy, options ...config.Option) *Server {
 	t.Helper()
 	file, graph, entry := imageFixture()
-	return newTestGatewayWith(t, fake, file, graph, entry)
+	return newTestGatewayWith(t, fake, file, graph, entry, options...)
 }
 
 // newTestGatewayWith is newTestGateway with the workflow and registry entry supplied by the
 // caller, so a test can exercise a non-image run without copying the setup.
-func newTestGatewayWith(t *testing.T, fake *fakeComfy, graphFile string, graph, entry map[string]any) *Server {
+func newTestGatewayWith(t *testing.T, fake *fakeComfy, graphFile string, graph, entry map[string]any, options ...config.Option) *Server {
 	t.Helper()
 
 	root := t.TempDir()
@@ -213,6 +214,9 @@ func newTestGatewayWith(t *testing.T, fake *fakeComfy, graphFile string, graph, 
 	)
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
+	}
+	for _, option := range options {
+		option(cfg)
 	}
 
 	logger := logx.NewWithWriter("test", io.Discard)

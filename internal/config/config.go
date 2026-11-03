@@ -37,13 +37,22 @@ type Config struct {
 	// the gateway address and a copy of the settings document, so the page can apply the theme and the
 	// language before it draws. Empty means the operator serves that file themselves.
 	RuntimeConfigPath string
+	// WebDir, when set, is a canvas bundle this gateway serves itself (#219): `GET /` answers with its
+	// `index.html` and any file under it. Empty means somebody else serves the canvas — a development
+	// server, typically — and the gateway answers only `/api/*`.
+	WebDir string
 	// CanvasRoot is where the canvases live, one directory each. It is the workspace itself, so it
 	// is named by its own variable rather than nested under DATA_DIR: data/ is the gateway's
 	// bookkeeping (tasks, uploads), and a user who backs up their work backs up this.
 	CanvasRoot string
 
 	PublicBaseURL string
-	CorsOrigins   []string
+	// PublicBaseURLSet records that the operator named the address (PUBLIC_BASE_URL) instead of it being
+	// derived from the bind. It is what tells the first-paint file whether the canvas is served somewhere
+	// other than this gateway (#219): a page this gateway served knows its own origin, and that is the only
+	// answer that stays right behind a LAN name, a phone or a reverse proxy.
+	PublicBaseURLSet bool
+	CorsOrigins      []string
 
 	RequestTimeoutMs   int
 	VideoTimeoutMs     int
@@ -127,6 +136,10 @@ func WithCanvasRoot(dir string) Option { return func(c *Config) { c.CanvasRoot =
 // WithRuntimeConfigPath points the first-paint file at a path (tests), or turns it off with "".
 func WithRuntimeConfigPath(path string) Option { return func(c *Config) { c.RuntimeConfigPath = path } }
 
+// WithWebDir makes the gateway serve a canvas bundle from `dir` (tests, and a caller that does not want to
+// go through WEB_DIR). Empty leaves the canvas to whoever serves it now.
+func WithWebDir(dir string) Option { return func(c *Config) { c.WebDir = dir } }
+
 // WithoutScanOnStart disables the startup scan (tests).
 func WithoutScanOnStart() Option {
 	return func(c *Config) { c.ScanOnStart = false }
@@ -141,8 +154,14 @@ func WithAudioTimeout(ms int) Option { return func(c *Config) { c.AudioTimeoutMs
 // WithPollInterval overrides the history poll interval.
 func WithPollInterval(ms int) Option { return func(c *Config) { c.PollIntervalMs = ms } }
 
-// WithPublicBaseURL overrides the externally visible base URL.
-func WithPublicBaseURL(url string) Option { return func(c *Config) { c.PublicBaseURL = url } }
+// WithPublicBaseURL overrides the externally visible base URL. Naming one also tells the first-paint file
+// that the canvas is served from that address rather than from this gateway (#219).
+func WithPublicBaseURL(url string) Option {
+	return func(c *Config) {
+		c.PublicBaseURL = url
+		c.PublicBaseURLSet = true
+	}
+}
 
 // Load reads the environment, validates it, and returns the configuration.
 func Load(opts ...Option) (*Config, error) {
@@ -156,6 +175,7 @@ func Load(opts ...Option) (*Config, error) {
 		InstallIntoComfy: boolValue(os.Getenv("INSTALL_INTO_COMFY")),
 		ScanOnStart:      os.Getenv("SCAN_ON_START") != "0",
 		PublicBaseURL:    strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")),
+		PublicBaseURLSet: strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")) != "",
 		CorsOrigins: listValue(os.Getenv("CORS_ORIGINS"),
 			"http://localhost:3000,http://127.0.0.1:3000,http://localhost:8188,http://127.0.0.1:8188"),
 		RequestTimeoutMs:    intValue(os.Getenv("REQUEST_TIMEOUT_MS"), 10*60*1000),
@@ -195,6 +215,9 @@ func Load(opts ...Option) (*Config, error) {
 	// No default: an empty value means "no file to write", and a gateway run outside a served bundle
 	// should not invent one.
 	cfg.RuntimeConfigPath = strings.TrimSpace(os.Getenv("RUNTIME_CONFIG_PATH"))
+	// No default either, and for the mirror reason: a gateway that guessed a bundle would answer `/` with
+	// whatever an old build left there. `start.sh` names the one it built.
+	cfg.WebDir = strings.TrimSpace(os.Getenv("WEB_DIR"))
 
 	for _, opt := range opts {
 		opt(cfg)
@@ -206,6 +229,9 @@ func Load(opts ...Option) (*Config, error) {
 	cfg.CanvasRoot = absPath(cfg.CanvasRoot)
 	if cfg.RuntimeConfigPath != "" {
 		cfg.RuntimeConfigPath = absPath(cfg.RuntimeConfigPath)
+	}
+	if cfg.WebDir != "" {
+		cfg.WebDir = absPath(cfg.WebDir)
 	}
 	cfg.ComfyURL = strings.TrimRight(cfg.ComfyURL, "/")
 

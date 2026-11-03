@@ -16,6 +16,11 @@ import (
 
 // routes registers the full HTTP surface.
 func (s *Server) routes(mux *http.ServeMux) {
+	// The canvas itself, when this gateway is the one serving it. `GET /` is a subtree pattern, and every
+	// `/api/...` pattern below is more specific, so an API path still reaches its handler; what is left for
+	// this one is a file of the bundle or a client-side route (#219).
+	s.route(mux, "GET /", s.handleWeb)
+
 	s.routesGeneration(mux)
 	s.routesRuns(mux)
 	s.routesCanvas(mux)

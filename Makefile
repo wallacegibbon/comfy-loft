@@ -43,8 +43,8 @@ build: ## Compile both binaries into bin/
 	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(MCP_BIN) $(MCP_PKG)
 	@echo "built $(BIN) $(MCP_BIN)"
 
-run: ## Run the gateway from source
-	$(GO) run $(GATEWAY_PKG)
+run: ## Run the gateway from source, serving the built canvas bundle
+	WEB_DIR=$(FRONTEND_DIR)/dist RUNTIME_CONFIG_PATH=$(FRONTEND_DIR)/dist/config.js $(GO) run $(GATEWAY_PKG)
 
 frontend-deps: ## Install frontend dependencies when node_modules is missing or stale
 	@if [ ! -f $(FRONTEND_STAMP) ] || [ $(FRONTEND_DIR)/package-lock.json -nt $(FRONTEND_STAMP) ]; then \

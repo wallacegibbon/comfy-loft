@@ -21,6 +21,16 @@ function vendorChunk(id: string): string | undefined {
     return "vendor";
 }
 
+// The gateway this dev server forwards to. In a release there is no second origin at all — the gateway
+// serves the bundle itself (#219) — so development does the same thing the release does: the page is on
+// one origin and `/api/*` on it is the gateway's. `changeOrigin` stays off on purpose: the Host header a
+// forwarded request carries is then the page's own, which is what the gateway's same-host rule reads, so a
+// phone on the LAN needs no `CORS_ORIGINS` entry to use the dev server either.
+const gatewayTarget = process.env.VITE_DEV_GATEWAY || "http://127.0.0.1:8190";
+const proxy = {
+    "/api": { target: gatewayTarget, changeOrigin: false, ws: true },
+};
+
 export default defineConfig({
     base: process.env.VITE_BASE || "/",
     plugins: [react()],
@@ -31,6 +41,14 @@ export default defineConfig({
     },
     define: {
         __APP_VERSION__: JSON.stringify(localVersion),
+    },
+    server: {
+        // `npm run dev`: HMR from vite, everything else from the gateway, one origin.
+        proxy,
+    },
+    preview: {
+        // `npm start`, for looking at a built bundle without the gateway serving it.
+        proxy,
     },
     build: {
         // The bundle is served from the same machine, so bytes on the wire are cheap;

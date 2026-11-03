@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strconv"
 )
 
 /**
@@ -16,10 +15,11 @@ import (
  * opens in English. The bundle is static, so the only thing that can be read synchronously is a script
  * tag — hence this file.
  *
- * The gateway writes it, on every start and after every settings save, with the same address and
- * settings document it serves over `/api/*`. `start.sh` used to write it for the address alone; the
- * settings half is why the gateway owns it now, and the whole thing stays one `Object.assign` so the
- * hand-written template in `canvas/public/config.js` is still a valid file to start from.
+ * The gateway writes it, on every start and after every settings save, with the settings document it serves
+ * over `/api/*` — and with a gateway address only when the operator named one, because a page the gateway
+ * itself served already knows where it came from (#219). `start.sh` used to write it for the address alone;
+ * the settings half is why the gateway owns it now, and the whole thing stays one `Object.assign` so the
+ * hand-written template in `frontend/public/config.js` is still a valid file to start from.
  */
 
 // runtimeConfigPath is where the write goes, or "" when the operator did not name a file.
@@ -33,6 +33,7 @@ func (s *Server) writeRuntimeConfig() {
 	if url := s.canvasGatewayURL(); url != "" {
 		config["LOCAL_GATEWAY_URL"] = url
 	}
+
 	document, err := s.settings.Read()
 	if err != nil {
 		// The settings file exists and is unreadable. The address is still worth writing: a page that
@@ -60,16 +61,17 @@ func (s *Server) writeRuntimeConfig() {
 	}
 }
 
-// canvasGatewayURL is the address a browser should use for this gateway.
+// canvasGatewayURL is the address to write into the first-paint file, or "" when there is nothing to say.
 //
-// A wildcard bind has no usable address — the browser already knows the host it loaded the page from,
-// and the frontend falls back to it — so nothing is injected. That is the rule `start.sh` applied.
+// A page this gateway served already knows where it came from, and its own origin is the only address that
+// stays right for a phone on the LAN, a DNS name or a reverse proxy — none of which a bind address can
+// guess (#219). So the address is worth writing only when the operator says the canvas is served
+// somewhere else, which `PUBLIC_BASE_URL` is: it names the address the gateway is reachable at.
 func (s *Server) canvasGatewayURL() string {
-	switch s.cfg.GatewayHost {
-	case "", "0.0.0.0", "::", "[::]":
+	if !s.cfg.PublicBaseURLSet {
 		return ""
 	}
-	return "http://" + s.cfg.GatewayHost + ":" + strconv.Itoa(s.cfg.GatewayPort)
+	return s.cfg.PublicBaseURL
 }
 
 // escapeLineSeparators replaces the two characters that are legal inside a JSON string and illegal
