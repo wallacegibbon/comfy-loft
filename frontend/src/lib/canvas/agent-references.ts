@@ -1,16 +1,17 @@
 /**
  * The block the canvas puts in front of a prompt when the user cites nodes.
  *
- * The agent needs it — `@补全背景` means nothing without the text that follows — but it is plumbing, not
- * something anybody typed. So the same module builds it and takes it off again: the panel shows the words
- * the person wrote, and a conversation replayed from the agent's session file shows them too, even though
- * what was sent was the marked-up version.
+ * The agent needs it — a mention is a node's label with an `@` in front, which means nothing without the
+ * text that follows — but it is plumbing, not something anybody typed. So the same module builds it and
+ * takes it off again: the panel shows the words the person wrote, and a conversation replayed from the
+ * agent's session file shows them too, even though what was sent was the marked-up version.
  *
  * **A citation is an id, and its label is only what the message shows.** Titles are not unique — every
- * image node is created with the same default, so a canvas has as many nodes called `图片` as it has
- * images — which is why the block carries the node's id on every line and why a label that is already in
- * use in one message gets an ordinal (`图片 2`). Reading a mention back is therefore never a lookup of a
- * node called `x`: it is the id the message recorded, in the order the message cited them (#163).
+ * image node is created with the same default, so a canvas has as many nodes under one default title as
+ * it has images — which is why the block carries the node's id on every line and why a label that is
+ * already in use in one message gets an ordinal (`label 2`). Reading a mention back is therefore never a
+ * lookup of a node by the text after the `@`: it is the id the message recorded, in the order the message
+ * cited them (#163).
  */
 
 /** The marker in either language: a conversation can be read back in a UI that has switched languages. */
@@ -48,8 +49,8 @@ export function withoutReferences(prompt: string): string {
 /**
  * The nodes a prompt cited, as the block recorded them: `- <id> (<kind>) <label>: <prompt>`.
  *
- * Reading the block back is what lets a mention in a message be a link to the node: the visible text says
- * `@补全背景`, and only the block says which node that is.
+ * Reading the block back is what lets a mention in a message be a link to the node: the visible text
+ * shows a label, and only the block says which node that label was.
  */
 export function referenceEntries(prompt: string): Citation[] {
     const marker = MARKERS.find((candidate) => prompt.startsWith(`${candidate}\n`));

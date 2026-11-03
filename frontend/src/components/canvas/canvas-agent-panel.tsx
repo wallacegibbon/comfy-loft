@@ -372,7 +372,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         if (at < 0) return;
         const node = nodes.find((candidate) => candidate.id === nodeId);
         // The label is what the node is called on the canvas — the same words the reader sees — with an
-        // ordinal when that name is already cited here: a second image node is also called `图片`.
+        // ordinal when that name is already cited here: a second image node carries the same default title.
         const already = citations.find((citation) => citation.id === nodeId);
         const label = already
             ? already.label

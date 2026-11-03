@@ -7520,3 +7520,28 @@ carries the H3 instruction without the clause. Not exercised against an agent: t
 string, and what the agent does with it is the skill's business.
 
 **Where** `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.
+
+## 216. A comment about Chinese data is still a comment
+
+**Decision** Five doc comments that quoted a Chinese string in the middle of an English sentence are
+rewritten in English: the citation module's header and `referenceEntries` (`agent-references.ts`),
+`node-title.ts`'s header, `sent-prompt-disclosure.tsx`'s header, `channelName`'s doc comment
+(`use-config-store.ts`), and one inline comment in `canvas-agent-panel.tsx`.
+
+**Why** #17 asks for everything written for a human to be English, and #9's exception is for *data* — a value
+a model or ComfyUI reads. A comment that quotes `图片` is neither: it is prose, and the string it quotes is
+already defined a few lines away (`MARKERS`, the i18n dictionary, `titleKey`). The result was a rule with an
+asterisk nobody could check: `known-issues` #4 listed them as exceptions, so "no Chinese in the source except
+data" was true only if you accepted four comments as data.
+
+**Cost** Saying "the default title for the type" instead of naming it is one turn of the screw less vivid.
+The source now has 60 Chinese lines in six files, every one of them a value: the catalogue map, the agent's
+instructions, the MOSS prefix, `MARKERS`, the `PromptOptimizeMode` union, one endonym.
+
+**Tested** `npm run check` (tsc, i18n, exports, prettier), `npx vitest run` (175), `npm run build`. A scan for
+CJK in `frontend/src` outside the two dictionaries reports those 60 lines and nothing else.
+
+**Where** `frontend/src/lib/canvas/agent-references.ts`, `node-title.ts`,
+`frontend/src/components/canvas/sent-prompt-disclosure.tsx`,
+`frontend/src/stores/use-config-store.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`,
+`docs/known-issues.md` #4.

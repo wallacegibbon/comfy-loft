@@ -54,17 +54,14 @@ reference outside its own file.
 
 ## 4. A few strings stay Chinese in the source, because they are data
 
-UI copy goes through `t()`. These lines do not — 68 lines in ten files, each one input rather than output:
+UI copy goes through `t()`, and so do comments (#216). What is left is 60 lines in six files, every one of
+them a value rather than prose:
 
 | Lines | File | What it is |
 | --- | --- | --- |
 | 45 | `lib/resource-copy-zh.ts` | the resource catalogue's Chinese, keyed by id: `resources.json` is English data (#66, #67) |
 | 10 | `components/canvas/canvas-node-prompt-panel.tsx` | the instructions sent to the agent: the H3 task types, the two rewrite prompts (`输出语言：…` belongs to the image one), the caption request |
-| 5 | `lib/canvas/agent-references.ts` | the `【画布引用】` marker the citation block is built from, and the Chinese examples the comment quotes |
 | 2 | `components/canvas/canvas-node-moss-layout-dialog.tsx` | the caption prefix and regex the MOSS workflow parses |
+| 1 | `lib/canvas/agent-references.ts` | `MARKERS`: the citation marker in both languages, so a message reads back after a UI language switch |
 | 1 | `services/api/prompts.ts` | the `PromptOptimizeMode` union, as a type |
 | 1 | `components/layout/user-status-actions.tsx` | the endonym on the language switcher |
-| 1 | `components/canvas/sent-prompt-disclosure.tsx` | a comment quoting the `【文本1】` marker the canvas builds |
-| 1 | `lib/canvas/node-title.ts` | a comment quoting the titles in old blobs (`图片`), which is why `titleKey` exists |
-| 1 | `stores/use-config-store.ts` | a comment quoting a channel name a Chinese UI would have saved (`本地 ComfyUI`) |
-| 1 | `components/canvas/canvas-agent-panel.tsx` | a comment quoting `图片` as an example of a node's own title |

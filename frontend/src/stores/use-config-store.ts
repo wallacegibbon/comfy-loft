@@ -333,8 +333,8 @@ export function normalizeChannelModels(models: Array<string | ChannelModel> | un
 /**
  * The channel name to render.
  *
- * Same rule as a node title: a key wins, so a channel created in the Chinese UI is not called
- * "本地 ComfyUI" in the English one. A name the user typed has no key and is shown as typed.
+ * Same rule as a node title: a key wins, so a channel created in the Chinese UI does not appear under its
+ * Chinese name in the English one. A name the user typed has no key and is shown as typed.
  */
 export function channelName(channel: Pick<ModelChannel, "name" | "nameKey">) {
     return channel.nameKey ? i18n.t(channel.nameKey) : channel.name;

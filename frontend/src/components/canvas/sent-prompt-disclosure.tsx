@@ -4,8 +4,8 @@ import { useTranslation } from "react-i18next";
 /**
  * What was actually sent, when it is not what the user typed.
  *
- * The canvas appends connected text (`【文本1】…`), numbers reference images and may prepend the
- * settings' system prompt. That composition is necessary — the request means nothing without it —
+ * The canvas appends connected text behind the citation marker, numbers reference images and may prepend
+ * the settings' system prompt. That composition is necessary — the request means nothing without it —
  * but it must not be silent, so the panel shows the exact string that went out.
  */
 export function SentPromptDisclosure({ sent, current, className }: { sent?: string; current: string; className?: string }) {
