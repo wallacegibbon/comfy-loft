@@ -8531,3 +8531,54 @@ a video mid-render, `Ctrl+C` and `./start.sh`, then watching the node say 等待
 `frontend/src/pages/canvas/{project.tsx,hooks/use-generation-runs.ts}`,
 `frontend/src/components/canvas/canvas-node.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
 `internal/task/task_test.go`, `internal/generate/generate_test.go`.
+
+---
+
+## 237. An answer is drawn as the document it is, and a table scrolls in its own box
+
+**Decision** The panel parses the text parts of an **assistant** message as a small Markdown subset, into
+tokens, and draws the tokens with React. A table's cells do not wrap: the table's own box scrolls sideways.
+
+- **Tokens, never HTML.** `lib/markdown.ts` turns the text into `MarkdownBlock[]` / `MarkdownInline[]`;
+  `components/canvas/agent-markdown.tsx` maps them to elements. Nothing is ever set as `innerHTML` and no
+  parser was added. Two reasons, and the first is not style: the words are a model's, quoting files on the
+  canvas, in a page served over plain HTTP — a token tree cannot become a tag or an event handler, and
+  `<img src=x onerror=…>` is asserted to stay eleven characters of text. The second is that a citation has
+  to stay a button: `renderText` hands every run of text back to the panel's `withMentions`, so formatting
+  and citing walk the text together instead of one rewriting what the other produced.
+- **The subset is what an answer writes.** Headings, paragraphs, fenced code, quotes, rules, lists (nested,
+  loose, numbered from whatever the model started on), tables with alignment, and inline code / strong /
+  emphasis / strikethrough / links. Not in: images (a picture in this app is a node), raw HTML, footnotes,
+  math, reference-style links, task-list boxes. A construct outside the subset is not an error — it stays the
+  characters that arrived, which is also what a half-streamed `**` and a stray `|` end up as, and why an
+  unclosed fence is the code written so far rather than a broken message.
+- **A soft break is a break.** CommonMark makes a single newline a space; here it stays a line break, because
+  that is what every reply already drawn under `whitespace-pre-wrap` did. Joining them would silently reflow
+  the whole history of a conversation to fix a rule nobody asked for.
+- **A table is the reason this exists**, and it must not resize the card: cells are `whitespace-nowrap` and
+  the table is `w-max` inside a `max-w-full overflow-x-auto thin-scrollbar` box. Wide table, scrollbar under
+  it, transcript and input exactly where they were.
+- **Only the assistant's text.** What the user typed is drawn as typed — their asterisks are theirs. Reasoning
+  (folded, one line) and errors stay plain too: neither is a document.
+
+**Why not a library** Measured in a scratch directory, minified and gzipped: `marked` 14.2 kB plus a
+sanitiser (+11.7 kB for DOMPurify, which is `MPL-2.0 OR Apache-2.0`) and it still produces HTML, so it cannot
+interleave a citation button; `markdown-it` 40.7 kB and 7 packages, same wall; `react-markdown` +
+`remark-gfm` 48.6 kB and **93 packages**, which is exactly what #35's audit spent its time removing; `snarkdown`
+is 1.0 kB and has no tables. Handwritten: 0 packages, and the built entry grew 537.8 → 545.1 kB (160.1 →
+164.2 kB gzipped) — the cost is a file to maintain and its tests, which is the price the rest of this panel
+already pays.
+
+**Tested** `npx vitest run` 288 (24 new in `tests/markdown.test.ts`: paragraphs and soft breaks, heading
+levels, a fence that keeps `**` and pipes verbatim, an unclosed fence mid-stream, rules against bullets,
+quotes, lists that keep their indent / their start number / their loose spacing, tables with alignment, without
+outer pipes, with an escaped `\|`, with a short row, with inline markup in a cell, and *not* a table without a
+column-mark row or with one of the wrong width, `snake_case` staying a name, `a * b * c` staying arithmetic,
+`\*` escaping, links to `https`/`mailto` opening and `javascript:` not, and raw HTML staying text).
+`npm run check` (i18n 822/808, no dead keys; 173 modules, no dead exports). `npm run build`. `make check` 19
+packages. The rendered markup was checked by hand — a reply with a heading, a three-column table, a nested
+ordered list, a quote and a fence — not by a component test: `vitest` here runs `tests/**/*.test.ts` in a
+`node` environment, so the renderer is exercised through the tokens it is given.
+
+**Where** `frontend/src/lib/markdown.ts`, `frontend/src/components/canvas/agent-markdown.tsx`,
+`frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/tests/markdown.test.ts`.

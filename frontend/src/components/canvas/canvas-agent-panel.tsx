@@ -11,6 +11,7 @@ import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { confirm } from "@/components/kit/confirm";
 import { apiErrorMessage } from "@/services/api/http";
 import { AgentSettingsControls } from "./agent-settings-controls";
+import { AgentMarkdown } from "./agent-markdown";
 import { agentSession, cancelAgentSession, canvasAgent, clearAgentConversation, closeAgentSession, onAgentEvent, openAgentSession, sendAgentMessage, subscribeAgentSessions, type AgentEvent } from "@/services/api/agent";
 import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
 import { useEffectiveConfig } from "@/stores/use-config-store";
@@ -465,6 +466,13 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                                     <p key={`${message.id}-${index}`} className="whitespace-pre-wrap text-xs" style={{ color: TOOL_FAILED }}>
                                         {part.text}
                                     </p>
+                                ) : message.role === "assistant" ? (
+                                    // An answer is a document — the model writes lists and tables, and a `pre-wrap`
+                                    // paragraph printed the pipes instead of the table (#237). What the user typed
+                                    // keeps the line breaks it was typed with, so only this side is parsed.
+                                    <div key={`${message.id}-${index}`} className="leading-relaxed">
+                                        <AgentMarkdown text={part.text} renderText={(text) => withMentions(text, message.mentions, nodes, t, onFocusNode, theme.node.activeStroke)} />
+                                    </div>
                                 ) : (
                                     <p key={`${message.id}-${index}`} className="whitespace-pre-wrap leading-relaxed">
                                         {withMentions(part.text, message.mentions, nodes, t, onFocusNode, theme.node.activeStroke)}
