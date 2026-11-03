@@ -281,12 +281,12 @@ is a string that only ever renders in Chinese and cannot be reviewed by the half
 audience that reads English. Writing the rule down is the only way to stop the next
 contribution from adding one more.
 
-**Cost** Chinese prose that predates the rule has to be translated (the list of what is left, and
-why, is `docs/known-issues.md` #4), and a reviewer has to reject inline copy even when it works in
+**Cost** Chinese prose that predates the rule has to be translated (what is left, and why each line is
+data rather than copy, is #216), and a reviewer has to reject inline copy even when it works in
 the current UI language.
 
 **Where** `README.md` (Language), `docs/gateway.md` (Language policy),
-`docs/known-issues.md` #4, decisions #8 and #9.
+decisions #8, #9 and #216.
 
 ---
 
@@ -7543,5 +7543,4 @@ CJK in `frontend/src` outside the two dictionaries reports those 60 lines and no
 
 **Where** `frontend/src/lib/canvas/agent-references.ts`, `node-title.ts`,
 `frontend/src/components/canvas/sent-prompt-disclosure.tsx`,
-`frontend/src/stores/use-config-store.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`,
-`docs/known-issues.md` #4.
+`frontend/src/stores/use-config-store.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`.

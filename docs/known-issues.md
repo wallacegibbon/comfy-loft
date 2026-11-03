@@ -49,19 +49,3 @@ is written and never read.
 
 **Fix to decide** Delete them, or add a check to `make check` that fails on an exported Go identifier with no
 reference outside its own file.
-
----
-
-## 4. A few strings stay Chinese in the source, because they are data
-
-UI copy goes through `t()`, and so do comments (#216). What is left is 60 lines in six files, every one of
-them a value rather than prose:
-
-| Lines | File | What it is |
-| --- | --- | --- |
-| 45 | `lib/resource-copy-zh.ts` | the resource catalogue's Chinese, keyed by id: `resources.json` is English data (#66, #67) |
-| 10 | `components/canvas/canvas-node-prompt-panel.tsx` | the instructions sent to the agent: the H3 task types, the two rewrite prompts (`输出语言：…` belongs to the image one), the caption request |
-| 2 | `components/canvas/canvas-node-moss-layout-dialog.tsx` | the caption prefix and regex the MOSS workflow parses |
-| 1 | `lib/canvas/agent-references.ts` | `MARKERS`: the citation marker in both languages, so a message reads back after a UI language switch |
-| 1 | `services/api/prompts.ts` | the `PromptOptimizeMode` union, as a type |
-| 1 | `components/layout/user-status-actions.tsx` | the endonym on the language switcher |
