@@ -38,9 +38,12 @@ type Server struct {
 	runner     *generate.Runner
 	visibility *store.Visibility
 	mainModels *store.MainModels
-	registry   *workflow.Registry
-	tasks      *task.Store
-	uploads    *upload.Store
+	// speechKey is the speech server's credential: server-side only, never in the preferences document
+	// (that one is handed to every browser), never sent back to a page (#246).
+	speechKey *store.SpeechKey
+	registry  *workflow.Registry
+	tasks     *task.Store
+	uploads   *upload.Store
 	// canvases is the workspace: one directory per canvas, owned by the server and backed up by
 	// copying it. Nothing else in the server knows what a node is, and this is the reason.
 	canvases *canvas.Store
@@ -120,6 +123,9 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 	visibility := store.NewVisibility(cfg.DataDir, logger)
 	visibility.Load()
 
+	speechKey := store.NewSpeechKey(cfg.DataDir, logger)
+	speechKey.Load()
+
 	setupManager := setup.New(setup.Options{
 		Config:        cfg,
 		Registry:      registry,
@@ -148,6 +154,7 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 		runner:        generate.NewRunner(comfyClient, hub, logger, cfg.RequestTimeoutMs, cfg.PollIntervalMs),
 		visibility:    visibility,
 		mainModels:    mainModels,
+		speechKey:     speechKey,
 		registry:      registry,
 		tasks:         tasks,
 		uploads:       uploads,

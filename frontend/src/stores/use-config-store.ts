@@ -55,6 +55,15 @@ export type AiConfig = {
      * no CORS headers and is usually only reachable from this machine (`services/api/speech.ts`, #239).
      */
     asrUrl: string;
+    /**
+     * The speech model, as the speech server itself names it.
+     *
+     * Not a constant: `model` is required by the protocol and every server spells it differently (audio.cpp
+     * uses the id of a local gguf, `refine`; OpenAI uses `whisper-1` or `gpt-4o-transcribe`), so a name baked
+     * into the build fits exactly one machine. Blank sends no `model` at all, which is what a server that
+     * names nothing (`whisper.cpp`'s `/inference`) wants (#246).
+     */
+    asrModel: string;
     videoSeconds: string;
     vquality: string;
     videoGenerateAudio: string;
@@ -85,6 +94,15 @@ export type AiConfig = {
  * that takes WAV works — that is the whole of the protocol this build knows (#239).
  */
 export const DEFAULT_SPEECH_ADDRESS = "http://127.0.0.1:18080/v1/audio/transcriptions";
+
+/**
+ * The model name that address's server reports, filled in for the same reason the address is.
+ *
+ * `refine` is the offline Qwen3-ASR on the audio.cpp server this was built against (`GET /v1/models` on it
+ * lists `refine` and `stream`). It is a default, not a constant: point the address at OpenAI and this has to
+ * become `whisper-1` or `gpt-4o-transcribe`, because the name is a fact about the server (#246).
+ */
+export const DEFAULT_SPEECH_MODEL = "refine";
 
 const CHANNEL_MODEL_SEPARATOR = "::";
 const localDefaultChannel: ModelChannel = {
@@ -117,6 +135,7 @@ export const defaultConfig: AiConfig = {
     // (rtf ≈ 0.12, WAV in, `{"text": …}` out). It is a default and not a constant because a speech server
     // is somewhere else on somebody else's machine, so the field is the setting.
     asrUrl: DEFAULT_SPEECH_ADDRESS,
+    asrModel: DEFAULT_SPEECH_MODEL,
     videoSeconds: "6",
     vquality: "720",
     videoGenerateAudio: "true",

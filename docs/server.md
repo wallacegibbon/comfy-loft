@@ -415,6 +415,13 @@ file in the same directory and is renamed into place, so a reader never sees hal
 write also bumps `rev`, and a save whose `If-Match` names an older one is refused with `409` and the
 current summary in `details.current` — the browser is a cache now, and a cache that races must lose.
 
+**One thing is deliberately not in that document.** The speech server's API key, when it has one, lives in
+`data/speech-key.json`, mode `0600`, and never travels to a page: `/config.js` is the document whole, so a
+credential in it would be handed to every client that can load the canvas, and `RUNTIME_CONFIG_PATH`
+publishes that script as a file for a static host. `GET /api/speech/key` answers `{"stored":…}` and
+`PUT /api/speech/key` with `{"key":…}` stores or, blank, removes it; the key is added to the speech request
+by the server as `Authorization: Bearer` and is never sent back over HTTP (decisions #246).
+
 A run carries its own `preview` (`{url, mime}` with a timestamp) and its own `progress` in the
 payload, so a client polling a run needs no second endpoint for either — there is no `/api/previews`
 and no `/api/progress`, and the socket that feeds them stays inside the server.

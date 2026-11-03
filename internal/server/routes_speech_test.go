@@ -6,6 +6,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"comfyloft/internal/httpx"
@@ -25,6 +27,8 @@ type speechAnswer struct {
 	path     string
 	model    string
 	language string
+	auth     string
+	key      string
 	audio    []byte
 	url      string
 	filename string
@@ -44,6 +48,8 @@ func fakeSpeech(t *testing.T, got *speechAnswer, reply func(w http.ResponseWrite
 			got.path = r.URL.Path
 			got.model = firstValue(form.Values, "model")
 			got.language = firstValue(form.Values, "language")
+			got.auth = r.Header.Get("Authorization")
+			got.key = firstValue(form.Values, "key")
 			got.url = firstValue(form.Values, "url")
 			if len(form.Files) > 0 {
 				got.audio = form.Files[0].Bytes
@@ -101,14 +107,21 @@ func TestSpeechForwardsTheRecordingToTheAddressItWasGiven(t *testing.T) {
 	})
 	defer speech.Close()
 
-	server := httptest.NewServer(newTestServer(t, newFakeComfy(t)).Handler())
-	defer server.Close()
+	server := newTestServer(t, newFakeComfy(t))
+	if err := server.speechKey.Set("sk-test"); err != nil {
+		t.Fatalf("store the key: %v", err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
 
 	audio := []byte("RIFF\x24\x00\x00\x00WAVEfmt " + string(make([]byte, 16)))
-	status, payload := speechPost(t, server, map[string]string{
+	// A model name this build has never heard of, because the name is the page's to know: a build that
+	// forwarded its own constant would pass a test that sent `refine`.
+	status, payload := speechPost(t, httpServer, map[string]string{
 		"url":      speech.URL + "/v1/audio/transcriptions",
-		"model":    "refine",
+		"model":    "whisper-1",
 		"language": "zh",
+		"key":      "sk-from-the-request",
 	}, audio)
 	if status != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %v", status, payload)
@@ -120,8 +133,8 @@ func TestSpeechForwardsTheRecordingToTheAddressItWasGiven(t *testing.T) {
 	if got.path != "/v1/audio/transcriptions" {
 		t.Errorf("path = %q, want /v1/audio/transcriptions", got.path)
 	}
-	if got.model != "refine" || got.language != "zh" {
-		t.Errorf("model/language = %q/%q, want refine/zh", got.model, got.language)
+	if got.model != "whisper-1" || got.language != "zh" {
+		t.Errorf("model/language = %q/%q, want whisper-1/zh", got.model, got.language)
 	}
 	if !bytes.Equal(got.audio, audio) {
 		t.Errorf("the audio arrived as %d bytes, want the %d that were sent", len(got.audio), len(audio))
@@ -134,6 +147,187 @@ func TestSpeechForwardsTheRecordingToTheAddressItWasGiven(t *testing.T) {
 	if got.url != "" {
 		t.Errorf("the forwarded request carries url = %q, want it dropped", got.url)
 	}
+	// The credential comes from this server's own store and from nowhere else: a `key` field in the request
+	// is not an override, and it is not a form field either — the protocol has no such field.
+	if got.auth != "Bearer sk-test" {
+		t.Errorf("Authorization = %q, want the stored key as a Bearer token", got.auth)
+	}
+	if got.key != "" {
+		t.Errorf("the forwarded request carries key = %q, want it dropped", got.key)
+	}
+}
+
+// A server no credential was given must not be sent one: an `Authorization` header invented on behalf of a
+// stored key that does not exist is a header the user never asked for.
+func TestSpeechInvitesNoCredentialWhenNoneIsStored(t *testing.T) {
+	var got speechAnswer
+	speech := fakeSpeech(t, &got, func(w http.ResponseWriter) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"text": "你好"})
+	})
+	defer speech.Close()
+
+	server := httptest.NewServer(newTestServer(t, newFakeComfy(t)).Handler())
+	defer server.Close()
+
+	status, payload := speechPost(t, server, map[string]string{"url": speech.URL, "model": "refine"}, []byte("RIFF"))
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %v", status, payload)
+	}
+	if got.auth != "" {
+		t.Errorf("Authorization = %q, want no header at all", got.auth)
+	}
+}
+
+// The key is write-only over HTTP: it can be stored and cleared, and the only thing that ever comes back is
+// whether one is there. The page is not allowed to hold it — `data/settings.json` is served to every browser
+// that loads the canvas, so a key in it would be a key for anyone who can reach the server (#246).
+func TestSpeechKeyIsStoredOnDiskAndNeverSentBack(t *testing.T) {
+	server := newTestServer(t, newFakeComfy(t))
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	status, payload := keyGet(t, httpServer)
+	if status != http.StatusOK || payload["stored"] != false {
+		t.Fatalf("status/stored = %d/%v, want 200/false", status, payload["stored"])
+	}
+
+	status, payload = keyPut(t, httpServer, map[string]any{"key": "  sk-test  "})
+	if status != http.StatusOK || payload["stored"] != true {
+		t.Fatalf("status/stored = %d/%v, want 200/true: %v", status, payload["stored"], payload)
+	}
+	if server.speechKey.Get() != "sk-test" {
+		t.Errorf("stored key = %q, want it trimmed to sk-test", server.speechKey.Get())
+	}
+	info, err := os.Stat(filepath.Join(server.cfg.DataDir, "speech-key.json"))
+	if err != nil {
+		t.Fatalf("the key was not written: %v", err)
+	}
+	// Owner-only: a task index that only its owner can read is a workspace somebody cannot copy; a credential
+	// that a second account can read is a credential that has leaked.
+	if mode := info.Mode().Perm(); mode != 0o600 {
+		t.Errorf("file mode = %o, want 600", mode)
+	}
+
+	// The status is the only answer that ever carries anything: no route returns the key itself.
+	status, payload = keyGet(t, httpServer)
+	if status != http.StatusOK || payload["stored"] != true {
+		t.Errorf("status/stored = %d/%v, want 200/true", status, payload["stored"])
+	}
+	for name, value := range payload {
+		if value == "sk-test" {
+			t.Errorf("GET /api/speech/key answered the key itself in %q", name)
+		}
+	}
+
+	// Blank clears it, and the file goes with it.
+	status, payload = keyPut(t, httpServer, map[string]any{"key": ""})
+	if status != http.StatusOK || payload["stored"] != false {
+		t.Fatalf("status/stored = %d/%v, want 200/false", status, payload["stored"])
+	}
+	if _, err := os.Stat(filepath.Join(server.cfg.DataDir, "speech-key.json")); !os.IsNotExist(err) {
+		t.Errorf("the cleared key is still on disk: %v", err)
+	}
+}
+
+// 401, 413 and 429 are three different things to the person reading the panel — a wrong key, a recording
+// that is too long, and a provider asking for less traffic — and a 400 for all three says none of them.
+func TestSpeechKeepsTheStatusThatSaysWhatWentWrong(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		want   int
+	}{
+		{"the key was refused", http.StatusUnauthorized, http.StatusUnauthorized},
+		{"the recording is too long", http.StatusRequestEntityTooLarge, http.StatusRequestEntityTooLarge},
+		{"too fast", http.StatusTooManyRequests, http.StatusTooManyRequests},
+		{"the far side is broken", http.StatusInternalServerError, http.StatusBadGateway},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			speech := fakeSpeech(t, nil, func(w http.ResponseWriter) {
+				w.WriteHeader(testCase.status)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]any{"message": "Incorrect API key provided"},
+				})
+			})
+			defer speech.Close()
+
+			server := httptest.NewServer(newTestServer(t, newFakeComfy(t)).Handler())
+			defer server.Close()
+
+			status, payload := speechPost(t, server, map[string]string{"url": speech.URL, "model": "whisper-1"}, []byte("RIFF"))
+			if status != testCase.want {
+				t.Fatalf("status = %d, want %d: %v", status, testCase.want, payload)
+			}
+			failure, _ := payload["error"].(map[string]any)
+			if failure["message"] != "Incorrect API key provided" {
+				t.Errorf("message = %v, want the speech server's own sentence", failure["message"])
+			}
+		})
+	}
+}
+
+// The key endpoint takes a string and nothing else: a document with no `key` is a typo, not a clear, and a
+// clear has to be spellable as one (`{"key":""}`).
+func TestSpeechKeyRefusesWhatItCannotRead(t *testing.T) {
+	server := httptest.NewServer(newTestServer(t, newFakeComfy(t)).Handler())
+	defer server.Close()
+
+	cases := []struct {
+		name string
+		body map[string]any
+		code string
+	}{
+		{"no key field", map[string]any{}, "speech_key_missing"},
+		{"a key that is not a string", map[string]any{"key": 5}, "speech_key_invalid"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			status, payload := keyPut(t, server, testCase.body)
+			if status != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400: %v", status, payload)
+			}
+			failure, _ := payload["error"].(map[string]any)
+			if failure["code"] != testCase.code {
+				t.Errorf("code = %v, want %s", failure["code"], testCase.code)
+			}
+		})
+	}
+}
+
+// keyGet reads GET /api/speech/key.
+func keyGet(t *testing.T, server *httptest.Server) (int, map[string]any) {
+	t.Helper()
+	response, err := server.Client().Get(server.URL + "/api/speech/key")
+	if err != nil {
+		t.Fatalf("get speech key: %v", err)
+	}
+	defer response.Body.Close()
+	var decoded map[string]any
+	_ = json.NewDecoder(response.Body).Decode(&decoded)
+	return response.StatusCode, decoded
+}
+
+// keyPut writes PUT /api/speech/key.
+func keyPut(t *testing.T, server *httptest.Server, body map[string]any) (int, map[string]any) {
+	t.Helper()
+	payload, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	request, err := http.NewRequest(http.MethodPut, server.URL+"/api/speech/key", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatalf("put speech key: %v", err)
+	}
+	defer response.Body.Close()
+	var decoded map[string]any
+	_ = json.NewDecoder(response.Body).Decode(&decoded)
+	return response.StatusCode, decoded
 }
 
 func TestSpeechPassesOnWhyTheServerRefused(t *testing.T) {

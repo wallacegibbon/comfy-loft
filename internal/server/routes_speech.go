@@ -33,6 +33,14 @@ import (
  * **What is not here.** No model is named, no language is guessed, no audio is inspected: the fields the
  * page sends are the fields the speech server gets, and whatever it says — including why it refused — is
  * what the user reads. This route's whole job is the hop (docs/decisions.md #239).
+ *
+ * **What follows from the protocol being somebody else's.** `POST /v1/audio/transcriptions` is OpenAI's
+ * shape, copied by every OpenAI-compatible server, and it fixes `required: [file, model]` while saying
+ * nothing about which model, at which address, or with which credential — those are facts about the server
+ * at the other end. The page carries the first two, because it is where they are chosen; the credential is
+ * the one thing it never touches: it is stored on this server (`GET/PUT /api/speech/key`, mode 0600) and
+ * added here as `Authorization: Bearer`, because that is the protocol's only security scheme and a field the
+ * server does not know is an error (#246).
  */
 
 const (
@@ -43,15 +51,48 @@ const (
 	speechAnswerBytes = 1 << 20
 )
 
-// routesSpeech registers speech-to-text.
+// routesSpeech registers speech-to-text and the credential it may need.
 func (s *Server) routesSpeech(mux *http.ServeMux) {
 	s.route(mux, "POST /api/speech/transcriptions", s.handleSpeechTranscribe)
+	s.route(mux, "GET /api/speech/key", s.handleSpeechKeyStatus)
+	s.route(mux, "PUT /api/speech/key", s.handleSpeechKeySave)
+}
+
+// handleSpeechKeyStatus implements GET /api/speech/key: whether a credential is stored, and nothing else.
+//
+// The key itself never comes back over HTTP. The page needs to know whether to say "a key is stored" and
+// whether to offer the field at all; the request that uses it is made by this server, so the page never has
+// to hold it (#246).
+func (s *Server) handleSpeechKeyStatus(ctx *httpx.Ctx) error {
+	okJSON(ctx.W, map[string]any{"stored": s.speechKey.Stored()})
+	return nil
+}
+
+// handleSpeechKeySave implements PUT /api/speech/key with `{key: "…"}`. A blank key removes the stored one.
+func (s *Server) handleSpeechKeySave(ctx *httpx.Ctx) error {
+	body, err := bodyOrEmpty(ctx)
+	if err != nil {
+		return err
+	}
+	raw, present := body["key"]
+	if !present || raw == nil {
+		return httpx.BadRequest("speech_key_missing", "the request has no key")
+	}
+	key, isString := raw.(string)
+	if !isString {
+		return httpx.BadRequest("speech_key_invalid", "the key must be a string")
+	}
+	if err := s.speechKey.Set(key); err != nil {
+		return err
+	}
+	okJSON(ctx.W, map[string]any{"stored": s.speechKey.Stored()})
+	return nil
 }
 
 // handleSpeechTranscribe implements POST /api/speech/transcriptions.
 //
-// The body is multipart: `url` (where the speech server listens), `file` (the WAV), and any further text
-// fields (`model`, `language`) which are forwarded as sent.
+// The body is multipart: `url` (where the speech server listens), `key` (the credential, if that server wants
+// one), `file` (the WAV), and any further text fields (`model`, `language`) which are forwarded as sent.
 func (s *Server) handleSpeechTranscribe(ctx *httpx.Ctx) error {
 	form, err := ctx.Form()
 	if err != nil {
@@ -75,6 +116,14 @@ func (s *Server) handleSpeechTranscribe(ctx *httpx.Ctx) error {
 		return httpx.BadRequest("speech_address_invalid", "the speech address is not a usable URL")
 	}
 	request.Header.Set("Content-Type", contentType)
+	// The credential is the server's, not the page's: the protocol's only security scheme is
+	// `Authorization: Bearer`, and OpenAI refuses a form field it does not know (`additionalProperties:
+	// false`), so the key cannot travel in the body either. A server that checks nothing — the audio.cpp
+	// build this was measured against — answers a request carrying a bogus Bearer with a 200, so sending
+	// one it never asked for costs nothing.
+	if key := s.speechKey.Get(); key != "" {
+		request.Header.Set("Authorization", "Bearer "+key)
+	}
 
 	client := &http.Client{Timeout: speechTimeout}
 	response, err := client.Do(request)
@@ -98,11 +147,12 @@ func (s *Server) handleSpeechTranscribe(ctx *httpx.Ctx) error {
 	_ = json.Unmarshal(answer, &payload)
 	if message := strings.TrimSpace(payload.Error.Message); message != "" {
 		// Its own words: "only WAV audio uploads are currently supported" is actionable where "the speech
-		// server refused the request" is not. A 4xx is about what was sent and a 5xx about the server, and
-		// that distinction is worth keeping in the status the canvas sees.
-		status := http.StatusBadGateway
-		if response.StatusCode < http.StatusInternalServerError {
-			status = http.StatusBadRequest
+		// server refused the request" is not. And its own status, because 401 (the key was refused), 413
+		// (the recording is too long) and 429 (too fast) each mean something different to the reader, and a
+		// 400 would say all three were the same mistake. A 5xx is the far side failing, which is what 502 is.
+		status := response.StatusCode
+		if status >= http.StatusInternalServerError {
+			status = http.StatusBadGateway
 		}
 		return httpx.NewError(status, "speech_failed", message)
 	}
@@ -131,13 +181,15 @@ func checkSpeechEndpoint(endpoint string) error {
 //
 // The file is named and typed as a WAV because that is what it is — the browser encoded it (the speech
 // server only accepts real WAV, which is why the panel writes the header itself). Rebuilding rather than
-// forwarding the parsed request keeps the outgoing body to the fields that mean something.
+// forwarding the parsed request keeps the outgoing body to the fields that mean something: `url` is this
+// server's business and stops here, and `key` is a credential this server holds — a body field by that name
+// is not the speech server's to read. Nothing else is dropped, because the model name and the language are
+// the speech server's to read.
 func speechUpload(audio []byte, values map[string][]string) ([]byte, string, error) {
 	var buffer bytes.Buffer
 	writer := multipart.NewWriter(&buffer)
 	for name, entries := range values {
-		// `url` is this server's business and stops here.
-		if name == "url" {
+		if name == "url" || name == "key" {
 			continue
 		}
 		for _, entry := range entries {

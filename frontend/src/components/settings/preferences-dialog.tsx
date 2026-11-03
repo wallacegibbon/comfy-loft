@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/kit/button";
 import { Switch } from "@/components/kit/choice";
 import { Dialog } from "@/components/kit/dialog";
 import { Field } from "@/components/kit/field";
@@ -10,7 +12,8 @@ import { imageAspectOptions } from "@/components/image-settings-panel";
 import { videoResolutionOptions } from "@/components/video-settings-panel";
 import { AgentModelsSection } from "@/components/settings/agent-models-section";
 import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaScaleOptions, parseVideoResolution } from "@/lib/media-size";
-import { useConfigStore, DEFAULT_SPEECH_ADDRESS, type ModelCapability } from "@/stores/use-config-store";
+import { loadSpeechKey, saveSpeechKey } from "@/services/api/speech";
+import { useConfigStore, DEFAULT_SPEECH_ADDRESS, DEFAULT_SPEECH_MODEL, type ModelCapability } from "@/stores/use-config-store";
 
 /**
  * The media kinds with a default model to pick.
@@ -85,19 +88,88 @@ export function PreferencesDialog() {
                 </div>
             </Field>
             <AgentModelsSection />
-            {/* Speech is the other way words get into the agent's prompt, and the one setting it has is where
-                the speech server listens. The server forwards to it, so the address only has to be true of the
-                machine the server runs on — the phone on the LAN never dials it itself. */}
+            {/* Speech is the other way words get into the agent's prompt. Three fields, because three of
+                the things a speech server says about itself are not in the protocol: where it listens, what
+                it calls its model, and whether it wants a credential. The server makes the request, so the
+                address only has to be true of the machine the server runs on. */}
             <div className="mb-4 border-t border-stone-200 pt-4 dark:border-stone-800">
                 <div className="mb-1 text-sm font-semibold">{t("config.preferences.speech")}</div>
                 <div className="mb-2 text-xs text-stone-500">{t("config.preferences.speechNote")}</div>
-                <Field label={t("config.preferences.speechAddress")} className="mb-0">
+                <Field label={t("config.preferences.speechAddress")} className="mb-4">
                     <Input value={config.asrUrl} placeholder={DEFAULT_SPEECH_ADDRESS} onChange={(event) => updateConfig("asrUrl", event.target.value)} />
+                </Field>
+                <Field label={t("config.preferences.speechModel")} className="mb-4">
+                    <Input value={config.asrModel} placeholder={DEFAULT_SPEECH_MODEL} onChange={(event) => updateConfig("asrModel", event.target.value)} />
+                </Field>
+                <Field label={t("config.preferences.speechKey")} className="mb-0">
+                    <SpeechKeyField baseUrl={config.baseUrl} />
                 </Field>
             </div>
             <Field label={t("config.preferences.systemPrompt")} className="mb-0">
                 <Input.TextArea rows={4} value={config.systemPrompt} placeholder={t("config.preferences.systemPromptPlaceholder")} onChange={(event) => updateConfig("systemPrompt", event.target.value)} />
             </Field>
         </Dialog>
+    );
+}
+
+/**
+ * The speech server's credential: a field that can replace it, and a line that says whether one is stored.
+ *
+ * The key is **never sent to this page** — `data/settings.json` is served to every browser that loads the
+ * canvas, so a credential in it would be a credential for anyone who can reach the server (#246). What the
+ * form can do is store a new key or clear the stored one, which is why it is the one control here that does
+ * not autosave: a half-typed key must not be written on every keystroke, and a blank field means "keep what
+ * is stored", not "erase it" — the same rule the agent's model keys already follow
+ * (`config.preferences.apiKeyKeepHint`).
+ */
+function SpeechKeyField({ baseUrl }: { baseUrl: string }) {
+    const { t } = useTranslation();
+    const [draft, setDraft] = useState("");
+    const [stored, setStored] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        let live = true;
+        void loadSpeechKey({ baseUrl })
+            .then((answer) => {
+                if (live) setStored(answer);
+            })
+            .catch((failure: unknown) => {
+                if (live) setError(failure instanceof Error ? failure.message : String(failure));
+            });
+        return () => {
+            live = false;
+        };
+    }, [baseUrl]);
+
+    const save = async (key: string) => {
+        setBusy(true);
+        setError("");
+        try {
+            setStored(await saveSpeechKey({ baseUrl }, key));
+            setDraft("");
+        } catch (failure) {
+            setError(failure instanceof Error ? failure.message : String(failure));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div>
+            <div className="flex items-start gap-2">
+                <Input type="password" autoComplete="off" value={draft} placeholder={stored ? t("config.preferences.apiKeyKeepHint") : t("config.preferences.speechKeyPlaceholder")} onChange={(event) => setDraft(event.target.value)} />
+                <Button size="middle" loading={busy} disabled={!draft.trim()} onClick={() => void save(draft)}>
+                    {t("config.preferences.speechKeySave")}
+                </Button>
+                {stored ? (
+                    <Button size="middle" danger disabled={busy} onClick={() => void save("")}>
+                        {t("config.preferences.speechKeyClear")}
+                    </Button>
+                ) : null}
+            </div>
+            <div className="mt-1 text-xs text-stone-500">{error || (stored ? t("config.preferences.apiKeyStored") : t("config.preferences.apiKeyMissing"))}</div>
+        </div>
     );
 }

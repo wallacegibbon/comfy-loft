@@ -8907,3 +8907,73 @@ and `TestAgentDirectoryHasNoSegmentOfItsOwn` (the path ends in `comfyloft-server
 `~/.config/comfyloft-server/alayacore/model.conf`.
 
 **Where** `internal/config/config.go`, `internal/config/config_test.go`.
+
+## 246. The speech server's model and key are settings; the key never leaves the server
+
+**Decision** Speech-to-text has three facts about the server at the other end, and each is where the protocol
+says nothing: the **address** (#239), the **model name** (a setting now, default `refine`, blank meaning "send
+no model"), and the **credential** — which is stored on this server, `data/speech-key.json` mode `0600`, and
+sent as `Authorization: Bearer` on the request this server makes. The page can ask whether one is stored
+(`GET /api/speech/key`), replace it, or clear it (`PUT /api/speech/key`); it never receives it. A refusal from
+the speech server now keeps its **status** as well as its words: 401, 413 and 429 pass through as themselves,
+and only a 5xx becomes 502.
+
+**Why the model had to stop being a constant.** Measured against `127.0.0.1:18080` (audio.cpp) and against
+OpenAI's OpenAPI spec:
+
+- `POST /v1/audio/transcriptions` is OpenAI's shape, copied by every OpenAI-compatible server, and its
+  `CreateTranscriptionRequest` is `required: [file, model]`. audio.cpp agrees and enforces it: no `model`
+  field answers `500 multipart transcription request requires a 'model' field`, an empty one the same, and
+  `model=whisper-1` answers `500 unknown model id: whisper-1`.
+- The name is a fact about one machine. This server's `GET /v1/models` lists `refine` (qwen3_asr, offline,
+  measured rtf 0.36 on a second of audio) and `stream` (SenseVoice-Small, streaming, rtf 0.04 — and it
+  answered a pure tone with "Okay.", where `refine` answered nothing). OpenAI's enum is `whisper-1`,
+  `gpt-transcribe`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe-diarize`, and two of
+  those carry an announced shutdown date of 2027-02-26. A name baked into the build fits one machine and, on
+  that machine, expires.
+- So `refine` is a default that matches the default address, and blank is honest for the one shape that names
+  nothing at all (`whisper.cpp`'s `/inference`). The empty case is not made into an error here: the server that
+  wants a model says so in its own words, and a name invented by this build would be worse than the silence.
+
+**What is deliberately not a setting.** `additionalProperties: false` on OpenAI's request object means an
+extra field is an error, not a shrug (audio.cpp ignores everything it does not know — `response_format`,
+`temperature`, `prompt` and a `bogus_field` all answered 200). `response_format` defaults to `json`, which is
+the only format `gpt-4o-transcribe` accepts and the only one this build reads (`text`), so configuring it
+would be a way to break dictation. `language` is ISO-639-1 and follows the interface (`zh`/`en`), measured to
+be advisory (#239). The audio is 16 kHz mono WAV, which is on the allowed-format list and which the server
+resamples for itself. None of these is a preference; a field for any of them would be a field that can only be
+set wrong.
+
+**Why the key is not in the preferences document — measured, not assumed.** `data/settings.json` is served
+whole by two routes that need no authentication: `GET /config.js`, which the page loads before its bundle so
+the first frame is themed (#220), and `GET /api/settings`. It is also, when the operator names
+`RUNTIME_CONFIG_PATH`, written out as a file **for a static host with no server in the request path**. A
+credential in that document would be a credential for every client that can load the canvas, and a published
+one for the internet. This build already had the rule for the agent's model keys — `agent.Model` carries no
+`api_key`, only `hasKey`, and `config.preferences.apiKeyStored` says so on screen — and the speech key now
+follows it. `GET /api/speech/key` answers `{"stored":…}`, `PUT` takes `{"key":…}` (blank removes the file).
+
+**The two costs of that choice.** The key cannot be shown, only replaced: a password field that autosaved would
+write a half-typed credential on every keystroke, so this is the one control in the preferences window with a
+Save button, and a blank field means "keep what is stored" (`apiKeyKeepHint`). And the field cannot be filled
+in from the page's own state, so the section asks the server once when it opens.
+
+**What a stray credential costs nothing.** The audio.cpp build this was built against checks no `Authorization`
+at all: a request carrying `Bearer whatever` answered 200. So sending a stored key to a local server costs a
+header and nothing else, and a key is only ever stored because the user typed one.
+
+**Tested** `internal/server/routes_speech_test.go`: the model travels as given and a name this build has never
+heard of (`whisper-1`) arrives intact; the credential comes from the store and never from the request (a `key`
+field is dropped, not forwarded, and no header is invented when nothing is stored); the key file is written
+`0600`, `GET` never answers it, and a blank `PUT` removes the file; 401/413/429 pass through while 500 becomes
+502 with the server's own sentence. `frontend/tests/api-speech.test.ts`: no `key` field is on the wire, no
+`model` is sent when the field is blank, the model follows the config, the key routes are called with the right
+method and body, and a refusal is shown in the server's words. Verified live: `/api/speech/key` round-trips,
+`data/speech-key.json` is `-rw-------`, dictation through the server answered 200 both with and without a
+stored key, `/config.js` carries no key.
+
+**Where** `internal/server/routes_speech.go` (+`_test.go`), `internal/store/speech.go`, `internal/server/server.go`,
+`frontend/src/services/api/speech.ts`, `frontend/src/components/settings/preferences-dialog.tsx`,
+`frontend/src/stores/use-config-store.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
+`frontend/tests/api-speech.test.ts`, `docs/server.md`, `README.md`.
+
