@@ -119,7 +119,7 @@ are data or user-facing copy rather than prose:
 
 The reasoning and the exact exceptions: [`docs/decisions.md`](docs/decisions.md) #8, #9, #17, #20.
 The Chinese that stays in the source, and why each line does, is
-[`docs/known-issues.md`](docs/known-issues.md) #5.
+[`docs/known-issues.md`](docs/known-issues.md) #4.
 
 ## Quick start
 

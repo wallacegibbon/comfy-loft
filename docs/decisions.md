@@ -282,11 +282,11 @@ audience that reads English. Writing the rule down is the only way to stop the n
 contribution from adding one more.
 
 **Cost** Chinese prose that predates the rule has to be translated (the list of what is left, and
-why, is `docs/known-issues.md` #5), and a reviewer has to reject inline copy even when it works in
+why, is `docs/known-issues.md` #4), and a reviewer has to reject inline copy even when it works in
 the current UI language.
 
 **Where** `README.md` (Language), `docs/gateway.md` (Language policy),
-`docs/known-issues.md` #5, decisions #8 and #9.
+`docs/known-issues.md` #4, decisions #8 and #9.
 
 ---
 

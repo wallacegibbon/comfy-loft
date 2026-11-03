@@ -6,23 +6,7 @@ so nobody has to rediscover it. Only a defect belongs here: a fix, and the reaso
 
 ---
 
-## 1. H3 prompt rewrites come back in English, because the skill says to
-
-**Symptom** The panel asks for a Chinese rewrite — `…输出语言：中文。…` — and the prompt comes back in
-English.
-
-**Cause** `prompts/skills/h3-prompt-writing/SKILL.md` says, under *Output Rules*, "Write rewrite sections in
-English; preserve dialogue, lyrics, and visible scene text in their original language." The request and the
-skill contradict each other, and the skill is the more specific instruction. The setting the request comes
-from is out of reach as well: `promptOptimizeLanguage` defaults to `"zh"` and nothing on screen sets it.
-
-**Fix to decide** Drop the `输出语言` clause — and `promptOptimizeLanguage` with it — if English is what the
-skill wants; its guides (`references/base-en.txt`, `references/ref-en.txt`) are English. The alternative is
-to change that line of the skill, give the setting a control, and re-measure what the guides produce.
-
----
-
-## 2. Interpolating a silent clip fails inside VHS
+## 1. Interpolating a silent clip fails inside VHS
 
 **Symptom** `video-rife` fails with `VHS failed to extract audio` when the clip has no audio track.
 
@@ -36,7 +20,7 @@ audio through the interpolation. The media plan is declared in `registry.json` (
 
 ---
 
-## 3. Radix hides the page from assistive tech while a focused button sits in it
+## 2. Radix hides the page from assistive tech while a focused button sits in it
 
 **Symptom** Opening a confirmation (`kit/confirm`, radix's `AlertDialog`) over the trigger that has focus logs
 `Blocked aria-hidden on an element because its descendant retained focus` once per open, in the console only.
@@ -50,7 +34,7 @@ trigger's `onPointerDown`. #33 records leaving it alone.
 
 ---
 
-## 4. The Go half has no "nothing calls this" gate, and thirteen exported symbols have no caller
+## 3. The Go half has no "nothing calls this" gate, and thirteen exported symbols have no caller
 
 The canvas fails on an export nobody imports (`scripts/check-exports.cjs`) and `tsc` fails on an unused local.
 Neither has a Go counterpart, so an exported function whose last caller a refactor removed stays behind:
@@ -68,7 +52,7 @@ reference outside its own file.
 
 ---
 
-## 5. A few strings stay Chinese in the source, because they are data
+## 4. A few strings stay Chinese in the source, because they are data
 
 UI copy goes through `t()`. These lines do not — 68 lines in ten files, each one input rather than output:
 
