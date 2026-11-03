@@ -98,28 +98,37 @@ func WithComfyURL(url string) Option { return func(c *Config) { c.ComfyURL = url
 // WithWorkflowDir overrides the server workflow directory.
 func WithWorkflowDir(dir string) Option { return func(c *Config) { c.WorkflowDir = dir } }
 
-// AgentHostDir is the per-host segment of the agent's configuration directory.
+// AgentHostDir is the per-machine segment of the agent's configuration directory.
 //
-// It is the address the server is bound to, because that is what the agent is told to dial; a wildcard
-// bind has no address of its own, so it means loopback — the same substitution mcpURL makes.
-func AgentHostDir(host string) string {
-	host = strings.TrimSpace(host)
-	switch host {
-	case "", "0.0.0.0", "::", "[::]":
-		return "127.0.0.1"
+// It is the **machine**, not the address the server is bound to. It used to be the bind address — the
+// reasoning being that the agent is told to dial that address, and a machine reachable at `127.0.0.1` and at
+// a LAN address is two answers — but what lives in this directory is the operator's model list and API keys,
+// which have nothing to do with which interface the server listens on. Changing `COMFYLOFT_SERVER_HOST` to
+// loopback (so a browser would give the page a microphone, #242) handed the agent an empty directory and its
+// placeholder model, and the panel failed with that placeholder's 404. The address the agent dials is in
+// `mcp.conf`, which is written at startup for the address in use, so nothing per-address has to survive in a
+// path. Two machines sharing one home directory still get a directory each.
+func AgentHostDir() string {
+	name, err := os.Hostname()
+	if err != nil {
+		name = ""
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "machine"
 	}
 	safe := strings.Map(func(r rune) rune {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
 			return r
 		default:
-			// IPv6 literals and anything else a bind address can carry: a colon is not a Windows path
-			// segment, and this directory has to be creatable on every platform the server builds for.
+			// A hostname is nearly always plain, but a dotless NetBIOS name, a macOS `.local` suffix and
+			// whatever a container runtime invents all have to be a directory name on every platform.
 			return '-'
 		}
-	}, strings.Trim(host, "[]"))
+	}, name)
 	if safe == "" {
-		return "127.0.0.1"
+		return "machine"
 	}
 	return safe
 }
@@ -200,12 +209,11 @@ func Load(opts ...Option) (*Config, error) {
 	// config directory (the platform's, not a hardcoded ~/.config) so a fresh directory is created by
 	// the agent itself on first spawn.
 	//
-	// One directory per host, because `mcp.conf` names the address an agent dials back to: a machine
-	// reachable at 127.0.0.1 and at a LAN address is two different answers, and the operator may want a
-	// different model behind each.
+	// One directory per **machine** — see `AgentHostDir` — because two machines can share a home directory
+	// while the models (and the keys) behind them are the operator's, not the address's.
 	if cfg.AgentConfigPath == "" {
 		if dir, err := os.UserConfigDir(); err == nil {
-			cfg.AgentConfigPath = filepath.Join(dir, "comfyloft-server", AgentHostDir(cfg.ServerHost), "alayacore")
+			cfg.AgentConfigPath = filepath.Join(dir, "comfyloft-server", AgentHostDir(), "alayacore")
 		}
 	}
 

@@ -8828,3 +8828,31 @@ browser is not in this tree — the run that reported the error is the test.
 
 **Where** `frontend/src/lib/pcm-recorder.ts`, `frontend/src/components/canvas/use-hold-to-talk.ts`,
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`.
+
+## 243. The agent's directory belongs to the machine, not to the bind address
+
+**Decision** `<UserConfigDir>/comfyloft-server/<segment>/alayacore` keys `<segment>` by `os.Hostname()`, not by
+`COMFYLOFT_SERVER_HOST`. Changing the address the server listens on no longer moves the agent's models, its API
+keys or its `runtime.conf`.
+
+**Why** #241 was the same disease one layer down: a stored address outliving the address it named. Here the
+address was in a *path*, and the cost was the operator's model list. The trigger was mundane — the microphone
+needs a secure context (#242), so `COMFYLOFT_SERVER_HOST` went from `192.168.3.232` to `127.0.0.1`, and the agent
+started in a directory that had never been used: no `model.conf`, so AlayaCore wrote its placeholder model
+(`Ollama (127.0.0.1) / MiniCPM-V 4.6`, protocol `anthropic` at `http://127.0.0.1:11434`), and the first message
+came back `provider stream failed: API error (status 404): 404 page not found` — which is Go's own 404 text,
+from a model that was never the user's.
+
+**Why the old reason does not survive** The comment it replaces said one directory per host because `mcp.conf`
+names the address an agent dials back to. But `mcp.conf` is rewritten on every start (`writeMCPConf`) for the
+address in use, so it is the one file that cannot go stale, and nothing per-address needs to be preserved. What
+is preserved here — models, keys — belongs to the operator and has nothing to do with which interface the server
+is bound to. Per **machine** the split still earns its keep: two machines sharing one home directory would
+otherwise fight over the same `mcp.conf`.
+
+**Tested** `TestAgentDirectoryDoesNotMoveWithTheBindAddress` (loads the config twice, on a LAN address and on
+loopback, and requires the same directory while requiring that the bind itself did change, so the test cannot
+pass by the variable being ignored) and `TestAgentHostDirIsASafePathSegment` (no separator, colon or space, and
+stable). `make check` 19 packages, `npx vitest run` 314, `npm run check`, `npm run build`.
+
+**Where** `internal/config/config.go`, `internal/config/config_test.go`.

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -243,5 +244,51 @@ func TestCanvasRootHasItsOwnDefaultAndItsOwnVariable(t *testing.T) {
 	}
 	if moved.DataDir != cfg.DataDir {
 		t.Errorf("moving the canvases moved DATA_DIR to %q", moved.DataDir)
+	}
+}
+
+// The agent's directory is keyed by the machine, not by the address the server happens to listen on.
+//
+// It was keyed by the bind address, and the models behind it disappeared when the address changed — a fresh
+// directory, the agent's placeholder model, and a 404 from whatever that placeholder pointed at (#242).
+func TestAgentDirectoryDoesNotMoveWithTheBindAddress(t *testing.T) {
+	isolateEnv(t)
+	t.Setenv("COMFYLOFT_SERVER_HOST", "192.168.3.232")
+	onLan, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	t.Setenv("COMFYLOFT_SERVER_HOST", "127.0.0.1")
+	onLoopback, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if onLan.AgentConfigPath == "" {
+		t.Fatal("no agent configuration directory")
+	}
+	if onLan.AgentConfigPath != onLoopback.AgentConfigPath {
+		t.Fatalf("the agent directory followed the bind address: %q then %q", onLan.AgentConfigPath, onLoopback.AgentConfigPath)
+	}
+	// The address the agent dials still has to follow the bind — that is `mcp.conf`, written per start.
+	if onLan.ServerHost == onLoopback.ServerHost {
+		t.Fatalf("the bind address did not change in this test, so it proves nothing")
+	}
+}
+
+// Whatever a machine is called has to be a directory name on every platform the server builds for.
+func TestAgentHostDirIsASafePathSegment(t *testing.T) {
+	dir := AgentHostDir()
+	if dir == "" {
+		t.Fatal("empty directory name")
+	}
+	for _, forbidden := range []string{"/", "\\", ":", " "} {
+		if strings.Contains(dir, forbidden) {
+			t.Fatalf("AgentHostDir() = %q, want no %q in it", dir, forbidden)
+		}
+	}
+	if dir != AgentHostDir() {
+		t.Fatal("AgentHostDir is not stable within one process")
 	}
 }
