@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { referenceBlock, referenceLine } from "@/lib/canvas/agent-references";
-import { transcriptEvent, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
+import { transcriptEvent, transcriptWindow, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
 import type { AgentEvent } from "@/services/api/agent";
 
 /**
@@ -160,5 +160,32 @@ describe("the agent transcript", () => {
     it("opens nothing for a frame that says nothing", () => {
         expect(fold({ type: "delta", text: "" })).toEqual([]);
         expect(fold({ type: "done" })).toEqual([]);
+    });
+});
+
+describe("the tail a long conversation is drawn from", () => {
+    const message = (index: number): TranscriptMessage => ({ id: `m${index}`, role: "assistant", parts: [{ kind: "text", text: `第 ${index} 条` }], mentions: [], streaming: false });
+
+    it("a conversation that fits is drawn whole, with nothing hidden", () => {
+        const messages = [message(1), message(2)];
+        expect(transcriptWindow(messages, 20)).toEqual({ shown: messages, hidden: 0 });
+        // The same array back, so a caller comparing identity does not re-render for nothing.
+        expect(transcriptWindow(messages, 20).shown).toBe(messages);
+    });
+
+    it("the newest message is always inside the window, because it is the one being written", () => {
+        const messages = Array.from({ length: 50 }, (_, index) => message(index));
+        const { shown, hidden } = transcriptWindow(messages, 20);
+        expect(hidden).toBe(30);
+        expect(shown[shown.length - 1].id).toBe("m49");
+        expect(shown[0].id).toBe("m30");
+    });
+
+    it("a window is never so small that it hides the answer being written", () => {
+        // Not a number the panel passes — but a total function whose smallest window still keeps the newest
+        // message is one fewer way for the panel to draw an empty conversation while the agent is typing.
+        const messages = [message(1), message(2)];
+        expect(transcriptWindow(messages, 0).shown.map((each) => each.id)).toEqual(["m2"]);
+        expect(transcriptWindow(messages, -5).shown.map((each) => each.id)).toEqual(["m2"]);
     });
 });

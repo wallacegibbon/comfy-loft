@@ -705,6 +705,7 @@ export default {
             close: "关闭",
             thinking: "思考中…",
             steeringQueued: "{{count}} 条消息已排队,会在当前步骤之后一起插入",
+            earlierMessages: "更早的 {{count}} 条消息",
             tool: "调用 {{name}}",
             toolRunning: "正在执行",
             toolOk: "调用成功",

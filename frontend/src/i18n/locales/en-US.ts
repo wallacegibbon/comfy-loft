@@ -701,6 +701,7 @@ export default {
             close: "Close",
             thinking: "Thinking…",
             steeringQueued: "{{count}} queued · used together after the current step",
+            earlierMessages: "{{count}} earlier messages",
             tool: "calling {{name}}",
             toolRunning: "The call is running",
             toolOk: "The call succeeded",

@@ -198,3 +198,22 @@ function endTurn(messages: TranscriptMessage[]): TranscriptMessage[] {
 function replace<T>(items: T[], at: number, item: T): T[] {
     return [...items.slice(0, at), item, ...items.slice(at + 1)];
 }
+
+/**
+ * The tail of a conversation, and how much of it is not on screen.
+ *
+ * The agent window keeps every message it ever had — the panel's state is not trimmed, and a conversation
+ * is replayed whole from the agent's session file — so a canvas that has been talked to for weeks holds
+ * every one of them. Rendering all of it is not a re-render cost (a finished message is memoised) but a
+ * mount cost: a long answer is a few hundred elements, so a hundred of them is tens of thousands of nodes
+ * that nobody is looking at, paid for again every time the window opens (#237).
+ *
+ * Only the tail is drawn, and the rest is one press away. The newest message is always inside the window,
+ * because the newest message is the one being written — the window is at least one message, whatever it is
+ * asked for.
+ */
+export function transcriptWindow(messages: TranscriptMessage[], size: number): { shown: TranscriptMessage[]; hidden: number } {
+    const keep = Math.max(1, Math.floor(size));
+    const hidden = Math.max(0, messages.length - keep);
+    return { shown: hidden ? messages.slice(hidden) : messages, hidden };
+}

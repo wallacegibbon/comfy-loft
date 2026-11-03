@@ -1,9 +1,9 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, Bot, ChevronRight, CircleCheck, CircleDashed, CircleX, Eraser, Info, LoaderCircle, Square, Wrench, X } from "lucide-react";
 
 import { citationLabel, mentionResolver, referenceBlock, referenceLine, type Citation, type MentionSegment } from "@/lib/canvas/agent-references";
-import { textOf, transcriptEvent, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
+import { textOf, transcriptEvent, transcriptWindow, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
 import { contextSegment, speedSegment } from "@/lib/canvas/agent-usage";
 import { nodeTitle } from "@/lib/canvas/node-title";
 import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
@@ -45,6 +45,9 @@ const NODE_LABEL: Record<string, string> = {
 /** How a call that ended reads: green when it worked, red when it did not. */
 const TOOL_OK = "#22c55e";
 const TOOL_FAILED = "#ef4444";
+
+/** How much of a conversation the panel keeps mounted, until "earlier messages" is pressed. */
+const MESSAGE_WINDOW = 20;
 
 export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: Props) {
     const { t } = useTranslation();
@@ -96,6 +99,16 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
      * outright on delivery, not decremented: one delivery empties the queue.
      */
     const [steering, setSteering] = useState(0);
+    /**
+     * How many of the newest messages are mounted.
+     *
+     * A conversation is never trimmed — it is replayed whole from the agent's session file every time the
+     * window opens — and a finished message stays in the DOM whether or not it is on screen. A long answer
+     * is a few hundred elements, so the transcript is mounted newest-first up to this many and the rest is
+     * one press away. The memoised bodies already make a frame cost the same at any length (#237); this is
+     * about the mount.
+     */
+    const [windowSize, setWindowSize] = useState(MESSAGE_WINDOW);
     /**
      * The nodes this draft cites, in the order they were cited, each with the label the text shows.
      *
@@ -395,6 +408,27 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         element.scrollTop = element.scrollHeight;
     }, [messages]);
 
+    /**
+     * Showing more of the conversation must not move what is being read.
+     *
+     * The older messages go in *above* the reader, and a browser keeps `scrollTop` — so without this the
+     * press threw the view up by however much was inserted. The distance to the bottom is what stays the
+     * same: it is measured before the state changes and put back once the taller content is in the DOM.
+     */
+    const anchorRef = useRef<number | null>(null);
+    useLayoutEffect(() => {
+        const element = scrollRef.current;
+        if (!element || anchorRef.current === null) return;
+        element.scrollTop = element.scrollHeight - anchorRef.current;
+        anchorRef.current = null;
+    }, [windowSize]);
+    const showEarlier = () => {
+        const element = scrollRef.current;
+        anchorRef.current = element ? element.scrollHeight - element.scrollTop : null;
+        setWindowSize((current) => current + MESSAGE_WINDOW);
+    };
+    const { shown, hidden } = transcriptWindow(messages, windowSize);
+
     if (!open) return null;
 
     const style = placed ?? { right: 24, bottom: 24 };
@@ -454,10 +488,18 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                 }}
             >
                 {messages.length === 0 ? <p className="text-xs opacity-50">{t("canvas.agent.hint")}</p> : null}
+                {/* What is not mounted is still there, one press away — and pressing it must not move the
+                    words being read (see `showEarlier`). The count is what one press adds, so it never
+                    promises more than the button does. */}
+                {hidden > 0 ? (
+                    <button type="button" className="block w-full rounded-lg border border-dashed px-2 py-1 text-center text-[11px] opacity-60 hover:opacity-100" style={{ borderColor: theme.toolbar.border }} onClick={showEarlier}>
+                        {t("canvas.agent.earlierMessages", { count: Math.min(hidden, MESSAGE_WINDOW) })}
+                    </button>
+                ) : null}
                 {/* One left edge for everything. A user message is already told apart by its box, and
                     pushing it to the right only made the transcript read in two columns. A system notice
                     is neither side talking, so it sits between the bubbles, smaller than either. */}
-                {messages.map((message) =>
+                {shown.map((message) =>
                     message.role === "system" ? (
                         <div key={message.id} className="flex items-start gap-1.5 px-1 text-[11px] opacity-50">
                             <Info className="mt-0.5 size-3 shrink-0" />
