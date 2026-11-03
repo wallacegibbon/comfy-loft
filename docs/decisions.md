@@ -5367,6 +5367,10 @@ fixed something nobody had noticed: `canvas/index.html` had an inline script rea
 first paint had been guessing for several releases. The script is deleted; `AppProviders` applies the
 theme in a `useLayoutEffect`, before the paint rather than after it.
 
+**Superseded in part by #220** The script is no longer a file the gateway writes into the bundle: it is a
+route (`GET /config.js`) computed from `data/settings.json`, and `RUNTIME_CONFIG_PATH` only writes a copy for
+a canvas a static host publishes.
+
 **Why there is no request at startup** The document is already in `config.js`, so `load()` is the
 fallback for an operator who serves no first-paint file, and the store **refuses to save until it has a
 document from one of the two**. Without that guard, a gateway run without `RUNTIME_CONFIG_PATH` would
@@ -7627,7 +7631,8 @@ because a cached `index.html` outlives an upgrade and asks for chunks that are g
 cannot fix, since the reload is what reads the cache. A missing asset answers 404, never the page, for the
 same reason. There is no compression: the wire is loopback or a LAN, which is the argument the bundle's own
 chunking already makes. A `go:embed` build (one file to ship) is not done: it would make `make build` depend
-on npm, and reading the directory keeps "copy a new `dist/` over the old one" working without a restart.
+on npm, and reading the directory keeps "copy a new `dist/` over the old one" working without a restart. One
+of its two blockers is already gone: nothing is written into the bundle any more (#220).
 
 **Tested** `internal/server/web_test.go` (root and a client route answer with the page, a hashed asset is
 `immutable`, `config.js` and the page are `no-store`, a missing asset and an unknown `/api/*` path stay 404
@@ -7644,3 +7649,43 @@ browser against a real ComfyUI.
 `PUBLIC_BASE_URL` explicitness), `internal/server/runtime_config.go`, `internal/server/routes_admin.go`,
 `frontend/src/constant/app-mode.ts`, `frontend/vite.config.ts`, `start.sh`, `Makefile`, `README.md`,
 `docs/gateway.md`.
+
+## 220. The first paint is computed from the settings document, not copied into the bundle
+
+**Decision** `GET /config.js` is a route: it renders `data/settings.json` — plus a gateway address when
+`PUBLIC_BASE_URL` names one — into the script the page loads before its bundle, with `ETag`/`304` so a
+repeat load costs a header. `RUNTIME_CONFIG_PATH` becomes opt-in: nothing is written anywhere unless the
+operator names a file, for a canvas a static host publishes with no gateway in the request path.
+
+**Why** The file existed because nothing could answer `/config.js` — a static server owned the bundle, so
+writing the document into `frontend/dist` was the only way to get a synchronous read (#155). That premise
+ended with #219. Keeping the file meant a second writer of one truth, and every failure mode of a copy: a
+write that failed only logged a warning and left the page opening light and English; `make frontend`
+replaced the file with the template; a `dist` copied to another machine carried this machine's settings,
+model list and last canvas id; and the write needed the installation to be writable, which rules out a
+read-only deployment and the single embedded binary #219 lists as future work. A route cannot be stale,
+cannot fail to be written, and needs no write access. The document had also grown: `settings.config` holds
+the whole `AiConfig` — channels and their models, synced from `/api/workflows` — so the file was carrying
+several kilobytes of model metadata into a build artifact because it mirrored the store instead of
+projecting it.
+
+**Cost** The first paint now waits for the gateway to answer — a round trip on loopback, and the gateway was
+already the only thing serving the page, so nothing new can be missing. The body is stored by the browser
+under `no-cache` and revalidated by `ETag`; it is the same document `/api/settings` already hands out, so it
+is not a new exposure. A canvas published by a static host must name `RUNTIME_CONFIG_PATH`, or it opens with
+defaults and picks the preferences up over HTTP (which is also what the template in `frontend/public/`
+means, and what `npm start` gets). `frontend/dist/config.js` still exists in a build — `public/` is copied
+into it — but the gateway never serves it: the literal route outranks the `GET /` subtree, and a test holds
+that.
+
+**Tested** `internal/server/settings_e2e_test.go`: the script is the live document (an empty one at start,
+a save visible on the next request with no file involved), the assignment the frontend expects, the
+address only when named, `ETag`/`304` and a new `ETag` after a save, and the opt-in file written only when
+asked — plus nothing appearing in `WEB_DIR`. `internal/server/web_test.go` holds the route against the
+template in the bundle. `go test ./internal/...`, `make check`, `npm run check`, `npx vitest run` (184),
+`npm run build`, `make build`.
+
+**Where** `internal/server/runtime_config.go`, `internal/server/routes_admin.go`,
+`internal/server/routes_settings.go`, `internal/server/server.go`, `internal/config/config.go`
+(`RuntimeConfigPath`), `start.sh`, `Makefile`, `frontend/index.html`, `frontend/public/config.js`,
+`frontend/src/constant/runtime-config.ts`, `docs/gateway.md`, `README.md`.

@@ -80,8 +80,8 @@ Every variable is optional; the defaults match the previous implementation.
 | `DATA_DIR`           | `<root>/data`                      | Tasks, locks, preferences.                                                                                                                                         |
 | `CANVAS_ROOT`        | `<root>/canvases`                  | The canvases, one directory each. This is the workspace: back it up and you have the work.                                                                          |
 | `WEB_DIR`            | *(unset)*                          | A canvas bundle to serve from this gateway: `GET /` answers with its `index.html` and any file under it (#219). `start.sh` and `make run` point it at `frontend/dist`. Unset means the canvas is served elsewhere and only `/api/*` is answered. |
-| `RUNTIME_CONFIG_PATH` | *(unset)*                        | A file the gateway keeps current for the canvas's first paint (the workspace settings, and the gateway address only when `PUBLIC_BASE_URL` names one). `start.sh` points it at `frontend/dist/config.js`; unset means "the operator serves it". |
-| `PUBLIC_BASE_URL`    | `http://GATEWAY_HOST:GATEWAY_PORT` | Absolute prefix for the URLs the gateway returns (run outputs, previews), and the address written into the first-paint file. Set it when a proxy publishes the gateway under another address, or when the canvas is served from an origin of its own. |
+| `RUNTIME_CONFIG_PATH` | *(unset)*                        | An **opt-in** copy of the first-paint script (`GET /config.js`), for a canvas published by a static host with no gateway in the request path. Written at start and after every save. Unset — the normal case, and what `start.sh` does — means nothing is written: the gateway answers the route instead. |
+| `PUBLIC_BASE_URL`    | `http://GATEWAY_HOST:GATEWAY_PORT` | Absolute prefix for the URLs the gateway returns (run outputs, previews), and the address included in the first-paint script. Set it when a proxy publishes the gateway under another address, or when the canvas is served from an origin of its own. |
 | `CORS_ORIGINS`       | canvas + ComfyUI origins           | Extra allow list for canvases on another host. A canvas on the gateway's own host is allowed by rule. `*` is refused.                                              |
 
 `GATEWAY_HOST` is not a policy switch: `GATEWAY_HOST=192.168.3.232` binds the LAN address exactly
@@ -344,7 +344,14 @@ Workspace:
 | `PUT` | `/api/canvases/{id}` | Save the document. `{document, title?}`; `If-Match: <rev>` refuses a stale write with `409`. |
 | `DELETE` | `/api/canvases/{id}` | Delete it, and everything under it. |
 | `GET` | `/api/settings` | The workspace preferences: one document, opaque to the gateway. |
-| `PUT` | `/api/settings` | Replace them. `{settings: {...}}`; rewrites the first-paint file. |
+| `PUT` | `/api/settings` | Replace them. `{settings: {...}}`. |
+
+The canvas, when `WEB_DIR` names one — the only endpoints here that are not under `/api`:
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| `GET` | `/` (and any path that is not `/api/*`) | A file of the bundle, or its `index.html` for a client-side route. Hashed assets under `/assets/` are `immutable`; everything else is `no-store`; a missing file is `404`, never the page. |
+| `GET` | `/config.js` | The settings document as the script the page loads before its bundle, so the theme and the language are known before the first frame. `no-cache` with an `ETag`. Not read from `WEB_DIR`, even when a build left a template there (#220). |
 
 A canvas is a directory, not a row:
 
@@ -367,14 +374,15 @@ model selections — that the canvas itself defines. The gateway checks only tha
 and stores it whole: a settings document with per-key endpoints would need a merge, and a merge is
 where preferences quietly lose keys.
 
-The address half is written only when `PUBLIC_BASE_URL` names one: a page the gateway served already
-knows where the gateway is, and its own origin is the only answer that survives a LAN name, a phone or a
-reverse proxy (#219).
+The theme and the language have to be applied before the first frame, so the page loads `/config.js`
+before its own bundle and the gateway answers it — from this document, per request (#220). A preferences
+document that only arrives over HTTP opens every dark workspace white for a moment and every English
+workspace in Chinese.
 
-It is written to `RUNTIME_CONFIG_PATH` (when set) on every start and after every save, because the
-theme and the language have to be applied before the first frame. A preferences document that only
-arrives over HTTP opens every dark workspace white for a moment and every English workspace in
-Chinese; the file is the only thing a page can read synchronously.
+The script carries a gateway address only when `PUBLIC_BASE_URL` names one: a page the gateway served
+already knows where the gateway is, and its own origin is the only answer that survives a LAN name, a
+phone or a reverse proxy (#219). `RUNTIME_CONFIG_PATH` writes the same script to a file for the one layout
+the route cannot reach — a canvas published by a static host.
 
 Two rules make the directory safe to write on every keystroke. Every write goes through a temporary
 file in the same directory and is renamed into place, so a reader never sees half a document. Every

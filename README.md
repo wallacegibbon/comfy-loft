@@ -155,10 +155,11 @@ GATEWAY_PORT=8190
 ```
 
 That is the whole change: the canvas is served from the same address, so open
-`http://192.168.3.232:8190` from the phone and it is the workbench. Nothing writes an address into
-the page any more (`config.js` carries the workspace preferences only), and nothing has to be added
-to `CORS_ORIGINS`, because the page and its pictures are one origin. Serving the canvas from
-*another* host is still possible — that is what `PUBLIC_BASE_URL` and `CORS_ORIGINS` are for.
+`http://192.168.3.232:8190` from the phone and it is the workbench. Nothing writes an address into the
+page any more (`/config.js` carries the workspace preferences, from the gateway's own settings document),
+and nothing has to be added to `CORS_ORIGINS`, because the page and its pictures are one origin. Serving
+the canvas from *another* host is still possible — that is what `PUBLIC_BASE_URL`, `CORS_ORIGINS` and
+`RUNTIME_CONFIG_PATH` are for.
 
 One thing to know when the gateway is reachable from the network: **it has no authentication.** Any
 device that can reach the port can run a workflow, read its artifacts and drive a canvas's agent (the
@@ -210,6 +211,7 @@ among its endpoints; [Not an OpenAI-compatible gateway](#not-an-openai-compatibl
 | `/api/resources/*` | Download models, install custom nodes |
 | `/api/system/*`, `/api/loras`, `/health` | System status, LoRA files, liveness |
 | `GET /` (and any path that is not `/api/*`) | The canvas bundle: `WEB_DIR`'s files, or its `index.html` for a client-side route. Unset `WEB_DIR`, and only `/api/*` is answered |
+| `GET /config.js` | The workspace preferences as the script the page loads before its bundle, so the theme and the language are right on the first frame |
 
 **ComfyUI `:8188` endpoints** — only the gateway's ComfyUI client (`internal/comfy`) calls
 these, the canvas never sees them:
