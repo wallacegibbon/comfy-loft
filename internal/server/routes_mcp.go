@@ -113,7 +113,7 @@ func (s *Server) mcpTools() []mcpTool {
 		InputSchema: noArguments,
 	}, {
 		Name:        "list_nodes",
-		Description: "Every node on the canvas — id, type, title, prompt, position, and what made its content and when — and every connection between them. The ids are what the other tools act on.",
+		Description: "Every node on the canvas, one line each — id, type, title, position, what made its content and when, then the node's own words: `content:` is what it holds (a text node's text) and `prompt:` is what it was made from. That is two different things, and only a text node has both. Then every connection between them. The ids are what the other tools act on.",
 		InputSchema: noArguments,
 	}, {
 		Name:        "create_node",
@@ -121,7 +121,7 @@ func (s *Server) mcpTools() []mcpTool {
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"type": {"type": "string", "enum": ["image", "video", "audio", "text", "config", "lora"], "description": "What kind of node. A lora node carries a LoRA and its strength and must be wired into the node it should apply to."},
+				"type": {"type": "string", "enum": ["image", "video", "audio", "text", "config"], "description": "What kind of node. A group is structure rather than content, and a LoRA node names a file the user has to pick in its own panel, so neither is made here."},
 				"prompt": {"type": "string", "description": "What the node starts with: a text node's body, or the prompt the node's own panel shows."},
 				"position": {
 					"type": "object",
@@ -148,7 +148,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "set_prompt",
-		Description: "Change one node's prompt, in the same field the node's own panel writes it to. Running it again afterwards replaces that node's result (docs/decisions.md #77); a variant is a new node.",
+		Description: "Change the words that will make this node — the prompt its own panel shows. Running it again afterwards replaces that node's result (docs/decisions.md #77); a variant is a new node. On a text node that already says something this changes the question, not the text: the node will be asked this next, and what it says now stays. Write the text itself with set_text.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -156,6 +156,18 @@ func (s *Server) mcpTools() []mcpTool {
 				"prompt": {"type": "string", "description": "The words the node should hold."}
 			},
 			"required": ["nodeId", "prompt"],
+			"additionalProperties": false
+		}`),
+	}, {
+		Name:        "set_text",
+		Description: "Write a text node's words, the way editing the card on the canvas does: what the node says becomes this. Its prompt is left alone — that is the question that made the words. A picture, a film or a sound has no text to write: give it a prompt with set_prompt and press generate.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeId": {"type": "string", "description": "The id list_nodes reported."},
+				"text": {"type": "string", "description": "The words the node should say. An empty string clears it."}
+			},
+			"required": ["nodeId", "text"],
 			"additionalProperties": false
 		}`),
 	}, {
@@ -171,7 +183,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "read_node",
-		Description: "Read one node's actual content: its words, or the image, video or audio it holds. Answers with the content itself — an image, a video, a sound or text — not a description of it. A node something generated ends with a line naming the workflow that made it and the moment that run finished; both are facts the canvas recorded, so they are the answer to \"which model drew this, and when\" rather than a guess.",
+		Description: "Read what one node holds: a text node's text, or the image, video or audio itself — not a description of it, and not the prompt that made it. A text node holding a batch answers with every text, the one its card shows first. A node something generated ends with a line naming the workflow that made it and the moment that run finished; both are facts the canvas recorded, so they are the answer to \"which model drew this, and when\" rather than a guess.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {

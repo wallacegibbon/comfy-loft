@@ -62,7 +62,7 @@ import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
 import { rememberLastCanvas } from "@/lib/canvas/last-canvas";
 import { setActiveCanvas } from "@/services/canvas-files";
 import { useCanvasStore, flushCanvasSaves } from "@/stores/canvas/use-canvas-store";
-import { holdsResult } from "@/lib/canvas/node-prompt-field";
+import { promptPatch } from "@/lib/canvas/node-prompt-field";
 import { useCanvasAgentTools } from "@/pages/canvas/hooks/use-canvas-agent-tools";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { exportCanvas } from "@/lib/canvas/canvas-export";
@@ -1809,10 +1809,6 @@ function InfiniteCanvasPage() {
         setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, title, titleKey: undefined, titleParams: undefined } : node)));
     }, []);
 
-    const handleNodePromptChange = useCallback((nodeId: string, prompt: string) => {
-        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt } } : node)));
-    }, []);
-
     const handleConfigNodeChange = useCallback((nodeId: string, patch: Partial<CanvasNodeData["metadata"]> = {}) => {
         setNodes((prev) =>
             prev.map((node) => {
@@ -2106,18 +2102,20 @@ function InfiniteCanvasPage() {
     }, [handleGenerateNode]);
 
     /**
-     * Write a node's prompt the way its own panel writes it: a node that already holds a result keeps the
-     * words in `composerContent` (typing must not throw the result away), a node that holds none keeps them
-     * in `prompt`, ready to be run.
+     * Write a node's prompt the way its own panel writes it.
+     *
+     * Which field that is, is `promptFieldOf`'s answer — a node that holds a result keeps the words in
+     * `composerContent` so typing cannot throw the result away, a config node has always used its composer,
+     * and everything else keeps them in `prompt`. The panel and the agent's `set_prompt` ask the same
+     * function, which is what stops the two from writing different fields for the same words (#229).
      */
     const setNodePrompt = useCallback(
         (nodeId: string, prompt: string) => {
             const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
             if (!node) return;
-            if (holdsResult(node)) handleConfigNodeChange(nodeId, { composerContent: prompt });
-            else handleNodePromptChange(nodeId, prompt);
+            handleConfigNodeChange(nodeId, promptPatch(node, prompt));
         },
-        [handleConfigNodeChange, handleNodePromptChange],
+        [handleConfigNodeChange],
     );
 
     // The agent's hands are the same functions the buttons press.
@@ -2127,6 +2125,7 @@ function InfiniteCanvasPage() {
         createNode,
         generateNode: handleGenerateNode,
         setNodePrompt,
+        writeText: handleNodeContentChange,
         connectNodes: addConnection,
         deleteNodes: (nodeIds) => deleteNodes(new Set(nodeIds)),
         focusNode,
@@ -2255,7 +2254,6 @@ function InfiniteCanvasPage() {
                     isRunning={hasActiveGeneration(panelNode.id)}
                     mentionReferences={mentionReferencesByNodeId.get(panelNode.id) || EMPTY_REFERENCES}
                     connectedNodes={connectedNodesByNodeId.get(panelNode.id) || []}
-                    onPromptChange={handleNodePromptChange}
                     onConfigChange={handleConfigNodeChange}
                     onGenerate={handleGenerateNode}
                     onStop={confirmStopGeneration}
@@ -2271,7 +2269,7 @@ function InfiniteCanvasPage() {
                     }}
                 />
             ),
-        [configInputsById, confirmStopGeneration, connectedNodesByNodeId, disconnectNodeReference, handleConfigNodeChange, handleGenerateNode, handleNodePromptChange, hasActiveGeneration, mentionReferencesByNodeId, nodes, startNodeReferenceSelection],
+        [configInputsById, confirmStopGeneration, connectedNodesByNodeId, disconnectNodeReference, handleConfigNodeChange, handleGenerateNode, hasActiveGeneration, mentionReferencesByNodeId, nodes, startNodeReferenceSelection],
     );
 
     const renderNodeContentPanel = useCallback(

@@ -8080,3 +8080,70 @@ were read, not clicked.
 `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`,
 `frontend/src/components/canvas/canvas-image-toolbar-tools.tsx`,
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
+
+## 229. A node's words are three fields with three meanings, and each question has one function
+
+**Decision** `content` is what a node holds; `prompt` is the words that made it; `composerContent` is what
+you type when it already holds something, so typing cannot throw the result away. The canvas asks three
+questions of those fields, and each has exactly one answer, in `lib/canvas/node-prompt-field.ts`:
+`nodeContentOf` (what it says), `nodePromptOf` (what was asked of it), `promptPatch` (where an instruction
+goes). The panel and the agent's `set_prompt` call `promptPatch`, so they cannot write different fields for
+the same words. `holdsResult` is no longer a whitelist of text and image: every content type answers by
+whether `content` is there.
+
+The agent gets the verb it was missing. `set_text(nodeId, text)` writes a text node's card — the same thing
+double-clicking the card does — and leaves its prompt alone, because rewriting an answer by hand does not
+make the question untrue. `set_prompt` keeps writing the question, and on a text node that already says
+something its answer says so: *that is the question it will answer next, not its text*.
+
+`list_nodes` names the two kinds of words apart (`content:` / `prompt:`) and collapses a prompt's
+paragraphs onto one line, which is what "one line per node" always promised. `read_node` answers with what
+the node holds — a text node's card, every text of a batch, the picture itself — and no longer with the
+prompt that made it. `create_node` stops advertising `lora`, which it has never been able to make.
+
+**Why** One function with a chain of fallbacks — `composerContent ?? prompt ?? content ?? texts[0]` —
+answered all three questions, and that is fine exactly as long as no node's content is words. Reading a
+picture answered with its prompt and nobody minded, because the picture came along in the same answer. A
+text node's content *is* words, so the chain answered "what does this node say" with the question that was
+asked to make it: the agent could read the prompt box and never the card, and when it was asked to change
+the text it wrote the only field it could see. That is the screenshot that started this — a text node still
+saying 宫崎骏风格的森林。 with 宫崎骏风格的森林场景，无文字… in the box below it. It was not misuse. The tools told
+one story and the canvas told another, and the tools won because that is what an agent acts on.
+
+The same chain hid three more of itself. An imported picture has `content` and no `prompt` at all, so the
+fallback made `read_node` answer with `/api/canvases/…/files/a.png` and `list_nodes` print it as the node's
+prompt — a file path where words were promised, and #228 has just made imports the common case. A film or a
+sound holds a result as plainly as a picture, but `holdsResult` said otherwise, so the next instruction
+overwrote `prompt` and the words that made it were gone; the artifact-protection rule (#91) applied to
+pictures only. And a config node's panel writes `composerContent` while `set_prompt` wrote `prompt` — both
+read, so it worked, but the claim that the tool writes where the panel writes was false for that type.
+
+**Cost** One new tool (`set_text`), one new module (`lib/canvas/canvas-agent-view.ts`, so the list's format
+is testable without a page), and the tool functions moved out of the hook
+(`lib/canvas/canvas-agent-tools.ts`) for the same reason: they are decisions, not wiring. The panel's
+`onPromptChange` prop and `project.tsx`'s `handleNodePromptChange` are gone — one writer for one field.
+
+What this does **not** do: it does not make a text node hold one field. A card written by an agent needs a
+question standing beside it, so the two fields stay; what goes away is five different stories about which
+one a word lives in. `composerContent` also stays, with one reason: a node that already holds something
+must be able to take an instruction without losing it.
+
+The placeholder had to change with it: 「请输入你想要将本段文本修改成什么」 promised a revision the code never
+did — generating a text node asks the question again and replaces the card (see the comment in
+`handleGenerateNode`), it does not hand the old answer over. The box now says what the button does
+(「说你想让它写什么，生成会替换现有文本」 / "Say what it should write; generating replaces this text"), and
+editing the text itself is the card — by hand, or with `set_text`.
+
+**Tested** `npx vitest run` (252: 13 for `set_text`/`set_prompt`/`read_node`/`generate`/`create_node` as
+called with a fake page, 12 for the field rules, 5 for the list's format). `npm run check` (i18n 847/833,
+no dead keys; exports: no export without a caller — `holdsResult` and `promptFieldOf` are internal now and
+the tests reach them through `promptPatch`). `npm run build`. `make check`, including the tools/list
+assertion, which now expects `set_text` in the vocabulary, and the system-prompt assertion, which now
+requires `canvas_set_text`. Not exercised in a browser: what is untested is what a person sees — the new
+placeholder text, and the agent's own choice between `set_text` and `set_prompt` in a live conversation.
+
+**Where** `frontend/src/lib/canvas/{node-prompt-field,canvas-agent-view,canvas-agent-tools}.ts`,
+`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
+`frontend/src/components/canvas/canvas-node-prompt-panel.tsx`, `frontend/src/pages/canvas/project.tsx`,
+`frontend/src/i18n/locales/{en-US,zh-CN}.ts`, `internal/server/{routes_mcp.go,agent_instructions.go}`,
+`internal/server/mcp_test.go`, `frontend/tests/{node-prompt-field,canvas-agent-view,canvas-agent-tools}.test.ts`.

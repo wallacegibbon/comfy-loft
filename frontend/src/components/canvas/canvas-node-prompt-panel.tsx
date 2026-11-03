@@ -10,7 +10,7 @@ import { Tooltip } from "@/components/kit/tooltip";
 import { BaseModelPicker, ModelPicker, WorkflowModelPicker } from "@/components/model-picker";
 import { channelModelOf, defaultConfig, modelImageInputs, modelOptionName, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 
-import { holdsResult } from "@/lib/canvas/node-prompt-field";
+import { nodePromptOf, promptPatch } from "@/lib/canvas/node-prompt-field";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { isPlainEnterKey } from "@/lib/keyboard-event";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
@@ -34,7 +34,6 @@ type CanvasNodePromptPanelProps = {
     node: CanvasNodeData;
     /** The canvas this node lives in: the name its agent is filed under. */
     isRunning: boolean;
-    onPromptChange: (nodeId: string, prompt: string) => void;
     onConfigChange: (nodeId: string, patch: Partial<CanvasNodeData["metadata"]>) => void;
     onGenerate: (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => void;
     onStop: (nodeId: string) => void;
@@ -54,7 +53,6 @@ export function CanvasNodePromptPanel({
     node,
     nodes,
     isRunning,
-    onPromptChange,
     onConfigChange,
     onGenerate,
     onStop,
@@ -74,12 +72,11 @@ export function CanvasNodePromptPanel({
     const theme = useCanvasTheme();
     const mode = modeOverride ?? defaultMode(node.type);
     const config = buildNodeConfig(globalConfig, node, mode);
-    // A node that already holds a result keeps its words in `composerContent`; one that holds none keeps them
-    // in `prompt`. Shared with the agent's set_prompt, so both write to the same field.
-    const isEditingExistingContent = holdsResult(node);
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
-    const [prompt, setPrompt] = useState(node.metadata?.composerContent ?? node.metadata?.prompt ?? "");
+    // The words this box holds — the question, never the answer: a text node's card is its content, and
+    // `nodePromptOf` is the field the panel and the agent's `set_prompt` both write (#229).
+    const [prompt, setPrompt] = useState(nodePromptOf(node));
     const [draft, setDraft] = useState(prompt);
     const draftRef = useRef(draft);
     const promptRef = useRef(prompt);
@@ -141,9 +138,9 @@ export function CanvasNodePromptPanel({
         onConfigChange(node.id, { ...(nextModel ? { model: nextModel } : {}), videoMode: value, ...(value === "frames" ? { frameMode } : {}) });
     };
 
-    // The words this panel shows are the node's — `composerContent` once it holds a result, `prompt` before
-    // that — which is the field the agent's `set_prompt` writes too.
-    const storedPrompt = node.metadata?.composerContent ?? node.metadata?.prompt ?? "";
+    // The words this panel shows are the node's — the field `nodePromptOf` names — which is the one the
+    // agent's `set_prompt` writes too.
+    const storedPrompt = nodePromptOf(node);
 
     // Follow the store, and only the store. A generation leaves the words alone, so nothing here is clobbered
     // by pressing generate; an agent's `set_prompt` is a different writer, and before this the textarea kept
@@ -161,8 +158,7 @@ export function CanvasNodePromptPanel({
     const commitPrompt = (value = textareaRef.current?.value ?? draft) => {
         if (value === promptRef.current) return;
         setPrompt(value);
-        if (isEditingExistingContent) onConfigChange(node.id, { composerContent: value });
-        else onPromptChange(node.id, value);
+        onConfigChange(node.id, promptPatch(node, value));
     };
 
     const commitPromptRef = useRef(commitPrompt);
@@ -187,8 +183,7 @@ export function CanvasNodePromptPanel({
             onConfigChange(node.id, { content: value, prompt: value, composerContent: value, ...(nextTexts ? { texts: nextTexts } : {}) });
             return;
         }
-        if (isEditingExistingContent) onConfigChange(node.id, { composerContent: value });
-        else onPromptChange(node.id, value);
+        onConfigChange(node.id, promptPatch(node, value));
     };
 
     const submit = () => {
