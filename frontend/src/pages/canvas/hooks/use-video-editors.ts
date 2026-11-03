@@ -62,7 +62,7 @@ export function useVideoEditors(deps: NodeEditorDeps) {
                     { multiplier: 2 },
                     { signal: controller.signal },
                 );
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, videoTaskId: task.id, model: "video-rife", params: { multiplier: 2 } } } : item)));
+                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, runId: task.id, model: "video-rife", params: { multiplier: 2 } } } : item)));
                 const video = await waitForVideoGenerationTask(effectiveConfig, task, { signal: controller.signal });
                 setNodes((prev) =>
                     prev.map((item) =>

@@ -141,11 +141,16 @@ export type CanvasNodeMetadata = {
     mimeType?: string;
     bytes?: number;
     durationMs?: number;
-    videoTaskId?: string;
-    /** The gateway run that is producing this node's audio, kept so a reload can resume polling. */
-    audioRunId?: string;
-    /** The gateway run that is producing this node's images, kept so a reload can resume polling. */
-    imageRunId?: string;
+    /**
+     * The gateway run producing this node's content, kept so the watch survives the page.
+     *
+     * One field for every kind of content. It used to be three — `videoTaskId`, `audioRunId`, `imageRunId` —
+     * named after the order the three were moved onto the gateway, and the predicates that read them drifted
+     * with the names: video resumed on a reload whatever its status, audio and image only while they were
+     * still `loading`. A canvas written before this keeps its old name until it is opened, where it is read
+     * into this one (`adoptLegacyRunIds`).
+     */
+    runId?: string;
     previewUrl?: string;
     previewMime?: string;
     previewStep?: number;

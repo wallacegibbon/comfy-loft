@@ -33,16 +33,6 @@ export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGe
     return waitForVideoRun(config, task, options);
 }
 
-export function isVideoTaskFailed(error: unknown) {
-    return error instanceof Error && error.name === "VideoTaskFailed";
-}
-
-function videoTaskFailed(message: string) {
-    const error = new Error(message);
-    error.name = "VideoTaskFailed";
-    return error;
-}
-
 export async function createVideoGenerationTask(config: AiConfig, prompt: string, references: ReferenceImage[] = [], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
     const selectedModel = (config.model || config.videoModel).trim();
     const requestConfig = resolveModelRequestConfig(config, selectedModel);
@@ -202,7 +192,9 @@ async function waitForVideoRun(config: AiConfig, task: VideoGenerationTask, opti
         if (isCancelled(error) || options?.signal?.aborted) throw error;
         // The canvas clears a failed task id from this error, which is what stops it polling a run
         // that will never answer differently.
-        if (error instanceof RunFailedError) throw videoTaskFailed(error.message);
+        // A run that ended is passed on as it is: `RunFailedError` is the one way every mode says "the
+        // gateway answered about the run", and it used to be rewrapped here under a video-only name.
+        if (error instanceof RunFailedError) throw error;
         throw new Error(apiErrorMessage(error, apiText("videoTaskQueryFailed")));
     }
 }

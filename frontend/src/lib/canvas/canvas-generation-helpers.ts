@@ -6,6 +6,7 @@ import { referenceUrl } from "@/lib/canvas/canvas-node-factory";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import type { CanvasImageAngleParams } from "@/components/canvas/canvas-node-angle-dialog";
 import type { ReferenceImage } from "@/types/image";
+import { RunFailedError } from "@/services/api/runs";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
 export function imageExtension(dataUrl: string) {
@@ -74,50 +75,85 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
     };
 }
 
-export function hasResumableVideoTask(node: CanvasNodeData) {
-    return node.type === CanvasNodeType.Video && Boolean(node.metadata?.videoTaskId) && !node.metadata?.content;
-}
+/** The content a run produces: the three kinds the gateway generates into a node. */
+const RUN_CONTENT_TYPES = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio];
 
 /**
- * An audio node whose run is still in flight. The gateway keeps the run when the page goes away, so
- * the node stays `loading` and is polled again after a reload instead of being marked interrupted.
- * Only loading nodes qualify: an error node keeps its last run id, but resuming it would be noise.
- */
-export function hasResumableAudioRun(node: CanvasNodeData) {
-    return node.type === CanvasNodeType.Audio && node.metadata?.status === "loading" && Boolean(node.metadata?.audioRunId) && !node.metadata?.content;
-}
-
-/**
- * An image node whose batch run is still in flight.
+ * A node whose run was still out when the page went away.
  *
- * The slots (`metadata.images`) are written before the run is submitted, so a reload finds the same
- * placeholders the live request would have filled: resuming is one poll and a fill per slot, not a
- * second batch.
+ * The run belongs to the gateway, not to the page, so the only thing that has to survive is the id the
+ * node keeps in `runId` — and the answer is the same for every kind of content. It used to be three
+ * predicates with three names for the field and a status check on two of them, so a single failed check
+ * left an audio or image node unable to re-attach at all, while video re-attached whatever its status
+ * said (#235).
  */
-export function hasResumableImageRun(node: CanvasNodeData) {
-    return node.type === CanvasNodeType.Image && node.metadata?.status === "loading" && Boolean(node.metadata?.imageRunId) && !node.metadata?.content;
+export function hasResumableRun(node: CanvasNodeData) {
+    return RUN_CONTENT_TYPES.includes(node.type as CanvasNodeType) && Boolean(node.metadata?.runId) && !node.metadata?.content;
 }
 
+/**
+ * What a canvas written before `runId` had one name looks like when it is opened.
+ *
+ * The three old names — `videoTaskId`, `audioRunId`, `imageRunId` — are read into `runId` and dropped, so
+ * a run that was in flight when that build wrote the file is still picked up. Saved data, so the fields are
+ * read through a record: the type has no room for them any more.
+ */
+export function adoptLegacyRunIds(nodes: CanvasNodeData[]) {
+    return nodes.map((node) => {
+        const metadata = node.metadata as Record<string, unknown> | undefined;
+        if (!metadata) return node;
+        const legacy = [metadata.videoTaskId, metadata.audioRunId, metadata.imageRunId].find((value) => typeof value === "string" && value) as string | undefined;
+        if (!legacy) return node;
+        const { videoTaskId: _video, audioRunId: _audio, imageRunId: _image, ...rest } = metadata;
+        return { ...node, metadata: { ...rest, runId: node.metadata?.runId || legacy } };
+    });
+}
+
+/**
+ * What a failed watch leaves on the node: the words it shows, and whether the run id stays.
+ *
+ * Two very different things end a watch, and only one of them is about the run. `RunFailedError` is the
+ * gateway answering — the run failed or was cancelled — so the node says that and lets the id go. Anything
+ * else is the question not getting there: the run may be rendering still, so the node keeps the id, says it
+ * could not confirm it, and the next canvas open picks the watch up (#235).
+ *
+ * One function for the three modes: video used to wrap its failures in a name of its own, and the three
+ * endings had drifted apart with it.
+ */
+export function runWatchEnded(error: unknown) {
+    return error instanceof RunFailedError;
+}
+
+/** `failedWatch`'s four lines, once: the words to show, and whether the run id has a run left behind it. */
+export function failedWatch(error: unknown, fallback: string) {
+    const ended = runWatchEnded(error);
+    // A blank reason would read as "could not confirm the run ()" — the caller's sentence is better there.
+    const reason = error instanceof Error && error.message ? error.message : fallback;
+    return { ended, errorDetails: ended ? reason : i18n.t("canvas.runtime.runUnwatched", { reason }) };
+}
+
+/**
+ * What a node looks like when the page is opened on it again.
+ *
+ * A node that was waiting on a run keeps waiting — the run is the gateway's, and it is still out. Any
+ * other node that was `loading` is told the truth instead of being left spinning: the work stopped with
+ * the page, and the reason says so. Errors already on the canvas are left alone: they are what happened,
+ * and clearing them on open is how a failure became invisible (#235).
+ */
 export function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
     return nodes.map((node) =>
-        node.metadata?.status === "loading"
-            ? hasResumableVideoTask(node) || hasResumableAudioRun(node) || hasResumableImageRun(node)
-                ? node
-                : {
-                      ...node,
-                      metadata: {
-                          ...node.metadata,
-                          status: "error" as const,
-                          errorDetails: i18n.t("canvas.generation.interrupted"),
-                          texts: node.metadata.texts?.map((text) => (text.status === "loading" ? { ...text, status: "error" as const, errorDetails: i18n.t("canvas.generation.interrupted") } : text)),
-                      },
-                  }
+        node.metadata?.status === "loading" && !hasResumableRun(node)
+            ? {
+                  ...node,
+                  metadata: {
+                      ...node.metadata,
+                      status: "error" as const,
+                      errorDetails: i18n.t("canvas.generation.interrupted"),
+                      texts: node.metadata.texts?.map((text) => (text.status === "loading" ? { ...text, status: "error" as const, errorDetails: i18n.t("canvas.generation.interrupted") } : text)),
+                  },
+              }
             : node,
     );
-}
-
-export function clearStaleNodeErrors(nodes: CanvasNodeData[]) {
-    return nodes.map((node) => (node.metadata?.status === "error" ? { ...node, metadata: { ...node.metadata, status: "idle" as const, errorDetails: undefined } } : node));
 }
 
 /**

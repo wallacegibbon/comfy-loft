@@ -46,7 +46,7 @@ const videoNode = (model: string): CanvasNodeData => ({
     position: { x: 0, y: 0 },
     width: 320,
     height: 180,
-    metadata: { model, videoTaskId: "original-task", seconds: "4" },
+    metadata: { model, runId: "original-task", seconds: "4" },
 });
 
 test("task recovery rejects a model nothing offers instead of querying the first channel", () => {
@@ -71,5 +71,5 @@ test("a saved task keeps the model it was made with", () => {
     const selected = buildGenerationConfig(config, node, "video");
     expect(selected.model).toBe("replacement::video-a");
     expect(ready(selected, selected.model)).toBe(true);
-    expect(node.metadata?.videoTaskId).toBe("original-task");
+    expect(node.metadata?.runId).toBe("original-task");
 });

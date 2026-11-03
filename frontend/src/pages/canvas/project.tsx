@@ -10,7 +10,7 @@ import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
 import type { RunRequest } from "@/services/api/runs";
 import type { GenerateOptions, GenerateStart } from "@/lib/canvas/agent-generate";
-import { createVideoGenerationTask, isVideoTaskFailed, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
+import { createVideoGenerationTask, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
 import { useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { uploadImage } from "@/services/image-storage";
 import { nanoid } from "nanoid";
@@ -79,18 +79,7 @@ import {
     normalizeConnection,
     snapNodesIntoGroup,
 } from "@/lib/canvas/canvas-node-geometry";
-import {
-    audioExtension,
-    buildGenerationConfig,
-    hasResumableAudioRun,
-    hasResumableImageRun,
-    hasResumableVideoTask,
-    hydrateCanvasImages,
-    imageExtension,
-    isGenerationCanceled,
-    resetInterruptedGeneration,
-    clearStaleNodeErrors,
-} from "@/lib/canvas/canvas-generation-helpers";
+import { adoptLegacyRunIds, audioExtension, buildGenerationConfig, failedWatch, hasResumableRun, hydrateCanvasImages, imageExtension, isGenerationCanceled, resetInterruptedGeneration, runWatchEnded } from "@/lib/canvas/canvas-generation-helpers";
 import { getNodeDefinition, isBuiltinNodeType } from "@/lib/canvas/node-registry";
 import { registerBuiltinNodes } from "@/components/canvas/nodes/builtin-nodes";
 import { confirm } from "@/components/kit/confirm";
@@ -356,7 +345,7 @@ function InfiniteCanvasPage() {
                               ...item,
                               metadata: {
                                   ...item.metadata,
-                                  videoTaskId: task.id,
+                                  runId: task.id,
                                   model: config.model,
                                   params: config.params,
                                   previewUrl: undefined,
@@ -376,7 +365,7 @@ function InfiniteCanvasPage() {
 
     const pollVideoNodeTask = useCallback(
         async (node: CanvasNodeData, silent = false) => {
-            const taskId = node.metadata?.videoTaskId;
+            const taskId = node.metadata?.runId;
             if (!taskId || node.metadata?.content || generationRequestsRef.current.has(node.id) || videoPollIdsRef.current.has(node.id)) return;
             videoPollIdsRef.current.add(node.id);
             let controller: AbortController | undefined;
@@ -420,7 +409,9 @@ function InfiniteCanvasPage() {
                 );
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
-                const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
+                // The run failing and the watch failing are two different things: only the first ends the
+                // run, so only the first takes the id with it (#235).
+                const { ended, errorDetails } = failedWatch(error, t("canvas.runtime.generationFailed"));
                 toast.error(errorDetails);
                 setNodes((prev) =>
                     prev.map((item) =>
@@ -431,7 +422,7 @@ function InfiniteCanvasPage() {
                                       ...item.metadata,
                                       status: item.metadata?.content ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR,
                                       errorDetails: item.metadata?.content ? undefined : errorDetails,
-                                      ...(isVideoTaskFailed(error) ? { videoTaskId: undefined } : {}),
+                                      ...(ended ? { runId: undefined } : {}),
                                       previewUrl: undefined,
                                       previewMime: undefined,
                                       previewStep: undefined,
@@ -522,7 +513,9 @@ function InfiniteCanvasPage() {
             rememberLastCanvas(projectId);
             setActiveCanvas(projectId);
 
-            const restoredNodes = await hydrateCanvasImages(clearStaleNodeErrors(resetInterruptedGeneration(project.nodes)));
+            // A canvas written before `runId` had one name is read into it first, so a run that was in flight
+            // then is still picked up (#235).
+            const restoredNodes = await hydrateCanvasImages(resetInterruptedGeneration(adoptLegacyRunIds(project.nodes)));
             setNodes(restoredNodes);
             setConnections(project.connections);
             setBackgroundMode(project.backgroundMode);
@@ -550,13 +543,6 @@ function InfiniteCanvasPage() {
             live = false;
         };
     }, [ready, loadCanvas, navigate, projectId]);
-
-    useEffect(() => {
-        if (!projectLoaded) return;
-        nodesRef.current.filter(hasResumableVideoTask).forEach((node) => void pollVideoNodeTask(node, true));
-        // Resume once after the current canvas is restored, not on later config identity changes.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectLoaded]);
 
     useEffect(() => {
         if (!projectLoaded || applyingHistoryRef.current || historyPausedRef.current) return;
@@ -1898,15 +1884,26 @@ function InfiniteCanvasPage() {
     );
     const { runImageGeneration, runVideoGeneration, runAudioGeneration, runTextGeneration, pollAudioRun, pollImageRun } = useGenerationRuns(generationRunDeps);
 
-    // Audio and image runs live on the gateway, so a reload reattaches instead of losing the work.
-    // The effect runs once per opened project, like the video one above, and never cancels the run.
+    /**
+     * Pick up the runs that were out when the page went away.
+     *
+     * One pass, once per opened canvas: a run belongs to the gateway, so the page has nothing to re-submit —
+     * only to start watching again, with the poller for the kind of content it is. It used to be two effects
+     * with two different gates (video resumed whatever its status said, audio and image only while they were
+     * still `loading`), so one of the three could quietly not resume at all (#235).
+     */
     const runResumeProjectRef = useRef<string | null>(null);
     useEffect(() => {
         if (!projectLoaded || runResumeProjectRef.current === projectId) return;
         runResumeProjectRef.current = projectId;
-        nodesRef.current.filter(hasResumableAudioRun).forEach((node) => void pollAudioRun(node, true));
-        nodesRef.current.filter(hasResumableImageRun).forEach((node) => void pollImageRun(node, true));
-    }, [projectLoaded, projectId, pollAudioRun, pollImageRun]);
+        for (const node of nodesRef.current.filter(hasResumableRun)) {
+            if (node.type === CanvasNodeType.Video) void pollVideoNodeTask(node, true);
+            else if (node.type === CanvasNodeType.Audio) void pollAudioRun(node, true);
+            else void pollImageRun(node, true);
+        }
+        // Once per opened canvas: a re-render is not a reason to poll a run again.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [projectLoaded, projectId]);
 
     const handleGenerateNode = useCallback(
         async (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, options?: GenerateOptions) => {
@@ -2011,7 +2008,7 @@ function InfiniteCanvasPage() {
                                           ...node.metadata,
                                           status: NODE_STATUS_ERROR,
                                           errorDetails,
-                                          ...(isVideoTaskFailed(error) && node.type === CanvasNodeType.Video ? { videoTaskId: undefined } : {}),
+                                          ...(runWatchEnded(error) && node.type === CanvasNodeType.Video ? { runId: undefined } : {}),
                                       },
                                   }
                             : node,

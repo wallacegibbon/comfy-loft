@@ -17,7 +17,7 @@ import { imageToDataUrl, type UploadedImage } from "@/services/image-storage";
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
 import { audioMetadata, buildAudioGenerationMetadata, buildImageGenerationMetadata, imageMetadata } from "@/lib/canvas/canvas-node-factory";
-import { buildGenerationConfig, generationReferenceUrls, isGenerationCanceled } from "@/lib/canvas/canvas-generation-helpers";
+import { buildGenerationConfig, failedWatch, generationReferenceUrls, isGenerationCanceled } from "@/lib/canvas/canvas-generation-helpers";
 import { NODE_STATUS_ERROR, NODE_STATUS_LOADING, NODE_STATUS_SUCCESS } from "@/lib/canvas/canvas-node-status";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeText } from "@/types/canvas";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
@@ -228,6 +228,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
             const controller = startGenerationRequest(nodeId, nodeId, nodeId, runController);
             let hasSuccess = false;
             let hasFailure = false;
+            let runEndedHere = false;
             let firstError = "";
 
             // One run, one picture: the gateway writes the artifact into the canvas and the node names it by
@@ -240,7 +241,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                     // The id arrives at submission, before a single artifact exists: it is what a
                     // reload reattaches to.
                     onRun: (runId: string) => {
-                        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, imageRunId: runId } } : node)));
+                        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, runId } } : node)));
                         run.start({ started: true, runId });
                     },
                 };
@@ -252,6 +253,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                 const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
                 if (!firstError) firstError = errorDetails;
                 hasFailure = true;
+                runEndedHere = failedWatch(error, t("canvas.runtime.generationFailed")).ended;
                 failImage(nodeId, errorDetails);
             } finally {
                 setRunStepProgress(nodeId, undefined);
@@ -269,7 +271,10 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                                   ...node.metadata,
                                   status: hasSuccess ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR,
                                   errorDetails: hasSuccess ? undefined : t("canvas.runtime.allFailed"),
-                                  imageRunId: undefined,
+                                  // The id goes only when the run itself ended. A watch that could not ask
+                                  // leaves it, so a reload picks the run up instead of paying for a second
+                                  // one (#235).
+                                  runId: hasFailure && !runEndedHere ? node.metadata?.runId : undefined,
                               },
                           }
                         : node,
@@ -296,8 +301,8 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                 videoMode: generationConfig.videoMode,
                 references: generationReferenceUrls(generationContext),
             };
-            // The metadata is the run's to write, not the node's to keep: a `videoTaskId` left from an
-            // earlier run would make a reload resume the wrong task.
+            // The metadata is the run's to write, not the node's to keep: a `runId` left from an earlier
+            // run would make a reload resume the wrong one.
             setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, ...(prompt ? { title } : {}), metadata: videoMetadata } : node)));
             const controller = startGenerationRequest(nodeId, nodeId, nodeId, runController);
             try {
@@ -335,13 +340,13 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                     askedBy: run.askedBy,
                     // The id lands on the node before the first poll, so a reload can resume it.
                     onRun: (runId) => {
-                        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, audioRunId: runId } } : node)));
+                        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, runId } } : node)));
                         run.start({ started: true, runId });
                     },
                     onProgress: (run) => setRunStepProgress(nodeId, run.progress),
                 });
                 setNodes((prev) =>
-                    prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...audioMetadata(audio), prompt, ...buildAudioGenerationMetadata(generationConfig), audioRunId: undefined, stepProgress: undefined } } : node)),
+                    prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...audioMetadata(audio), prompt, ...buildAudioGenerationMetadata(generationConfig), runId: undefined, stepProgress: undefined } } : node)),
                 );
             } finally {
                 finishGenerationRequest(nodeId, controller);
@@ -476,7 +481,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
      */
     const pollAudioRun = useCallback(
         async (node: CanvasNodeData, silent = false) => {
-            const runId = node.metadata?.audioRunId;
+            const runId = node.metadata?.runId;
             if (!runId || node.metadata?.content || audioPollIdsRef.current.has(node.id)) return;
             audioPollIdsRef.current.add(node.id);
             let controller: AbortController | undefined;
@@ -503,14 +508,14 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                 const audio = await generatedAudio(requestConfig, finished);
                 setNodes((prev) =>
                     prev.map((item) =>
-                        item.id === node.id ? { ...item, metadata: { ...item.metadata, ...audioMetadata(audio), prompt: item.metadata?.prompt, ...buildAudioGenerationMetadata(generationConfig), audioRunId: undefined, stepProgress: undefined } } : item,
+                        item.id === node.id ? { ...item, metadata: { ...item.metadata, ...audioMetadata(audio), prompt: item.metadata?.prompt, ...buildAudioGenerationMetadata(generationConfig), runId: undefined, stepProgress: undefined } } : item,
                     ),
                 );
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
-                const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
+                const { ended, errorDetails } = failedWatch(error, t("canvas.runtime.generationFailed"));
                 if (!silent) toast.error(errorDetails);
-                setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, audioRunId: undefined, stepProgress: undefined } } : item)));
+                setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, runId: ended ? undefined : item.metadata?.runId, stepProgress: undefined } } : item)));
             } finally {
                 if (controller) finishGenerationRequest(node.id, controller);
                 setRunningNodeId((current) => (current === node.id ? null : current));
@@ -528,7 +533,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
      */
     const pollImageRun = useCallback(
         async (node: CanvasNodeData, silent = false) => {
-            const runId = node.metadata?.imageRunId;
+            const runId = node.metadata?.runId;
             if (!runId || node.metadata?.content || imagePollIdsRef.current.has(node.id)) return;
             imagePollIdsRef.current.add(node.id);
             let controller: AbortController | undefined;
@@ -554,12 +559,12 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                 });
                 const image = await generatedImage(requestConfig, finished, { signal: controller.signal });
                 await fillImage(node.id, image);
-                setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined, imageRunId: undefined, stepProgress: undefined } } : item)));
+                setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined, runId: undefined, stepProgress: undefined } } : item)));
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
-                const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
+                const { ended, errorDetails } = failedWatch(error, t("canvas.runtime.generationFailed"));
                 if (!silent) toast.error(errorDetails);
-                setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, imageRunId: undefined, stepProgress: undefined } } : item)));
+                setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, runId: ended ? undefined : item.metadata?.runId, stepProgress: undefined } } : item)));
             } finally {
                 if (controller) finishGenerationRequest(node.id, controller);
                 setRunningNodeId((current) => (current === node.id ? null : current));

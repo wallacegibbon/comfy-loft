@@ -8386,12 +8386,13 @@ exercised in a browser: what to look for is one live conversation — "这张图
 
 ## 234. A watch is not the job: neither end gives up on a run that is still out
 
-**Decision** Two loops that used to give up too early now wait, and the second way to re-run a node is gone.
+**Decision** The gateway stops giving up on a run that is still out, and the second way to re-run a node is
+gone. (The browser half of this decision was a retry loop that waited three minutes; #235 replaced it with
+making a reload actually re-attach, for all three kinds of content.)
 
-- **Browser ↔ gateway** (`waitForRun`, `services/api/runs.ts`): a poll that fails is asked again — every
-  interval — until the gateway has been unreachable for three minutes, and the run is picked up again the
-  moment it answers. A 404 is the one answer that stops it: the gateway has no record of that run and will not
-  grow one. The budget is `unreachableMs`, so a caller can ask for longer.
+- **Browser ↔ gateway** (`waitForRun`, `services/api/runs.ts`): the watch ends when a read fails, and the node
+  keeps the run id so the next open of the canvas re-attaches (#235). What this decision ends here is the
+  *other* half: the node no longer treats "could not ask" as "the run failed" by throwing the id away.
 - **Gateway ↔ ComfyUI** (`waitForHistory`, `internal/generate/runner.go`): the same rule one layer down. A
   `/history` poll that could not be made is retried until the run's own timeout; a 4xx — ComfyUI saying it
   will not run this — still ends the task at once, because asking again gets the same sentence. When the
@@ -8435,3 +8436,57 @@ progress and finish, not turn red.
 `frontend/src/components/canvas/{canvas-node,canvas-node-hover-toolbar}.tsx`,
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
 `frontend/tests/api-runs.test.ts`, `internal/generate/{runner.go,generate_test.go}`.
+
+## 235. One name for the run, one rule for surviving a reload
+
+**Decision** Five leftovers of the same kind, all of them somewhere between "a run outlives the page" and
+"what the node keeps when the page goes away":
+
+- **One field.** `runId` on the node metadata, for every kind of content. It was three —
+  `videoTaskId`, `audioRunId`, `imageRunId` — named after the order the three were moved onto the gateway. A
+  canvas written before this is read into the one field when it is opened (`adoptLegacyRunIds`), so a run that
+  was in flight then is still picked up.
+- **One predicate.** `hasResumableRun` — content node, a run id, nothing to show yet — for all three. It used
+  to be three predicates, and two of them also demanded `status === "loading"`, so a node in error could never
+  re-attach: one failed poll left an audio or image node permanently unable to resume, while video resumed
+  whatever its status said.
+- **One pass.** The two resume effects (video on one gate, audio and image on another) become one, which
+  dispatches to the poller for the kind of content it is, once per opened canvas.
+- **One rule for a failed watch.** `failedWatch`: a `RunFailedError` means the gateway answered about the run
+  — it failed, so the node says so and lets the id go. Anything else means the question did not get there, so
+  the node keeps the id and says it could not confirm the run, and the next open picks the watch up. Before
+  this the two pollers threw the id away on *any* error, which is what made "just reload" impossible for
+  audio and image.
+- **One error type for a failed run.** `VideoTaskFailed` is gone: `waitForVideoRun` used to rewrap
+  `RunFailedError` under a video-only name, which is why the rule above would have needed three variants.
+
+Also gone: `clearStaleNodeErrors`, which ran straight after `resetInterruptedGeneration` and turned every
+error back to idle — including the "generation was interrupted" message that had just been written. Net
+effect: a run that a page refresh killed came back as a silently idle node. A canvas now says what happened,
+and an error that was already on the canvas when it was closed is still there when it is opened.
+
+**Why** The user's model was the right one and the code kept contradicting it in small ways: *the run belongs
+to the gateway, so refreshing the page is how you re-attach.* Every item above is a place where that was not
+true — two of the three kinds could not re-attach at all, the id was destroyed by the failure that most needed
+it, and the one message that explained a lost run was deleted on the next line by another function.
+
+The three names were also the reason the rules had drifted: three fields invite three predicates, three
+predicates invite three gates, and nothing compares them.
+
+**What this does not do** It does not make a **gateway restart** survivable: the job is a goroutine in the
+gateway, and a task that was `running` on disk loads as `failed` ("the gateway restarted before the task
+finished"). The record keeps ComfyUI's prompt id, so re-attaching *there* is possible — a queue-recovery
+decision, still open.
+
+**Tested** `npx vitest run` (264: `canvas-resumable-runs` now covers the one predicate, the interrupted
+message, errors surviving an open, the legacy names being read into `runId`, and `failedWatch` both ways; the
+video task contract test now expects `RunFailedError`). `npm run check` (i18n 820/806, `runUnwatched` used).
+`npm run build`. `make check`. Not exercised in a browser: the case worth trying is a run left in flight —
+close the tab mid-render, open the canvas again, and it should still be watching, for a picture, a clip and a
+sound alike.
+
+**Where** `frontend/src/types/canvas.ts`, `frontend/src/lib/canvas/canvas-generation-helpers.ts`,
+`frontend/src/services/api/{runs,video}.ts`, `frontend/src/pages/canvas/{project.tsx,hooks/use-generation-runs.ts}`,
+`frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`,
+`frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
+`frontend/tests/{canvas-resumable-runs,api-runs,api-video-runs,model-selection}.test.ts`.

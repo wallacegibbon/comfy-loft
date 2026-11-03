@@ -286,7 +286,7 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
                             {node.metadata?.workflow ? <InfoRow label={t("canvas.nodeToolbar.workflow")} value={node.metadata.workflow} /> : null}
                             {node.metadata?.generatedAt ? <InfoRow label={t("canvas.nodeToolbar.generatedAt")} value={new Date(node.metadata.generatedAt).toLocaleString()} /> : null}
                             {node.metadata?.prompt ? <InfoRow label={t("canvas.nodeToolbar.prompt")} value={node.metadata.prompt} /> : null}
-                            {node.metadata?.videoTaskId ? <InfoRow label={t("canvas.nodeToolbar.videoTaskId")} value={node.metadata.videoTaskId} /> : null}
+                            {node.metadata?.runId ? <InfoRow label={t("canvas.nodeToolbar.runId")} value={node.metadata.runId} /> : null}
                             {imageBytes ? <InfoRow label={t("canvas.nodeToolbar.imageSize")} value={formatBytes(imageBytes)} /> : null}
                             {node.metadata?.errorDetails ? (
                                 <div className="rounded-lg border p-3 text-red-400" style={{ borderColor: theme.node.stroke }}>

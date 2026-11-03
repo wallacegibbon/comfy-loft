@@ -111,40 +111,17 @@ describe("createRun", () => {
 });
 
 describe("waitForRun", () => {
-    // A run belongs to the gateway, and the gateway goes away for ordinary reasons. Asking is idempotent,
-    // so a question that could not be asked is not an answer: the watch keeps asking and picks the run up
-    // when it answers again (#234).
-    it("keeps asking while the gateway cannot be reached, and picks the run up when it can", async () => {
-        const fetchMock = vi
-            .fn()
-            .mockRejectedValueOnce(new TypeError("Failed to fetch"))
-            .mockResolvedValueOnce(json(run({ status: "running" })))
-            .mockResolvedValueOnce(json(run({ status: "succeeded", outputs: [{ index: 0, kind: "audio", mime: "audio/mpeg", bytes: 3, filename: "t.mp3", url: `/api/canvases/${CANVAS}/files/task_1.mp3` }] })));
-        vi.stubGlobal("fetch", fetchMock);
-
-        const finished = await waitForRun(config, "task_1", { intervalMs: 1 });
-
-        expect(finished.status).toBe("succeeded");
-        expect(fetchMock).toHaveBeenCalledTimes(3);
-    });
-
-    it("stops at once for a run the gateway has no record of", async () => {
-        // A 404 is the one answer that will not change: the gateway does not know this run, and asking
-        // again will not grow it one.
-        const fetchMock = vi.fn(async () => json({ error: "no such run" }, 404));
-        vi.stubGlobal("fetch", fetchMock);
-
-        await expect(waitForRun(config, "task_1", { intervalMs: 1 })).rejects.toBeTruthy();
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-
-    it("gives up when the gateway has been gone too long, and says so", async () => {
+    // A read that fails ends the watch here, and that is on purpose: the node keeps the run id and says it
+    // could not confirm the run, so opening the canvas again picks it up. Waiting inside the page would be
+    // three invisible minutes on a gateway that may never answer (#235).
+    it("ends the watch on a read that could not be made, so the node can say so and re-attach later", async () => {
         const fetchMock = vi.fn(async () => {
             throw new TypeError("Failed to fetch");
         });
         vi.stubGlobal("fetch", fetchMock);
 
-        await expect(waitForRun(config, "task_1", { intervalMs: 1, unreachableMs: 0 })).rejects.toThrow("runUnreachable");
+        await expect(waitForRun(config, "task_1", { intervalMs: 1 })).rejects.toBeTruthy();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it("polls until succeeded and reports steps", async () => {

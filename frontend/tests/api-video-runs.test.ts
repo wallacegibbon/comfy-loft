@@ -233,12 +233,15 @@ describe("waitForVideoGenerationTask", () => {
         expect(calls.map((call) => call.url)).not.toContain(`${ROOT}/api/canvases/${CANVAS_ID}/files/task_video_1.mp4`);
     });
 
-    it("turns a failed run into a video task failure so the node stops polling it", async () => {
+    it("passes a run the gateway failed on as a run failure, the one shape every mode reads", async () => {
+        // It used to be rewrapped under a video-only name. The node has to tell "the run ended" from "the
+        // question did not get there", and one error type for all three modes is what makes that one rule
+        // (#235).
         stubGateway({ status: () => json(run({ status: "failed", error: { code: "comfy_execution_failed", message: "Prompt outputs failed validation" } })) });
 
         const error = await waitForVideoGenerationTask(gateway(), { id: "task_video_1", model: "video-h3-frames" }).catch((caught) => caught);
 
-        expect(error.name).toBe("VideoTaskFailed");
+        expect(error.name).toBe("RunFailedError");
         expect(error.message).toBe("Prompt outputs failed validation");
     });
 
