@@ -96,10 +96,6 @@ describe("where an instruction goes", () => {
             expect(promptPatch(node(type), "words")).toEqual({ prompt: "words" });
         }
     });
-
-    test("into composerContent for a config node, which has always kept its words there", () => {
-        expect(promptPatch(node("config"), "a red bicycle")).toEqual({ composerContent: "a red bicycle" });
-    });
 });
 
 describe("finding a node by its words", () => {

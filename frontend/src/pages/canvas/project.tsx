@@ -8,7 +8,6 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/kit/button";
 import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
-import { requestEdit, requestGeneration } from "@/services/api/image";
 import type { RunRequest } from "@/services/api/runs";
 import type { GenerateOptions, GenerateStart } from "@/lib/canvas/agent-generate";
 import { createVideoGenerationTask, isVideoTaskFailed, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
@@ -30,11 +29,9 @@ import { useGenerationRuns } from "@/pages/canvas/hooks/use-generation-runs";
 import type { GenerationRun, GenerationRunDeps } from "@/pages/canvas/hooks/use-generation-runs";
 import { captureVideoFrame, type VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 
-import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
+import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { ActiveConnectionPath, ConnectionPath } from "@/components/canvas/canvas-connections";
 import { CanvasConflictDialog } from "@/components/canvas/canvas-conflict-dialog";
-import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
-import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
 import { CanvasNodeContextMenu } from "@/components/canvas/canvas-context-menu";
 
 // The angle dialog drags in three.js (~136 kB gzip) for one control panel that most sessions
@@ -47,7 +44,7 @@ import { CanvasNodeOutpaintDialog } from "@/components/canvas/canvas-node-outpai
 import { CanvasNodeMossLayoutDialog } from "@/components/canvas/canvas-node-moss-layout-dialog";
 import { CanvasNodeSplitDialog } from "@/components/canvas/canvas-node-split-dialog";
 import { CanvasNodeSuperResolveDialog } from "@/components/canvas/canvas-node-super-resolve-dialog";
-import { buildNodeGenerationContext, buildNodeGenerationInputs, describeEmptyInputs, hydrateNodeGenerationContext, inputsHoldingNothing, type NodeGenerationInput } from "@/components/canvas/canvas-node-generation";
+import { buildNodeGenerationContext, describeEmptyInputs, hydrateNodeGenerationContext, inputsHoldingNothing } from "@/components/canvas/canvas-node-generation";
 import { CanvasNodeHoverToolbar, CanvasNodeInfoModal } from "@/components/canvas/canvas-node-hover-toolbar";
 import { CanvasSelectionToolbar } from "@/components/canvas/canvas-selection-toolbar";
 import { InfiniteCanvas } from "@/components/canvas/infinite-canvas";
@@ -62,7 +59,7 @@ import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
 import { rememberLastCanvas } from "@/lib/canvas/last-canvas";
 import { setActiveCanvas } from "@/services/canvas-files";
 import { useCanvasStore, flushCanvasSaves } from "@/stores/canvas/use-canvas-store";
-import { nodeContentOf, promptPatch } from "@/lib/canvas/node-prompt-field";
+import { promptPatch } from "@/lib/canvas/node-prompt-field";
 import { useCanvasAgentTools } from "@/pages/canvas/hooks/use-canvas-agent-tools";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { exportCanvas } from "@/lib/canvas/canvas-export";
@@ -85,7 +82,6 @@ import {
 import {
     audioExtension,
     buildGenerationConfig,
-    getInputSummary,
     hasResumableAudioRun,
     hasResumableImageRun,
     hasResumableVideoTask,
@@ -761,12 +757,10 @@ function InfiniteCanvasPage() {
     /**
      * Add one connection the way a drag does: normalized by the canvas's own rules, and never twice.
      *
-     * `firstHandleType` says which handle the gesture started from; a tool states its two nodes in order, so it
-     * starts from the source handle. Returns whether the two nodes may be connected at all — a group, or a
-     * config node into a config node, may not.
+     * Returns whether the two nodes may be connected at all — nothing may be wired into a group.
      */
-    const addConnection = useCallback((firstNodeId: string, secondNodeId: string, firstHandleType: "source" | "target"): boolean => {
-        const connection = normalizeConnection(firstNodeId, secondNodeId, nodesRef.current, firstHandleType);
+    const addConnection = useCallback((firstNodeId: string, secondNodeId: string, _firstHandleType: "source" | "target"): boolean => {
+        const connection = normalizeConnection(firstNodeId, secondNodeId, nodesRef.current);
         if (!connection) return false;
         const { fromNodeId, toNodeId } = connection;
         const exists = connectionsRef.current.some((conn) => conn.fromNodeId === fromNodeId && conn.toNodeId === toNodeId);
@@ -781,7 +775,7 @@ function InfiniteCanvasPage() {
         (current: ConnectionHandle, targetNodeId: string) => {
             if (current.nodeId === targetNodeId) return;
             if (!addConnection(current.nodeId, targetNodeId, current.handleType)) {
-                toast.warning(t("canvas.runtime.configConnection"));
+                toast.warning(t("canvas.runtime.connectionRefused"));
                 return;
             }
             setContextMenu(null);
@@ -791,15 +785,12 @@ function InfiniteCanvasPage() {
 
     const createConnectedNode = useCallback(
         (type: string, pending: PendingConnectionCreate) => {
-            const metadata = type === CanvasNodeType.Config ? { model: effectiveConfig.imageModel || effectiveConfig.model, size: effectiveConfig.size, ...(recallNodeSettings(type) || {}) } : undefined;
-            const newNode = createCanvasNode(type, pending.position, metadata);
+            const newNode = createCanvasNode(type, pending.position, recallNodeSettings(type) || undefined);
             const insertBefore = Boolean(getNodeDefinition(type)?.insertBefore);
             // A node inserted upstream (a LoRA card, say) is created before the current node; the current node must not be treated as its upstream.
-            const connection = insertBefore
-                ? normalizeConnection(newNode.id, pending.connection.nodeId, [...nodesRef.current, newNode], "source")
-                : normalizeConnection(pending.connection.nodeId, newNode.id, [...nodesRef.current, newNode], pending.connection.handleType);
+            const connection = insertBefore ? normalizeConnection(newNode.id, pending.connection.nodeId, [...nodesRef.current, newNode]) : normalizeConnection(pending.connection.nodeId, newNode.id, [...nodesRef.current, newNode]);
             if (!connection) {
-                toast.warning(t("canvas.runtime.configConnection"));
+                toast.warning(t("canvas.runtime.connectionRefused"));
                 return;
             }
             setNodes((prev) => [...prev, newNode]);
@@ -838,7 +829,7 @@ function InfiniteCanvasPage() {
 
                 if (!hitsHandle && !hitsInside && !hitsExpanded) return;
                 isNearNode = true;
-                if (node.id === current.nodeId || !normalizeConnection(current.nodeId, node.id, nodesRef.current, current.handleType)) return;
+                if (node.id === current.nodeId || !normalizeConnection(current.nodeId, node.id, nodesRef.current)) return;
 
                 const priority = hitsInside ? 0 : hitsHandle ? 1 : 2;
                 if (priority < bestPriority) {
@@ -955,14 +946,6 @@ function InfiniteCanvasPage() {
         return { nodeIds, connectionIds };
     }, [activeNodeId, connections, nodeById, nodes]);
 
-    const configInputsById = useMemo(() => {
-        const map = new Map<string, NodeGenerationInput[]>();
-        nodes.forEach((node) => {
-            if (node.type !== CanvasNodeType.Config) return;
-            map.set(node.id, buildNodeGenerationInputs(node.id, nodes, connections));
-        });
-        return map;
-    }, [connections, nodes]);
     const mentionReferencesByNodeId = useMemo(() => {
         const map = new Map<string, ReturnType<typeof buildNodeMentionReferences>>();
         nodes.forEach((node) => map.set(node.id, buildNodeMentionReferences(node, nodes, connections)));
@@ -994,15 +977,7 @@ function InfiniteCanvasPage() {
     const createNode = useCallback(
         (type: CanvasNodeTypeId, position?: Position, patch?: CanvasNodeMetadata): CanvasNodeData => {
             const targetPosition = position || getCanvasCenter();
-            const configMetadata =
-                type === CanvasNodeType.Config
-                    ? {
-                          model: effectiveConfig.imageModel || effectiveConfig.model,
-                          size: effectiveConfig.size,
-                          ...(recallNodeSettings(type) || {}),
-                      }
-                    : undefined;
-            const newNode = createCanvasNode(type, targetPosition, { ...configMetadata, ...patch });
+            const newNode = createCanvasNode(type, targetPosition, patch);
 
             setNodes((prev) => [...prev, newNode]);
             setSelectedNodeIds(new Set([newNode.id]));
@@ -1010,13 +985,7 @@ function InfiniteCanvasPage() {
             const definition = getNodeDefinition(type);
             // Display-only nodes (hidePanel) never open a panel; the rest do, except the two whose panel is
             // their own editing surface (text is edited in place, audio has nothing to configure).
-            const wantsPanel = definition?.hidePanel
-                ? false
-                : definition?.useBuiltinPanel
-                  ? true
-                  : definition?.autoOpenPanel
-                    ? true
-                    : isBuiltinNodeType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Group;
+            const wantsPanel = definition?.hidePanel ? false : definition?.autoOpenPanel ? true : isBuiltinNodeType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Group;
             if (wantsPanel) setDialogNodeId(newNode.id);
             return newNode;
         },
@@ -1918,7 +1887,6 @@ function InfiniteCanvasPage() {
     const generationRunDeps: GenerationRunDeps = useMemo(
         () => ({
             setNodes,
-            setConnections,
             setSelectedNodeIds,
             setSelectedConnectionId,
             setDialogNodeId,
@@ -1930,7 +1898,7 @@ function InfiniteCanvasPage() {
             finishGenerationRequest,
             completeVideoNodeTask,
         }),
-        [completeVideoNodeTask, finishGenerationRequest, pollVideoNodeTask, setConnections, setDialogNodeId, setNodes, setSelectedConnectionId, setSelectedNodeIds, startGenerationRequest],
+        [completeVideoNodeTask, finishGenerationRequest, pollVideoNodeTask, setDialogNodeId, setNodes, setSelectedConnectionId, setSelectedNodeIds, startGenerationRequest],
     );
     const { runImageGeneration, runVideoGeneration, runAudioGeneration, runTextGeneration, retryNode, pollAudioRun, pollImageRun } = useGenerationRuns(generationRunDeps);
 
@@ -1978,46 +1946,6 @@ function InfiniteCanvasPage() {
                 return;
             }
 
-            // useBuiltinPanel.writeBackToSelf reuses the built-in generation flow while writing the result back to this node.
-            // Image mode currently supports display-only nodes such as panoramas, with a useBuiltinPanel.promptPrefix.
-            const builtinPanel = sourceNode ? getNodeDefinition(sourceNode.type)?.useBuiltinPanel : undefined;
-            if (sourceNode && builtinPanel?.writeBackToSelf && builtinPanel.mode === "image") {
-                const scene = prompt.trim();
-                if (!scene) {
-                    start({ started: false, reason: "the node has no prompt to generate from" });
-                    return;
-                }
-                setRunningNodeId(nodeId);
-                const controller = startGenerationRequest(nodeId, nodeId, nodeId);
-                setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt: scene, status: NODE_STATUS_LOADING, errorDetails: undefined } } : node)));
-                try {
-                    const fullPrompt = (builtinPanel.promptPrefix || "") + scene;
-                    const context = await hydrateNodeGenerationContext(buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, fullPrompt));
-                    if (context.loras.length) generationConfig.params = { ...(generationConfig.params || {}), loras: context.loras };
-                    const refs = context.referenceImages;
-                    const runOptions = { signal: controller.signal, askedBy, onRun: (runId: string) => start({ started: true, runId }) };
-                    const image = refs.length ? await requestEdit(generationConfig, context.prompt, refs, runOptions) : await requestGeneration(generationConfig, context.prompt, runOptions);
-                    const uploaded = image;
-                    setNodes((prev) =>
-                        prev.map((node) =>
-                            node.id === nodeId
-                                ? { ...node, metadata: { ...node.metadata, ...imageMetadata(uploaded), prompt: scene, model: generationConfig.model, params: generationConfig.params, status: NODE_STATUS_SUCCESS, errorDetails: undefined } }
-                                : node,
-                        ),
-                    );
-                    setDialogNodeId(null);
-                } catch (error) {
-                    if (!isGenerationCanceled(error)) {
-                        const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
-                        toast.error(errorDetails);
-                        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, errorDetails } } : node)));
-                    }
-                } finally {
-                    finishGenerationRequest(nodeId, controller);
-                }
-                return;
-            }
-
             setRunningNodeId(nodeId);
             const runController = startGenerationRequest(nodeId, nodeId, nodeId);
             // The prompt is the prompt. A text node that already holds an answer is not a document to
@@ -2046,16 +1974,10 @@ function InfiniteCanvasPage() {
                 generationConfig,
                 generationContext,
                 runController,
-                pendingChildIds: [],
                 askedBy,
                 start,
             };
-            if (markSourceStatus)
-                setNodes((prev) =>
-                    prev.map((node) =>
-                        node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...(node.type === CanvasNodeType.Config ? {} : { prompt }), params: generationConfig.params, status: NODE_STATUS_LOADING, errorDetails: undefined } } : node,
-                    ),
-                );
+            if (markSourceStatus) setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt, params: generationConfig.params, status: NODE_STATUS_LOADING, errorDetails: undefined } } : node)));
 
             try {
                 if (mode === "image") {
@@ -2084,8 +2006,8 @@ function InfiniteCanvasPage() {
                 toast.error(errorDetails);
                 setNodes((prev) =>
                     prev.map((node) =>
-                        node.id === nodeId || run.pendingChildIds.includes(node.id)
-                            ? node.id === nodeId && !markSourceStatus
+                        node.id === nodeId
+                            ? !markSourceStatus
                                 ? node
                                 : {
                                       ...node,
@@ -2140,45 +2062,6 @@ function InfiniteCanvasPage() {
         focusNode,
         moveNode: moveNodesTo,
     });
-
-    const generateImageFromTextNode = useCallback(
-        (node: CanvasNodeData) => {
-            // The words, and only the words: a text node that has not been written on holds nothing, so
-            // there is nothing to send — its prompt is what it would be asked, not what it says (#230).
-            const prompt = nodeContentOf(node);
-            if (!prompt) {
-                toast.warning(t("canvas.runtime.emptyTextImage"));
-                return;
-            }
-            const sourceNode = nodesRef.current.find((item) => item.id === node.id);
-            if (!sourceNode) return;
-            const nodeSize = getNodeSpec(CanvasNodeType.Config);
-            const configNode = createCanvasNode(
-                CanvasNodeType.Config,
-                {
-                    x: sourceNode.position.x + sourceNode.width + 96 + nodeSize.width / 2,
-                    y: sourceNode.position.y + sourceNode.height / 2,
-                },
-                {
-                    prompt: "",
-                    model: effectiveConfig.imageModel || effectiveConfig.model,
-                    size: effectiveConfig.size,
-                    ...(recallNodeSettings(CanvasNodeType.Config) || {}),
-                },
-            );
-            const connection = { id: nanoid(), fromNodeId: sourceNode.id, toNodeId: configNode.id };
-            const nextNodes = nodesRef.current.map((item) => (item.id === sourceNode.id ? { ...item, metadata: { ...item.metadata, content: prompt, status: NODE_STATUS_SUCCESS } } : item)).concat(configNode);
-            const nextConnections = [...connectionsRef.current, connection];
-            nodesRef.current = nextNodes;
-            connectionsRef.current = nextConnections;
-            setNodes(nextNodes);
-            setConnections(nextConnections);
-            setSelectedNodeIds(new Set([configNode.id]));
-            setSelectedConnectionId(null);
-            setDialogNodeId(configNode.id);
-        },
-        [effectiveConfig.imageModel, effectiveConfig.model, effectiveConfig.size, t],
-    );
 
     // Memoize every callback and render function passed to CanvasNode.
     // CanvasNode uses React.memo, but new prop references would invalidate it on every render and rerender every node
@@ -2246,18 +2129,6 @@ function InfiniteCanvasPage() {
         (panelNode: CanvasNodeData) =>
             panelNode.type === CanvasNodeType.Lora ? (
                 <LoraNodePanel node={panelNode} theme={theme} onChange={(patch) => handleConfigNodeChange(panelNode.id, patch)} />
-            ) : panelNode.type === CanvasNodeType.Config ? (
-                <CanvasConfigComposer
-                    nodeId={panelNode.id}
-                    nodes={nodes}
-                    value={panelNode.metadata?.composerContent ?? panelNode.metadata?.prompt ?? ""}
-                    inputs={configInputsById.get(panelNode.id) || []}
-                    connectedNodes={connectedNodesByNodeId.get(panelNode.id) || []}
-                    onChange={(composerContent) => handleConfigNodeChange(panelNode.id, { composerContent })}
-                    onClose={() => setDialogNodeId(null)}
-                    onDisconnectReference={disconnectNodeReference}
-                    onStartReferenceSelection={startNodeReferenceSelection}
-                />
             ) : (
                 <CanvasNodePromptPanel
                     node={panelNode}
@@ -2273,35 +2144,13 @@ function InfiniteCanvasPage() {
                     onOpenMaskEditor={(nodeId) => openNodeTool("maskEdit", nodeId)}
                     onOpenOutpaintEditor={(nodeId) => openNodeTool("outpaint", nodeId)}
                     onOpenMossLayoutEditor={(nodeId) => openNodeTool("mossLayout", nodeId)}
-                    modeOverride={getNodeDefinition(panelNode.type)?.useBuiltinPanel?.mode}
                     onImageSettingsOpenChange={(open) => {
                         setNodeImageSettingsOpen(open);
                         if (open) setToolbarNodeId(null);
                     }}
                 />
             ),
-        [configInputsById, confirmStopGeneration, connectedNodesByNodeId, disconnectNodeReference, handleConfigNodeChange, handleGenerateNode, hasActiveGeneration, mentionReferencesByNodeId, nodes, startNodeReferenceSelection],
-    );
-
-    const renderNodeContentPanel = useCallback(
-        (contentNode: CanvasNodeData) => (
-            <CanvasConfigNodePanel
-                node={contentNode}
-                isRunning={hasActiveGeneration(contentNode.id)}
-                inputSummary={getInputSummary(configInputsById.get(contentNode.id) || [])}
-                onConfigChange={handleConfigNodeChange}
-                onComposerToggle={() => setDialogNodeId((current) => (current === contentNode.id ? null : contentNode.id))}
-                onOpenMaskEditor={(nodeId) => openNodeTool("maskEdit", nodeId)}
-                onOpenOutpaintEditor={(nodeId) => openNodeTool("outpaint", nodeId)}
-                onOpenMossLayoutEditor={(nodeId) => openNodeTool("mossLayout", nodeId)}
-                onStop={confirmStopGeneration}
-                onGenerate={(nodeId) => {
-                    const target = nodesRef.current.find((item) => item.id === nodeId);
-                    void handleGenerateNode(nodeId, target?.metadata?.generationMode || "image", target?.metadata?.composerContent ?? target?.metadata?.prompt ?? "");
-                }}
-            />
-        ),
-        [configInputsById, confirmStopGeneration, handleConfigNodeChange, handleGenerateNode, hasActiveGeneration],
+        [confirmStopGeneration, connectedNodesByNodeId, disconnectNodeReference, handleConfigNodeChange, handleGenerateNode, hasActiveGeneration, mentionReferencesByNodeId, nodes, startNodeReferenceSelection],
     );
 
     const hoverPreviewNode = hoverPreviewNodeId ? nodeById.get(hoverPreviewNodeId) || null : null;
@@ -2446,7 +2295,6 @@ function InfiniteCanvasPage() {
                             showImageInfo={showImageInfo}
                             mentionReferences={mentionReferencesByNodeId.get(node.id) || EMPTY_REFERENCES}
                             renderPanel={renderNodePanel}
-                            renderNodeContent={renderNodeContentPanel}
                             onMouseDown={handleNodeMouseDown}
                             onSelectCapture={handleNodeSelectCapture}
                             onHoverStart={handleNodeHoverStart}
@@ -2548,7 +2396,6 @@ function InfiniteCanvasPage() {
                     onDecreaseFont={(node) => handleFontSizeChange(node.id, Math.max(10, (node.metadata?.fontSize || 14) - 2))}
                     onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
                     onToggleDialog={(node) => setDialogNodeId((current) => (current === node.id ? null : node.id))}
-                    onGenerateImage={generateImageFromTextNode}
                     onInterpolateVideo={(node) => void interpolateVideoNode(node)}
                     onDownload={downloadNodeImage}
                     onMaskEdit={(node) => openNodeTool("maskEdit", node.id)}

@@ -88,7 +88,6 @@ const DYNAMIC_PREFIXES = new Map([
     ],
     ["canvas.nodeTypes", { why: "the suffix is a node type (image/video/audio/text), from the CanvasNodeType values" }],
     ["canvas.sidePanel.filter", { why: "the suffix is a node type from NODE_FILTER_VALUES" }],
-    ["canvas.composer.resources", { why: "the suffix is the kind of input node (image/video/audio/text/group)" }],
     ["canvas.toolbar", { why: "the suffix is the current canvas tool (select/pan)" }],
     ["gateway.models", { why: "the suffix is a model id from the registry; the Chinese label comes from chinese(), which reads the zh dictionary only (known-issues #10)" }],
     ["gateway.variants", { why: "the same: a variant mode id from the registry → its Chinese label" }],

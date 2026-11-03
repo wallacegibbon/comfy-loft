@@ -24,24 +24,15 @@ export type CanvasNodeDefinition = {
     minimapColor?: string;
     showInCreateMenu?: boolean; // Defaults to true.
     insertBefore?: boolean; // Created upstream: the creation menu connects it into the node being referenced.
-    hasSourceHandle?: boolean; // Right-side output handle; defaults to true.
     hidePanel?: boolean; // Prevents click/create from opening a lower panel; intended for display-only nodes.
     transparentBackground?: boolean; // Makes the node card transparent so SVG or vector content blends into the canvas.
     autoOpenPanel?: boolean; // Opens the node's panel on click.
-    useBuiltinPanel?: CanvasBuiltinPanelConfig; // Reuses the built-in generation panel.
     // Lets the host provide an Interaction/Move toolbar toggle and control pointer events through metadata.interactive.
     interactionToggle?: boolean;
     // With interactionToggle, true forces interactive content, ignores metadata.interactive, and hides the toggle.
     forceInteractive?: (node: CanvasNodeData) => boolean;
     keepAspectRatio?: (node: CanvasNodeData) => boolean;
     resource?: (node: CanvasNodeData) => CanvasNodeResource | null;
-};
-
-/** Configuration for reusing the host's built-in generation panel on a node that is not really one. */
-type CanvasBuiltinPanelConfig = {
-    mode: "image" | "video" | "text" | "audio";
-    promptPrefix?: string;
-    writeBackToSelf?: boolean;
 };
 
 /** One button a node can contribute to its own hover toolbar. */

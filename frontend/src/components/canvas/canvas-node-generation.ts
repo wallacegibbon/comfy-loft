@@ -1,6 +1,5 @@
 import { imageToDataUrl } from "@/services/image-storage";
 import i18n from "@/i18n";
-import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import { NODE_STATUS_ERROR, NODE_STATUS_LOADING } from "@/lib/canvas/canvas-node-status";
 import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import type { ReferenceImage } from "@/types/image";
@@ -41,18 +40,14 @@ type NodeGenerationGroupInput = {
     children: NodeGenerationResourceInput[];
 };
 
-export type NodeGenerationInput = NodeGenerationResourceInput | NodeGenerationGroupInput;
+type NodeGenerationInput = NodeGenerationResourceInput | NodeGenerationGroupInput;
 
 export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string): NodeGenerationContext {
     const inputs = buildNodeGenerationInputs(nodeId, nodes, connections);
-    const sourceNode = nodes.find((node) => node.id === nodeId);
-    if (sourceNode?.type === CanvasNodeType.Config && Boolean(sourceNode.metadata?.composerContent?.trim())) {
-        return buildComposerGenerationContext(inputs, prompt);
-    }
 
     const resourceInputs = flattenGenerationInputs(inputs);
     let textIndex = 0;
-    const upstreamText = resourceInputs.flatMap((input) => (input.text ? [textBlock(generationLabel("text", textIndex++), input.text)] : [])).join("\n\n");
+    const upstreamText = resourceInputs.flatMap((input) => (input.text ? [textBlock(i18n.t("canvas.references.textLabel", { index: ++textIndex }), input.text)] : [])).join("\n\n");
     const referenceImages = resourceInputs.map((input) => input.image).filter((image): image is ReferenceImage => Boolean(image));
     const referenceVideos = resourceInputs.map((input) => input.video).filter((video): video is ReferenceVideo => Boolean(video));
     const referenceAudios = resourceInputs.map((input) => input.audio).filter((audio): audio is ReferenceAudio => Boolean(audio));
@@ -71,72 +66,7 @@ export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData
     };
 }
 
-function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: string): NodeGenerationContext {
-    const inputByNodeId = new Map(inputs.map((input) => [input.nodeId, input]));
-    const selectedInputs: NodeGenerationResourceInput[] = [];
-    const labelByNodeId = new Map<string, string>();
-    const textBlocks: string[] = [];
-    const counts = { image: 0, video: 0, audio: 0, text: 0, lora: 0 };
-    let hasToken = false;
-    let lastIndex = 0;
-    let nextPrompt = "";
-
-    for (const match of prompt.matchAll(/@\[node:([^\]]+)\]/g)) {
-        if (match.index === undefined) continue;
-        hasToken = true;
-        nextPrompt += prompt.slice(lastIndex, match.index);
-        const input = inputByNodeId.get(match[1]);
-        if (input) {
-            const labels = flattenGenerationInputs([input]).map((resource) => {
-                let label = labelByNodeId.get(resource.nodeId);
-                if (!label) {
-                    label = generationLabel(resource.type, counts[resource.type]++);
-                    labelByNodeId.set(resource.nodeId, label);
-                    if (resource.type === "text") textBlocks.push(textBlock(label, resource.text || ""));
-                    else selectedInputs.push(resource);
-                }
-                return resource.type === "text" ? `【${label}】` : label;
-            });
-            nextPrompt += labels.join("、");
-        }
-        lastIndex = match.index + match[0].length;
-    }
-
-    nextPrompt += prompt.slice(lastIndex);
-    if (textBlocks.length) nextPrompt = `${nextPrompt.trim()}\n\n${textBlocks.join("\n\n")}`;
-    const referenceImages = selectedInputs.map((input) => input.image).filter((image): image is ReferenceImage => Boolean(image));
-    const referenceVideos = selectedInputs.map((input) => input.video).filter((video): video is ReferenceVideo => Boolean(video));
-    const referenceAudios = selectedInputs.map((input) => input.audio).filter((audio): audio is ReferenceAudio => Boolean(audio));
-    const loras = flattenGenerationInputs(inputs).flatMap((input) => (input.type === "lora" ? input.loras || [] : []));
-
-    if (!hasToken) {
-        return {
-            prompt,
-            referenceImages: [],
-            referenceVideos: [],
-            referenceAudios: [],
-            loras,
-            textCount: 0,
-            imageCount: 0,
-            videoCount: 0,
-            audioCount: 0,
-        };
-    }
-
-    return {
-        prompt: nextPrompt,
-        referenceImages,
-        referenceVideos,
-        referenceAudios,
-        loras,
-        textCount: counts.text,
-        imageCount: referenceImages.length,
-        videoCount: referenceVideos.length,
-        audioCount: referenceAudios.length,
-    };
-}
-
-export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): NodeGenerationInput[] {
+function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): NodeGenerationInput[] {
     return getGenerationResourceNodes(nodeId, nodes, connections).flatMap((node): NodeGenerationInput[] => {
         if (node.type === CanvasNodeType.Group) {
             const children = getGroupResourceNodes(node.id, nodes).flatMap(readNodeGenerationResource);
@@ -202,13 +132,9 @@ function readNodeGenerationResource(node: CanvasNodeData): NodeGenerationResourc
  * the node, so the answer is the same whether a person or the agent pressed the button.
  */
 export function inputsHoldingNothing(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): EmptyInput[] {
-    return (
-        generationInputCandidates(nodeId, nodes, connections)
-            // A config node is a selector rather than a source, and has no handle to draw a wire from; a wire
-            // that names one is not an input to read. Everything else wired in must hold what it promised.
-            .filter((node) => node.type !== CanvasNodeType.Config && carriesNothing(node, nodes))
-            .map((node) => ({ node, state: emptyInputStateOf(node) }))
-    );
+    return generationInputCandidates(nodeId, nodes, connections)
+        .filter((node) => carriesNothing(node, nodes))
+        .map((node) => ({ node, state: emptyInputStateOf(node) }));
 }
 
 type EmptyInput = {
@@ -248,16 +174,9 @@ export async function hydrateNodeGenerationContext(context: NodeGenerationContex
     return { ...context, referenceImages: await Promise.all(context.referenceImages.map(async (image) => ({ ...image, dataUrl: await imageToDataUrl(image) }))) };
 }
 
+/** One connected text, labelled: 【文本1】 over its words, so the model can tell two inputs apart. */
 function textBlock(label: string, text: string) {
     return `【${label}】\n${text}`;
-}
-
-function generationLabel(type: NodeGenerationResourceInput["type"], index: number) {
-    if (type === "image") return imageReferenceLabel(index);
-    if (type === "video") return i18n.t("canvas.configNode.videoReferences") + ` ${index + 1}`;
-    if (type === "audio") return i18n.t("canvas.configNode.audioReferences") + ` ${index + 1}`;
-    if (type === "lora") return `LoRA ${index + 1}`;
-    return i18n.t("canvas.composer.resources.text", { index: index + 1 });
 }
 
 const MEDIA_EXTENSION_RE = /\.(png|jpe?g|webp|gif|bmp|mp4|webm|mov|mkv|avi|mp3|wav|ogg|m4a|flac)$/i;

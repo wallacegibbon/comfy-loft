@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ImageIcon, List, Music2, Settings2, Video, X } from "lucide-react";
+import { ImageIcon, List, Music2, Video, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { type CanvasTheme } from "@/lib/canvas-theme";
@@ -50,7 +50,6 @@ export function ConnectionCreateMenu({ pending, scale = 1, onCreate, onClose }: 
                         ))}
                     </div>
                 ) : null}
-                <ConnectionCreateOption theme={theme} icon={<Settings2 className="size-4" />} title={t("canvas.createMenu.config")} description={t("canvas.createMenu.configDescription")} onClick={() => onCreate(CanvasNodeType.Config)} />
             </div>
         </div>
     );

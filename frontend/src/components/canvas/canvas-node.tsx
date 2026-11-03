@@ -32,7 +32,6 @@ type CanvasNodeProps = {
     showImageInfo: boolean;
     mentionReferences?: CanvasResourceReference[];
     renderPanel?: (node: CanvasNodeData) => ReactNode;
-    renderNodeContent?: (node: CanvasNodeData) => ReactNode;
     groupChildCount?: number;
     isGroupDropTarget?: boolean;
     batchExpanded?: boolean;
@@ -65,7 +64,6 @@ type NodeContentRendererProps = {
     batchCount: number;
     batchExpanded: boolean;
     scale: number;
-    renderNodeContent?: (node: CanvasNodeData) => ReactNode;
     onContentChange: (nodeId: string, content: string) => void;
     onVideoDimensions?: (nodeId: string, width: number, height: number) => void;
     onStopEditing: () => void;
@@ -90,7 +88,6 @@ export const CanvasNode = React.memo(function CanvasNode({
     showImageInfo,
     mentionReferences = [],
     renderPanel,
-    renderNodeContent,
     groupChildCount = 0,
     isGroupDropTarget = false,
     batchExpanded = false,
@@ -415,7 +412,6 @@ export const CanvasNode = React.memo(function CanvasNode({
                         batchCount={batchCount}
                         batchExpanded={batchExpanded}
                         scale={scale}
-                        renderNodeContent={renderNodeContent}
                         mentionReferences={mentionReferences}
                         onContentChange={onContentChange}
                         onVideoDimensions={onVideoDimensions}
@@ -461,9 +457,7 @@ export const CanvasNode = React.memo(function CanvasNode({
             </div>
 
             {!referenceSelectionState && !isGroup ? <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
-            {!referenceSelectionState && (definition?.hasSourceHandle ?? true) && data.type !== CanvasNodeType.Config ? (
-                <ConnectionHandleDot side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} />
-            ) : null}
+            {!referenceSelectionState ? <ConnectionHandleDot side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
 
             {/* Counter-scale the panel so its on-screen size stays constant while the canvas zooms. */}
             {showPanel && !isGroup && renderPanel ? (
@@ -476,7 +470,6 @@ export const CanvasNode = React.memo(function CanvasNode({
 });
 
 function NodeContent(props: NodeContentRendererProps) {
-    if (props.node.type === CanvasNodeType.Config && props.renderNodeContent) return props.renderNodeContent(props.node);
     if (props.node.type === CanvasNodeType.Text && props.node.metadata?.texts?.length && (props.node.metadata.status !== "error" || props.node.metadata.texts.some((text) => text.content))) return <TextContent {...props} />;
     if (props.node.metadata?.status === "loading") return <LoadingContent theme={props.theme} node={props.node} />;
 
@@ -500,7 +493,6 @@ const nodeContentRenderers = {
     [CanvasNodeType.Text]: TextContent,
     [CanvasNodeType.Lora]: LoraNodeContent,
     [CanvasNodeType.Image]: ImageNodeContent,
-    [CanvasNodeType.Config]: EmptyImageContent,
     [CanvasNodeType.Video]: VideoNodeContent,
     [CanvasNodeType.Audio]: AudioNodeContent,
     [CanvasNodeType.Group]: GroupNodeContent,

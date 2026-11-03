@@ -32,14 +32,6 @@ export const NODE_DEFAULT_SIZE = {
         },
         titleKey: "canvas.nodeTypes.text",
     },
-    [CanvasNodeType.Config]: {
-        width: 340,
-        height: 240,
-        get title() {
-            return i18n.t("canvas.nodeTypes.config");
-        },
-        titleKey: "canvas.nodeTypes.config",
-    },
     [CanvasNodeType.Video]: {
         width: 420,
         height: 236,
@@ -96,17 +88,6 @@ export const NODE_SPECS = {
             return NODE_DEFAULT_SIZE[CanvasNodeType.Text].titleKey;
         },
         metadata: { content: "", status: "idle", fontSize: 14 },
-    },
-    [CanvasNodeType.Config]: {
-        width: 340,
-        height: 240,
-        get title() {
-            return NODE_DEFAULT_SIZE[CanvasNodeType.Config].title;
-        },
-        get titleKey() {
-            return NODE_DEFAULT_SIZE[CanvasNodeType.Config].titleKey;
-        },
-        metadata: { content: "", status: "idle", generationMode: "image" },
     },
     [CanvasNodeType.Video]: {
         width: 420,

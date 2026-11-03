@@ -89,11 +89,10 @@ function holdsResult(node: CanvasNodeData): boolean {
 /**
  * The field a node's instruction lives in — the one question the panel and `set_prompt` both ask.
  *
- * A node that holds something keeps it in `composerContent`, so typing never overwrites a result. A config
- * node always does, because its composer is where its words have always been.
+ * A node that holds something keeps it in `composerContent`, so typing never overwrites a result.
  */
 function promptFieldOf(node: CanvasNodeData): "composerContent" | "prompt" {
-    return node.type === CanvasNodeType.Config || holdsResult(node) ? "composerContent" : "prompt";
+    return holdsResult(node) ? "composerContent" : "prompt";
 }
 
 /** `promptFieldOf` as the patch a caller writes: one field, whichever it is. */

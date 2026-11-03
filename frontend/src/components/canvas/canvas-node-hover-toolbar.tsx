@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { Clapperboard, Download, Ellipsis, Image as ImageIcon, Info, MessageSquare, Minus, Plus, RefreshCw, Settings2, Trash2, Ungroup } from "lucide-react";
+import { Clapperboard, Download, Ellipsis, Info, MessageSquare, Minus, Plus, RefreshCw, Trash2, Ungroup } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Dialog } from "@/components/kit/dialog";
@@ -26,7 +26,6 @@ type CanvasNodeHoverToolbarProps = {
     onDecreaseFont: (node: CanvasNodeData) => void;
     onIncreaseFont: (node: CanvasNodeData) => void;
     onToggleDialog: (node: CanvasNodeData) => void;
-    onGenerateImage: (node: CanvasNodeData) => void;
     onInterpolateVideo: (node: CanvasNodeData) => void;
     onDownload: (node: CanvasNodeData) => void;
     onMaskEdit: (node: CanvasNodeData) => void;
@@ -63,7 +62,6 @@ export function CanvasNodeHoverToolbar({
     onDecreaseFont,
     onIncreaseFont,
     onToggleDialog,
-    onGenerateImage,
     onInterpolateVideo,
     onDownload,
     onMaskEdit,
@@ -112,7 +110,6 @@ export function CanvasNodeHoverToolbar({
     const hasVideo = isVideo && Boolean(node.metadata?.content);
     const hasAudio = isAudio && Boolean(node.metadata?.content);
     const isText = node.type === CanvasNodeType.Text;
-    const isConfig = node.type === CanvasNodeType.Config;
     const canRetry = node.metadata?.status === "error" && !(isVideo && Boolean(node.metadata?.videoTaskId) && !hasVideo);
     const canQueryVideoTask = isVideo && Boolean(node.metadata?.videoTaskId) && !hasVideo && node.metadata?.status !== "loading";
     const quickImageToolIdSet = new Set(quickImageToolIds);
@@ -154,8 +151,6 @@ export function CanvasNodeHoverToolbar({
             : []),
         ...(isVideo ? [{ id: "edit", title: t("common.edit"), label: t("common.edit"), icon: <MessageSquare className="size-4" />, onClick: () => onToggleDialog(node) }] : []),
         ...(hasVideo ? [{ id: "videoInterpolate", title: t("canvas.nodeToolbar.interpolateTitle"), label: t("canvas.nodeToolbar.interpolate"), icon: <Clapperboard className="size-4" />, onClick: () => onInterpolateVideo(node) }] : []),
-        ...(isText ? [{ id: "generateImage", title: t("canvas.node.generateImage"), label: t("canvas.node.generate"), icon: <ImageIcon className="size-4" />, onClick: () => onGenerateImage(node) }] : []),
-        ...(isConfig ? [{ id: "config", title: t("canvas.configNode.title"), label: t("canvas.configNode.title"), icon: <Settings2 className="size-4" />, onClick: () => onToggleDialog(node) }] : []),
         ...(isText ? [{ id: "decreaseFont", title: t("canvas.nodeToolbar.decreaseFont"), label: t("canvas.nodeToolbar.zoomOut"), icon: <Minus className="size-4" />, onClick: () => onDecreaseFont(node) }] : []),
         ...(isText ? [{ id: "increaseFont", title: t("canvas.nodeToolbar.increaseFont"), label: t("canvas.nodeToolbar.zoomIn"), icon: <Plus className="size-4" />, onClick: () => onIncreaseFont(node) }] : []),
         ...(hasImage ? imageTools.map((tool) => ({ id: tool.id, title: tool.title, label: tool.label, icon: tool.icon, active: tool.active, onClick: tool.onClick })) : []),
@@ -284,11 +279,9 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
                                 value={
                                     node.type === CanvasNodeType.Group
                                         ? t("canvas.node.group")
-                                        : node.type === CanvasNodeType.Config
-                                          ? t("canvas.configNode.title")
-                                          : [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text].includes(node.type as CanvasNodeType)
-                                            ? t(`canvas.nodeTypes.${node.type}`)
-                                            : getNodeDefinition(node.type)?.title || node.type
+                                        : [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text].includes(node.type as CanvasNodeType)
+                                          ? t(`canvas.nodeTypes.${node.type}`)
+                                          : getNodeDefinition(node.type)?.title || node.type
                                 }
                             />
                             <InfoRow label={t("canvas.nodeToolbar.size")} value={`${Math.round(node.width)} x ${Math.round(node.height)}`} />
@@ -298,7 +291,7 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
                                 told, in the reader's own clock (#227). */}
                             {node.metadata?.workflow ? <InfoRow label={t("canvas.nodeToolbar.workflow")} value={node.metadata.workflow} /> : null}
                             {node.metadata?.generatedAt ? <InfoRow label={t("canvas.nodeToolbar.generatedAt")} value={new Date(node.metadata.generatedAt).toLocaleString()} /> : null}
-                            {node.metadata?.prompt ? <InfoRow label={t("canvas.configNode.prompt")} value={node.metadata.prompt} /> : null}
+                            {node.metadata?.prompt ? <InfoRow label={t("canvas.nodeToolbar.prompt")} value={node.metadata.prompt} /> : null}
                             {node.metadata?.videoTaskId ? <InfoRow label={t("canvas.nodeToolbar.videoTaskId")} value={node.metadata.videoTaskId} /> : null}
                             {imageBytes ? <InfoRow label={t("canvas.nodeToolbar.imageSize")} value={formatBytes(imageBytes)} /> : null}
                             {node.metadata?.errorDetails ? (

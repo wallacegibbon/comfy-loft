@@ -1,4 +1,4 @@
-import { CanvasNodeType, type CanvasNodeMetadata, type CanvasNodeTypeId } from "@/types/canvas";
+import type { CanvasNodeMetadata, CanvasNodeTypeId } from "@/types/canvas";
 
 const INHERITABLE_FIELDS = new Set([
     "model",
@@ -28,11 +28,6 @@ const INHERITABLE_FIELDS = new Set([
 
 const memory = new Map<string, CanvasNodeMetadata>();
 
-function settingsKey(type: CanvasNodeTypeId, metadata?: CanvasNodeMetadata) {
-    const mode = type === CanvasNodeType.Config ? metadata?.generationMode || "image" : "";
-    return `${type}:${mode}`;
-}
-
 function cloneValue<T>(value: T): T {
     if (value === null || typeof value !== "object") return value;
     if (typeof structuredClone === "function") return structuredClone(value);
@@ -56,11 +51,11 @@ function snapshotNodeSettings(metadata: CanvasNodeMetadata | undefined): CanvasN
 
 export function rememberNodeSettings(type: CanvasNodeTypeId, metadata: CanvasNodeMetadata | undefined) {
     const snapshot = snapshotNodeSettings(metadata);
-    if (Object.keys(snapshot).length) memory.set(settingsKey(type, metadata), snapshot);
+    if (Object.keys(snapshot).length) memory.set(type, snapshot);
 }
 
-export function recallNodeSettings(type: CanvasNodeTypeId, metadata?: CanvasNodeMetadata): CanvasNodeMetadata | undefined {
-    const settings = memory.get(settingsKey(type, metadata));
+export function recallNodeSettings(type: CanvasNodeTypeId): CanvasNodeMetadata | undefined {
+    const settings = memory.get(type);
     if (!settings) return undefined;
     return cloneValue(settings);
 }

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ChevronRight, Download, Eye, FileText, Image as ImageIcon, LayoutGrid, ListChecks, Music2, Rows3, Search, Settings2, Square, Type, Video } from "lucide-react";
+import { ChevronRight, Download, Eye, FileText, Image as ImageIcon, LayoutGrid, ListChecks, Music2, Rows3, Search, Square, Type, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { CheckMark, PanelHeaderRow } from "@/components/canvas/canvas-side-panel-parts";
@@ -31,7 +31,6 @@ const NODE_TYPE_ICON: Record<string, typeof Square> = {
     [CanvasNodeType.Video]: Video,
     [CanvasNodeType.Audio]: Music2,
     [CanvasNodeType.Text]: Type,
-    [CanvasNodeType.Config]: Settings2,
     [CanvasNodeType.Group]: Square,
 };
 
@@ -42,7 +41,7 @@ const STATUS_COLOR: Record<string, string> = {
     idle: "transparent",
 };
 
-const NODE_FILTER_VALUES = ["all", CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Text, CanvasNodeType.Audio, CanvasNodeType.Config, CanvasNodeType.Group];
+const NODE_FILTER_VALUES = ["all", CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Text, CanvasNodeType.Audio, CanvasNodeType.Group];
 
 function nodePreviewText(node: CanvasNodeData) {
     // The words the node holds. Its prompt is what it was asked, which is not a preview of anything (#230).

@@ -138,15 +138,17 @@ export function getConnectionTargetAnchor(node: CanvasNodeData, current: Connect
     };
 }
 
-export function normalizeConnection(firstNodeId: string, secondNodeId: string, nodes: CanvasNodeData[], firstHandleType: "source" | "target") {
+/**
+ * Which way a connection runs, and whether the pair may be connected at all.
+ *
+ * It runs from the node the gesture started at — the two ids are stated in the order the gesture stated
+ * them. A group is a container rather than a source, so nothing may be wired *into* one.
+ */
+export function normalizeConnection(firstNodeId: string, secondNodeId: string, nodes: CanvasNodeData[]) {
     const first = nodes.find((node) => node.id === firstNodeId);
     const second = nodes.find((node) => node.id === secondNodeId);
     if (!first || !second || first.id === second.id) return null;
     if (second.type === CanvasNodeType.Group) return null;
-    if (first.type === CanvasNodeType.Config && second.type === CanvasNodeType.Config) return null;
-    if (second.type === CanvasNodeType.Config) return { fromNodeId: first.id, toNodeId: second.id };
-    if (first.type === CanvasNodeType.Config && firstHandleType === "target") return { fromNodeId: second.id, toNodeId: first.id };
-    if (first.type === CanvasNodeType.Config) return { fromNodeId: first.id, toNodeId: second.id };
     return { fromNodeId: first.id, toNodeId: second.id };
 }
 

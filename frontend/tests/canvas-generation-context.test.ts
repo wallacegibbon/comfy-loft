@@ -156,33 +156,4 @@ describe("a wire that carries nothing", () => {
 
         expect(inputsHoldingNothing("i1", nodes, [connect("g1", "i1")]).map((input) => input.node.id)).toEqual(["g1"]);
     });
-
-    it("does not report a config node: it is a selector, not a source", () => {
-        const nodes = [node("c1", CanvasNodeType.Config, {}, 200), image("i1")];
-
-        expect(inputsHoldingNothing("i1", nodes, [connect("c1", "i1")])).toEqual([]);
-    });
-});
-
-/**
- * The config node is a hub, and the run reads through it.
- *
- * A node wired to a config node takes its inputs from the config's other wires, so a wire to an empty node
- * one hop away is still a wire to nothing. The refusal has to follow the same road the request does, or it
- * refuses for the wires it can see and quietly runs on the ones it cannot.
- */
-describe("a wire through a config hub", () => {
-    it("names an empty node that reaches the run through the config node", () => {
-        const nodes = [node("t1", CanvasNodeType.Text, { prompt: "words with no card" }), node("c1", CanvasNodeType.Config, {}, 200), image("i1")];
-
-        const missing = inputsHoldingNothing("i1", nodes, [connect("t1", "c1"), connect("i1", "c1")]);
-
-        expect(missing.map((input) => input.node.id)).toEqual(["t1"]);
-    });
-
-    it("says nothing when the config hub's inputs hold what they promised", () => {
-        const nodes = [text("t1", "a red ceramic teapot"), node("c1", CanvasNodeType.Config, {}, 200), image("i1")];
-
-        expect(inputsHoldingNothing("i1", nodes, [connect("t1", "c1"), connect("i1", "c1")])).toEqual([]);
-    });
 });

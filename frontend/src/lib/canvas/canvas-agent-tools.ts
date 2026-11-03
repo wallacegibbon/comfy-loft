@@ -41,7 +41,7 @@ type ToolAnswer = { content: ToolContent[]; isError?: boolean };
 const textBlock = (text: string): ToolContent => ({ type: "text", text });
 
 /** The node types a tool may make. A group is structure, not content. */
-const CREATE_TYPES: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text, CanvasNodeType.Config];
+const CREATE_TYPES: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text];
 
 export async function runTool(name: string, args: unknown, hands: CanvasHands, session: string): Promise<ToolAnswer> {
     switch (name) {
@@ -234,8 +234,8 @@ async function pressGenerate(hands: CanvasHands, args: unknown, session: string)
     const node = namedNode(hands, args);
     if (!node) return noSuchNode(args);
 
-    // A content node generates what it is; a config node generates the kind its composer is set to.
-    const mode: string = node.type === CanvasNodeType.Config ? node.metadata?.generationMode || "image" : node.type;
+    // A node generates what it is.
+    const mode: string = node.type;
     if (!GENERATE_MODES.includes(mode)) return { content: [textBlock(`a ${node.type} node has nothing to generate`)], isError: true };
 
     // Ask the question the page is about to ask, before pressing. A wire into a node that holds nothing

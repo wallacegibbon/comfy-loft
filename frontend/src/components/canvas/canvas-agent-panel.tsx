@@ -39,7 +39,6 @@ const NODE_LABEL: Record<string, string> = {
     [CanvasNodeType.Video]: "video",
     [CanvasNodeType.Audio]: "audio",
     [CanvasNodeType.Text]: "text",
-    [CanvasNodeType.Config]: "config",
 };
 
 /** How a call that ended reads: green when it worked, red when it did not. */

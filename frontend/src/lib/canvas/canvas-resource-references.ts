@@ -52,8 +52,6 @@ export async function resolveCanvasReferenceImages(references: CanvasResourceRef
 }
 
 function getMentionResourceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
-    const configInputs = expandGroupResourceNodes(getConnectedConfigInputNodes(nodeId, nodes, connections), nodes);
-    if (configInputs.length) return configInputs;
     const ownInputs = expandGroupResourceNodes(getContextInputNodes(nodeId, nodes, connections), nodes);
     if (ownInputs.length) return ownInputs;
     const node = nodes.find((item) => item.id === nodeId);
@@ -61,30 +59,19 @@ function getMentionResourceNodes(nodeId: string, nodes: CanvasNodeData[], connec
 }
 
 export function getGenerationResourceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
-    const configInputs = getConnectedConfigInputNodes(nodeId, nodes, connections);
-    if (configInputs.length) return configInputs;
-    const ownInputs = getContextInputNodes(nodeId, nodes, connections);
-    if (ownInputs.length) return ownInputs;
-    return [];
+    return getContextInputNodes(nodeId, nodes, connections);
 }
 
 /**
  * The nodes a run on `nodeId` would read, including the ones that hold nothing.
  *
  * `getGenerationResourceNodes` answers "which nodes are inputs" and leaves out a node that holds nothing,
- * because there is nothing to read from it. This asks the same question with that filter removed — same
- * config hub, same wires — so a run wired to an empty node can be refused by its name instead of quietly
- * running without it (#230).
+ * because there is nothing to read from it. This asks the same question with that filter removed, so a run
+ * wired to an empty node can be refused by its name instead of quietly running without it (#230).
  */
 export function generationInputCandidates(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): CanvasNodeData[] {
-    const hub = configHubOf(nodeId, nodes, connections);
-    const candidates = (hub ? incomingNodes(hub, nodes, connections) : incomingNodes(nodeId, nodes, connections)).filter((node) => node.id !== nodeId);
+    const candidates = incomingNodes(nodeId, nodes, connections).filter((node) => node.id !== nodeId);
     return [...new Map(candidates.map((node) => [node.id, node])).values()];
-}
-
-/** The config node this node is wired into, if any: its inputs are this node's inputs. */
-function configHubOf(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): string | undefined {
-    return connections.find((connection) => connection.fromNodeId === nodeId && nodes.find((node) => node.id === connection.toNodeId)?.type === CanvasNodeType.Config)?.toNodeId;
 }
 
 function incomingNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
@@ -96,11 +83,6 @@ function incomingNodes(nodeId: string, nodes: CanvasNodeData[], connections: Can
 
 function getContextInputNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
     return incomingNodes(nodeId, nodes, connections).filter((node) => isCanvasReferenceNode(node, nodes));
-}
-
-function getConnectedConfigInputNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
-    const hub = configHubOf(nodeId, nodes, connections);
-    return hub ? getContextInputNodes(hub, nodes, connections).filter((node) => node.id !== nodeId) : [];
 }
 
 function hasGroupResources(node: CanvasNodeData, nodes: CanvasNodeData[]) {
@@ -146,10 +128,10 @@ function labelResourceNodes(nodes: CanvasNodeData[], active: boolean) {
 
 function labelForKind(kind: CanvasResourceKind, index: number) {
     if (kind === "image") return imageReferenceLabel(index);
-    if (kind === "video") return i18n.t("canvas.configNode.videoReferences") + ` ${index + 1}`;
-    if (kind === "audio") return i18n.t("canvas.configNode.audioReferences") + ` ${index + 1}`;
+    if (kind === "video") return i18n.t("canvas.references.videoLabel", { index: index + 1 });
+    if (kind === "audio") return i18n.t("canvas.references.audioLabel", { index: index + 1 });
     if (kind === "lora") return `LoRA ${index + 1}`;
-    return i18n.t("canvas.composer.resources.text", { index: index + 1 });
+    return i18n.t("canvas.references.textLabel", { index: index + 1 });
 }
 
 function isResourceNode(node: CanvasNodeData) {

@@ -140,8 +140,8 @@ describe("generate: the words that were asked", () => {
 });
 
 describe("create_node: what this canvas can make", () => {
-    test("makes the five content types", async () => {
-        for (const type of ["image", "video", "audio", "text", "config"]) {
+    test("makes the four content types", async () => {
+        for (const type of ["image", "video", "audio", "text"]) {
             const { hands, written } = handsFor([]);
             const answer = await runTool("create_node", { type }, hands, "canvas:test");
             expect(answer.isError).not.toBe(true);
@@ -156,7 +156,7 @@ describe("create_node: what this canvas can make", () => {
             const { hands, written } = handsFor([]);
             const answer = await runTool("create_node", { type }, hands, "canvas:test");
             expect(answer.isError).toBe(true);
-            expect((answer.content[0] as { text: string }).text).toContain("this canvas makes image, video, audio, text, config");
+            expect((answer.content[0] as { text: string }).text).toContain("this canvas makes image, video, audio, text");
             expect(written.created).toEqual([]);
         }
     });

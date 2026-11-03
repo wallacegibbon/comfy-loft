@@ -46,7 +46,6 @@ type CanvasNodePromptPanelProps = {
     onOpenMaskEditor?: (nodeId: string) => void;
     onOpenOutpaintEditor?: (nodeId: string) => void;
     onOpenMossLayoutEditor?: (nodeId: string) => void;
-    modeOverride?: CanvasNodeGenerationMode; // Plugin nodes set their generation type through useBuiltinPanel.mode.
 };
 
 export function CanvasNodePromptPanel({
@@ -64,13 +63,12 @@ export function CanvasNodePromptPanel({
     onOpenMaskEditor,
     onOpenOutpaintEditor,
     onOpenMossLayoutEditor,
-    modeOverride,
 }: CanvasNodePromptPanelProps) {
     const { t } = useTranslation();
     const globalConfig = useEffectiveConfig();
     const openPreferences = useConfigStore((state) => state.openPreferences);
     const theme = useCanvasTheme();
-    const mode = modeOverride ?? defaultMode(node.type);
+    const mode = defaultMode(node.type);
     const config = buildNodeConfig(globalConfig, node, mode);
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);

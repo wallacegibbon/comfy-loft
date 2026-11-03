@@ -27,7 +27,6 @@ export type CanvasAgentWindow = {
 export enum CanvasNodeType {
     Image = "image",
     Text = "text",
-    Config = "config",
     Video = "video",
     Audio = "audio",
     Group = "group",
@@ -75,7 +74,6 @@ export type CanvasNodeMetadata = {
     status?: CanvasNodeStatus;
     errorDetails?: string;
     fontSize?: number;
-    generationMode?: CanvasGenerationMode;
     generationType?: CanvasImageGenerationType;
     model?: string;
     /**

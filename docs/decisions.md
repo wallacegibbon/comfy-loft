@@ -8175,11 +8175,9 @@ What follows from that:
   the agent's `generate` before it presses. A person reads a toast in their own language; the agent reads a
   sentence through #225's refusal channel, which already says "there is nothing to wait for, and why". The
   refusal tells empty, still being made and last run failed apart, because what to do about them is
-  different. It follows the same road the request does — a node wired into a config node takes its inputs
-  from that config's other wires (`generationInputCandidates`) — so a wire to an empty node one hop away is
-  still refused. The tool asks as well because a text node's press reports nothing back: it streams, so
-  there is no run id to report, and without the pre-check the agent would be told an answer was on its way
-  when nothing had started.
+  different. The tool asks as well because a text node's press reports nothing back: it streams, so there is
+  no run id to report, and without the pre-check the agent would be told an answer was on its way when
+  nothing had started. (#231 then took away the one type that made this rule need a hub walk.)
 - `applyPromptResult` (the panel's optimize path) writes the prompt and nothing else. It was the last place
   the pre-#229 model survived: one sentence written into `content`, `prompt` and `composerContent` at once.
 - `generateImageFromTextNode` reads `nodeContentOf` and no longer stamps the same words on the text node's
@@ -8239,8 +8237,8 @@ a different decision from refusing a first press — one to make on purpose, not
 
 **Tested** `npx vitest run` (265: 13 new — a wire from an unwritten card carries nothing, a picture carries
 itself and not its words, a wired node that holds nothing is named with its state, a group is read by what is
-inside it, a config node is never a source, a wire through a config hub is followed, `generate` refuses
-before pressing for both a picture and a text node, and a tool name the page does not know). `npm run check`
+inside it, `generate` refuses before pressing for both a picture and a text node, and a tool name the page
+does not know). `npm run check`
 (i18n 849/835, no dead keys; exports: no export without a caller). `npm run build`. `make check`, whose
 system-prompt assertion now also requires the wire rule. Not exercised in a browser: the toast wording, the
 refusal naming a node the user is looking at, and whether the strict card reads well on a canvas written
@@ -8252,3 +8250,76 @@ before this.
 `frontend/src/components/canvas/{nodes/builtin-nodes.tsx,canvas-side-panel-elements.tsx,canvas-node-reference-bar.tsx,canvas-node-prompt-panel.tsx,canvas-agent-panel.tsx}`,
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts`, `internal/server/{agent_instructions.go,mcp_test.go}`,
 `frontend/tests/{canvas-generation-context,canvas-agent-tools}.test.ts`.
+
+## 231. The config node is gone, and the panel framework that only it used
+
+**Decision** `config` is no longer a node type. What went with it: its definition and default size, its
+`CanvasConfigComposer` ("组装提示词") and `CanvasConfigNodePanel`, the `generationMode` field and the
+generation branches that read it, the connection rules that existed only to point a wire at one or draw a
+wire from one, `findRetrySourceNode` (a walk upstream that looked for one), the `hasSourceHandle` flag (false
+only there), `renderNodeContent` (the renderer hook only it used), `useBuiltinPanel` and its `writeBackToSelf`
+branch (a node borrowing the built-in panel to generate), the text node's "用文本生图" toolbar button (it built
+one), `kit/media.tsx` (whose only caller was the composer's image preview), four i18n namespaces
+(`canvas.composer`, `canvas.configNode`, `canvas.createMenu.config*`, `canvas.nodeTypes.config`,
+`canvas.sidePanel.filter.config`) and the `sentPrompt` plumbing that only its panel read.
+
+With no type that could generate into a *new* node, the four run functions stop asking. **Generating writes
+in place** — which is what #77 decided and what the image run already did: the `isImageNode` / `reuseTextNode`
+/ `reuseVideoNode` / `reuseAudioNode` branches, the nodes they spawned, the connections they added and
+`pendingChildIds` (always `[nodeId]` now) are all gone.
+
+**Why** The config node was a card whose only job was to hold a prompt and make nodes. After #229 and #230
+every node holds its prompt: the box is the question, the card is the answer, and `composerContent` is what
+you type when the card is not to be thrown away. What it alone could do:
+
+- *Keep the old result and make another* — duplicating the node does this, and the copy carries the prompt,
+  the model and the size with it.
+- *`@` to choose which wired references go into the request* — the one thing with no replacement, and the one
+  thing nobody used. It was also a trap: pressing generate after typing a prompt without any `@` silently
+  dropped every wired picture, text and video (LoRAs excepted) while the panel still said 参考图 N 张.
+
+Against that, it forced four special cases on everything else: a type branch in `promptFieldOf`, the only
+node with no source handle, the only type that generated into a new node, and a hub rule — *a node wired
+into a config node takes that config's other wires as its inputs* — that no decision ever explained, and
+which #230's refusal then had to mirror so the check saw the same wires the request did.
+
+It was also hard to find: the 新建 menu never offered it. Two gestures made one (drag a wire out to empty
+canvas, or the text node's toolbar button), and the double-click menu listed it under a name — 生成配置 —
+that nothing else used.
+
+**What this changes for a person** Generating replaces the node's content, always. A variant is a duplicate
+node or a second node fed by a wire. The text node's toolbar loses "用文本生图": wire the text node into an
+image node instead — the same gesture the agent's instructions describe, and the one the panel already
+supports.
+
+**What this changes for the agent** `create_node` makes four types (`image`, `video`, `audio`, `text`).
+`generate` no longer reads a `generationMode`. Nothing else: the tools it had for the config node were the
+tools it has for any node.
+
+**What this does not do** No migration. A canvas written before this that holds a config node renders it as
+an unknown node (`canvas.node.missingNode`), which is what `CanvasNodeTypeId` was made open for: a saved
+canvas is data, and a type this build does not have is a missing node rather than a refused file. Deleting
+that card is the user's call, and nothing else in their canvas changes.
+
+Also left alone, on purpose: `interactionToggle`, `forceInteractive`, `transparentBackground`,
+`showInCreateMenu` and `hidePanel` in the node definition — the plugin framework #148 left behind. The config
+node used none of them, so they are unrelated debt, and removing them touches how a node takes pointer
+events. A separate decision, not this one.
+
+**Tested** `make check`; `npx vitest run` (261 — the two config-node tests and the hub test are gone, the
+rest unchanged); `npm run check` (i18n 824/810, no dead keys, and the stale `canvas.composer.resources`
+exemption removed from the checker; exports: `buildNodeGenerationInputs`, `NodeGenerationInput`,
+`getInputSummary` and `kit/media`'s `Image` lost their last caller and are no longer exported or no longer
+exist); `npm run build` (the bundle lost ~24 kB). Not exercised in a browser: this one changes the generation
+path for all four modes, so the first thing to try is a picture, a video, an audio clip and a text answer
+each generated twice in place, plus opening a canvas written before it.
+
+**Where** `frontend/src/types/{canvas,canvas-node}.ts`, `frontend/src/constant/canvas.ts`,
+`frontend/src/components/canvas/{canvas-node,canvas-create-menus,canvas-node-hover-toolbar,canvas-side-panel-elements,canvas-agent-panel,canvas-node-generation}.tsx`,
+`frontend/src/components/canvas/nodes/builtin-nodes.tsx`,
+`frontend/src/lib/canvas/{canvas-resource-references,canvas-node-geometry,canvas-generation-helpers,node-prompt-field,node-settings-memory,canvas-agent-tools}.ts`,
+`frontend/src/pages/canvas/project.tsx`, `frontend/src/pages/canvas/hooks/use-generation-runs.ts`,
+`frontend/src/i18n/locales/{en-US,zh-CN}.ts`, `frontend/scripts/check-i18n.cjs`,
+`internal/server/{routes_mcp.go,mcp_test.go}`, `frontend/tests/{canvas-generation-context,canvas-agent-tools,node-prompt-field}.test.ts`.
+Deleted: `frontend/src/components/canvas/canvas-config-composer.tsx`,
+`frontend/src/components/canvas/canvas-config-node-panel.tsx`, `frontend/src/components/kit/media.tsx`.
