@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import { ChevronRight, Download, Group, Image as ImageIcon, Music2, Puzzle, Star, Video } from "lucide-react";
+import { ChevronRight, Download, Group, Image as ImageIcon, Music2, Play, Puzzle, Star, Video } from "lucide-react";
 
 import { type CanvasTheme } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
@@ -712,8 +712,23 @@ function EmptyImageContent({ theme }: NodeContentRendererProps) {
     );
 }
 
+/**
+ * A clip on the canvas: a still frame until someone asks for it to play.
+ *
+ * A native `<video controls>` starts playing when its own surface is clicked, and here that surface is most
+ * of the node — so selecting a clip, or opening its composer, also started it. Playback is now a decision:
+ * the element carries no controls and takes no pointer events until it is playing, and the only way in is the
+ * button over the frame. While it plays the native controls are back, so seeking and volume are the ones the
+ * browser already implements.
+ *
+ * The state comes from the element's own events rather than from the click, so a play started from anywhere —
+ * the button, the multi-selection's sync-play, the native controls — leaves the node in the same shape
+ * (docs/decisions.md #277).
+ */
 function VideoNodeContent({ node, theme, onVideoDimensions }: NodeContentRendererProps) {
     const { t } = useTranslation();
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const [playing, setPlaying] = useState(false);
     if (!node.metadata?.content)
         return (
             <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.placeholder }}>
@@ -722,19 +737,46 @@ function VideoNodeContent({ node, theme, onVideoDimensions }: NodeContentRendere
             </div>
         );
     return (
-        <video
-            src={node.metadata.content}
-            controls
-            draggable={false}
-            onDragStart={(event) => event.preventDefault()}
-            onLoadedMetadata={(event) => {
-                const video = event.currentTarget;
-                if (video.videoWidth && video.videoHeight) onVideoDimensions?.(node.id, video.videoWidth, video.videoHeight);
-            }}
-            className="h-full w-full rounded-[18px] bg-black object-contain"
-            data-canvas-video={node.id}
-            data-canvas-no-zoom
-        />
+        <div className="relative h-full w-full">
+            <video
+                ref={videoRef}
+                src={node.metadata.content}
+                controls={playing}
+                draggable={false}
+                onDragStart={(event) => event.preventDefault()}
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onEnded={() => setPlaying(false)}
+                onLoadedMetadata={(event) => {
+                    const video = event.currentTarget;
+                    if (video.videoWidth && video.videoHeight) onVideoDimensions?.(node.id, video.videoWidth, video.videoHeight);
+                }}
+                className={`h-full w-full rounded-[18px] bg-black object-contain ${playing ? "" : "pointer-events-none"}`}
+                data-canvas-video={node.id}
+                data-canvas-no-zoom
+            />
+            {playing ? null : (
+                // The frame itself stays transparent to the pointer, so a click anywhere but the button is a
+                // click on the node. `play()` resumes where a pause left off and starts a finished clip over,
+                // which is what the element already does — no seek of our own to get wrong.
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+                    <button
+                        type="button"
+                        aria-label={t("canvas.node.play")}
+                        title={t("canvas.node.play")}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            void videoRef.current?.play().catch(() => undefined);
+                        }}
+                        className="pointer-events-auto flex size-12 items-center justify-center rounded-full border border-white/25 bg-black/55 text-white shadow-lg backdrop-blur-sm transition hover:scale-105 hover:bg-black/70"
+                    >
+                        <Play className="size-5 translate-x-[1px] fill-current" />
+                    </button>
+                </div>
+            )}
+        </div>
     );
 }
 

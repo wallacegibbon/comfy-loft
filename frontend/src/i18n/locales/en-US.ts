@@ -443,6 +443,7 @@ export default {
             editText: "Double-click to edit text",
             emptyImage: "Empty image node",
             emptyVideo: "Empty video node",
+            play: "Play video",
             emptyAudio: "Empty audio node",
             audio: "Audio",
             textBatchExpanded: "Text alternatives expanded",

@@ -487,6 +487,7 @@ export default {
             editText: "双击编辑文字",
             emptyImage: "空图片节点",
             emptyVideo: "空视频节点",
+            play: "播放视频",
             emptyAudio: "空音频节点",
             audio: "音频",
             textBatchExpanded: "备选文本已展开",

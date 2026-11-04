@@ -10324,3 +10324,41 @@ failing, now 8/8 passing), `go test -count=3 ./internal/server/` (green), `go te
 (deadcode 506).
 
 **Where** `internal/server/e2e_test.go`.
+
+## 277. A click on a clip is a click on the node
+
+**Decision** `VideoNodeContent` renders the clip without native controls and without pointer events until it is
+playing. The only way in is a play button over the still frame (`canvas.node.play`); starting playback attaches
+`controls`, so seeking, volume and fullscreen stay the browser's own. The node's state comes from the element's
+`play` / `pause` / `ended` events rather than from the button, so playback started anywhere — the button, the
+multi-selection's "Play together", the native controls — leaves the node in the same shape.
+
+**Why** `<video controls>` plays when its own surface is clicked, and on a canvas that surface is most of the
+node. Measured in the browser before the change: a click on the frame took the clip from `t=0` to playing, while
+the same click also selected the node and opened its composer. One gesture, two meanings, and the louder one won
+— selecting a clip, or opening the composer to rewrite its prompt, started it. The element now carries
+`pointer-events-none` while it is not playing, which puts the node back in the pointer's way: the click selects
+and opens, exactly as it does on an image.
+
+**Why not `preventDefault` on the element's click** It was tried and it works — a `click` listener calling
+`preventDefault` kept the clip at `t=0` (verified in the page). It was rejected because it leaves the video as
+the click target: the frame would still swallow the right-click that opens the node's menu, the wheel would still
+be guarded, and the result would rest on a user-agent default action we measured once, with the risk that the
+same default is what makes the controls' own play button work. Taking the element out of the pointer's way has
+none of that: what happens next is the same DOM arithmetic as every other node.
+
+**Cost** Playback needs one deliberate click where a click used to be enough. A canvas full of paused clips shows
+one play button each, over the frame. Wheel over a *paused* clip now zooms the canvas, because the target is the
+node and `data-canvas-no-zoom` no longer matches — the same as an image, and the guard still holds while the
+clip plays and its controls are live. The controls are the browser's, so they fade when the pointer leaves; a
+pause needs a hover first.
+
+**Tested** In the browser on an isolated copy (`/tmp/verify`, port 8191) of a real canvas: clicking the frame of
+a paused clip leaves `paused=true, controls=false, currentTime=0` and selects the node (`z-50`) with its composer
+open; the play button takes it to `paused=false, controls=true` and the button disappears; `pause()` and reaching
+the end both bring the still frame and the button back; shift-click plus "Play together" plays both clips muted
+from 0 as before; a wheel over a paused clip moves the canvas zoom 100% → 112%. Photographed at both states.
+`npx tsc --noEmit`, `npm run check` (887/854 keys, 189 modules), `npx vitest run` (391), `npm run build`
+(574.92 kB), `go test ./...`, `make check` (deadcode 506).
+
+**Where** `frontend/src/components/canvas/canvas-node.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
