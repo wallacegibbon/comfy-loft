@@ -268,7 +268,15 @@ describe("read_prompt: the question behind a node", () => {
         const { hands } = handsFor([node("image", { content: "data:image/png;base64,AAAA", prompt: "a brass compass" })]);
         const { text } = await textOf(hands, "read_prompt", { nodeId: "image-1" });
 
+        // Exactly the prompt: a node that was never given a model has nothing to say about what will run.
         expect(text).toBe("a brass compass");
+    });
+
+    test("says what the node is set to run, which the words alone cannot", async () => {
+        const { hands } = handsFor([node("video", { prompt: "一只猫在雪地里跑", model: "default::video-h3-frames", seconds: "4" })]);
+        const { text } = await textOf(hands, "read_prompt", { nodeId: "video-1" });
+
+        expect(text).toBe("一只猫在雪地里跑\nvideo-1 is set to run video-h3-frames, 4 s.");
     });
 
     test("refuses a node the canvas does not hold", async () => {

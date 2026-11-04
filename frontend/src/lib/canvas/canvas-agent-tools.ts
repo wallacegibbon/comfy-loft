@@ -5,7 +5,7 @@ import { imageToDataUrl } from "@/services/image-storage";
 import type { ToolContent } from "@/services/api/agent";
 import { generateAnswer, GENERATE_START_WAIT_MS, type GenerateOptions, type GenerateStart } from "@/lib/canvas/agent-generate";
 import { describeCanvas } from "@/lib/canvas/canvas-agent-view";
-import { generationClause } from "@/lib/canvas/node-generation-facts";
+import { configuredClause, generationClause } from "@/lib/canvas/node-generation-facts";
 import { nodeContentOf, nodeOtherTextsOf, nodePromptOf } from "@/lib/canvas/node-prompt-field";
 import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type Position } from "@/types/canvas";
 
@@ -326,18 +326,25 @@ async function readNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> 
  *
  * A text node is where the two are easiest to confuse, so its answer says which is which: the card is
  * what it says, this is what it will be asked next.
+ *
+ * The second sentence is what a rewrite needs before it can be a rewrite: which workflow the words will
+ * be handed to, and how long the video is (#257). The wording is not the agent's to choose — H3's skill
+ * picks a different section order for every input mode — and no other tool states it, so an agent asked
+ * to write a prompt for a node it did not create would have had to ask, or guess.
  */
 function readPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
     if (!node) return noSuchNode(args);
 
     const words = nodePromptOf(node);
+    const configured = configuredClause(node.metadata);
+    const setting = configured ? `\n${node.id} is ${configured}.` : "";
     if (!words.trim()) {
         const has = nodeContentOf(node) ? " — what it says is its content, which read_node answers with" : "";
         return { content: [textBlock(`${node.id} (${node.type}) has no prompt: nothing has been asked of it yet${has}`)], isError: false };
     }
     const note = node.type === CanvasNodeType.Text ? ` — the question it will answer next; what it says now is its content, which read_node answers with` : "";
-    return { content: [textBlock(words + note)], isError: false };
+    return { content: [textBlock(words + note + setting)], isError: false };
 }
 
 /**

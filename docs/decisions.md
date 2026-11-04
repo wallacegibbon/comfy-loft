@@ -9483,3 +9483,77 @@ written as `input_modalities: ["text","image"]`, then `[]`, then removed, each a
 `frontend/src/services/api/agent.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
 `frontend/scripts/check-i18n.cjs` (the `config.preferences.modality` namespace), `frontend/tests/agent-models.test.ts`,
 `docs/server.md`.
+
+## 257. The prompt panel has no ✨: rewriting a prompt is the agent's job
+
+**Decision** The two sparkle buttons are gone — 优化提示词/H3 优化 on video nodes and 优化提示词 on image
+nodes — with everything only they used: `promptOptimize*` on `CanvasNodeMetadata`, `lib/canvas/prompt-optimize-jobs.ts`,
+the `PromptOptimizeMode` type, the eleven dictionary keys they carried (`optimize*`, `originalPrompt*`), the
+`promptOptimizeLanguage` setting, and `OriginalPromptDisclosure`. The text node's 反推 stays, because it is a
+different job (a picture in, words out) rather than a rewrite of words the user already wrote. `read_prompt` now
+ends its answer with what the node is set to run (`n3 is set to run video-h3-frames, 4 s`), because the workflow
+id and the duration are the two facts a rewrite depends on and no other tool stated them.
+
+**Why** Both buttons had stopped working, and had been dead since 336e331 (2026-11-01): the button asked on
+`node:<id>`'s session, and nothing on a video or image node ever opens one — the panel shows a model picker there,
+not 连接 — so `askAgentSession` rejected before it dialled. Pressing ✨ showed `请求失败` in the preview and nothing
+else. That refactor renamed `askAgentSession` to `askOnceAgentSession` ("ask, and release either way") and left
+`optimizePrompt` assuming a session it never opened; the reverse-prompt button it also touched was safe only because
+a text node's own generation opens that session first. Verified before deleting: a probe test calling
+`askOnceAgentSession("node:never-opened", …)` rejects without constructing a `WebSocket`.
+
+**Why remove rather than repair** Repairing is one line (`await openAgentSession(config, agentName)` before the
+ask), and it was still the wrong one. The H3 button's only real content was a sentence — "把下面这段需求改写成一条
+MiniMax H3 视频生成提示词。任务类型：… ；时长：… 秒。" — that duplicated the skill's own vocabulary
+(`prompts/skills/h3-prompt-writing/SKILL.md` step 1 is "identify the input mode"), inside the canvas, in Chinese,
+with no test. That is exactly the second wording site #76 deleted a whole backend over. The image button had less
+than that: there is no image skill, so it was "rewrite this into a prompt, answer in X" — a sentence a user can say
+to the canvas agent, and it attached no facts at all.
+
+**What the agent gets instead** The task type, the duration and the reference media are all reachable from the
+canvas: `read_prompt` for the words plus what the node will run, `list_nodes` for the connections, `read_node` for
+each reference picture (which answers with the image itself), `set_prompt` to write the rewrite back. What was
+missing was the fact the button derived from the picker, so `read_prompt` gained it — one clause, from
+`configuredClause` in `node-generation-facts.ts`, the module that already words "made with …". It says what the
+*next* run will ask for, which is not what `generationClause` says: change the picker and the two disagree.
+
+**Cost** One click became a conversation, and the agent has to be told which node — the panel it stands in has no
+chat of its own on a video or image node. It may also have to ask for the input mode when the workflow id does not
+settle it (`video-h3-frames` is I2VA, L2VA or FL2VA depending on the frames that are wired); `frameMode` is derived
+by the panel from the references, and the tool reports the id alone rather than guessing. Undo is `git revert`.
+
+**Tested** `npx vitest run` (357: six new — `read_prompt` names the run and stays silent without a picker,
+`configuredClause` for a pick, a bare name, no duration and no model, and `requestPromptChat` dialling a session that
+was never opened). `make check` (20 packages, 504 exports), `npm run check` (863 zh keys, 849 en, 180 modules,
+prettier + tsc), `npm run build` 561.56 kB. The deleted files: `prompt-optimize-jobs.ts` was its only caller, so
+`check-exports` drops from 181 modules to 180 with nothing orphaned.
+
+**Where** `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`,
+`frontend/src/components/canvas/sent-prompt-disclosure.tsx` (a comment only, see #258),
+`frontend/src/lib/canvas/node-generation-facts.ts`, `frontend/src/lib/canvas/canvas-agent-tools.ts`,
+`frontend/src/services/api/prompts.ts`, `frontend/src/stores/use-config-store.ts`, `frontend/src/types/canvas.ts`,
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `frontend/tests/{api-prompts,canvas-agent-tools,node-generation-facts}.test.ts`,
+`docs/server.md` (two paragraphs that still described `internal/prompt` as the home of the H3 instructions).
+
+## 258. The sent-prompt count is characters, and now it is the count it says
+
+**Decision** `SentPromptDisclosure` counts `[...sent].length` — code points — where it counted `sent.length`.
+
+**Why** The label says 字 / chars, and `sent.length` is UTF-16 code units: one emoji, or one of the CJK ideographs
+outside the BMP (𠮷, 𰻞), counts as two. The user asked whether it should be bytes instead, because UTF-8 writes a
+Chinese character in three of them; it should not. Bytes are not a fact about a prompt: nothing in this pipeline
+stops at a byte boundary (the gateway's transcript truncates at 400 *runes*, `internal/agent/spawn.go`), and the
+number would triple as a user switched to Chinese while the text stayed the same length, which is the opposite of
+what the count is for. Code points are the unit the rest of this codebase already uses for text length, and they
+make the word 字 true.
+
+**Cost** Two characters that are one grapheme (a letter plus a combining accent) still count as two. Grapheme
+clusters would need `Intl.Segmenter` for a difference nobody reads this line to see.
+
+**Tested** By reading it: the component renders into JSX and `vitest.config.ts` is `environment: "node"`, so there
+is no DOM to assert against — the same gap the rest of this panel has (no component test exists for it). The
+expression is a one-liner whose behaviour is the language's; `npx vitest run` and `npm run check` cover the module
+loading and the types.
+
+**Where** `frontend/src/components/canvas/sent-prompt-disclosure.tsx`,
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts` (`sentPrompt`).

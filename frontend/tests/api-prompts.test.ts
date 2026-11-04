@@ -107,6 +107,25 @@ describe("requestPromptChat", () => {
         await expect(pending).resolves.toBe("an answer");
     });
 
+    // The panel's buttons are the only way in for a node whose agent was never connected, so the helper
+    // cannot assume one is open: pressing 反推 first has to start the agent (#257).
+    it("opens the session when nothing is open, and asks on the socket it dialled", async () => {
+        const before = FakeSocket.count;
+
+        const pending = requestPromptChat("node:cold", config(), { prompt: "describe a teapot" });
+        await settle();
+        expect(FakeSocket.count).toBe(before + 1);
+        const socket = FakeSocket.last!;
+        socket.emit({ type: "models", models: [{ id: 1, name: "Fake / one" }], active: { id: 1, name: "Fake / one" }, level: 1 });
+        await settle();
+
+        expect(socket.lastSent().prompt).toBe("describe a teapot");
+        socket.emit({ type: "delta", text: "an answer" });
+        socket.emit({ type: "done" });
+
+        await expect(pending).resolves.toBe("an answer");
+    });
+
     it("carries a reference image as the data URL it already is", async () => {
         const socket = await connectedSession("node:two");
 

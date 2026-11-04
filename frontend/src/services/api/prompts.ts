@@ -3,9 +3,6 @@ import { askOnceAgentSession, openAgentSession, type AgentEvent } from "@/servic
 import type { AiConfig } from "@/stores/use-config-store";
 import type { ReferenceImage } from "@/types/image";
 
-/** The H3 task types, as the skill names them. */
-export type PromptOptimizeMode = "全参考模式(Reference to Video)" | "文生视频(T2VA)" | "首帧图生视频(I2VA)" | "首尾帧视频(FL2VA)" | "尾帧图生视频(L2VA)";
-
 /**
  * Ask the agent for words: one prompt in, one answer out, read as it arrives.
  *

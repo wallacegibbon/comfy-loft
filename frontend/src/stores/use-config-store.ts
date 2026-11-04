@@ -53,7 +53,6 @@ export type AiConfig = {
     videoWatermark: string;
     videoMode: string;
     videoSelfLiftMode?: string;
-    promptOptimizeLanguage?: "zh" | "en";
     frameMode?: "first" | "last" | "both";
     imageMode?: string;
     outpaint?: { left: number; top: number; right: number; bottom: number; width: number; height: number };
@@ -103,7 +102,6 @@ export const defaultConfig: AiConfig = {
     // Local workflows are driven by a start frame, not by free text.
     videoMode: "text",
     videoSelfLiftMode: "fast",
-    promptOptimizeLanguage: "zh",
     systemPrompt: "",
     models: [],
     quality: "auto",

@@ -496,7 +496,7 @@ internal/setup           availability scan, model aliases, model path resolution
 internal/task            the run queue: persistence, progress, cancel, multi-output records
 internal/upload          uploaded media: bytes on disk, index, cached ComfyUI reference
 internal/resource        resources.json, install jobs, main-model override
-internal/prompt          H3 prompt rewriting, speaker tags, MOSS layout prompts
+internal/prompt          Qwen's `图片N` renumbering, MOSS layout prompts
 internal/store           workflow visibility, main-model overrides
 internal/sysinfo         ComfyUI's /system_stats, as the panel's units
 internal/server          route table and wiring
@@ -604,13 +604,15 @@ displaying `error.message` verbatim.
 
 Two things stay Chinese on purpose, because they are _data_ rather than messaging:
 
-- **Model-facing prompts** in `internal/prompt` — the H3 writing instructions, the image
-  and caption system prompts, and the user-turn labels are input to a model, not text
-  for a human. Translating them would change generation behaviour.
-- **Chinese-matching regexes and mode names** — patterns that strip Chinese reasoning
-  preambles from model output, infer bindings from Chinese node titles, or renumber
-  `图片N` references. The H3 mode strings (`文生视频(T2VA)` …) are protocol values the
-  frontend sends and are matched, not displayed.
+- **The one instruction a button sends the agent** — the caption button asks, in Chinese, for a
+  description of the reference picture (`canvas-node-prompt-panel.tsx`). It is input to a model,
+  not text for a human, and translating it would change what comes back. Everything else that
+  faces a model is English: the canvas rules the server puts in the system prompt, the run
+  notices, and the tool answers.
+- **Chinese-matching regexes** — patterns that renumber `图片N` / `第N张` references after a
+  Qwen edit reorders them, and the `物体：` / `人物：` / `文字：` prefixes of a MOSS layout
+  caption (`internal/prompt`). They match what a user or a Chinese model writes, so a
+  translation would stop them matching.
 
 ## Testing
 
@@ -621,10 +623,10 @@ make verify-static
 cd frontend && npm run check && npx vitest run     # the canvas
 ```
 
-The suite covers binding application, LoRA injection, prompt sanitising, registry
-loading, the task queue (including cancellation and retention), configuration
-validation, resource catalogue validation against the real `resources.json` and the
-real workflow graphs (#130), and an end-to-end HTTP test that drives real image
+The suite covers binding application, LoRA injection, Qwen's `图片N` renumbering and the
+MOSS layout prompt, registry loading, the task queue (including cancellation and retention),
+configuration validation, resource catalogue validation against the real `resources.json` and
+the real workflow graphs (#130), and an end-to-end HTTP test that drives real image
 generation against an in-process fake ComfyUI.
 
 ## Intentional differences from the Node server
