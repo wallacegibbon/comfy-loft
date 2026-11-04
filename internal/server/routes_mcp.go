@@ -113,7 +113,7 @@ func (s *Server) mcpTools() []mcpTool {
 		InputSchema: noArguments,
 	}, {
 		Name:        "list_nodes",
-		Description: "Every node on the canvas, one line each — id, type, title, position, what made its content and when, then `content:`: the words it holds (a text node's text). What a node will be asked is not here; read one node's prompt with read_prompt. Then every connection between them. The ids are what the other tools act on.",
+		Description: "Every node on the canvas, one line each — id, type, title, position and the size of its card, then the picture's own size when that is not the card's, then what made its content and when, then `content:`: the words it holds (a text node's text). What a node will be asked is not here; read one node's prompt with read_prompt. Then every connection between them. The ids are what the other tools act on.",
 		InputSchema: noArguments,
 	}, {
 		Name:        "create_node",
@@ -241,6 +241,24 @@ func (s *Server) mcpTools() []mcpTool {
 				}
 			},
 			"required": ["nodeId", "position"],
+			"additionalProperties": false
+		}`),
+	}, {
+		Name:        "resize_node",
+		Description: "Set one card's size, the way the end of a corner drag does: its top-left corner stays where it is, so a node you have just placed does not move. A card that frames a picture or a film is that picture's shape, so it has one size to give — state the width, and the height follows; stating both is allowed and checked, and a pair that disagrees is refused with the height that fits. A card holding words, a sound or a group changes in both directions, and a height you leave out is the one it keeps. There is a floor (the same one dragging respects); a call under it is refused with the number. This is layout, not zoom: a card is measured in canvas coordinates, so making one bigger is not making the user see it better — that is focus_node's job, and the user's view is not yours to change.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeId": {"type": "string", "description": "The id list_nodes reported."},
+				"size": {
+					"type": "object",
+					"properties": {"width": {"type": "number"}, "height": {"type": "number"}},
+					"required": ["width"],
+					"additionalProperties": false,
+					"description": "The card's box in canvas pixels, as list_nodes reports it. Height follows the picture's shape on a card that keeps it, and is optional there."
+				}
+			},
+			"required": ["nodeId", "size"],
 			"additionalProperties": false
 		}`),
 	}}

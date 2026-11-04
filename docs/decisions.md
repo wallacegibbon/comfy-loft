@@ -10032,3 +10032,54 @@ registry's English exactly as before.
 **Where** `frontend/src/lib/server-labels.ts`, `frontend/src/components/canvas/canvas-tool-node-panel.tsx`,
 `frontend/src/components/canvas/canvas-node-super-resolve-dialog.tsx`, `frontend/src/i18n/locales/zh-CN.ts`,
 `frontend/scripts/check-i18n.cjs`.
+
+## 270. The agent can see a card's box, and set it
+
+**Decision** Two things the agent was blind to:
+- `list_nodes` now carries the box — `at (1541, 438), 320×240` — and, when a picture's own pixels are not
+  that size, the picture's as well: `(picture 1920×1280)`. Two sizes, because a card is the *shape* of what it
+  holds but not its size, and the second one is left out when the two agree.
+- `resize_node(nodeId, size: {width, height?})` sets the box, and the top-left corner stays where it is — the
+  same corner `move_node` states, so a resize never disturbs a node that was just placed.
+
+A card that frames a picture or a film is that picture's shape (#264), so it has one degree of freedom: the
+width, with the height following. A height stated beside it is *checked*, and a pair that disagrees is refused
+with the height that fits (1 px of tolerance for the caller's own rounding). A card holding words, a sound or a
+group takes both numbers, and one left out keeps the height it has.
+
+Nothing here is new policy re-implemented: the ratio is `nodeRatio`, which was the expression inlined in the
+corner drag; whether a card keeps it is the node definition's `keepsAspectRatio`; the floor is `NODE_MIN_SIZE`,
+which the drag also used as two local numbers. For a locked card the effective minimum width is
+`max(220, ceil(160 × ratio))` — the clamp the drag already applied without ever stating it, now a number the
+agent is told.
+
+**Why** With a box on the list and a size to set, laying out a row is arithmetic the model can do, and the tool
+carries no new policy. #184 recorded "no collision test and no snapping" as the cost of `move_node`; the answer
+was never a collision test, it was the numbers. The alternative — a size argument on `move_node` — merges two
+intents into one call, which is the same reason `set_prompt` and `set_text` are two tools.
+
+**Why a refusal and not a clamp** A clamp answers `isError: false` while doing something other than what was
+asked, and the caller has to read the sentence to discover it. A refusal is a failed call that carries the fix
+(`480 wide is 320 high — state that, or change only the width`), so the second call is the right one.
+
+**Cost** Two things the tool says it cannot do, and both are content requests wearing a size request: a
+picture's card cannot be made square (that is a crop or an outpaint, which the user has and the agent does not),
+and a film's card cannot be freed from its film's shape (nothing can, since #264). A resize also moves the
+node's centre, so its group membership can be stale afterwards without the box being wrong — the drag has the
+same gap, and closing it in one path only would make the tool and the gesture disagree about what a resize
+leaves behind.
+
+**Tested** `make check` (deadcode 505), `go test ./...`,
+`TestMCPHandshakeIsEnoughToDiscoverTheTools` (thirteen names, in order), `npx tsc --noEmit`,
+`npm run check` (886/853, 183 modules), `npx vitest run` (386 — six new: the width-only resize on a 3:2 card,
+the refused contradictory pair, a text card taking both numbers and keeping its height when given one, the
+floor refused and named from both sides, a call with no size, and an id the canvas does not hold), `npm run
+build` (572.72 kB). The tool tests register the real node definitions, so `keepsAspectRatio` is the real rule
+rather than a stub. Not checked in a browser: the page on `:8190` is a build that does not advertise these
+tools, and what changed is a tool's decision plus one line of `list_nodes`.
+
+**Where** `internal/server/routes_mcp.go`, `internal/server/mcp_test.go`,
+`frontend/src/lib/canvas/{canvas-agent-tools,canvas-agent-view,canvas-node-size}.ts`,
+`frontend/src/components/canvas/canvas-node.tsx`, `frontend/src/pages/canvas/project.tsx`,
+`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
+`frontend/tests/{canvas-agent-tools,canvas-agent-view}.test.ts`.

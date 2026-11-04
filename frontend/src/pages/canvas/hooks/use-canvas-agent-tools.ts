@@ -26,6 +26,7 @@ export function useCanvasAgentTools({
     deleteNodes,
     focusNode,
     moveNode,
+    resizeNode,
 }: {
     nodesRef: RefObject<CanvasNodeData[]>;
     connectionsRef: RefObject<CanvasConnection[]>;
@@ -37,6 +38,7 @@ export function useCanvasAgentTools({
     deleteNodes: CanvasHands["deleteNodes"];
     focusNode: CanvasHands["focusNode"];
     moveNode: CanvasHands["moveNode"];
+    resizeNode: CanvasHands["resizeNode"];
 }) {
     // The refs and callbacks outlive a render, and a tool call can arrive between two of them.
     const hands = useRef<CanvasHands>({
@@ -50,6 +52,7 @@ export function useCanvasAgentTools({
         deleteNodes,
         focusNode,
         moveNode,
+        resizeNode,
     });
     hands.current = {
         nodes: () => nodesRef.current || [],
@@ -62,6 +65,7 @@ export function useCanvasAgentTools({
         deleteNodes,
         focusNode,
         moveNode,
+        resizeNode,
     };
 
     useEffect(

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { runTool, type CanvasHands } from "../src/lib/canvas/canvas-agent-tools";
+import { registerBuiltinNodes } from "../src/components/canvas/nodes/builtin-nodes";
 import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
 
 /**
@@ -12,13 +13,23 @@ import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "../sr
  * content is the answer it gave, so `set_prompt` must never be mistaken for "change the text" (#229).
  */
 
+// The node types' own definitions, which is where "a card that frames a picture keeps its shape" lives
+// (docs/decisions.md #264): `resize_node` asks them rather than switching on the type itself.
+registerBuiltinNodes();
+
 function node(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData {
     return { id: `${type}-1`, type, title: `${type}-1`, position: { x: 0, y: 0 }, width: 320, height: 240, metadata };
 }
 
 /** The page's hands, with every write recorded instead of performed. */
 function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = []) {
-    const written = { prompts: [] as Array<[string, string]>, texts: [] as Array<[string, string]>, generated: [] as Array<[string, string]>, created: [] as string[] };
+    const written = {
+        prompts: [] as Array<[string, string]>,
+        texts: [] as Array<[string, string]>,
+        generated: [] as Array<[string, string]>,
+        created: [] as string[],
+        resized: [] as Array<[string, number, number]>,
+    };
     const hands: CanvasHands = {
         nodes: () => nodes,
         connections: () => connections,
@@ -36,6 +47,7 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [])
         deleteNodes: () => {},
         focusNode: () => {},
         moveNode: () => {},
+        resizeNode: (nodeId, width, height) => void written.resized.push([nodeId, width, height]),
     };
     return { hands, written };
 }
@@ -284,5 +296,69 @@ describe("read_prompt: the question behind a node", () => {
         const { answer } = await textOf(hands, "read_prompt", { nodeId: "text-9" });
 
         expect(answer.isError).toBe(true);
+    });
+});
+
+// A card's box, which the agent could not see or set at all until now. What matters here is the rule the
+// canvas already had: a card that frames a picture is that picture's shape (#264), so it has one degree of
+// freedom — and a call that states two numbers contradicting it is refused with the one that fits, rather
+// than quietly resized to something the caller did not ask for.
+describe("resize_node: the card's box, not a zoom", () => {
+    const picture = (naturalWidth: number, naturalHeight: number) => node("image", { content: "/api/canvases/c/files/a.png", naturalWidth, naturalHeight });
+
+    test("a card that frames a picture is told a width, and the height follows", async () => {
+        const { hands, written } = handsFor([picture(1920, 1280)]);
+        const { answer, text } = await textOf(hands, "resize_node", { nodeId: "image-1", size: { width: 480 } });
+
+        expect(answer.isError).not.toBe(true);
+        expect(written.resized).toEqual([["image-1", 480, 320]]);
+        // The answer is the box it now occupies, because the number asked for is not always the number set.
+        expect(text).toContain("480×320");
+        expect(text).toContain("1920×1280");
+    });
+
+    test("a pair that contradicts the picture's shape is refused, with the height that fits", async () => {
+        const { hands, written } = handsFor([picture(1920, 1280)]);
+        const { answer, text } = await textOf(hands, "resize_node", { nodeId: "image-1", size: { width: 480, height: 200 } });
+
+        expect(answer.isError).toBe(true);
+        expect(written.resized).toEqual([]);
+        expect(text).toContain("320");
+    });
+
+    test("a card of words takes both numbers, and keeps its height when only one is given", async () => {
+        const { hands, written } = handsFor([textSaying(card)]);
+        await textOf(hands, "resize_node", { nodeId: "text-1", size: { width: 400, height: 700 } });
+        await textOf(hands, "resize_node", { nodeId: "text-1", size: { width: 500 } });
+
+        expect(written.resized).toEqual([
+            ["text-1", 400, 700],
+            ["text-1", 500, 240],
+        ]);
+    });
+
+    test("the floor is refused and named, and it is not the same number on both sides", async () => {
+        // A 3:2 card cannot go under the height floor, so its narrowest width is 240 rather than 220 — the same
+        // clamp the corner drag applies.
+        const tall = handsFor([picture(1920, 1280)]);
+        const refused = await textOf(tall.hands, "resize_node", { nodeId: "image-1", size: { width: 200 } });
+        expect(refused.answer.isError).toBe(true);
+        expect(refused.text).toContain("240");
+
+        const free = handsFor([textSaying(card)]);
+        const small = await textOf(free.hands, "resize_node", { nodeId: "text-1", size: { width: 200, height: 120 } });
+        expect(small.answer.isError).toBe(true);
+        expect(small.text).toContain("220×160");
+        expect(free.written.resized).toEqual([]);
+    });
+
+    test("asks for the size when the call carries none, and answers a node it does not hold", async () => {
+        const { hands } = handsFor([textSaying(card)]);
+        const missing = await textOf(hands, "resize_node", { nodeId: "text-1" });
+        expect(missing.answer.isError).toBe(true);
+        expect(missing.text).toContain("resize_node needs a size");
+
+        const unknown = await textOf(hands, "resize_node", { nodeId: "text-9", size: { width: 400 } });
+        expect(unknown.answer.isError).toBe(true);
     });
 });

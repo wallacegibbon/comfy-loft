@@ -2062,6 +2062,7 @@ function InfiniteCanvasPage() {
         deleteNodes: (nodeIds) => deleteNodes(new Set(nodeIds)),
         focusNode,
         moveNode: moveNodesTo,
+        resizeNode: handleNodeResize,
     });
 
     // Memoize every callback and render function passed to CanvasNode.

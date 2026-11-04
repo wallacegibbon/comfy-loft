@@ -1,4 +1,6 @@
 import { getNodeSpec } from "@/constant/canvas";
+import { NODE_MIN_SIZE, nodeRatio } from "@/lib/canvas/canvas-node-size";
+import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { describeEmptyInputs, inputsHoldingNothing, repeatedConnectedText } from "@/components/canvas/canvas-node-generation";
 import { resolveMediaUrl } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
@@ -33,6 +35,8 @@ export type CanvasHands = {
     deleteNodes: (nodeIds: string[]) => void;
     focusNode: (nodeId: string) => void;
     moveNode: (nodeId: string, position: Position) => void;
+    /** Give one card a new size, the way the end of a corner drag does: the top-left corner stays put. */
+    resizeNode: (nodeId: string, width: number, height: number) => void;
 };
 
 /** One tool's result: the content blocks the agent reads, and whether it failed rather than did something. */
@@ -69,6 +73,8 @@ export async function runTool(name: string, args: unknown, hands: CanvasHands, s
             return focusNode(hands, args);
         case "move_node":
             return moveNode(hands, args);
+        case "resize_node":
+            return resizeNode(hands, args);
         default:
             // Not "no such tool": the tool list the agent was handed is the server's, and this switch is the
             // page's, so a name missing here is a page older than its own tools. Saying which is what makes
@@ -394,6 +400,72 @@ function moveNode(hands: CanvasHands, args: unknown): ToolAnswer {
     const corner = { x: Math.round(position.x), y: Math.round(position.y) };
     hands.moveNode(node.id, corner);
     return { content: [textBlock(`moved ${node.id} (${node.type}) to (${corner.x}, ${corner.y})`)], isError: false };
+}
+
+/**
+ * Give one card a new size, the way the end of a corner drag does — from that same corner, so a resize never
+ * moves a node that was just placed.
+ *
+ * A card that frames a picture or a film is that picture's shape (docs/decisions.md #264), so it has one
+ * degree of freedom: the width is the number to state, and the height follows. Stating both is allowed and
+ * checked — a pair that disagrees with the picture's shape is refused with the height that would fit, because
+ * the alternative is a call that silently does something other than what it said. A card holding words, a
+ * sound or a group is free in both directions, and a height left out keeps the one it has.
+ *
+ * What this is *not* is a zoom. A card is measured in canvas coordinates, so making one bigger does not make
+ * the user see it better — `focus_node` is the tool for that, and the answer says so when the request is
+ * suspiciously small or the card is off-screen? no: it says nothing it cannot know. The description carries
+ * the distinction, once, where the agent reads it before calling.
+ */
+function resizeNode(hands: CanvasHands, args: unknown): ToolAnswer {
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
+    const size = readSize(argsOf(args));
+    if (!size) return { content: [textBlock("resize_node needs a size: {width} or {width, height} in canvas pixels")], isError: true };
+
+    const locked = Boolean(getNodeDefinition(node.type)?.keepsAspectRatio);
+    const shape = shapeOf(node);
+    if (locked) {
+        // One degree of freedom, and a floor that is not the same on both sides: a card this shape cannot go
+        // under the height floor, which for a wide picture is a larger width than the floor itself.
+        const ratio = nodeRatio(node);
+        const minimumWidth = Math.max(NODE_MIN_SIZE.width, Math.ceil(NODE_MIN_SIZE.height * ratio));
+        const width = Math.round(size.width);
+        if (width < minimumWidth) {
+            return { content: [textBlock(`${node.id} cannot be narrower than ${minimumWidth}: ${shape}, and a card is never shorter than ${NODE_MIN_SIZE.height}`)], isError: true };
+        }
+        const height = Math.round(width / ratio);
+        if (size.height !== undefined && Math.abs(Math.round(size.height) - height) > 1) {
+            return { content: [textBlock(`${node.id} keeps its shape ${shape}, so ${width} wide is ${height} high — state that, or change only the width`)], isError: true };
+        }
+        hands.resizeNode(node.id, width, height);
+        return { content: [textBlock(`resized ${node.id} (${node.type}) to ${width}×${height}, keeping its shape ${shape}; its top-left corner is still (${Math.round(node.position.x)}, ${Math.round(node.position.y)})`)], isError: false };
+    }
+
+    const width = Math.round(size.width);
+    const height = Math.round(size.height ?? node.height);
+    if (width < NODE_MIN_SIZE.width || height < NODE_MIN_SIZE.height) {
+        return { content: [textBlock(`${node.id} cannot be smaller than ${NODE_MIN_SIZE.width}×${NODE_MIN_SIZE.height}`)], isError: true };
+    }
+    hands.resizeNode(node.id, width, height);
+    return { content: [textBlock(`resized ${node.id} (${node.type}) to ${width}×${height}; its top-left corner is still (${Math.round(node.position.x)}, ${Math.round(node.position.y)})`)], isError: false };
+}
+
+/** A card's shape in words: the picture's own pixels when they are known, else the shape the card has now. */
+function shapeOf(node: CanvasNodeData) {
+    const { naturalWidth, naturalHeight } = node.metadata || {};
+    if (naturalWidth && naturalHeight) return `${naturalWidth}×${naturalHeight}`;
+    return `${Math.round(node.width)}×${Math.round(node.height)} now`;
+}
+
+/** The size a resize asks for, or nothing when it asked for neither number. */
+function readSize(args: Record<string, unknown>): { width: number; height?: number } | undefined {
+    const value = args.size;
+    if (typeof value !== "object" || !value) return undefined;
+    const { width, height } = value as { width?: unknown; height?: unknown };
+    if (typeof width !== "number" || !Number.isFinite(width)) return undefined;
+    if (height !== undefined && (typeof height !== "number" || !Number.isFinite(height))) return undefined;
+    return { width, height };
 }
 
 /**

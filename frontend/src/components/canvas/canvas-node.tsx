@@ -8,6 +8,7 @@ import { formatBytes } from "@/lib/image-utils";
 import { pickImageSource } from "@/lib/image-thumbnail";
 import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision } from "@/services/image-storage";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
+import { NODE_MIN_SIZE, nodeRatio } from "@/lib/canvas/canvas-node-size";
 import { nodeTitle } from "@/lib/canvas/node-title";
 import { LoraNodeContent } from "@/components/canvas/nodes/lora-node";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
@@ -205,8 +206,8 @@ export const CanvasNode = React.memo(function CanvasNode({
 
             const dx = (event.clientX - resizeRef.current.startX) / scale;
             const dy = (event.clientY - resizeRef.current.startY) / scale;
-            const minWidth = 220;
-            const minHeight = 160;
+            const minWidth = NODE_MIN_SIZE.width;
+            const minHeight = NODE_MIN_SIZE.height;
             const startRight = resizeRef.current.startLeft + resizeRef.current.startWidth;
             const startBottom = resizeRef.current.startTop + resizeRef.current.startHeight;
             const fromLeft = resizeRef.current.corner.includes("left");
@@ -263,7 +264,7 @@ export const CanvasNode = React.memo(function CanvasNode({
             // Whether a card may change shape is the node type's word, not this file's: a card that frames
             // a picture is the picture's shape, and the definition says so (`keepsAspectRatio`).
             keepRatio: Boolean(definition?.keepsAspectRatio),
-            ratio: (data.metadata?.naturalWidth || data.width) / (data.metadata?.naturalHeight || data.height || 1),
+            ratio: nodeRatio(data),
         };
         window.addEventListener("mousemove", handleResizeMove);
         window.addEventListener("mouseup", handleResizeUp);

@@ -19,14 +19,30 @@ export function describeCanvas(nodes: CanvasNodeData[], connections: CanvasConne
     const lines = [`${nodes.length} nodes, ${connections.length} connections`];
     for (const node of nodes) {
         const title = node.title ? ` "${node.title}"` : "";
-        const at = ` at (${Math.round(node.position.x)}, ${Math.round(node.position.y)})`;
+        const at = ` at (${Math.round(node.position.x)}, ${Math.round(node.position.y)}), ${Math.round(node.width)}×${Math.round(node.height)}`;
+        const picture = pictureClause(node);
         const made = generationClause(node.metadata);
         const content = oneLine(nodeContentOf(node));
-        lines.push(`- ${node.id} (${node.type})${title}${at}${made ? ` ${made}` : ""}${content ? ` content: ${content}` : ""}`);
+        lines.push(`- ${node.id} (${node.type})${title}${at}${picture}${made ? ` ${made}` : ""}${content ? ` content: ${content}` : ""}`);
     }
     if (connections.length) lines.push("connections:");
     for (const connection of connections) lines.push(`- ${connection.fromNodeId} -> ${connection.toNodeId}`);
     return lines.join("\n");
+}
+
+/**
+ * The picture's own pixels, when they are not the card's — the second size a node has.
+ *
+ * A card is the shape of what it holds, but not its size: a 1920×1280 photograph in a 480×320 card is one
+ * line's worth of fact, and a reader deciding whether a node is worth looking at needs both. It is left out
+ * when the two agree, because a fact repeated is noise.
+ */
+function pictureClause(node: CanvasNodeData): string {
+    const width = Math.round(node.metadata?.naturalWidth || 0);
+    const height = Math.round(node.metadata?.naturalHeight || 0);
+    if (!width || !height) return "";
+    if (width === Math.round(node.width) && height === Math.round(node.height)) return "";
+    return ` (picture ${width}×${height})`;
 }
 
 /**
