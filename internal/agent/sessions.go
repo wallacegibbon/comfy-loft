@@ -197,6 +197,33 @@ func (s *Sessions) Close(id, reason string) {
 	}
 }
 
+// CloseAll releases every session, in parallel, and is the shutdown path.
+//
+// Parallel because each release is bounded but not instant (a wedged agent gets a second, then a signal), and
+// a server with five stale agents should stop in the time one takes, not five. Nothing else touches the list
+// while this runs: the HTTP server has already stopped taking requests when the shutdown path gets here.
+func (s *Sessions) CloseAll(reason string) {
+	s.mu.RLock()
+	ids := make([]string, 0, len(s.list))
+	for id := range s.list {
+		ids = append(ids, id)
+	}
+	s.mu.RUnlock()
+	if len(ids) == 0 {
+		return
+	}
+
+	var wg sync.WaitGroup
+	for _, id := range ids {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			s.Close(id, reason)
+		}(id)
+	}
+	wg.Wait()
+}
+
 // Watch makes this connection the session's reader, replacing whoever had it.
 //
 // The newest connection wins, and the one it replaces is told: the alternative — refusing the new one —

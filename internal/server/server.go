@@ -186,9 +186,16 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 	return server, nil
 }
 
-// Close stops what the server started that is not the main HTTP server: the bridge listener. Agents are
-// released by their sockets closing, on the same shutdown path.
-func (s *Server) Close() { s.closeMCP() }
+// Close stops what the server started that is not the main HTTP server: the bridge listener, and the agents.
+//
+// The agents are released here rather than left to the sockets going away. Closing stdin when this process
+// exits does end them — a healthy one exits on end of input — but relying on it means the shutdown order is
+// the OS's rather than ours, and an agent that is wedged (or mid-turn) would outlive the server that started
+// it. `CloseAll` releases them in parallel and each release is bounded, so this returns.
+func (s *Server) Close() {
+	s.agentSessions.CloseAll("server stopping")
+	s.closeMCP()
+}
 
 // Setup exposes the setup manager for lifecycle control.
 func (s *Server) Setup() *setup.Manager { return s.setup }

@@ -25,6 +25,12 @@ printf 'SM{"type":"session","data":{"state":"ready"}}\n'
 while IFS= read -r line; do
   [ -n "$FAKE_LOG" ] && printf '%s\n' "$line" >> "$FAKE_LOG"
   case "$line" in
+    CI*'"name":"quit"'*)
+      # The real agent's documented exit: the command is answered, the session says it closed, and the
+      # process ends — a task already running finishes first, which is why nothing here is ever killed.
+      printf 'CO{"command_id":"quit","result":null}\n'
+      printf 'SM{"type":"session","data":{"state":"closed"}}\n'
+      exit 0 ;;
     CI*'"name":"model_set"'*)
       case "$line" in
         *'"args":"2"'*)

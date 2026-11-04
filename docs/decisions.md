@@ -9022,3 +9022,53 @@ prettier and `tsc` clean), `npm run build` 556.94 kB, `make build`.
 
 **Where** `frontend/scripts/{check-i18n,check-exports}.cjs`, `internal/httpx/httpx.go` (+`_test.go`),
 `internal/generate/preview.go`, `docs/{known-issues,server}.md`, `README.md`.
+
+## 248. An agent is asked to quit, never killed, and shutdown asks every agent
+
+**Decision** Ending an agent is one `CI` command frame — `{"command_id":"quit","name":"quit","args":""}` — and
+nothing else. `Process.Release` sends it, gives the agent `releasePatience` (2 s) to end, sends end of input as
+the second request, gives it 2 s more, and then **returns without killing it**. `Sessions.CloseAll` releases
+every session in parallel, and `Server.Close` calls it: the shutdown path used to leave agents to the pipes
+closing on process exit, which is not a promise anyone had written down.
+
+**Why the command and not a signal** `quit` is AlayaCore's own exit (`docs/commands.md` in its tree: "End the
+session. A task that is already running is allowed to finish first"), and a rawio client quits with exactly
+this frame. It is also the *only* way out that is not destructive: a socket closing mid-turn is the common case
+— the page was closed while the agent was writing a node — and a signal there loses the turn the canvas asked
+for, silently. `SIGTERM` and `SIGKILL` were in a draft of this change and were removed: they were a guess about
+what a wedged agent needs, and the answer to "it has not finished yet" is to let it finish, not to end it.
+
+**The hang that was there** `Release` closed stdin and then waited for the process with no bound. It is called
+from `Sessions.Close`, which is called from three places, two of them on a path where the wait is visible: the
+`DELETE /api/agent/session/{session}` handler answers from it, and shutdown reaches it through `Close`. An agent
+that did not read its input — wedged, or working — would have hung an HTTP request forever and a stop
+indefinitely, and the comment there said the OS would reap it, which it will not: `Wait` blocks. Both waits now
+have a bound and a log line when the bound is hit. The trade is explicit: a server that stops on time, and an
+agent left to end when its task does.
+
+**What `CloseAll` is for** `Sessions.Close`'s own comment claimed it runs "when the server is shutting down",
+and nothing called it there: `Server.Close` closed the MCP listener and stopped. In practice agents ended when
+the process exited and their stdin closed — an ordering nobody owned, and one that a wedged agent survives. It
+is a line now.
+
+**One frame at a time** `Process.Write` writes a frame and then flushes it, which is two calls, so a `quit`
+racing a prompt could put half of each on the agent's stdin. The new `writeMu` holds a frame's bytes together;
+the session's own lock is still what orders a *sequence* (a prompt and its images).
+
+**A false alarm, recorded because the sweep reported it** The pid this was chased from — an `alayacore` process
+alive for ten hours — turned out to be a hand-started agent on a terminal (`/dev/pts/4`, cmdline `alayacore`,
+parent an interactive shell), not a leftover of a server. There was no evidence of the leak it was written up
+as, and the entry that claimed one is deleted rather than left standing: a known-issues file that keeps a
+problem nobody has seen is the same defect as a comment that lies. The two real gaps above were found while
+looking, and they are fixed.
+
+**Tested** `internal/agent/release_test.go`: the frame on the wire is exactly the `quit` command; an agent that
+exits on it is reaped and remembered as a clean exit; one that answers neither request is **still alive**
+afterwards (the assertion the whole decision is about) and `Release` returns on the bound; `CloseAll` empties
+the list and every pid is gone. The test double gained the real agent's answer to `quit` (a `CO` and an
+`SM session closed`), which also took the package's tests from 57 s back to 4 s — they had been waiting out the
+patience because the double spoke one frame fewer than the real thing. Verified against the real binary by
+stopping the server: the agent exits on the frame, logging a clean `exit pid=… err=<nil>`.
+
+**Where** `internal/agent/{spawn.go,sessions.go}` (+`release_test.go`, `session_test.go`'s `fakeAgent`),
+`internal/server/server.go`, `docs/known-issues.md`.

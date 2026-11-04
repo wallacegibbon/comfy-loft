@@ -32,6 +32,10 @@ type Process struct {
 
 	stdinFile *os.File
 
+	// writeMu keeps one frame's bytes together: a write and its flush are two calls, and two writers (a
+	// prompt from the canvas, a `quit` from a closing socket) would otherwise interleave halves.
+	writeMu sync.Mutex
+
 	waitOnce sync.Once
 	waitErr  error
 }
@@ -161,7 +165,13 @@ func Spawn(o SpawnOptions) (*Process, error) {
 
 // Write sends one frame and flushes it. A frame that was never flushed reads as the agent going
 // quiet, so every write here is followed by one.
+//
+// The lock is what keeps a frame whole: a write and its flush are two calls, and a `quit` that arrived while
+// the canvas was sending a prompt would otherwise interleave two half-frames on the agent's stdin. The
+// session has a lock of its own for sequences that must stay in order; this one is about the bytes.
 func (p *Process) Write(tag, value string) error {
+	p.writeMu.Lock()
+	defer p.writeMu.Unlock()
 	p.logFrame(">>", tag, value)
 	if err := WriteFrame(p.Stdin, tag, value); err != nil {
 		return err
@@ -225,13 +235,46 @@ func (p *Process) Wait() error {
 	return p.waitErr
 }
 
-// Release ends the process: close stdin so it sees end of input, then wait. Closing is the
-// cooperative half; the agent drains the task it is on and exits. If it does not exit on its own
-// the OS still reaps it — Wait blocks until it does, which is why the caller does this in the
-// background rather than on the response path.
+// quitFrame is how a rawio client ends a session: a `CI` command named `quit`.
+//
+// The command vocabulary is AlayaCore's (`docs/commands.md` in its tree, `:quit`), and the frame is the one
+// the protocol defines for it — `{"command_id":…,"name":…,"args":…}`. A task that is already running is
+// allowed to finish first, which is exactly what this server wants when a socket closes mid-turn: the work
+// the canvas asked for is the work the agent should finish. The id is fixed because a session has one end.
+const quitFrame = `{"command_id":"quit","name":"quit","args":""}`
+
+// releasePatience is how long the agent is given after each request to end: one wait after `quit`, one after
+// end of input. Nothing is killed at the end of it — see `Release` — and it is short because an agent with
+// nothing in flight exits in milliseconds: this is the bound on how long a caller waits, not a deadline for an
+// agent's task.
+var releasePatience = 2 * time.Second
+
+// Release ends the process the way its own protocol says to: ask it to quit.
+//
+// **Only ever asked.** `quit` is the agent's documented exit, and the frame below is the whole of it; the
+// process is never signalled, let alone killed, because a session that is killed mid-turn loses the work the
+// canvas is waiting for and writes nothing about it. End of input is the second thing it understands (and the
+// only thing that worked before this existed), so it follows if `quit` did not take.
+//
+// **Nothing waits forever.** `Release` sits on the request path — a `DELETE` of a session answers from it —
+// and on the shutdown path, where an agent that never answers would be a server that never stops. So each
+// request gets `releasePatience` and then the release returns, leaving the process to end when its task does.
+// That is the trade this makes: a server that stops on time, and an agent that may outlive it by one turn
+// rather than being killed in the middle of one.
 func (p *Process) Release() {
-	if p.stdinFile != nil {
-		_ = p.stdinFile.Close()
+	_ = p.Write("CI", quitFrame)
+	ending := "quit"
+	if !p.exitedWithin(releasePatience) {
+		ending = "quit and end of input"
+		if p.stdinFile != nil {
+			_ = p.stdinFile.Close()
+		}
+		if !p.exitedWithin(releasePatience) {
+			if p.Log != nil {
+				p.Log.Warn("agent: pid=%d has not exited after quit; it ends when its task does", p.Cmd.Process.Pid)
+			}
+			return
+		}
 	}
 	err := p.Wait()
 	if p.Log != nil {
@@ -239,7 +282,23 @@ func (p *Process) Release() {
 		if tail := p.Stderr.Last(); tail != "" {
 			p.Log.Warn("agent: stderr %s", truncateFrame(tail))
 		}
-		p.Log.Info("agent: exit pid=%d err=%v lived=%dms", p.Cmd.Process.Pid, err, time.Since(p.startedAt).Milliseconds())
+		p.Log.Info("agent: exit pid=%d err=%v lived=%dms (%s)", p.Cmd.Process.Pid, err, time.Since(p.startedAt).Milliseconds(), ending)
+	}
+}
+
+// exitedWithin waits up to d for the process to be reaped. The wait itself is the shared `sync.Once`, so a
+// probe that times out leaves nothing behind: the goroutine it started returns the moment the process does.
+func (p *Process) exitedWithin(d time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		_ = p.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(d):
+		return false
 	}
 }
 
