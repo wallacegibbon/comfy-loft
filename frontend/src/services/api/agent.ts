@@ -34,6 +34,10 @@ export type AgentModel = {
     reasoning2?: unknown;
     reasoningField?: string;
     serialToolCalls?: boolean;
+    /** The input modalities this model declares, as `model.conf` holds them: `null` or absent is "not
+     *  declared — the protocol decides", `[]` is "declared, and it takes no media". The server always states
+     *  the field, so the two never have to be guessed apart. */
+    inputModalities?: string[] | null;
     hasKey?: boolean;
 };
 

@@ -19,8 +19,9 @@ import { useConfigStore } from "@/stores/use-config-store";
  * as a consequence of the command, and the list on screen is the agent's answer to it.
  *
  * The two edits are dialogs (`agent-model-dialog`) rather than a row of inputs under the list: a model is a
- * small document — a name, an id, an address, a protocol, a key, two token caps, three reasoning blocks and
- * two switches (#249) — and eleven fields on one line is a form nobody can read.
+ * small document — a name, an id, an address, a protocol, a key, two token caps, three reasoning blocks, two
+ * switches and the input types it declares (#249, #256) — and a dozen fields on one line is a form nobody can
+ * read.
  */
 export function AgentModelsSection() {
     const { t } = useTranslation();

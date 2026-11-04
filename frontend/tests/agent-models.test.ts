@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
  * that exists (its four visible fields, and a key only when this page has one to give), and what travels
  * for one that is being created (everything, and nothing invented).
  */
-const { emptyModelDraft, modelDraftComplete, modelDraftOf, modelSyncPayload, reasoningError } = await import("@/lib/agent-models");
+const { emptyModelDraft, modelDraftComplete, modelDraftOf, modelSyncPayload, reasoningError, withModality } = await import("@/lib/agent-models");
 
 const model = (overrides: Partial<Parameters<typeof modelSyncPayload>[0][number]> = {}) => ({
     id: 1,
@@ -24,6 +24,7 @@ const model = (overrides: Partial<Parameters<typeof modelSyncPayload>[0][number]
     reasoning2: { thinking: { type: "enabled" }, reasoning_effort: "xhigh" },
     reasoningField: "reasoning_content",
     serialToolCalls: true,
+    inputModalities: ["image"],
     hasKey: true,
     ...overrides,
 });
@@ -147,6 +148,52 @@ describe("the rest of a model's entry, as the form edits it", () => {
         const payload = JSON.parse(modelSyncPayload([model()], { kind: "edit", id: 1, draft: { ...draftOf(), contextLimit: "", maxTokens: "abc" } }));
 
         expect(payload[0]).toMatchObject({ context_limit: 0, max_tokens: 0 });
+    });
+});
+
+describe("the input types a model declares", () => {
+    it('keeps "no media" apart from "not declared" in both directions', () => {
+        // `[]` is a declaration; reading it as "nothing was declared" is a model that silently widens back to
+        // every modality its protocol carries.
+        expect(modelDraftOf(model({ inputModalities: [] })).inputModalities).toEqual([]);
+        expect(modelDraftOf(model({ inputModalities: ["text", "image"] })).inputModalities).toEqual(["text", "image"]);
+        expect(modelDraftOf(model({ inputModalities: null })).inputModalities).toBeNull();
+        expect(modelDraftOf(model({ inputModalities: undefined })).inputModalities).toBeNull();
+    });
+
+    it("sends the switch, off, as null — the one thing that removes the line", () => {
+        const payload = JSON.parse(modelSyncPayload([model()], { kind: "edit", id: 1, draft: { ...draftOf(), inputModalities: null } }));
+
+        expect(payload[0]).toHaveProperty("input_modalities", null);
+    });
+
+    it("sends a list and an empty declaration as themselves", () => {
+        const list = JSON.parse(modelSyncPayload([model()], { kind: "edit", id: 1, draft: { ...draftOf(), inputModalities: ["image", "document"] } }));
+        expect(list[0].input_modalities).toEqual(["image", "document"]);
+
+        const none = JSON.parse(modelSyncPayload([model()], { kind: "edit", id: 1, draft: { ...draftOf(), inputModalities: [] } }));
+        expect(none[0].input_modalities).toEqual([]);
+    });
+
+    // Only the edited model's list travels: the others the page never opened keep what the server holds, which
+    // is where an `api_key` and a declaration it was not shown come from.
+    it("says nothing about a model the form did not open", () => {
+        const payload = JSON.parse(modelSyncPayload([model(), model({ id: 2 })], { kind: "delete", id: 2 }));
+
+        expect(payload[0]).not.toHaveProperty("input_modalities");
+    });
+
+    it("keeps the words this build does not know when a box is ticked", () => {
+        // A newer AlayaCore may accept a sixth word; the form edits only the boxes it has, so the rest travel.
+        expect(withModality(["text", "hologram"], "image", true)).toEqual(["text", "hologram", "image"]);
+        expect(withModality(["text", "hologram"], "image", false)).toEqual(["text", "hologram"]);
+    });
+
+    it("toggles without duplicating, in either order", () => {
+        expect(withModality([], "audio", true)).toEqual(["audio"]);
+        expect(withModality(["audio"], "audio", true)).toEqual(["audio"]);
+        expect(withModality(["image", "audio"], "image", false)).toEqual(["audio"]);
+        expect(withModality(["image"], "video", true)).toEqual(["image", "video"]);
     });
 });
 

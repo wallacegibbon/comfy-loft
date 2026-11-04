@@ -2,19 +2,20 @@ import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/kit/button";
-import { Switch } from "@/components/kit/choice";
+import { Checkbox, Switch } from "@/components/kit/choice";
 import { Dialog } from "@/components/kit/dialog";
 import { Field } from "@/components/kit/field";
 import { Input, InputNumber } from "@/components/kit/input";
 import { Select } from "@/components/kit/select";
-import { modelDraftComplete, reasoningError, type ModelDraft, type ModelProtocol } from "@/lib/agent-models";
+import { INPUT_MEDIA, modelDraftComplete, reasoningError, withModality, type ModelDraft, type ModelProtocol } from "@/lib/agent-models";
 
 /**
  * One model, as a form: every field of the `model.conf` entry a page can see.
  *
  * It is a dialog rather than a row of inputs under the list, because a model *is* a small document —
- * AlayaCore's entry has a name, an id, an address, a protocol, a key, two token caps, three reasoning blocks
- * and two switches, and no two of them belong on one line (#249). The list behind it stays a list.
+ * AlayaCore's entry has a name, an id, an address, a protocol, a key, two token caps, three reasoning blocks,
+ * two switches and the input types it declares, and no two of them belong on one line (#249, #256). The list
+ * behind it stays a list.
  *
  * Add and edit are the same form. What differs is the key: a model that exists has one the page has never
  * been shown, so empty means "the one that is stored" and the note says so. A new model with an empty key
@@ -23,12 +24,17 @@ import { modelDraftComplete, reasoningError, type ModelDraft, type ModelProtocol
  * The reasoning blocks are JSON text, because they are JSON: each is merged into the request body as-is at
  * one reasoning level, and no form of named fields could say what a provider accepts. A blank box is a
  * decision — it removes the block — and text that is not a JSON object keeps the Save button off.
+ *
+ * The input types are the one field with three states — not declared, declared empty, declared as a list —
+ * which is why they are a switch and four boxes rather than four boxes (#256).
  */
 export function AgentModelDialog({ draft: initial, editing, onCancel, onSave }: { draft: ModelDraft; editing: boolean; onCancel: () => void; onSave: (draft: ModelDraft) => void }): ReactNode {
     const { t } = useTranslation();
     const [draft, setDraft] = useState<ModelDraft>(initial);
     const change = (patch: Partial<ModelDraft>) => setDraft((current) => ({ ...current, ...patch }));
     const ready = modelDraftComplete(draft);
+    // `null` is "not declared", which is a state of its own — a switch, not an empty checkbox row.
+    const declared = draft.inputModalities;
     const reasoning = [
         { key: "reasoning0" as const, label: t("config.preferences.modelReasoning0") },
         { key: "reasoning1" as const, label: t("config.preferences.modelReasoning1") },
@@ -68,6 +74,32 @@ export function AgentModelDialog({ draft: initial, editing, onCancel, onSave }: 
                         { value: "anthropic", label: t("config.preferences.protocolAnthropic") },
                     ]}
                 />
+            </Field>
+            {/* Three states in one control, because the file has three: no line at all (the switch, off), an
+                empty declaration (on, nothing ticked) and a list. A row of checkboxes alone could not say the
+                first one, and a model whose `[]` is read as "not declared" comes back unlimited. */}
+            <Field className="mb-3">
+                <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm">{t("config.preferences.modelInputModalities")}</span>
+                    <Switch checked={declared !== null} onChange={(on) => change({ inputModalities: on ? (declared ?? []) : null })} />
+                </div>
+                {declared === null ? (
+                    <div className="mt-1 text-xs text-stone-500">{t("config.preferences.modelInputModalitiesUnrestricted")}</div>
+                ) : (
+                    <>
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+                            {INPUT_MEDIA.map((modality) => (
+                                <Checkbox key={modality} checked={declared.includes(modality)} onChange={(event) => change({ inputModalities: withModality(declared, modality, event.target.checked) })}>
+                                    {t(`config.preferences.modality.${modality}`)}
+                                </Checkbox>
+                            ))}
+                        </div>
+                        {/* Denied by default: a medium the endpoint turns out to accept costs a note saying it was
+                            not delivered, while one it does not accept makes the request fail — every time, since
+                            the part is in the conversation the agent keeps replaying. */}
+                        <div className="mt-1 text-xs text-stone-500">{declared.length ? t("config.preferences.modelInputModalitiesNote") : t("config.preferences.modelInputModalitiesNone")}</div>
+                    </>
+                )}
             </Field>
             <Field label={t("config.preferences.modelApiKey")} className="mb-3">
                 <Input

@@ -38,6 +38,15 @@ export type ModelDraft = {
     /** The response key that carries reasoning text; "" leaves the provider's default. */
     reasoningField: string;
     serialToolCalls: boolean;
+    /**
+     * Which input modalities the model declares, or `null` for "not declared".
+     *
+     * Three states, and the form can express all three: `null` writes no `input_modalities` line at all, so
+     * the protocol decides what the model is sent; `[]` declares that it takes no media; a list declares
+     * exactly that list. `text` is never filtered by AlayaCore — a message is text — so `[]` and `["text"]`
+     * are one model, which is why the form has no text box and keeps whatever spelling it was handed.
+     */
+    inputModalities: string[] | null;
 };
 
 /** One entry of the array `:model_sync` takes, in the protocol's own field names. */
@@ -54,8 +63,33 @@ type SyncModel = {
     reasoning_2?: unknown;
     reasoning_field?: string;
     serial_tool_calls?: boolean;
+    input_modalities?: string[] | null;
     api_key?: string;
 };
+
+/**
+ * The media a model can declare, in the order the form offers them.
+ *
+ * AlayaCore's vocabulary also has `text`, which is deliberately not here: text is never filtered — a message
+ * is text, so there is no way to send one without it — which makes `[]` and `["text"]` the same model. A box
+ * that changes nothing would say the opposite. A stored `["text"]` is kept as it is, because the form edits
+ * only these four words in a list it was handed.
+ *
+ * `document` is the catch-all: anything that is not image, video or audio, PDF and unrecognized extensions
+ * included. See AlayaCore's `docs/configuration.md`, "Input modalities".
+ */
+export const INPUT_MEDIA = ["image", "video", "audio", "document"] as const;
+
+/**
+ * The declaration with one media type switched on or off, in the order the boxes were clicked.
+ *
+ * Order means nothing to AlayaCore (it is a set), and rebuilding the list instead of sorting it keeps every
+ * word this build does not know exactly where it was: a list that arrived is a list a page may not shorten.
+ */
+export function withModality(list: readonly string[], modality: string, declared: boolean): string[] {
+    const kept = list.filter((entry) => entry !== modality);
+    return declared ? [...kept, modality] : kept;
+}
 
 export const emptyModelDraft: ModelDraft = {
     name: "",
@@ -70,6 +104,7 @@ export const emptyModelDraft: ModelDraft = {
     reasoning2: "",
     reasoningField: "",
     serialToolCalls: false,
+    inputModalities: null,
 };
 
 /** What one model on screen looks like in the form. The key is not known here, so it starts empty. */
@@ -87,6 +122,9 @@ export function modelDraftOf(model: AgentModel): ModelDraft {
         reasoning2: reasoningText(model.reasoning2),
         reasoningField: model.reasoningField ?? "",
         serialToolCalls: model.serialToolCalls === true,
+        // `??` and not `||`: `[]` is a declaration ("no media") and has to stay one, while undefined and null
+        // are the same thing here — a model the protocol decides for.
+        inputModalities: model.inputModalities ?? null,
     };
 }
 
@@ -184,6 +222,9 @@ function editableOf(draft: ModelDraft): Omit<SyncModel, "id"> {
         reasoning_1: reasoningValue(draft.reasoning1),
         reasoning_2: reasoningValue(draft.reasoning2),
         serial_tool_calls: draft.serialToolCalls,
+        // Always sent, `null` included: a switch turned off is an answer ("no line in model.conf"), and a
+        // field left out would keep the stored declaration instead — the opposite of what was chosen.
+        input_modalities: draft.inputModalities,
     };
     // A field left empty says nothing rather than "no field": the provider's default is the absence.
     const reasoningField = draft.reasoningField.trim();

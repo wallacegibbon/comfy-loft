@@ -455,6 +455,21 @@ reasoning blocks, each written as the JSON it is. A block that will not parse ke
 the merge refuses one that is not an object — the blocks are merged into a request body as they stand. A
 cleared block is sent as `null`, which removes it; a field the page says nothing about is kept as it was.
 
+`input_modalities` has three states and the form has one control that says all three (#256): a switch for
+whether the model declares anything at all, and four boxes — image, video, audio, document — for what it
+declares. Switch off writes no line, so the protocol decides what the model is sent; switch on with nothing
+ticked writes `[]`, which declares "no media"; a list declares that list. There is no `text` box: AlayaCore
+never filters text, so `[]` and `["text"]` are one model, and a stored `["text"]` is left spelled as it is.
+Switching on starts empty rather than pre-ticked, because the two mistakes cost differently — a medium the
+endpoint does not accept fails the whole request, every time, since the part is in the conversation the agent
+keeps replaying, while one it would have accepted is only replaced by a note saying it was not delivered.
+
+A core older than this option neither reports the line nor keeps it: `model_sync` re-formats `model.conf`
+from the model struct the process holds, so an agent started before AlayaCore was upgraded announces
+`inputModalities: null` for a model whose file declares one and drops the line on the next edit. Measured
+against the pre-upgrade build: a rename through it wrote the file without `input_modalities`. Restarting the
+server is what fixes it — the agent processes are spawned per session, so a new one is the new core.
+
 **Where a turn goes is in the log** (#255). A `model` frame carries the id and the name of the active model and
 nothing else, so the address is looked up in the list the agent announced and printed with it:
 

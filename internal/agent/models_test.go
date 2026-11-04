@@ -302,3 +302,96 @@ func mustJSON(t *testing.T, value any) []byte {
 	}
 	return payload
 }
+
+// `input_modalities` has three states, and the file's meaning depends on telling them apart: a line that is
+// not there means "the protocol decides", `[]` means "declared, no media", and a list means that list. A page
+// that hears `[]` as absent widens the model on its next save, so the distinction has to survive both hops.
+func TestInputModalitiesAreNotWidenedOnTheWayOutOrBack(t *testing.T) {
+	frame := `{"models":[{"id":1,"name":"declared none","protocol_type":"openai","base_url":"http://x/v1","input_modalities":[]},` +
+		`{"id":2,"name":"declared some","protocol_type":"openai","base_url":"http://x/v1","input_modalities":["text","image"]},` +
+		`{"id":3,"name":"declared nothing","protocol_type":"openai","base_url":"http://x/v1"}]}`
+	state := startup{}
+	state.collect("model_list", json.RawMessage(frame))
+
+	models := state.event().Models
+	if models[0].InputModalities == nil || len(models[0].InputModalities) != 0 {
+		t.Errorf("[] came out as %#v, want an empty declaration, not an absent one", models[0].InputModalities)
+	}
+	if got := strings.Join(models[1].InputModalities, ","); got != "text,image" {
+		t.Errorf("the declared list came out as %q, want text,image", got)
+	}
+	if models[2].InputModalities != nil {
+		t.Errorf("an entry with no line came out as %#v, want nil", models[2].InputModalities)
+	}
+
+	// Always stated, so a page can tell "not declared" from "no media" without guessing.
+	payload := string(mustJSON(t, models[2]))
+	if !strings.Contains(payload, `"inputModalities":null`) {
+		t.Errorf("an undeclared model does not say so: %s", payload)
+	}
+}
+
+// The page sends all three back: a list, `[]`, and `null` for the switch that is off. `null` has to remove
+// the line — leaving the stored declaration would be the opposite of what the user chose.
+func TestModelSyncKeepsWhatAnInputModalitiesEditMeans(t *testing.T) {
+	frame := `{"models":[{"id":1,"name":"one","protocol_type":"openai","base_url":"http://x/v1","input_modalities":["text"]},` +
+		`{"id":2,"name":"two","protocol_type":"openai","base_url":"http://x/v1"}]}`
+	session := &Session{ID: "canvas:1", state: startupWith(t, frame)}
+
+	merged, err := session.mergeModelSync(`[{"id":1,"name":"one","input_modalities":["image","audio"]},{"id":2,"name":"two","input_modalities":["video"]}]`)
+	if err != nil {
+		t.Fatalf("mergeModelSync: %v", err)
+	}
+	if got := string(merged[0]["input_modalities"]); got != `["image","audio"]` {
+		t.Errorf("input_modalities = %s, want the page's list", got)
+	}
+
+	// `[]` is a declaration, not a silence, and it has to stay one.
+	emptied, err := session.mergeModelSync(`[{"id":1,"name":"one","input_modalities":[]}]`)
+	if err != nil {
+		t.Fatalf("mergeModelSync: %v", err)
+	}
+	if got := string(emptied[0]["input_modalities"]); got != `[]` {
+		t.Errorf("input_modalities = %s, want [] kept as []", got)
+	}
+
+	// A page that says nothing about the field keeps what is stored — it has never seen it.
+	silent, err := session.mergeModelSync(`[{"id":1,"name":"one"}]`)
+	if err != nil {
+		t.Fatalf("mergeModelSync: %v", err)
+	}
+	if got := string(silent[0]["input_modalities"]); got != `["text"]` {
+		t.Errorf("input_modalities = %s, want the stored declaration kept", got)
+	}
+
+	// The switch, off.
+	removed, err := session.mergeModelSync(`[{"id":1,"name":"one","input_modalities":null}]`)
+	if err != nil {
+		t.Fatalf("mergeModelSync: %v", err)
+	}
+	if raw, ok := removed[0]["input_modalities"]; ok {
+		t.Errorf("input_modalities = %s after the page removed it, want no line at all", raw)
+	}
+	if got := removed[0].text("name"); got != "one" {
+		t.Errorf("name = %q, want the rest of the entry untouched", got)
+	}
+}
+
+// The words are AlayaCore's to accept or reject; what this server can see is the shape, and a shape it cannot
+// write is refused rather than handed on to make one model disappear from `model.conf`.
+func TestModelSyncRefusesInputModalitiesThatAreNotAList(t *testing.T) {
+	session := &Session{ID: "canvas:1", state: startupWith(t, modelListFrame)}
+	for _, sent := range []string{
+		`[{"id":1,"name":"V100 / Qwen","input_modalities":"image"}]`,
+		`[{"id":1,"name":"V100 / Qwen","input_modalities":{"image":true}}]`,
+		`[{"id":1,"name":"V100 / Qwen","input_modalities":[1,2]}]`,
+	} {
+		_, err := session.mergeModelSync(sent)
+		if err == nil {
+			t.Fatalf("mergeModelSync(%s) was accepted, want a refusal naming input_modalities", sent)
+		}
+		if !strings.Contains(err.Error(), "input_modalities") {
+			t.Errorf("error = %q, want it to name the field", err)
+		}
+	}
+}

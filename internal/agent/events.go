@@ -101,6 +101,12 @@ type Model struct {
 	// Whether a step's tool calls run one at a time. Always stated, never omitted: an absent field would
 	// read as "not known", and false is the answer that means "run them in parallel" (#249).
 	SerialToolCalls bool `json:"serialToolCalls"`
+	// The input modalities this model declares, exactly as `model.conf` holds them: nil is "not declared"
+	// — the protocol decides what it is sent — and an empty list is a declaration too, meaning no media
+	// at all. Always stated, never omitted, for the reason `serialToolCalls` is: `[]` travelling as an
+	// absent field would come back through `model_sync` as an unrestricted model, which is a silent
+	// widening of the file (#256).
+	InputModalities []string `json:"inputModalities"`
 }
 
 // modelObject is one entry of `SM model_list`, exactly as the agent sent it.
@@ -131,7 +137,23 @@ func (o modelObject) info() Model {
 		Reasoning2:      o.raw("reasoning_2"),
 		ReasoningField:  o.text("reasoning_field"),
 		SerialToolCalls: o.boolean("serial_tool_calls"),
+		InputModalities: o.list("input_modalities"),
 	}
+}
+
+// list is one array-of-strings field as it arrived, or nil for a field that is absent, JSON `null`, or
+// something that is not an array of strings.
+//
+// Nil and empty are deliberately kept apart here, because they are kept apart everywhere else: an absent
+// key means "not declared, the protocol decides", while `[]` means "declared, and it takes no media". The
+// decode of `[]` into a nil slice yields an empty non-nil one, which is what makes the distinction survive
+// without a pointer or a second boolean.
+func (o modelObject) list(field string) []string {
+	var values []string
+	if raw, ok := o[field]; ok && len(raw) > 0 {
+		_ = json.Unmarshal(raw, &values)
+	}
+	return values
 }
 
 // raw is one field exactly as it arrived, or nil for a field that is absent or JSON `null`.

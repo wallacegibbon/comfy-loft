@@ -9422,3 +9422,64 @@ and, with no file, `speech: no profile configured, so dictation will say so`. `m
 
 **Where** `internal/agent/{events.go,sessions.go,models.go}`, `internal/agent/{startup_test.go,session_test.go}`,
 `internal/store/speech.go`, `internal/store/store_test.go`, `internal/server/routes_speech.go`, `docs/server.md`.
+
+---
+
+## 256. `input_modalities` is a switch and four boxes, because the file has three states
+
+**Decision** A model's `input_modalities` is edited by one switch — does this model declare anything at all — and,
+when it does, four checkboxes: image, video, audio, document. Switch off writes no line, on-and-empty writes `[]`,
+and the boxes write the list. The field is stated in every model a page is shown, `null` included, so "not
+declared" and "no media" never have to be guessed apart. `null` sent back removes the line; a list replaces it; a
+field not mentioned keeps what is stored.
+
+**Why the three states are the whole problem.** AlayaCore reads a missing line as *the protocol decides* (an
+OpenAI-format endpoint takes image, audio and video; an Anthropic one image and document), `[]` as *declared, no
+media*, and a list as itself. A row of checkboxes on its own can only say two things, so whichever of the first two
+it collapses, one of them becomes unreachable — and the worse direction is the silent one: a model whose `[]` travels
+as an absent field comes back through `model_sync` as a model that takes everything its protocol carries. AlayaCore
+keeps those two apart for the same reason (`json:"input_modalities"` with no `omitempty`, and `input_modalities` in
+`fatalParseKeys`), and the wire here follows: `agent.Model.InputModalities` has no `omitempty`, like
+`serialToolCalls` (#249), so `"inputModalities":null` is always present and always means "not declared".
+
+**Why there is no `text` box.** Text is never filtered — a message is text, and there is no way to send one without
+it — so `[]` and `["text"]` are one model, in AlayaCore's own words. A box that changes nothing would suggest the
+opposite, so the vocabulary offered is the four media words and a stored `["text"]` is kept spelled as it is: the
+dialog edits the four boxes inside the list it was handed and leaves every other word where it was. A sixth word
+from a newer AlayaCore would travel the same way, which is why the server checks only that the value is an array of
+strings: the vocabulary is AlayaCore's, and it names a bad word itself when the list is written.
+
+**Why switching on starts empty.** The two mistakes are not symmetric. A medium the endpoint does not accept makes
+it reject the whole request — and keep rejecting, because the part is in the conversation the agent replays every
+turn. A medium it would have accepted is only replaced by a note saying it was not delivered, which the user can
+see in the answer and undo in one click. Pre-ticking the protocol's defaults would put the silent failure on the
+common path (most models are text-only), so the boxes start unticked and say what unticked means.
+
+**Cost** Adding a media type to AlayaCore means adding a word to `INPUT_MEDIA` in `frontend/src/lib/agent-models.ts`
+and a label to each dictionary — until then such a value is preserved but not offered. The switch is one more
+control than a checkbox row, and the model list does not summarise what a model declares: the declaration is only
+visible in the dialog, so a model quietly receiving notes rather than images is found by opening it.
+
+**Cost, the upgrade.** An agent process from before the option neither reports the line nor keeps it —
+`model_sync` re-formats `model.conf` from the struct that process holds, so a rename through it deletes a
+declaration it never parsed. Measured against the pre-upgrade build: a model whose file said
+`input_modalities: ["text","image"]` was announced with `inputModalities: null`, and the edit wrote the file
+without the line. Nothing here can repair that from the outside (the server does not parse `model.conf`); the
+answer is that agent processes are per session, so restarting the server replaces them.
+
+**Tested** `internal/agent/models_test.go`: `[]`, a list and an absent line stay three different things through
+`info()` and out to the page (`"inputModalities":null` is stated, `[]` is not `null`); a page's list replaces the
+stored one, `[]` stays `[]`, `null` removes the line, and a page that does not mention the field keeps it;
+`input_modalities` that is a string, an object or an array of numbers is refused by name. `frontend/tests/agent-models.test.ts`:
+the draft keeps `[]` apart from `null` in both directions, an edit sends a list, `[]` and `null` as themselves, a
+model the form did not open says nothing about the field, and `withModality` toggles without duplicating while
+keeping words it does not know. Verified live against AlayaCore `ea3978c1` on a throwaway instance: the line was
+written as `input_modalities: ["text","image"]`, then `[]`, then removed, each announced back unchanged
+(`models` frame) with `{"type":"command","ok":true}`. `make check` 20 packages, `npx vitest run` 351,
+`npm run check` (872 zh keys, 858 en), `npm run build`.
+
+**Where** `internal/agent/events.go`, `internal/agent/models.go`, `internal/agent/models_test.go`,
+`frontend/src/lib/agent-models.ts`, `frontend/src/components/settings/agent-model-dialog.tsx`,
+`frontend/src/services/api/agent.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
+`frontend/scripts/check-i18n.cjs` (the `config.preferences.modality` namespace), `frontend/tests/agent-models.test.ts`,
+`docs/server.md`.

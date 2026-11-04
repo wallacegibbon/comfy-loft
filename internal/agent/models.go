@@ -31,13 +31,17 @@ var modelReasoningFields = [...]string{"reasoning_0", "reasoning_1", "reasoning_
 //
 // The canvas says which models stay, in which order, what is new and what changed:
 //
-//   - an id the server knows is rebuilt from the entry the agent announced, with the four fields above
-//     replaced by whatever the canvas sent — so deleting one model does not take another's key or
-//     reasoning blocks with it;
+//   - an id the server knows is rebuilt from the entry the agent announced, with the fields above replaced
+//     by whatever the canvas sent — so deleting one model does not take another's key or reasoning blocks
+//     with it;
 //   - an id nobody knows is new, and travels as sent, the `api_key` it carries included;
 //   - a key travels whenever the canvas has one to send, which is a model being created or one whose key
 //     the user has just retyped. An absent or empty one says nothing rather than "no key": the canvas was
 //     never shown the stored key, so it is in no position to mean it away.
+//   - the reasoning blocks and `input_modalities` are sent whenever the canvas mentions them, and `null` in
+//     either is an answer — it removes what is stored, which is how a cleared box or a switch turned off is
+//     said. Not sending them at all still means "I know nothing about them", which is what keeps this merge
+//     safe for a page older than the fields.
 //
 // Ids are rewritten to the models' positions, which is what `:model_sync` assigns them (1-based, in list
 // order) — the ids a `model_set` from the canvas will have to use once the list is written.
@@ -79,6 +83,22 @@ func (s *Session) mergeModelSync(args string) ([]modelObject, error) {
 				return nil, fmt.Errorf("%s: %s must be a JSON object, or empty to remove it", modelSyncCommand, field)
 			}
 			object[field] = raw
+		}
+		// input_modalities is the other field where an answer can be "nothing": the form has a switch, and
+		// switching it off means the line goes — `null` is how that is said, because an absent field would
+		// leave the stored declaration in place. The words themselves are AlayaCore's vocabulary, not this
+		// server's, so only the shape is checked here; a bad word is named by the agent when the list is
+		// written, and `[]` has to survive as `[]` (it means "no media", not "not declared") (#256).
+		if raw, sent := entry["input_modalities"]; sent {
+			if len(raw) == 0 || string(raw) == "null" {
+				delete(object, "input_modalities")
+			} else {
+				var modalities []string
+				if err := json.Unmarshal(raw, &modalities); err != nil {
+					return nil, fmt.Errorf("%s: input_modalities must be a JSON array of input types, or null to remove it", modelSyncCommand)
+				}
+				object["input_modalities"] = raw
+			}
 		}
 		delete(object, "id")
 		object["id"] = json.RawMessage(strconv.Itoa(index + 1))

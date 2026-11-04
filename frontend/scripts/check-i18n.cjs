@@ -99,6 +99,13 @@ const DYNAMIC_PREFIXES = new Map([
     ["settingsPanels.video.modes", { why: "the suffix is a mode labelKey from a data table, plus the literals of two hint branches" }],
     ["settingsPanels.model.capabilities", { why: "the suffix is the ModelCapability union; its values live in the type" }],
     ["config.localStorage.stores", { why: "the suffix is a table of localStorage store keys" }],
+    [
+        "config.preferences.modality",
+        {
+            values: ["image", "video", "audio", "document"],
+            why: "the suffix is one of INPUT_MEDIA in lib/agent-models.ts — the four media words a model may declare; `text` has no box because AlayaCore never filters it",
+        },
+    ],
     ["canvas.videoFrames", { why: "the suffix is one of first/last/both plus a Title suffix; the template cannot say which" }],
     ["apiErrors", { why: "the suffix of apiText(key) is an error-code constant from the calling service" }],
 ]);
