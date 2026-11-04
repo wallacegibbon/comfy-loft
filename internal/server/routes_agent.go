@@ -91,9 +91,9 @@ type socketMessage struct {
 	// pipe as the agent's own `tool_call` / `tool_result` events, which run inside AlayaCore and which
 	// the server only relays.
 	ToolResult *toolAnswer `json:"toolResult"`
-	// Close ends the conversation: the agent is released, history and all. Closing the tab is not this
-	// — a socket that goes away leaves the process running, which is what makes coming back a
-	// continuation rather than a fresh start.
+	// Close ends the conversation: the agent is released, history and all. Closing the tab is not this: a
+	// socket that goes away releases the process too, and what makes coming back a continuation is the file
+	// the next process replays, not a process left running.
 	Close bool `json:"close"`
 }
 
@@ -130,11 +130,10 @@ func (s *Server) handleAgentSocket(ctx *httpx.Ctx) error {
 		return conn.WriteText(payload)
 	}
 
-	// Whether this name keeps a conversation is the client's answer, not the server's: a canvas panel is a
-	// dialogue with a history and asks for one, the models editor is a form and does not. File processes
-	// under names — do not teach it which names mean what.
-	history := ctx.R.URL.Query().Get("history") == "1"
-	options, err := s.agentOptionsFor(id, history)
+	// Where a conversation is kept is the name's business, not the client's: a canvas keeps one inside itself,
+	// and a name that is not a canvas keeps nothing (the models editor is a form, not a dialogue). File
+	// processes under names — do not teach it which names mean what.
+	options, err := s.agentOptionsFor(id)
 	if err != nil {
 		if s.logger != nil {
 			s.logger.Warn("agent: socket %q cannot keep its conversation: %v", id, err)

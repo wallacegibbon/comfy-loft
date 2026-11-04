@@ -158,20 +158,17 @@ func canvasSession(t *testing.T, server *httptest.Server) string {
 	return "canvas:" + body.Canvas.ID
 }
 
-// socketURL is one session's socket: `history=1` is the client asking for its conversation back.
-func socketURL(server *httptest.Server, session string, history bool) string {
-	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/agent/socket/" + session
-	if history {
-		url += "?history=1"
-	}
-	return url
+// socketURL is one session's socket. Nothing in it says whether the conversation is kept: the server reads
+// that from the name.
+func socketURL(server *httptest.Server, session string) string {
+	return "ws" + strings.TrimPrefix(server.URL, "http") + "/api/agent/socket/" + session
 }
 
-// openSocket dials a conversation — the canvas panel's socket, which asks for a history — and drains the
-// startup broadcast and the replayed conversation, which is what a client does before it says anything.
+// openSocket dials a canvas's conversation and drains the startup broadcast and the replayed conversation,
+// which is what a client does before it says anything.
 func openSocket(t *testing.T, server *httptest.Server, session string) *comfy.WSConn {
 	t.Helper()
-	conn, err := comfy.DialWS(context.Background(), socketURL(server, session, true))
+	conn, err := comfy.DialWS(context.Background(), socketURL(server, session))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -241,7 +238,7 @@ func send(t *testing.T, conn *comfy.WSConn, message map[string]any) {
 
 func TestSocketStartsWithTheModelList(t *testing.T) {
 	server, _ := startAgentServer(t)
-	conn, err := comfy.DialWS(context.Background(), socketURL(server, canvasSession(t, server), false))
+	conn, err := comfy.DialWS(context.Background(), socketURL(server, canvasSession(t, server)))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -316,7 +313,7 @@ func TestTheNewestSocketTakesTheSessionOver(t *testing.T) {
 	session := canvasSession(t, server)
 	first := openSocket(t, server, session)
 
-	second, err := comfy.DialWS(context.Background(), socketURL(server, session, false))
+	second, err := comfy.DialWS(context.Background(), socketURL(server, session))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -349,7 +346,7 @@ func TestTheReplacedSocketDoesNotTakeTheAgentWithIt(t *testing.T) {
 	session := canvasSession(t, server)
 	first := openSocket(t, server, session)
 
-	second, err := comfy.DialWS(context.Background(), socketURL(server, session, false))
+	second, err := comfy.DialWS(context.Background(), socketURL(server, session))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -398,11 +395,11 @@ func TestSocketRelaysTheUsersWordsOnce(t *testing.T) {
 	}
 }
 
-// TestSessionWithoutHistoryKeepsNoFile: the models editor asks one command and has nothing to come back to,
-// so it gets no file. A conversation is kept inside its canvas, and this name is not one.
-func TestSessionWithoutHistoryKeepsNoFile(t *testing.T) {
+// TestSessionThatIsNotACanvasKeepsNothing: the models editor has no canvas to keep a conversation in, so it
+// gets no file — and that is a fact about the name, not a flag a client sets.
+func TestSessionThatIsNotACanvasKeepsNothing(t *testing.T) {
 	server, api, _ := startMCPServer(t)
-	conn, err := comfy.DialWS(context.Background(), socketURL(server, "settings", false))
+	conn, err := comfy.DialWS(context.Background(), socketURL(server, "settings"))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -420,7 +417,7 @@ func TestSessionWithoutHistoryKeepsNoFile(t *testing.T) {
 
 	// There is nowhere for it to go: a conversation is kept inside its canvas, and this name is not one.
 	if file, err := api.sessionFile("settings"); err == nil {
-		t.Fatalf("a session without history has a conversation file: %s", file)
+		t.Fatalf("a session that is not a canvas has a conversation file: %s", file)
 	}
 }
 
@@ -634,7 +631,7 @@ func TestSocketGoingAwayReplaysTheConversation(t *testing.T) {
 	}
 
 	// A new connection: a new process, and the words from the file — not an empty conversation.
-	next, err := comfy.DialWS(context.Background(), socketURL(server, session, true))
+	next, err := comfy.DialWS(context.Background(), socketURL(server, session))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -712,7 +709,7 @@ func TestDeletingASessionForgetsTheConversation(t *testing.T) {
 	}
 
 	// The next connection is a new conversation: nothing to replay.
-	next, err := comfy.DialWS(context.Background(), socketURL(server, session, true))
+	next, err := comfy.DialWS(context.Background(), socketURL(server, session))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}

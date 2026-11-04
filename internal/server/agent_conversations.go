@@ -13,7 +13,7 @@ package server
 // conversation nobody can come back to.
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 )
 
@@ -24,7 +24,12 @@ const canvasSessionPrefix = "canvas:"
 func (s *Server) sessionFile(session string) (string, error) {
 	id, ok := strings.CutPrefix(session, canvasSessionPrefix)
 	if !ok {
-		return "", fmt.Errorf("agent: %q is not a canvas, so it keeps no conversation", session)
+		return "", errNotACanvas
 	}
 	return s.canvases.SessionPath(id)
 }
+
+// errNotACanvas is the answer for a name that names no canvas: it has nowhere to put a conversation. That is
+// not a failure — the models editor is such a name — so the caller that has to decide treats it as "no file"
+// rather than as a broken canvas, which is the one thing a single return value could not say.
+var errNotACanvas = errors.New("agent: this name is not a canvas, so it keeps no conversation")

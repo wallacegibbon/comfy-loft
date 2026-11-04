@@ -199,12 +199,12 @@ export const canvasAgent = (canvasId: string) => `canvas:${canvasId}`;
  */
 export const settingsAgent = "settings";
 
-function socketUrl(config: AiConfig, name: string, history: boolean): string {
+function socketUrl(config: AiConfig, name: string): string {
     const root = serverProtocolRoot(config.baseUrl);
-    // `history=1` is this surface saying "this name is a conversation": the agent then keeps it in a file
-    // that outlives the socket, inside the canvas the name points at. The models editor does not ask, and
-    // leaves nothing behind.
-    return `${root.replace(/^http/i, "ws")}/api/agent/socket/${encodeURIComponent(name)}${history ? "?history=1" : ""}`;
+    // Where the conversation is kept is the name's business, and the server answers it: a canvas keeps one in
+    // a file that outlives the socket, inside the canvas the name points at, and a name that is not a canvas
+    // (the models editor) keeps nothing. Nothing here has to say which kind this is.
+    return `${root.replace(/^http/i, "ws")}/api/agent/socket/${encodeURIComponent(name)}`;
 }
 
 /**
@@ -213,7 +213,7 @@ function socketUrl(config: AiConfig, name: string, history: boolean): string {
  * Resolves on the agent's startup broadcast, which is where the model list comes from — the caller
  * needs it before it can show, or let the user choose, a model for this session.
  */
-export function openAgentSession(config: AiConfig, name: string, options?: { history?: boolean }): Promise<AgentSession> {
+export function openAgentSession(config: AiConfig, name: string): Promise<AgentSession> {
     const existing = sessions.get(name);
     // A socket that is open, or still opening, is the session. One that is closing or closed is not: its
     // `opening` already resolved, so handing it back would report a connected session with nowhere to send.
@@ -222,7 +222,7 @@ export function openAgentSession(config: AiConfig, name: string, options?: { his
 
     let socket: WebSocket;
     try {
-        socket = new WebSocket(socketUrl(config, name, options?.history === true));
+        socket = new WebSocket(socketUrl(config, name));
     } catch (error) {
         return Promise.reject(new Error(apiErrorMessage(error, apiText("requestFailed"), "imageTimeout")));
     }

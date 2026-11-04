@@ -140,7 +140,7 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
     const connect = useCallback(async () => {
         setStatus((current) => (current === "connected" ? current : "connecting"));
         try {
-            await openAgentSession(config, session, { history: true });
+            await openAgentSession(config, session);
             setStatus("connected");
         } catch (error) {
             setStatus("closed");

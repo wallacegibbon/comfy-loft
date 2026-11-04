@@ -158,8 +158,8 @@ func (s *Sessions) Busy(id string) bool {
 	return ok && session.Busy()
 }
 
-// List is every connected session. The MCP route uses it to find the session that owns a workspace,
-// which is a name derived from the session rather than a registry kept beside it.
+// List is every connected session, read by the model broadcast: a model list that changed is news to every
+// session but the one that sent it.
 func (s *Sessions) List() []*Session {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -3474,6 +3474,9 @@ ever read or delete it, and it would carry an earlier question into the next ans
 conversation is a property of the surface, and the surface is the client, so the client says so in the
 socket URL. The gateway keeps filing processes under opaque names.
 
+_(The second half is superseded by #280: the node panels are gone, and the name decides.)_
+
+
 **Tested** Gateway: `TestSocketRelaysTheUsersWordsOnce` (a prompt produces exactly one `user` event, with the
 words as sent) and `TestOneShotSessionKeepsNoFile` (a socket without the flag prompts and answers, and
 `sessionFile("node:n1")` does not exist). In a browser against a real AlayaCore: after a reload the replayed
@@ -10446,3 +10449,38 @@ be stated in one place and read in two), `go test ./...`, `make check` (deadcode
 `npm run check`, `npx vitest run` (378), `npm run build` (558.77 kB).
 
 **Where** `internal/ws/ws.go`, `internal/ws/ws_test.go`, `frontend/src/lib/canvas/canvas-agent-tools.ts`.
+
+## 280. Whether a session keeps a conversation is the name's business, not the client's
+
+**Decision** `GET /api/agent/socket/{session}` carries no query. `agentOptionsFor(session)` asks
+`sessionFile(session)`: a `canvas:<id>` is spawned with `<CANVAS_ROOT>/<id>/session.alaya`, and any other name is
+spawned with no `--session` at all. "This name is not a canvas" is now a sentinel (`errNotACanvas`) rather than
+the one generic error, so the caller can tell a name that keeps nothing from a canvas whose directory cannot be
+resolved — which used to arrive as the same string.
+
+**Why** `?history=1` asked the client to say whether the server should keep a conversation, while the server
+already reads the name to decide *where* it goes (`sessionFile`, #178). One question answered in two places, and
+the answer the client gave was the one that could be wrong: a canvas that forgot the flag kept nothing, and a
+name that was not a canvas could ask for a file it had no home for. The flag was made for the node panels (#104),
+and those no longer exist (#278).
+
+**Why not give every name a file** Measured rather than assumed: `alayacore --rawio --session /tmp/probe.alaya`
+writes nothing until something is said, and a `model_sync` command exchange writes nothing either — only
+conversation content is persisted. So the choice was never "a file for the models editor or not"; it was "one
+rule or two". The name decides where, and a name with nowhere has nothing.
+
+**Cost** The models editor cannot ask for a file even if a future one wanted to; that would have to be a name
+with a home, not a flag. The models editor keeps its session, because it cannot not: `model.conf` is a
+`---`-separated hand-edited file and AlayaCore is the only thing that writes it, so `model_sync` needs a process
+to send it to. What a canvas gains is that it cannot forget its conversation any more.
+
+**Tested** `TestTheNameDecidesWhetherTheConversationIsKept` (a canvas is spawned with a file inside its own
+directory, `settings` with none, and a missing canvas is still an error), `go test ./...`, `make check`
+(deadcode 506), `npx tsc --noEmit`, `npm run check`, `npx vitest run` (378), `npm run build` (558.72 kB). The
+probe above ran against a copy of the real `model.conf` in `/tmp/probeconf`, so nothing the user owns was
+written.
+
+**Where** `internal/server/{agent_conversations.go,agent_config.go,routes_agent.go}`,
+`internal/agent/sessions.go` (a comment that named the wrong caller of `List`),
+`frontend/src/services/api/agent.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`,
+`internal/server/agent_e2e_test.go`, `docs/decisions.md` (#104).

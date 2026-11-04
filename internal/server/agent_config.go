@@ -17,6 +17,7 @@ package server
 // conversation are one thing on disk.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -99,7 +100,7 @@ func (s *Server) mcpBridgePath() string {
 // A node's agent is asked one thing at a time and writes the answer into the node; keeping that in a file
 // would leave one per node on disk, and would carry an earlier question into the next answer. So a name
 // that is not a canvas keeps nothing (`agent_conversations.go`).
-func (s *Server) agentOptionsFor(session string, history bool) (agent.SpawnOptions, error) {
+func (s *Server) agentOptionsFor(session string) (agent.SpawnOptions, error) {
 	opts := s.agentOptions()
 	opts.Env = append(opts.Env,
 		"COMFYLOFT_MCP="+s.mcpEndpoint(),
@@ -108,10 +109,13 @@ func (s *Server) agentOptionsFor(session string, history bool) (agent.SpawnOptio
 		// names both sides instead of a handshake EOF.
 		"COMFYLOFT_BRIDGE="+mcpstdio.Version,
 	)
-	if !history {
+	// Where the conversation lives is the name's business, and whether there is one at all: a canvas keeps
+	// its inside itself, and a name that is not one has nowhere to keep anything — so it is given no file,
+	// which is the same as saying nothing is written, because AlayaCore only writes what is said.
+	file, err := s.sessionFile(session)
+	if errors.Is(err, errNotACanvas) {
 		return opts, nil
 	}
-	file, err := s.sessionFile(session)
 	if err != nil {
 		return opts, err
 	}
