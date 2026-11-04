@@ -8,6 +8,7 @@ import { textOf, transcriptEvent, transcriptWindow, type ToolStep, type Transcri
 import { contextSegment, speedSegment } from "@/lib/canvas/agent-usage";
 import { nodeTitle } from "@/lib/canvas/node-title";
 import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
+import { reasoningPreview } from "@/lib/canvas/reasoning-preview";
 import { toolSubjectOf } from "@/lib/canvas/tool-argument";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { Button } from "@/components/kit/button";
@@ -805,15 +806,55 @@ function ToolStepLine({ step, live }: { step: ToolStep; live: boolean }) {
  * Reasoning is the one part that is written but not said: it is useful when an answer surprises the reader
  * and noise the rest of the time, so it is one line that opens. It is drawn where it happened like any
  * other part, and it stays open once it is opened — the text keeps arriving under it.
+ *
+ * Folded, the row carries the two ends of the thought: it began here, it concluded there, and the middle is
+ * elided. A closed drawer labelled only "Thinking" says nothing about what was thought, and the ends are
+ * what a reader checks a fold for — the start to recognise it, the end to know whether to open it. The two
+ * halves are cut by length, not measured, so the row costs the same on every frame of the thought.
  */
 function ReasoningBlock({ text }: { text: string }) {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(false);
+    const { head, tail } = reasoningPreview(text);
     return (
         <div>
-            <button type="button" aria-expanded={expanded} className="flex items-center gap-1 text-[11px] opacity-60 hover:opacity-100" onClick={() => setExpanded((open) => !open)}>
+            {/* `w-full` because a button is sized by its content: without it the row would be as wide as the
+                thought's first 120 characters and the panel would scroll sideways instead of truncating. */}
+            <button type="button" aria-expanded={expanded} className="flex w-full min-w-0 items-center gap-1 text-[11px] opacity-60 hover:opacity-100" onClick={() => setExpanded((open) => !open)}>
                 <ChevronRight className={`size-3 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
-                {t("canvas.agent.reasoningTitle")}
+                <span className="shrink-0">{t("canvas.agent.reasoningTitle")}</span>
+                {expanded ? null : (
+                    <>
+                        {/* The start takes whatever room the label and the end leave; the end is short and keeps
+                            its own, so a long thought never cuts the sentence it concluded with.
+
+                            Where the start runs out of room it fades rather than drawing an ellipsis of its own,
+                            because the "…" after it is the row's one mark for "the middle is gone" and two of
+                            them read as a stutter. The fade is the last 24px of the box, so it is the same
+                            softness at every panel width and the clipped character is under it, not sliced.
+
+                            A thought short enough that the start is all of it has no "…" to share, so that one
+                            ends in the ellipsis an overflowing line is supposed to end in. */}
+                        {head ? (
+                            tail ? (
+                                <span className="min-w-0 overflow-hidden whitespace-nowrap" style={{ maskImage: "linear-gradient(to right, #000 calc(100% - 24px), transparent)" }}>
+                                    {head}
+                                </span>
+                            ) : (
+                                <span className="min-w-0 truncate">{head}</span>
+                            )
+                        ) : null}
+                        {tail ? (
+                            <>
+                                <span className="shrink-0 opacity-60">…</span>
+                                {/* Whole, always: it is short by construction (20 characters), so it fits even a
+                                    panel dragged to its minimum, and a tail cut at its own end would be the one
+                                    part of the thought the row was showing on purpose. */}
+                                <span className="shrink-0">{tail}</span>
+                            </>
+                        ) : null}
+                    </>
+                )}
             </button>
             {expanded ? <div className="mt-1 whitespace-pre-wrap border-l pl-2 text-[11px] leading-relaxed opacity-60">{text}</div> : null}
         </div>

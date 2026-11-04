@@ -10535,3 +10535,57 @@ with the real AlayaCore: a `read_file` call drew `✓ calling read_file frontend
 
 **Where** `frontend/src/components/canvas/canvas-agent-panel.tsx` (`ToolStepLine`),
 `frontend/src/lib/canvas/tool-argument.ts`, `frontend/tests/tool-argument.test.ts`.
+
+## 282. A folded thought shows its two ends
+
+**Decision** A collapsed reasoning row reads `Thinking <head> … <tail>`: the first 120 characters of the thought,
+one ellipsis, and its last 20. `reasoningPreview` (`lib/canvas/reasoning-preview.ts`) cuts both halves by length,
+folds their line breaks into single spaces, drops half a character at either edge, and drops the punctuation a cut
+can leave at the front of the tail. Expanded, the preview is not drawn at all — the whole thought is under the row.
+
+**Why** A closed row that says only "Thinking" hides the one thing that tells a reader whether to open it. The two
+ends answer the two questions a fold is checked for: the start, to recognise the thought; the end, to know what it
+concluded. The middle is the part a reader skips anyway.
+
+**Why the ellipsis is drawn once** The row's "…" is a mark, not a character: it says the middle is gone. A head that
+also ended in an ellipsis of its own — which is what an overflowing line does by default — made the row read
+`blah… …blah`, two marks for one elision, and that is what an hour of looking at it caught (#282,
+`text-overflow: ellipsis` → a fade). So the head *fades* out over the last 24px of its box where it runs out of
+room, and the only ellipsis on the row is the one between the halves. A thought short enough that the head is all
+of it has no second half and so no "…" to share: that one keeps the ellipsis an overflowing line is supposed to
+end in.
+
+**Why the tail is never cut** It is 20 characters by construction, so it fits even a panel dragged to its 320px
+minimum, and a tail elided at its own end would drop the very words the tail exists to show. The head is the half
+that gives way, and at narrow widths that means the head shows ten characters and fades — the conclusion is what
+was asked for.
+
+**Why by length and not by measurement** The thought arrives a delta at a time and the row is redrawn on every
+frame (#237). Measuring text per frame — `scrollWidth`, `measureText` — is a layout read per frame; slicing is not.
+Both slices are cut before they are tidied, so their cost is the 120+20 units asked for, whatever the thought has
+grown to. That is the whole answer to "is this a performance problem": no, and the reason is in the order of the
+two operations.
+
+**Why `w-full` on the row, and why it is written down** A `<button>` is sized by its content, so the truncating
+head had no width to truncate against: the row grew to the length of the thought's first 120 characters and the
+transcript scrolled sideways instead of eliding. Found by asking the panel which elements had `scrollWidth >
+clientWidth`, not by looking. The same trap waits for the next row that puts long text inside a button.
+
+**Cost** A tail can begin mid-word, which is the price of not measuring, and a word is worth more than a boundary.
+A head that fades takes a couple of its characters with it. The two lengths are constants in one file, and a wider
+panel shows more of the same thought rather than more of the thought's ends.
+
+**Tested** `tests/reasoning-preview.test.ts` (a short thought shown whole, a long one's two ends, the head reaching
+the end so there is no middle to elide, line breaks folded, a cut through an emoji at either edge, punctuation left
+at the front of the tail, and nothing to show for nothing). In the real panel against a real replayed conversation
+on an isolated `:8191`, at 520px and at 408px: the folded rows read
+`Thinking 用户希望把几个图片节点的尺寸改成一样的。当前三个图片节点的尺寸分别是：- image-17 … height 会根据图片形状自动计算。`
+and, narrowed,
+`Thinking 用户希望把几个图片节⌷ … height 会根据图片形状自动计算。` — one ellipsis in the middle either way, the
+end whole either way. Opening a row hides the preview and draws the whole thought, and no element in the transcript
+overflows horizontally once the button has a width. `make check` (deadcode 506), `go test ./...`,
+`npx tsc --noEmit`, `npm run check` (i18n 861/828, exports 188 modules), `npx vitest run` (394), `npm run build`
+(560.20 kB).
+
+**Where** `frontend/src/components/canvas/canvas-agent-panel.tsx` (`ReasoningBlock`),
+`frontend/src/lib/canvas/reasoning-preview.ts`, `frontend/tests/reasoning-preview.test.ts`.
