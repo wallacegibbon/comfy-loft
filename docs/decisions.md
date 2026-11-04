@@ -10111,3 +10111,46 @@ layout. The first of those fails against #267's line, which is what makes it a r
 description. `npx tsc --noEmit`, `npm run check` (886/853, 183 modules), `npm run build` (572.73 kB).
 
 **Where** `frontend/src/services/api/image.ts`, `frontend/tests/api-image-upscale.test.ts`.
+
+## 272. What the browser said
+
+**Decision** None — this is the browser check that #264, #266, #267, #269, #270 and #271 were missing. The
+server on `:8190` was rebuilt from this tree and restarted (`make build`, `./start.sh`), the page hard-loaded,
+and eight things looked at. What follows is what was seen, not what the tests promised.
+
+**On the wire** `GET /api/workflows` carries it: `mode` and `accepts` on the four H3 video workflows,
+`variantModes: ["edit","inpaint","outpaint","t2i"]` on `image-qwen21`, `parameters: [horizontalAngle, pitchAngle,
+cameraDistance]` on `image-qwen21-angle` (the declaration from #267), `multiplier` on `video-rife`. The agent's
+startup frame answered `MCP servers initialized: 1 servers, 13 tools loaded` — twelve tools and `resize_node`.
+
+**The bug this thread started from is gone.** A canvas with a RIFE node saved as `model: default::video-rife`,
+`params: {multiplier: 2}` shows a node titled `RIFE 插帧 2×` whose panel is: one connected clip, `Needs 1
+clip(s) · 1 connected`, `Multiplier` with the pills `2` and `3`, and Generate. No prompt box, no size/seconds/
+mode pills, no red "text-to-video does not accept images" warning. In Chinese: `需要 1 条视频 · 已连 1`,
+`插帧倍数`, and the picker reads `RIFE 帧插值` — three dictionaries answering, the requirement, the knob and the
+model.
+
+**The angle step renders from its declaration.** Retargeting an image node to `Qwen Image 2.1 多角度` switches
+the panel from the composer to the step panel: a prompt box (the step takes words), `需要 1 张图片 · 已连 0`, and
+`水平角度` / `俯仰角度` / `镜头距离` as number inputs at their declared defaults (0, 0, 5), with Generate disabled
+while the requirement is unmet. Before #267 this was the composer — prompt and size pills, no knobs — and its
+request would have been refused for inputs the workflow did not declare.
+
+**Already in the page's own transcript, from a session the user drove**: `list_nodes` answered with the boxes
+(`文字节点 (558×222)`, `视频 420×420`, `插值视频 420×420`) and the agent worked out a non-overlapping layout
+from them; then `canvas_resize_node` was called and the panel reported `The call succeeded`. That is the tool's
+round trip through the bridge, the socket and the page — done before this entry was written, by the person using
+it.
+
+**Not exercised** The ratio refusal: the live resize was a square picture into a square card, so the
+disagreement path was never taken in the browser (it is unit-tested). Nor was the group-membership gap after a
+resize (#270's cost).
+
+**What the browser showed that the tests could not** An image node retargeted to a step keeps its own picture but
+the step wants a *connected* one: the angle panel says `已连 0` on a node that visibly holds an image, so the step
+cannot run until another node is wired into it. That is how steps have always worked (their media arrive as
+references, not as their own content) and it is consistent — but "turn this picture into an angle" is exactly the
+sentence a user will say next, and the engine already has the picture in hand. Left as a question, not changed
+here.
+
+**Where** Nothing. The server is running the rebuilt binary on `:8190`; the page was reloaded against it.
