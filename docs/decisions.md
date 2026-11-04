@@ -10154,3 +10154,45 @@ sentence a user will say next, and the engine already has the picture in hand. L
 here.
 
 **Where** Nothing. The server is running the rebuilt binary on `:8190`; the page was reloaded against it.
+
+## 273. A node panel asks its kind for its controls instead of branching
+
+**Decision** The controls a node's panel shows beside its prompt are a static table, one component per
+generation kind, in `frontend/src/components/canvas/panels/`: `NODE_CONTROLS[mode]` answers with
+`ImageControls`, `VideoControls`, `AudioControls` or `TextControls`. The panel keeps the shell — the reference
+bar, the prompt box, the agent settings, the generate button — and renders `<Controls … />` where a four-arm
+`mode === … ? … : …` chain used to sit in the middle of its JSX.
+
+**Why** That chain put four different clusters of pickers and popovers inside one function, and the facts that
+actually differ per kind (which pickers, which popover, which session) were spread around it as ternaries on
+`mode === "text"`. The card itself made this move long ago — `nodeContentRenderers[type]` is the same shape, one
+component per type, looked up at render — so the panel was the one place left asking what it was drawing.
+
+**What it is not** A registry: no `register…`, no lifecycle, nothing that runs at startup. The table is a
+`Record<CanvasGenerationMode, ComponentType<NodeControlsProps>>`, written out once, so the compiler refuses a new
+kind with no controls. The canvas had a plugin mechanism and deleted it (#148); a table typed by a closed union
+is not that.
+
+**The seam** `NodeControlsProps`: the shared core (`node`, `config`, `onConfigChange`, `onOpenPreferences`) and
+the few optional members only one kind has (the image popover's open notification and its three editors, the
+video kind's frame mode and mode switch and source length, the text kind's agent). A kind reads what it needs.
+
+**Cost** The panel went from 588 lines to 538 — less than the "~350" I said it would, because the arms were only
+about fifty lines and the rest of the panel is the shell that stays. What is left are the `mode === "text"`
+ternaries around the placeholder wording, the caption button and the generate button's "connect the agent"
+behaviour: those are the shell's behaviour rather than a kind's controls, and moving them would mean the table
+carrying `placeholder` and `primary` — a second decision, not this one. Every kind also receives the whole props
+object, so a kind that needs two fields still takes a bag of twelve; that is deliberate (four near-identical prop
+types are worse) and it is the part most likely to drift.
+
+**Tested** `npx tsc --noEmit`, `npm run check` (189 modules, 886/853 keys, prettier clean), `npx vitest run`
+(40 files, 388 tests), `npm run build` (573.31 kB). In the browser, on an isolated copy of the workspace
+(`/tmp/verify`, port 8191, its own canvas root): a text node's panel shows its agent cluster; an image node's
+shows the workflow picker, the base-model picker and its settings popover (Size, Aspect ratio); a video node's
+shows the workflow picker and its popover (Resolution, Seconds, Refine, Mode) — and picking `Quality` wrote
+`videoSelfLiftMode: quality` onto the node, which is the moved `videoConfigPatch` working. An audio node could
+not be made from the canvas menu (there is no such entry — a sound arrives by import, through a native file
+chooser), so that panel was not looked at; it is the same three lines as the video one.
+
+**Where** `frontend/src/components/canvas/panels/{node-controls,node-controls-props,image-controls,video-controls,audio-controls,text-controls}.tsx`,
+`frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.

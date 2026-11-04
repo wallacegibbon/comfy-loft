@@ -7,23 +7,19 @@ import { Button } from "@/components/kit/button";
 import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
 import { Tooltip } from "@/components/kit/tooltip";
-import { BaseModelPicker, ModelPicker, WorkflowModelPicker } from "@/components/model-picker";
 import { channelModelOf, defaultConfig, modelIsStep, modelOptionName, modelTakesPrompt, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig, type ModelAccepts } from "@/stores/use-config-store";
 
 import { nodePromptOf, promptPatch } from "@/lib/canvas/node-prompt-field";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { isPlainEnterKey } from "@/lib/keyboard-event";
-import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
-import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
-import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
-import { AgentSettingsControls } from "./agent-settings-controls";
+import { NODE_CONTROLS } from "./panels/node-controls";
 import { SentPromptDisclosure } from "./sent-prompt-disclosure";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData } from "@/types/canvas";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { resolveCanvasReferenceImages } from "@/lib/canvas/canvas-resource-references";
 import { requestPromptChat } from "@/services/api/prompts";
 import { agentSession, endAgentSession, nodeAgent, openAgentSession, subscribeAgentSessions } from "@/services/api/agent";
-import { videoModelForMode, videoModelModePatch } from "@/lib/canvas/video-model-mode";
+import { videoModelForMode } from "@/lib/canvas/video-model-mode";
 import { CanvasNodeReferenceBar } from "./canvas-node-reference-bar";
 import { CanvasToolNodePanel } from "./canvas-tool-node-panel";
 import { abortCaptionJob, hasCaptionJob, registerCaptionJob, releaseCaptionJob } from "@/lib/canvas/caption-jobs";
@@ -112,6 +108,9 @@ export function CanvasNodePromptPanel({
     const canCaption = mode === "text" && imageReferences.length > 0 && !isRunning && !captionRunning;
     const hasMediaReferences = mentionReferences.some((reference) => reference.kind !== "text");
     const textVideoHasReferences = refusesMedia && hasMediaReferences;
+    // Which controls sit beside the prompt box is the kind's business: one component per kind, looked up here
+    // instead of four arms of `mode === …` in the middle of the JSX below.
+    const Controls = NODE_CONTROLS[mode];
     const frameMode: "first" | "last" | "both" = node.metadata?.frameMode === "last" || node.metadata?.frameMode === "both" || node.metadata?.frameMode === "first" ? node.metadata.frameMode : imageReferences.length >= 2 ? "both" : "first";
     const changeVideoMode = (value: "text" | "frames" | "reference") => {
         const nextModel = videoModelForMode(config, value);
@@ -345,54 +344,20 @@ export function CanvasNodePromptPanel({
                             aria-label={t("canvas.promptPanel.expandEditor")}
                         />
                     </Tooltip>
-                    {mode === "image" ? (
-                        <>
-                            <WorkflowModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="image" onMissingConfig={() => openPreferences()} className="max-w-[190px]" />
-                            <BaseModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} className="max-w-[140px]" />
-                            <CanvasImageSettingsPopover
-                                config={config}
-                                placement="topLeft"
-                                buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3"
-                                onConfigChange={(key, value) => onConfigChange(node.id, { [key]: value })}
-                                onParamsChange={(params) => onConfigChange(node.id, { params: { ...node.metadata?.params, ...params } })}
-                                onMissingConfig={() => openPreferences()}
-                                onOpenChange={onImageSettingsOpenChange}
-                                onOpenMaskEditor={() => onOpenMaskEditor?.(node.id)}
-                                onOpenOutpaintEditor={() => onOpenOutpaintEditor?.(node.id)}
-                                onOpenMossLayoutEditor={() => onOpenMossLayoutEditor?.(node.id)}
-                            />
-                        </>
-                    ) : mode === "video" ? (
-                        <>
-                            <WorkflowModelPicker
-                                config={config}
-                                value={config.model}
-                                onChange={(model) => onConfigChange(node.id, videoModelModePatch(config, model))}
-                                capability="video"
-                                onMissingConfig={() => openPreferences()}
-                                className="max-w-[190px]"
-                            />
-                            <BaseModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} className="max-w-[140px]" />
-                            <CanvasVideoSettingsPopover
-                                config={config}
-                                buttonClassName="!h-10 !min-w-0 !max-w-[200px] !justify-start !rounded-full !px-2"
-                                onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))}
-                                frameMode={frameMode}
-                                onFrameModeChange={(value) => onConfigChange(node.id, { frameMode: value })}
-                                onModeChange={changeVideoMode}
-                                sourceDurationSeconds={sourceVideoDurationSeconds}
-                            />
-                        </>
-                    ) : mode === "audio" ? (
-                        <>
-                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="audio" onMissingConfig={() => openPreferences()} className="max-w-[190px]" />
-                            <CanvasAudioSettingsPopover config={config} buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3" onConfigChange={(key, value) => onConfigChange(node.id, audioConfigPatch(key, value))} />
-                        </>
-                    ) : (
-                        <>
-                            <AgentSettingsControls session={agentName} className="flex min-w-0 items-center gap-2" />
-                        </>
-                    )}
+                    <Controls
+                        node={node}
+                        config={config}
+                        onConfigChange={onConfigChange}
+                        onOpenPreferences={() => openPreferences()}
+                        onImageSettingsOpenChange={onImageSettingsOpenChange}
+                        onOpenMaskEditor={onOpenMaskEditor}
+                        onOpenOutpaintEditor={onOpenOutpaintEditor}
+                        onOpenMossLayoutEditor={onOpenMossLayoutEditor}
+                        frameMode={frameMode}
+                        onVideoModeChange={changeVideoMode}
+                        sourceDurationSeconds={sourceVideoDurationSeconds}
+                        agentName={agentName}
+                    />
                 </div>
                 {mode === "text" ? (
                     <Tooltip title={canCaption ? t("canvas.promptPanel.captionHint") : t("canvas.promptPanel.captionNeedsImage")}>
@@ -570,19 +535,4 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
 function canTakeMedia(accepts: ModelAccepts | undefined) {
     if (!accepts) return true;
     return (accepts.images?.max ?? 0) + (accepts.videos?.max ?? 0) + (accepts.audios?.max ?? 0) > 0;
-}
-
-function videoConfigPatch(key: keyof AiConfig, value: string) {
-    if (key === "videoSeconds") return { seconds: value };
-    if (key === "videoGenerateAudio") return { generateAudio: value };
-    if (key === "videoWatermark") return { watermark: value };
-    if (key === "videoMode") return { videoMode: value };
-    if (key === "videoSelfLiftMode") return { videoSelfLiftMode: value };
-    return { [key]: value };
-}
-
-function audioConfigPatch(key: CanvasAudioSettingKey, value: string) {
-    if (key === "audioFormat") return { audioFormat: value };
-    if (key === "audioSeconds") return { seconds: value };
-    return { audioInstructions: value };
 }
