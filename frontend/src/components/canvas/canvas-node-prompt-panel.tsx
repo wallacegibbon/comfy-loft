@@ -8,7 +8,7 @@ import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
 import { Tooltip } from "@/components/kit/tooltip";
 import { BaseModelPicker, ModelPicker, WorkflowModelPicker } from "@/components/model-picker";
-import { channelModelOf, defaultConfig, modelOptionName, modelTakesPrompt, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { channelModelOf, defaultConfig, modelOptionName, modelTakesPrompt, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig, type ModelAccepts } from "@/stores/use-config-store";
 
 import { nodePromptOf, promptPatch } from "@/lib/canvas/node-prompt-field";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
@@ -23,7 +23,7 @@ import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-refer
 import { resolveCanvasReferenceImages } from "@/lib/canvas/canvas-resource-references";
 import { requestPromptChat } from "@/services/api/prompts";
 import { agentSession, endAgentSession, nodeAgent, openAgentSession, subscribeAgentSessions } from "@/services/api/agent";
-import { videoModelForWorkflow, videoModelModePatch } from "@/lib/canvas/video-model-mode";
+import { videoModelForMode, videoModelModePatch } from "@/lib/canvas/video-model-mode";
 import { CanvasNodeReferenceBar } from "./canvas-node-reference-bar";
 import { CanvasToolNodePanel } from "./canvas-tool-node-panel";
 import { abortCaptionJob, hasCaptionJob, registerCaptionJob, releaseCaptionJob } from "@/lib/canvas/caption-jobs";
@@ -87,9 +87,12 @@ export function CanvasNodePromptPanel({
     // What a connected text node will add to the request. The box does not hold it — nothing copies it
     // there — so it is the request, not the panel, that carries these words (docs/decisions.md #185).
     const connectedText = mentionReferences.some((reference) => reference.kind === "text" && reference.text?.trim());
-    const workflowId = channelModelOf(config, config.model)?.model.workflowId || modelOptionName(config.model);
-    const isH3T2V = mode === "video" && workflowId === "video-h3-t2v";
-    const isCharacterSwap = workflowId === "video-h3-character-swap";
+    const channelModel = channelModelOf(config, config.model)?.model;
+    const workflowId = channelModel?.workflowId || modelOptionName(config.model);
+    // What the selected workflow declared, rather than which workflow it is: a workflow whose contract allows
+    // no media at all refuses a reference, and one whose bindings never read `seconds` takes its length from
+    // the clip being edited. Both used to be recognised by id (`video-h3-t2v`, `video-h3-character-swap`).
+    const refusesMedia = !canTakeMedia(channelModel?.accepts);
     const sourceVideoReference = mentionReferences.find((reference) => reference.kind === "video");
     const sourceVideoNode = sourceVideoReference ? nodes.find((item) => item.id === sourceVideoReference.nodeId) : undefined;
     const sourceVideoDurationSeconds = sourceVideoNode?.metadata?.durationMs && sourceVideoNode.metadata.durationMs > 0 ? sourceVideoNode.metadata.durationMs / 1000 : undefined;
@@ -108,11 +111,10 @@ export function CanvasNodePromptPanel({
     // separate vision endpoint to configure.
     const canCaption = mode === "text" && imageReferences.length > 0 && !isRunning && !captionRunning;
     const hasMediaReferences = mentionReferences.some((reference) => reference.kind !== "text");
-    const textVideoHasReferences = isH3T2V && hasMediaReferences;
+    const textVideoHasReferences = refusesMedia && hasMediaReferences;
     const frameMode: "first" | "last" | "both" = node.metadata?.frameMode === "last" || node.metadata?.frameMode === "both" || node.metadata?.frameMode === "first" ? node.metadata.frameMode : imageReferences.length >= 2 ? "both" : "first";
     const changeVideoMode = (value: "text" | "frames" | "reference") => {
-        const baseId = value === "reference" ? "video-h3-ref2va" : value === "frames" ? "video-h3-frames" : "video-h3-t2v";
-        const nextModel = videoModelForWorkflow(config, baseId);
+        const nextModel = videoModelForMode(config, value);
         onConfigChange(node.id, { ...(nextModel ? { model: nextModel } : {}), videoMode: value, ...(value === "frames" ? { frameMode } : {}) });
     };
 
@@ -301,7 +303,7 @@ export function CanvasNodePromptPanel({
                 connectedNodes={connectedNodes}
                 onDisconnect={onDisconnectReference}
                 onStartSelection={onStartReferenceSelection}
-                addDisabled={isH3T2V}
+                addDisabled={refusesMedia}
                 addDisabledHint={t("canvas.promptPanel.videoTextAddDisabled")}
             />
             {textVideoHasReferences ? <div className="mb-2 text-xs leading-4 text-[#ef4444]">{t("canvas.promptPanel.videoTextRefsWarning")}</div> : null}
@@ -369,7 +371,6 @@ export function CanvasNodePromptPanel({
                                 frameMode={frameMode}
                                 onFrameModeChange={(value) => onConfigChange(node.id, { frameMode: value })}
                                 onModeChange={changeVideoMode}
-                                durationLocked={isCharacterSwap}
                                 sourceDurationSeconds={sourceVideoDurationSeconds}
                             />
                         </>
@@ -495,7 +496,7 @@ export function CanvasNodePromptPanel({
                             setExpanded(false);
                             onStartReferenceSelection?.(nodeId);
                         }}
-                        addDisabled={isH3T2V}
+                        addDisabled={refusesMedia}
                         addDisabledHint={t("canvas.promptPanel.videoTextAddDisabled")}
                     />
                     {textVideoHasReferences ? <div className="mb-2 text-xs leading-4 text-[#ef4444]">{t("canvas.promptPanel.videoTextRefsWarning")}</div> : null}
@@ -548,6 +549,18 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         seedFixed: node.metadata?.seedFixed ?? globalConfig.seedFixed ?? "false",
         params: node.metadata?.params || globalConfig.params,
     };
+}
+
+/**
+ * Whether a reference could ever reach this workflow.
+ *
+ * The contract says what the run takes; nothing declared at all is not a refusal, just an absence of a
+ * contract — the same three-state reading #256 gave every other acceptance. Summing the three media caps is
+ * what makes "text-to-video takes no media" a fact of the declaration instead of a workflow id.
+ */
+function canTakeMedia(accepts: ModelAccepts | undefined) {
+    if (!accepts) return true;
+    return (accepts.images?.max ?? 0) + (accepts.videos?.max ?? 0) + (accepts.audios?.max ?? 0) > 0;
 }
 
 function videoConfigPatch(key: keyof AiConfig, value: string) {

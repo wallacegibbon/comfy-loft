@@ -7,9 +7,9 @@ import { Slider } from "@/components/kit/input";
 import i18n from "@/i18n";
 import { SeedSetting } from "@/components/image-settings-panel";
 import { type CanvasTheme } from "@/lib/canvas-theme";
-import { videoWorkflowId } from "@/lib/canvas/video-model-mode";
+import { videoFollowsSource } from "@/lib/canvas/video-model-mode";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio, parseVideoResolution, readVideoDimensions, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions } from "@/lib/media-size";
-import { type AiConfig } from "@/stores/use-config-store";
+import { channelModelOf, type AiConfig } from "@/stores/use-config-store";
 
 const resolutionOptions = [
     { value: "480", label: "480p" },
@@ -32,7 +32,6 @@ type VideoSettingsPanelProps = {
     frameMode?: "first" | "last" | "both";
     onFrameModeChange?: (value: "first" | "last" | "both") => void;
     onModeChange?: (value: "text" | "frames" | "reference") => void;
-    durationLocked?: boolean;
     sourceDurationSeconds?: number;
 };
 
@@ -42,26 +41,19 @@ const h3FrameModeOptions = [
     { value: "both" as const, labelKey: "bothFrames" },
 ];
 
-export function VideoSettingsPanel({
-    config,
-    onConfigChange,
-    theme,
-    showTitle = true,
-    className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5",
-    frameMode = "both",
-    onFrameModeChange,
-    onModeChange,
-    durationLocked = false,
-    sourceDurationSeconds,
-}: VideoSettingsPanelProps) {
+export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5", frameMode = "both", onFrameModeChange, onModeChange, sourceDurationSeconds }: VideoSettingsPanelProps) {
     const { t } = useTranslation();
     const seconds = Number(clampVideoSeconds(config.videoSeconds || "6"));
     const videoMode = normalizeVideoModeValue(config.videoMode);
-    const workflowId = videoWorkflowId(config, config.model);
-    const isH3Reference = workflowId === "video-h3-ref2va" || workflowId === "video-h3-character-swap";
-    const isH3Frames = workflowId === "video-h3-frames";
-    const isH3Text = workflowId === "video-h3-t2v";
-    const isH3 = isH3Reference || isH3Frames || isH3Text;
+    // What this workflow declares, rather than which workflow it is: the mode it runs in (absent on a
+    // workflow with no modes, like an interpolation), whether it has the SelfLift knob the fast/quality
+    // toggle writes, and whether the seconds control can reach the graph at all.
+    const channelModel = channelModelOf(config, config.model)?.model;
+    const declaredMode = channelModel?.mode;
+    const isH3 = Boolean(declaredMode);
+    const isH3Frames = declaredMode === "frames";
+    const selfLift = channelModel?.selfLift === true;
+    const followsSource = videoFollowsSource(config, config.model);
     const h3ModeOptions = [
         { value: "text" as const, labelKey: "textH3" },
         { value: "frames" as const, labelKey: "framesH3" },
@@ -72,11 +64,11 @@ export function VideoSettingsPanel({
     const selectedRatio = inferVideoRatio(config.size || "auto");
     const dimensions = readVideoDimensions(config.size || "auto", resolution, selectedRatio);
     useEffect(() => {
-        if (isH3Reference && videoMode !== "reference") onConfigChange("videoMode", "reference");
-        else if (isH3Frames && videoMode !== "frames") onConfigChange("videoMode", "frames");
-        else if (isH3Text && videoMode !== "text") onConfigChange("videoMode", "text");
-        else if (!isH3 && videoMode === "text") onConfigChange("videoMode", "frames");
-    }, [isH3, isH3Frames, isH3Reference, isH3Text, onConfigChange, videoMode]);
+        // The workflow's own declaration wins: a node set to "text" but pointed at the frames workflow runs in
+        // frames. One with no mode has nothing to say, and the two-mode list has no "text" to keep.
+        if (declaredMode && videoMode !== declaredMode) onConfigChange("videoMode", declaredMode);
+        else if (!declaredMode && videoMode === "text") onConfigChange("videoMode", "frames");
+    }, [declaredMode, onConfigChange, videoMode]);
     const applySize = (nextResolution: string, ratio: string) => {
         onConfigChange("vquality", nextResolution);
         onConfigChange("size", computeVideoSize(nextResolution, ratio));
@@ -125,13 +117,10 @@ export function VideoSettingsPanel({
                     </div>
                 </SettingGroup>
                 <SettingGroup title={t("settingsPanels.video.seconds")} color={theme.node.muted}>
-                    {durationLocked ? (
+                    {followsSource ? (
                         <div className="flex h-8 items-center gap-1.5 text-xs" style={{ color: theme.node.muted }}>
                             <Lock className="size-3.5" />
-                            <span>
-                                {t("settingsPanels.video.followSource")}
-                                {sourceDurationSeconds != null ? ` · ${sourceDurationSeconds.toFixed(1)}s` : ""}
-                            </span>
+                            <span>{lockedDurationLabel(sourceDurationSeconds)}</span>
                         </div>
                     ) : (
                         <div className="flex items-center gap-3" onMouseDown={(event) => event.stopPropagation()}>
@@ -144,7 +133,7 @@ export function VideoSettingsPanel({
                     )}
                 </SettingGroup>
                 <SeedSetting fixed={config.seedFixed === "true"} seed={config.seed || ""} theme={theme} onChange={onConfigChange} />
-                {isH3 ? (
+                {selfLift ? (
                     <SettingGroup title={t("settingsPanels.video.selfLiftMode")} color={theme.node.muted}>
                         <div className="grid grid-cols-2 gap-2.5">
                             {[
@@ -176,7 +165,7 @@ export function VideoSettingsPanel({
                     </div>
                     {isH3 ? (
                         <div className="text-xs leading-4" style={{ color: theme.node.muted }}>
-                            {t(`settingsPanels.video.modes.${isH3Text ? "textHint" : isH3Frames ? "framesHint" : "referenceHint"}`)}
+                            {t(`settingsPanels.video.modes.${declaredMode === "text" ? "textHint" : declaredMode === "frames" ? "framesHint" : "referenceHint"}`)}
                         </div>
                     ) : null}
                     {isH3Frames && videoMode === "frames" && onFrameModeChange ? (
@@ -197,6 +186,18 @@ export function VideoSettingsPanel({
             </div>
         </>
     );
+}
+
+/**
+ * What to say instead of a length control, when the workflow binds nothing to `seconds`.
+ *
+ * Two cases look alike from here and are not the same: a clip being edited decides the length (character
+ * swap, interpolation) — then a source duration is known and the sentence names it — or the workflow simply
+ * fixes a length of its own. Saying "follows the source" without a source would be a guess.
+ */
+export function lockedDurationLabel(sourceDurationSeconds?: number) {
+    if (sourceDurationSeconds != null) return `${i18n.t("settingsPanels.video.followSource")} · ${sourceDurationSeconds.toFixed(1)}s`;
+    return i18n.t("settingsPanels.video.lengthFixed");
 }
 
 export function videoResolutionLabel(value: string) {

@@ -9868,3 +9868,56 @@ which the compiler refuses), `npm run check` (866/852 keys, 182 modules, prettie
 
 **Where** `frontend/src/components/model-picker.tsx`,
 `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.
+
+## 266. The composer asks what a workflow declares, not which workflow it is
+
+**Decision** The five id tests left in the video composer are now reads of the declaration:
+
+- `isH3Text` / `isH3Frames` / `isH3Reference` → the model's `mode` (`text` / `frames` / `reference`), which
+  #263 put on the wire; "this workflow is one of a family that has modes" → it declares a `mode` at all.
+- The SelfLift fast/quality pills → the workflow declares `transition_step`, the knob that toggle writes
+  (`services/api/video.ts`), carried as `selfLift`.
+- A locked length ("follow source video") → no binding reads `seconds`, carried as `bindsSeconds`;
+  `video-h3-character-swap` is the case: its `videos` binding names `sourceLengthInput`, so the clip decides.
+- "This workflow takes no media" — the red warning and the disabled reference bar — → the contract's own
+  caps: `images.max + videos.max + audios.max === 0`.
+- The mode switch → `videoModelForMode` returns the model whose declared `mode` is the one chosen, instead of
+  a table mapping `reference`/`frames`/`text` to `video-h3-ref2va`/`-frames`/`-t2v`.
+
+`durationLocked` stopped being a prop threaded through two components: the panel and the settings pill both
+ask `videoFollowsSource(config, model)`, so the control and the sentence about it cannot disagree.
+
+**Why** #263 recorded these as "what stays hardcoded": the client still recognised `video-h3-*` to decide which
+controls to offer. Each had the same defect — a workflow added tomorrow is invisible to the rule, and a
+workflow removed leaves a branch that quietly does nothing. The SelfLift toggle was worse than invisible: it
+writes `transition_step` into the request, so on a workflow that does not declare that knob the value travels
+to the server and is ignored. The id test was right about which workflows to offer the toggle for, for the
+wrong reason, and that is the kind of rightness that stops being right.
+
+**The three-state read** `bindsSeconds` is a `boolean` on the wire (a listed workflow either binds the request's
+seconds or does not) but `boolean | undefined` in the store, because a model the server did not list claims
+nothing: an old local selection is then neither locked nor unlocked by the canvas. Same rule as #256 gave the
+input kinds.
+
+**What the pills say now** A locked length has two causes and they are not the same sentence: a clip being
+edited sets it (a source duration is known, and the row names it) or the workflow fixes its own. `lengthFixed`
+is the second, and `lockedDurationLabel` chooses between them from the one fact the panel has.
+
+**Cost** For the shipped registry nothing changes: all four H3 workflows declare a mode, all four declare
+`transition_step`, three bind `seconds` and character swap does not. Two edges move for a workflow the operator
+added to their own `model.conf` (a Wan i2v, a custom graph): it is offered the frames/reference pills only if it
+declares a mode, and it loses the seconds slider if none of its bindings reads `seconds`. Both are the
+declaration's answer rather than ours, and the second one deletes a silent no-op — a seconds value that nothing
+read was being sent on every run.
+
+**Tested** `npx tsc --noEmit` (removing the id tests left `videoWorkflowId` used only inside its own file, which
+the export check then refused), `npm run check` (867/853 keys, 182 modules, prettier clean), `npx vitest run`
+(40 files, 377 tests — three new: `bindsSeconds` both ways, `selfLift` only where the knob is declared, a mode
+finding its model while an unlisted model claims nothing), `npm run build` (569.25 kB), `make check` (deadcode
+505). Not checked in a browser: the composer needs a server with the new registry on the other side of it, and
+what changed is which branch a control takes, with the shipped registry's declarations unchanged.
+
+**Where** `frontend/src/lib/server-models.ts`, `frontend/src/stores/use-config-store.ts`,
+`frontend/src/lib/canvas/video-model-mode.ts`, `frontend/src/components/video-settings-panel.tsx`,
+`frontend/src/components/canvas/{canvas-video-settings-popover,canvas-node-prompt-panel}.tsx`,
+`frontend/src/i18n/locales/{en-US,zh-CN}.ts`, `frontend/tests/{server-models,model-selection}.test.ts`.

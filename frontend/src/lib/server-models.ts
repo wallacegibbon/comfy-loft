@@ -50,6 +50,30 @@ function hasPromptBinding(workflow: ServerWorkflow) {
     return Boolean(workflow.bindings && Object.prototype.hasOwnProperty.call(workflow.bindings, "prompt"));
 }
 
+/**
+ * Whether the user's seconds reach the graph at all.
+ *
+ * A binding is what puts a value into a node, so a workflow whose bindings never read `seconds` cannot be
+ * told how long its output should be — the length comes from somewhere else (the clip being edited) or
+ * from the binding's own default. `video-h3-character-swap` is the first kind: its `videos` binding names
+ * `sourceLengthInput: "length"`, so the source clip decides. The panel asks this instead of recognising the
+ * workflow's id, which is what it used to do.
+ */
+function bindsSeconds(workflow: ServerWorkflow) {
+    return Object.values(workflow.bindings || {}).some((binding) => typeof binding === "object" && binding !== null && (binding as { from?: unknown }).from === "seconds");
+}
+
+/**
+ * Whether the workflow declares the `transition_step` knob.
+ *
+ * That knob is the one the SelfLift fast/quality toggle writes (`services/api/video.ts`), so its presence is
+ * what makes the toggle real: a workflow without it would be sent a value nothing reads. The H3 workflows
+ * declare it; nothing else does.
+ */
+function hasSelfLift(workflow: ServerWorkflow) {
+    return (workflow.parameters || []).some((parameter) => parameter?.key === "transition_step");
+}
+
 /** The knobs a node panel renders, reduced to what a control needs. */
 function parametersOf(workflow: ServerWorkflow) {
     const parameters = (workflow.parameters || [])
@@ -91,6 +115,8 @@ export function modelsOf(workflow: ServerWorkflow): ChannelModel[] {
         duration,
         tool: isToolWorkflow(workflow.id),
         hasPrompt: hasPromptBinding(workflow),
+        bindsSeconds: bindsSeconds(workflow),
+        selfLift: hasSelfLift(workflow),
         mode: workflow.mode || undefined,
         accepts: acceptsOf(workflow.accepts),
         contracts,
@@ -125,6 +151,8 @@ export function modelSignature(models: ChannelModel[]) {
             model.blockedModes || [],
             model.tool ? 1 : 0,
             model.hasPrompt ? 1 : 0,
+            model.bindsSeconds ? 1 : 0,
+            model.selfLift ? 1 : 0,
             model.mode || "",
             model.accepts || null,
             model.contracts || null,

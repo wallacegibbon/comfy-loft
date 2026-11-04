@@ -60,6 +60,7 @@ export default {
             size: "尺寸",
             seconds: "秒数",
             followSource: "跟随原视频",
+            lengthFixed: "长度由工作流决定",
             selfLiftMode: "精修",
             selfLiftFast: "快速",
             selfLiftQuality: "质量",

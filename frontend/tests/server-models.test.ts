@@ -140,6 +140,39 @@ describe("modelsOf", () => {
         expect(modelsOf(workflow({ type: "audio", parameters: [{ key: "duration", type: "select", options: ["short", "long"] }], models: [{ id: "audio-minimax-music-3" }] }))[0].duration).toBeUndefined();
     });
 
+    it("says whether the user's seconds can reach the graph", () => {
+        // A binding that reads `seconds` is the only way a length control can do anything, so the panel asks
+        // this instead of recognising the workflow (docs/decisions.md #266). A character swap has no such
+        // binding: its source clip decides the length.
+        const binds = modelsOf(
+            workflow({
+                id: "video-h3-t2v",
+                type: "video",
+                bindings: { prompt: { node: "5", input: "text" }, length: { node: "76", input: "length", from: "seconds", transform: "secondsToFrames17" } },
+                models: [{ id: "video-h3-t2v" }],
+            }),
+        );
+        expect(binds[0].bindsSeconds).toBe(true);
+
+        const followsSource = modelsOf(
+            workflow({
+                id: "video-h3-character-swap",
+                type: "video",
+                bindings: { prompt: { node: "5", input: "text" }, videos: { node: "76", input: "ref_videos", from: "video", sourceLengthInput: "length" } },
+                models: [{ id: "video-h3-character-swap" }],
+            }),
+        );
+        expect(followsSource[0].bindsSeconds).toBe(false);
+    });
+
+    it("offers the SelfLift toggle only where the workflow declares the knob it writes", () => {
+        // The toggle writes `transition_step` (services/api/video.ts), so the declaration is what makes it real:
+        // a workflow without the knob would be sent a value nothing reads.
+        const withKnob = modelsOf(workflow({ type: "video", parameters: [{ key: "transition_step", type: "number", min: 1, max: 7 }], models: [{ id: "video-a" }] }));
+        expect(withKnob[0].selfLift).toBe(true);
+        expect(modelsOf(workflow({ type: "video", parameters: [{ key: "multiplier", type: "number", min: 2, max: 3 }], models: [{ id: "video-rife" }] }))[0].selfLift).toBe(false);
+    });
+
     it("contributes nothing when the server lists no ids", () => {
         // A workflow whose base models are all missing is not selectable; it is also not a name to
         // guess at, so the workflow id is not used as a fallback.

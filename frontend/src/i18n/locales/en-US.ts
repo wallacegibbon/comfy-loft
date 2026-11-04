@@ -38,6 +38,7 @@ export default {
             size: "Size",
             seconds: "Seconds",
             followSource: "Follow source video",
+            lengthFixed: "Length set by the workflow",
             selfLiftMode: "Refine",
             selfLiftFast: "Fast",
             selfLiftQuality: "Quality",

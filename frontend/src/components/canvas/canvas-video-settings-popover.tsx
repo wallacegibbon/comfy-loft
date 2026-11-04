@@ -3,10 +3,10 @@ import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 
 import { Button } from "@/components/kit/button";
-import { VideoSettingsPanel, videoModeLabel, videoResolutionLabel, videoSecondsLabel, videoSelfLiftLabel, videoSizeLabel } from "@/components/video-settings-panel";
-import i18n from "@/i18n";
+import { lockedDurationLabel, VideoSettingsPanel, videoModeLabel, videoResolutionLabel, videoSecondsLabel, videoSelfLiftLabel, videoSizeLabel } from "@/components/video-settings-panel";
 import { type CanvasTheme } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
+import { videoFollowsSource } from "@/lib/canvas/video-model-mode";
 import type { AiConfig } from "@/stores/use-config-store";
 
 type CanvasVideoSettingsPopoverProps = {
@@ -17,11 +17,10 @@ type CanvasVideoSettingsPopoverProps = {
     frameMode?: "first" | "last" | "both";
     onFrameModeChange?: (value: "first" | "last" | "both") => void;
     onModeChange?: (value: "text" | "frames" | "reference") => void;
-    durationLocked?: boolean;
     sourceDurationSeconds?: number;
 };
 
-export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClassName, placement = "topLeft", frameMode, onFrameModeChange, onModeChange, durationLocked = false, sourceDurationSeconds }: CanvasVideoSettingsPopoverProps) {
+export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClassName, placement = "topLeft", frameMode, onFrameModeChange, onModeChange, sourceDurationSeconds }: CanvasVideoSettingsPopoverProps) {
     const theme = useCanvasTheme();
     const buttonRef = useRef<HTMLSpanElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
@@ -61,11 +60,12 @@ export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClass
                 frameMode={frameMode}
                 onFrameModeChange={onFrameModeChange}
                 onModeChange={onModeChange}
-                durationLocked={durationLocked}
                 sourceDurationSeconds={sourceDurationSeconds}
             />
         ) : null;
-    const durationSummary = durationLocked ? `${i18n.t("settingsPanels.video.followSource")}${sourceDurationSeconds != null ? ` · ${sourceDurationSeconds.toFixed(1)}s` : ""}` : videoSecondsLabel(config.videoSeconds);
+    // The length is the source clip's when the workflow binds nothing to `seconds` — the same fact the panel
+    // reads, from the same function, so the pill and the control cannot disagree.
+    const durationSummary = videoFollowsSource(config, config.model) ? lockedDurationLabel(sourceDurationSeconds) : videoSecondsLabel(config.videoSeconds);
     // One line, and the whole of it in a `title` as well: the pill is narrower than this sentence, so what
     // the button cannot show a reader has to be reachable another way (#261).
     const summary = `${videoResolutionLabel(config.vquality)} · ${videoSizeLabel(config.size)} · ${durationSummary} · ${videoModeLabel(config.videoMode)}${
@@ -102,7 +102,6 @@ function VideoSettingsPortal({
     frameMode,
     onFrameModeChange,
     onModeChange,
-    durationLocked,
     sourceDurationSeconds,
 }: {
     buttonRect: DOMRect;
@@ -114,7 +113,6 @@ function VideoSettingsPortal({
     frameMode?: "first" | "last" | "both";
     onFrameModeChange?: (value: "first" | "last" | "both") => void;
     onModeChange?: (value: "text" | "frames" | "reference") => void;
-    durationLocked?: boolean;
     sourceDurationSeconds?: number;
 }) {
     const width = 356;
@@ -148,7 +146,6 @@ function VideoSettingsPortal({
                 frameMode={frameMode}
                 onFrameModeChange={onFrameModeChange}
                 onModeChange={onModeChange}
-                durationLocked={durationLocked}
                 sourceDurationSeconds={sourceDurationSeconds}
             />
         </div>,

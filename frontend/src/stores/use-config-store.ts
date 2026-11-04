@@ -60,6 +60,18 @@ export type ChannelModel = {
      * shows no prompt box and the request carries no prompt.
      */
     hasPrompt?: boolean;
+    /**
+     * Whether the user's seconds reach the graph: true when a binding reads `seconds`, false when none
+     * does (the length then comes from the clip being edited, or from the binding's own default), and
+     * absent when the model is not one the server listed — in which case the canvas knows nothing about
+     * its bindings and must not claim either answer.
+     */
+    bindsSeconds?: boolean;
+    /**
+     * Whether the workflow declares the `transition_step` knob — the input the SelfLift fast/quality
+     * toggle writes. A workflow without it is offered no toggle, because the value would be ignored.
+     */
+    selfLift?: boolean;
     /** The mode the workflow runs in, as it declares it (`text` / `frames` / `reference`). */
     mode?: string;
     /** What it accepts in that mode. */
@@ -427,11 +439,13 @@ export function normalizeChannelModels(models: Array<string | ChannelModel> | un
         // document from an older build cannot smuggle a shape the panel would misread.
         const tool = typeof item === "string" ? undefined : item.tool === true ? true : undefined;
         const hasPrompt = typeof item === "string" ? undefined : typeof item.hasPrompt === "boolean" ? item.hasPrompt : undefined;
+        const bindsSeconds = typeof item === "string" ? undefined : typeof item.bindsSeconds === "boolean" ? item.bindsSeconds : undefined;
+        const selfLift = typeof item === "string" ? undefined : item.selfLift === true ? true : undefined;
         const mode = typeof item === "string" ? undefined : item.mode?.trim() || undefined;
         const accepts = typeof item === "string" ? undefined : normalizeAccepts(item.accepts);
         const contracts = typeof item === "string" ? undefined : normalizeContracts(item.contracts);
         const parameters = typeof item === "string" ? undefined : normalizeParameters(item.parameters);
-        result.push({ name, capability, label, workflowId, baseModel, baseModelLabel, variantModes, variantLabels, blockedModes, imageInputs, duration, tool, hasPrompt, mode, accepts, contracts, parameters });
+        result.push({ name, capability, label, workflowId, baseModel, baseModelLabel, variantModes, variantLabels, blockedModes, imageInputs, duration, tool, hasPrompt, bindsSeconds, selfLift, mode, accepts, contracts, parameters });
     }
     return result;
 }

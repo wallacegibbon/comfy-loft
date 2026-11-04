@@ -21,6 +21,7 @@ afterAll(() => {
 const { defaultConfig, defaultModelOptions, resolveModelForCapability, useConfigStore, workflowModelOptions } = await import("../src/stores/use-config-store");
 const { buildGenerationConfig } = await import("../src/lib/canvas/canvas-generation-helpers");
 const { CanvasNodeType } = await import("../src/types/canvas");
+const { videoFollowsSource, videoModelForMode } = await import("../src/lib/canvas/video-model-mode");
 
 const config: AiConfig = {
     ...defaultConfig,
@@ -88,7 +89,36 @@ test("a step is offered to a node but never picked as the default", () => {
     expect(defaultModelOptions(withStep, "image")).not.toContain("replacement::image-esrgan-upscale");
 });
 
+// A mode switch is a lookup over what the workflows declare, not a table of ids: `reference` is whichever
+// video model says `mode: "reference"`. A model the server did not list claims nothing, so a stale
+// selection is not silently locked or unlocked.
+test("a mode finds the model that declares it, and an unknown model claims nothing", () => {
+    const withModes: AiConfig = {
+        ...config,
+        channels: [
+            {
+                id: "replacement",
+                name: "Replacement",
+                baseUrl: "https://example.com",
+                models: [
+                    { name: "video-h3-t2v", capability: "video", workflowId: "video-h3-t2v", mode: "text", bindsSeconds: true },
+                    { name: "video-h3-frames", capability: "video", workflowId: "video-h3-frames", mode: "frames", bindsSeconds: true },
+                    { name: "video-h3-character-swap", capability: "video", workflowId: "video-h3-character-swap", mode: "reference", bindsSeconds: false },
+                ],
+            },
+        ],
+    };
+    expect(videoModelForMode(withModes, "reference")).toBe("replacement::video-h3-character-swap");
+    expect(videoModelForMode(withModes, "frames")).toBe("replacement::video-h3-frames");
+    expect(videoModelForMode(withModes, "inpaint")).toBe("");
+
+    expect(videoFollowsSource(withModes, "replacement::video-h3-character-swap")).toBe(true);
+    expect(videoFollowsSource(withModes, "replacement::video-h3-t2v")).toBe(false);
+    expect(videoFollowsSource(withModes, "replacement::not-listed")).toBe(false);
+});
+
 // The node remembers what it was made with. Recovery asks about that model by name, so a task that
+
 // outlived a restart is queried on the canvas that started it, not on whatever the default now is.
 test("a saved task keeps the model it was made with", () => {
     const node = videoNode("replacement::video-a");
