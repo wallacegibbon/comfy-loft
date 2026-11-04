@@ -63,7 +63,9 @@ export function PreferencesDialog() {
             <div className="mb-4 grid gap-4 md:grid-cols-2">
                 {modelGroups.map((group) => (
                     <Field key={group.modelKey} label={t(group.labelKey)} className="mb-0">
-                        <WorkflowModelPicker config={config} value={config[group.modelKey]} onChange={(model) => updateConfig(group.modelKey, model)} capability={group.capability} fullWidth />
+                        {/* A default has to run from a prompt, so a tool (an interpolation, an upscaler) is
+                            never one of the choices here — it is only ever picked on a node. */}
+                        <WorkflowModelPicker config={config} value={config[group.modelKey]} onChange={(model) => updateConfig(group.modelKey, model)} capability={group.capability} excludeTools fullWidth />
                     </Field>
                 ))}
             </div>

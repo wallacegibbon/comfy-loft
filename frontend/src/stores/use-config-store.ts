@@ -8,6 +8,29 @@ import { mirrorToSettings, readSetting } from "@/stores/use-settings-store";
 
 export type ModelCapability = "image" | "video" | "text" | "audio";
 
+/** How much of one media kind a workflow takes; `max: 0` means it takes none. */
+export type ModelAccepts = {
+    images?: { min: number; max: number };
+    videos?: { min: number; max: number };
+    audios?: { min: number; max: number };
+    minTotal: number;
+};
+
+/** One knob a workflow declares, as far as a node panel renders it. */
+export type ModelParameter = {
+    key: string;
+    label?: string;
+    type?: string;
+    default?: unknown;
+    min?: number;
+    max?: number;
+    step?: number;
+    options?: string[];
+};
+
+/** One mode's media contract. */
+type ModelContract = { accepts?: ModelAccepts; mode?: string };
+
 export type ChannelModel = {
     name: string;
     capability: ModelCapability;
@@ -26,6 +49,29 @@ export type ChannelModel = {
      * request sends none, so the workflow's own binding default answers.
      */
     duration?: { min: number; max: number };
+    /**
+     * The workflow is an action the canvas also has a button for (interpolate, upscale, angle). It is
+     * offered in a node's model list — that is how a node can *be* an interpolation — but never as the
+     * default model for new nodes: a default has to run from a prompt, and a tool takes a clip.
+     */
+    tool?: boolean;
+    /**
+     * Whether the workflow has a `prompt` binding. An interpolation has nothing to be told, so its node
+     * shows no prompt box and the request carries no prompt.
+     */
+    hasPrompt?: boolean;
+    /** The mode the workflow runs in, as it declares it (`text` / `frames` / `reference`). */
+    mode?: string;
+    /** What it accepts in that mode. */
+    accepts?: ModelAccepts;
+    /** Per-mode contracts, for a workflow that offers several (`t2i`, `edit`, `inpaint`, `outpaint`). */
+    contracts?: Record<string, ModelContract>;
+    /**
+     * The knobs the workflow declares (`multiplier`, `upscale_model`), for a node whose panel renders them
+     * from data rather than from a list of names. Bounds and option lists come from the same declaration
+     * the server validates against, so a control cannot offer a value a run would refuse.
+     */
+    parameters?: ModelParameter[];
 };
 
 type ModelChannel = {
@@ -207,6 +253,40 @@ export function workflowModelOptions(config: AiConfig, capability?: ModelCapabil
     return entries.filter((entry) => entry.model.workflowId && !entry.model.baseModel && (!capability || entry.model.capability === capability)).map((entry) => entry.value);
 }
 
+/**
+ * The models a *default* may be picked from.
+ *
+ * A tool (an interpolation, an upscaler, an angle re-render) is offered in a node's model list, because
+ * that is how a node can be one — but it cannot be what a fresh node starts on: it takes a clip or a
+ * picture and has nothing to be asked, so a default pointing at it would break every new node.
+ */
+export function defaultModelOptions(config: AiConfig, capability?: ModelCapability) {
+    return workflowModelOptions(config, capability).filter((value) => !channelModelOf(config, value)?.model.tool);
+}
+
+/**
+ * What a workflow accepts, in the mode it is about to run in.
+ *
+ * A workflow with variants runs one of them (inpaint wants a source and a mask; t2i wants none), so the
+ * mode's own contract answers first and the workflow's is the fallback — the same precedence
+ * `ResolveForMode` applies before a run is validated, so the panel cannot promise something the server
+ * refuses.
+ */
+export function modelContractOf(config: AiConfig, value: string, mode?: string): ModelContract | undefined {
+    const model = channelModelOf(config, value)?.model;
+    if (!model) return undefined;
+    const declared = mode ? model.contracts?.[mode] : undefined;
+    const accepts = declared?.accepts ?? model.accepts;
+    const resolvedMode = declared?.mode ?? model.mode;
+    if (!accepts && !resolvedMode) return undefined;
+    return { accepts, mode: resolvedMode };
+}
+
+/** Whether a workflow can be asked something in words. Unknown (an older stored config) means yes. */
+export function modelTakesPrompt(config: AiConfig, value: string) {
+    return channelModelOf(config, value)?.model.hasPrompt !== false;
+}
+
 /** The base-model entry of the workflow the current model belongs to, used to echo the top-level dropdown. */
 export function workflowModelValue(config: AiConfig, value: string) {
     const found = channelModelOf(config, value);
@@ -262,9 +342,13 @@ function hydrateConfig(stored: Partial<AiConfig>): AiConfig {
     if (!Array.isArray(stored.channels)) config.channels = [];
     const channels = normalizeChannels(config);
     const models = modelOptionsFromChannels(channels);
-    const imageOptions = channels.flatMap((channel) => channel.models.filter((model) => model.capability === "image").map((model) => encodeChannelModel(channel.id, model.name)));
-    const videoOptions = channels.flatMap((channel) => channel.models.filter((model) => model.capability === "video").map((model) => encodeChannelModel(channel.id, model.name)));
-    const audioOptions = channels.flatMap((channel) => channel.models.filter((model) => model.capability === "audio").map((model) => encodeChannelModel(channel.id, model.name)));
+    // A *default* is picked from the entries a fresh node can start on: a tool (an upscaler, an
+    // interpolation) takes a picture or a clip and has nothing to be asked, so it is never the answer to
+    // "which model does a new image node use" — it is only ever set on a node deliberately.
+    const defaultsFor = (capability: ModelCapability) => channels.flatMap((channel) => channel.models.filter((model) => model.capability === capability && !model.tool).map((model) => encodeChannelModel(channel.id, model.name)));
+    const imageOptions = defaultsFor("image");
+    const videoOptions = defaultsFor("video");
+    const audioOptions = defaultsFor("audio");
     const pickModel = (current: string, options: string[]) => (options.includes(current) ? current : options[0] || "");
     return {
         ...config,
@@ -339,9 +423,62 @@ export function normalizeChannelModels(models: Array<string | ChannelModel> | un
         const variantLabels = typeof item === "string" ? undefined : item.variantLabels && typeof item.variantLabels === "object" ? item.variantLabels : undefined;
         const imageInputs = typeof item === "string" ? undefined : typeof item.imageInputs === "number" ? item.imageInputs : undefined;
         const duration = typeof item !== "string" && item.duration && Number.isFinite(item.duration.min) && Number.isFinite(item.duration.max) && item.duration.max > item.duration.min ? { min: item.duration.min, max: item.duration.max } : undefined;
-        result.push({ name, capability, label, workflowId, baseModel, baseModelLabel, variantModes, variantLabels, blockedModes, imageInputs, duration });
+        // The contract is the server's declaration, echoed: rebuilt rather than trusted so a stored
+        // document from an older build cannot smuggle a shape the panel would misread.
+        const tool = typeof item === "string" ? undefined : item.tool === true ? true : undefined;
+        const hasPrompt = typeof item === "string" ? undefined : typeof item.hasPrompt === "boolean" ? item.hasPrompt : undefined;
+        const mode = typeof item === "string" ? undefined : item.mode?.trim() || undefined;
+        const accepts = typeof item === "string" ? undefined : normalizeAccepts(item.accepts);
+        const contracts = typeof item === "string" ? undefined : normalizeContracts(item.contracts);
+        const parameters = typeof item === "string" ? undefined : normalizeParameters(item.parameters);
+        result.push({ name, capability, label, workflowId, baseModel, baseModelLabel, variantModes, variantLabels, blockedModes, imageInputs, duration, tool, hasPrompt, mode, accepts, contracts, parameters });
     }
     return result;
+}
+
+function normalizeParameters(value: Array<{ key?: string; label?: string; type?: string; default?: unknown; min?: number; max?: number; step?: number; options?: unknown }> | undefined) {
+    if (!Array.isArray(value)) return undefined;
+    const parameters = value
+        .filter((item) => item && typeof item.key === "string" && item.key.trim())
+        .map((item) => ({
+            key: String(item.key).trim(),
+            label: item.label?.trim() || undefined,
+            type: item.type?.trim() || undefined,
+            default: item.default,
+            min: Number.isFinite(item.min) ? Number(item.min) : undefined,
+            max: Number.isFinite(item.max) ? Number(item.max) : undefined,
+            step: Number.isFinite(item.step) ? Number(item.step) : undefined,
+            options: Array.isArray(item.options) ? item.options.map((option) => (typeof option === "string" ? option : String((option as { value?: unknown })?.value ?? ""))).filter(Boolean) : undefined,
+        }));
+    return parameters.length ? parameters : undefined;
+}
+
+function normalizeLimit(value: { min?: number; max?: number } | undefined) {
+    if (!value) return undefined;
+    const min = Number(value.min) || 0;
+    const max = Number(value.max) || 0;
+    return { min, max };
+}
+
+function normalizeAccepts(value: { images?: { min?: number; max?: number }; videos?: { min?: number; max?: number }; audios?: { min?: number; max?: number }; minTotal?: number } | undefined) {
+    if (!value) return undefined;
+    const images = normalizeLimit(value.images);
+    const videos = normalizeLimit(value.videos);
+    const audios = normalizeLimit(value.audios);
+    const minTotal = Number(value.minTotal) || 0;
+    if (!images && !videos && !audios && !minTotal) return undefined;
+    return { images, videos, audios, minTotal };
+}
+
+function normalizeContracts(value: Record<string, { accepts?: { images?: { min?: number; max?: number }; videos?: { min?: number; max?: number }; audios?: { min?: number; max?: number }; minTotal?: number }; mode?: string }> | undefined) {
+    if (!value || typeof value !== "object") return undefined;
+    const contracts: Record<string, { accepts?: ReturnType<typeof normalizeAccepts>; mode?: string }> = {};
+    for (const [mode, contract] of Object.entries(value)) {
+        const trimmed = String(mode).trim();
+        if (!trimmed || !contract || typeof contract !== "object") continue;
+        contracts[trimmed] = { accepts: normalizeAccepts(contract.accepts), mode: contract.mode?.trim() || undefined };
+    }
+    return Object.keys(contracts).length ? contracts : undefined;
 }
 
 /**

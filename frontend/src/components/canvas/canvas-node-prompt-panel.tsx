@@ -8,7 +8,7 @@ import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
 import { Tooltip } from "@/components/kit/tooltip";
 import { BaseModelPicker, ModelPicker, WorkflowModelPicker } from "@/components/model-picker";
-import { channelModelOf, defaultConfig, modelOptionName, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { channelModelOf, defaultConfig, modelOptionName, modelTakesPrompt, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 
 import { nodePromptOf, promptPatch } from "@/lib/canvas/node-prompt-field";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
@@ -25,6 +25,7 @@ import { requestPromptChat } from "@/services/api/prompts";
 import { agentSession, endAgentSession, nodeAgent, openAgentSession, subscribeAgentSessions } from "@/services/api/agent";
 import { videoModelForWorkflow, videoModelModePatch } from "@/lib/canvas/video-model-mode";
 import { CanvasNodeReferenceBar } from "./canvas-node-reference-bar";
+import { CanvasToolNodePanel } from "./canvas-tool-node-panel";
 import { abortCaptionJob, hasCaptionJob, registerCaptionJob, releaseCaptionJob } from "@/lib/canvas/caption-jobs";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
@@ -266,6 +267,27 @@ export function CanvasNodePromptPanel({
     const openExpandedEditor = () => {
         setExpanded(true);
     };
+
+    // A node that runs a step has nothing to be asked: an interpolation takes a clip and a multiplier, an
+    // upscaler takes a picture and a model. What its panel shows comes from the workflow's own contract, not
+    // from what this panel knows about the workflows that do take a prompt — which is exactly how an
+    // interpolation node used to render as a text-to-video one, with a prompt box and a model it never ran.
+    if (!modelTakesPrompt(globalConfig, config.model)) {
+        return (
+            <CanvasToolNodePanel
+                node={node}
+                nodes={nodes}
+                config={config}
+                connectedNodes={connectedNodes}
+                isRunning={isRunning}
+                onConfigChange={onConfigChange}
+                onGenerate={onGenerate}
+                onStop={onStop}
+                onDisconnectReference={onDisconnectReference}
+                onStartReferenceSelection={onStartReferenceSelection}
+            />
+        );
+    }
 
     return (
         <div

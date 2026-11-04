@@ -12,7 +12,6 @@ export default {
         save: "Save",
         yes: "Yes",
         no: "No",
-        edit: "Edit",
         delete: "Delete",
         copied: "Copied",
         promptCopied: "Prompt copied",
@@ -761,6 +760,14 @@ export default {
             captioning: "Reversing prompt…",
             videoTextAddDisabled: "Text-to-video takes no reference media; switch to First & last frame or Multi-ref",
             videoTextRefsWarning: "Text-to-video does not accept images, video, or audio. Disconnect references or switch to First & last frame / Multi-ref.",
+        },
+        toolPanel: {
+            needs: "Needs {{count}} {{kind}} · {{have}} connected",
+            needsAny: "Needs at least {{count}} media items · {{have}} connected",
+            noMedia: "This step takes no reference media — only its parameters.",
+            kinds: { image: "image(s)", video: "clip(s)", audio: "audio clip(s)" },
+            full: "This step takes no more reference media",
+            blocked: "Connect what this step needs first",
         },
         references: {
             title: "References",

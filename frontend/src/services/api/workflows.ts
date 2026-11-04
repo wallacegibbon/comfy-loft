@@ -23,6 +23,30 @@ export type WorkflowParameter = {
     description?: string;
 };
 
+/** How much of one media kind a workflow takes. A declared kind is authoritative: `max: 0` means none. */
+type WorkflowMediaLimit = { min?: number; max?: number };
+
+/**
+ * A workflow's media contract.
+ *
+ * It is the same declaration a run is validated against (`internal/workflow/media.go`), so the panel can
+ * show what a workflow needs and the server's refusal — if one ever comes — cannot disagree with it.
+ * `note` is deliberately not here: the registry is written in English and the UI's copy comes from
+ * `i18n`, keyed by workflow id (docs/decisions.md #66).
+ */
+export type WorkflowAccepts = {
+    images?: WorkflowMediaLimit;
+    videos?: WorkflowMediaLimit;
+    audios?: WorkflowMediaLimit;
+    minTotal?: number;
+};
+
+/**
+ * One mode's contract: what it accepts and the mode it runs in. A mode is a different graph, so it may
+ * take a different media mix (inpaint wants a source and a mask; t2i wants none).
+ */
+type WorkflowContract = { accepts?: WorkflowAccepts; mode?: string };
+
 type WorkflowAvailability = {
     available?: boolean;
     problems?: Array<{ message?: string }>;
@@ -59,6 +83,17 @@ export type ServerWorkflow = {
     variantModes?: string[];
     variantLabels?: Record<string, string>;
     models?: ServerWorkflowModel[];
+    /**
+     * What each binding writes into the graph, keyed by binding name (`prompt`, `video`, `multiplier`).
+     * The key's presence is how the canvas knows a workflow can be told something in words — an
+     * interpolation has nothing to be asked, so it has no `prompt` binding and its node shows no box.
+     */
+    bindings?: Record<string, unknown>;
+    /** What the workflow accepts, and the mode it runs in. See `WorkflowAccepts`. */
+    accepts?: WorkflowAccepts;
+    mode?: string;
+    /** Per-mode contracts, present only for a workflow with variants. */
+    variantContracts?: Record<string, WorkflowContract>;
 };
 
 type WorkflowsPayload = { workflows?: ServerWorkflow[] };

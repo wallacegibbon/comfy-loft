@@ -433,15 +433,12 @@ func (r *Registry) ResolveForMode(entry *Entry, mode string) *Entry {
 // mergeVariantContract lets a variant replace the media/mode contract of its parent. A variant
 // is a different graph, so inheriting the parent's limits would describe the wrong wiring.
 func mergeVariantContract(merged *Entry, variant *Variant) {
-	if variant.Accepts != nil {
-		merged.Accepts = variant.Accepts
-	}
-	if variant.Mode != "" {
-		merged.Mode = variant.Mode
-	}
-	if variant.FrameMode != nil {
-		merged.FrameMode = variant.FrameMode
-	}
+	// The mode's contract is resolved in one place, so what a panel shows and what a run enforces
+	// are the same three fields.
+	contract := variantContractOf(merged, variant)
+	merged.Accepts = contract.Accepts
+	merged.Mode = contract.Mode
+	merged.FrameMode = contract.FrameMode
 	if variant.PromptInject != "" {
 		merged.PromptInject = variant.PromptInject
 	}

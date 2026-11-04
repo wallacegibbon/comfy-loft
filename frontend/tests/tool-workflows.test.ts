@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { IMAGE_ANGLE_WORKFLOW, IMAGE_UPSCALE_WORKFLOW, isToolWorkflow, VIDEO_INTERPOLATE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 
 /**
- * Which workflows are actions rather than models.
+ * Which workflows are steps.
  *
- * The server registers a workflow and reports whether it can run; whether it belongs in the model
- * dropdown is the client's decision, because the canvas is the only client. Every id listed here has
- * a button that supplies the media the workflow really needs.
+ * The server registers a workflow and reports whether it can run; whether it is a *step* — something that
+ * takes a clip or a picture and a knob rather than a prompt — is the canvas's own judgement, because the
+ * canvas is the only client. A step is still a node's model; it is only never a new node's default.
  */
 describe("tool workflows", () => {
     it("are the ones the canvas drives from an action", () => {

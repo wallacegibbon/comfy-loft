@@ -10,11 +10,15 @@ export function videoModelForWorkflow(config: AiConfig, workflowId: string) {
     return optionsList.find((value) => videoWorkflowId(config, value) === workflowId) || "";
 }
 
+/**
+ * The mode a video workflow runs in, written alongside the model it was picked with.
+ *
+ * The workflow declares it (`mode: text | frames | reference` in the registry), so this reads that instead
+ * of recognising ids: `video-h3-frames` used to be spelled out here, and every new workflow with a mode
+ * would have had to be added to the list. A workflow that declares none — an interpolation, which has no
+ * modes — gets the model and nothing else.
+ */
 export function videoModelModePatch(config: AiConfig, model: string): Partial<NonNullable<CanvasNodeData["metadata"]>> {
-    const workflowId = videoWorkflowId(config, model);
-    if (workflowId === "video-h3-ref2va") return { model, videoMode: "reference" };
-    if (workflowId === "video-h3-character-swap") return { model, videoMode: "reference" };
-    if (workflowId === "video-h3-frames") return { model, videoMode: "frames" };
-    if (workflowId === "video-h3-t2v") return { model, videoMode: "text" };
-    return { model };
+    const mode = channelModelOf(config, model)?.model.mode;
+    return mode ? { model, videoMode: mode } : { model };
 }

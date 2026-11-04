@@ -2,7 +2,7 @@ import { getNodeSpec, NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { isInheritableNodeField, recallNodeSettings, rememberNodeSettings } from "@/lib/canvas/node-settings-memory";
 import { activeFileUrl } from "@/services/canvas-files";
-import type { AiConfig } from "@/stores/use-config-store";
+import { modelTakesPrompt, type AiConfig } from "@/stores/use-config-store";
 import type { UploadedImage } from "@/services/image-storage";
 import type { UploadedFile } from "@/services/file-storage";
 import type { RunFacts } from "@/services/api/runs";
@@ -90,6 +90,11 @@ export function referenceUrl(image: ReferenceImage) {
 }
 
 export function buildImageGenerationMetadata(type: CanvasImageGenerationType, config: AiConfig, references: ReferenceImage[]): CanvasNodeMetadata {
+    const referencesOf = { references: references.map(referenceUrl).filter((url): url is string => Boolean(url)) };
+    // A step — an upscaler — was given a picture and a model name, not a size, a quality or a mode. Writing
+    // those would describe a run that never had them, and the node's own record is read back by the panel
+    // and by the agent.
+    if (!modelTakesPrompt(config, config.model)) return { model: config.model, ...(config.params ? { params: config.params } : {}), ...referencesOf };
     return {
         generationType: type,
         model: config.model,
@@ -99,7 +104,8 @@ export function buildImageGenerationMetadata(type: CanvasImageGenerationType, co
         ...(config.imageMode ? { imageMode: config.imageMode as CanvasNodeMetadata["imageMode"] } : {}),
         ...(config.imageMode === "layout" && config.layout ? { layout: config.layout } : {}),
         ...(config.outpaint ? { outpaint: config.outpaint } : {}),
-        references: references.map(referenceUrl).filter((url): url is string => Boolean(url)),
+        ...(config.params ? { params: config.params } : {}),
+        ...referencesOf,
     };
 }
 

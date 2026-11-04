@@ -18,6 +18,7 @@ import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
 import { audioMetadata, buildAudioGenerationMetadata, buildImageGenerationMetadata, imageMetadata } from "@/lib/canvas/canvas-node-factory";
 import { buildGenerationConfig, failedWatch, generationReferenceUrls, isGenerationCanceled } from "@/lib/canvas/canvas-generation-helpers";
+import { videoRunMetadata } from "@/lib/canvas/video-run-metadata";
 import { NODE_STATUS_ERROR, NODE_STATUS_LOADING, NODE_STATUS_SUCCESS } from "@/lib/canvas/canvas-node-status";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeText } from "@/types/canvas";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
@@ -304,17 +305,14 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
         async (run: GenerationRun) => {
             const { nodeId, prompt, effectivePrompt, generationConfig, generationContext, runController } = run;
             const title = prompt.slice(0, 32) || "Generated Video";
+            // The run's own settings, and only the ones this workflow has: a step keeps its parameters and
+            // invents no resolution, length or mode.
+            const settings = videoRunMetadata(generationConfig);
             const videoMetadata: CanvasNodeData["metadata"] = {
                 prompt,
                 sentPrompt: effectivePrompt,
                 status: NODE_STATUS_LOADING,
-                model: generationConfig.model,
-                size: generationConfig.size,
-                seconds: generationConfig.videoSeconds,
-                vquality: generationConfig.vquality,
-                generateAudio: generationConfig.videoGenerateAudio,
-                watermark: generationConfig.videoWatermark,
-                videoMode: generationConfig.videoMode,
+                ...settings,
                 references: generationReferenceUrls(generationContext),
             };
             // The metadata is the run's to write, not the node's to keep: a `runId` left from an earlier
@@ -325,15 +323,7 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                 await completeVideoNodeTask(nodeId, generationConfig, effectivePrompt, generationContext.referenceImages, controller.signal, {
                     askedBy: run.askedBy,
                     started: (runId) => run.start({ started: true, runId }),
-                    extra: {
-                        size: generationConfig.size,
-                        seconds: generationConfig.videoSeconds,
-                        vquality: generationConfig.vquality,
-                        generateAudio: generationConfig.videoGenerateAudio,
-                        watermark: generationConfig.videoWatermark,
-                        videoMode: generationConfig.videoMode,
-                        references: generationReferenceUrls(generationContext),
-                    },
+                    extra: { ...settings, references: generationReferenceUrls(generationContext) },
                     videos: generationContext.referenceVideos,
                     audios: generationContext.referenceAudios,
                 });

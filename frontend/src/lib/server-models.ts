@@ -1,6 +1,6 @@
 import { isToolWorkflow } from "@/lib/canvas/tool-workflows";
-import type { ServerWorkflow } from "@/services/api/workflows";
-import type { ChannelModel, ModelCapability } from "@/stores/use-config-store";
+import type { ServerWorkflow, WorkflowAccepts } from "@/services/api/workflows";
+import type { ChannelModel, ModelAccepts, ModelCapability } from "@/stores/use-config-store";
 
 /**
  * The server's workflows as model entries for the picker.
@@ -8,8 +8,12 @@ import type { ChannelModel, ModelCapability } from "@/stores/use-config-store";
  * A workflow is what runs; a model is what the user picks. One graph answers to several ids when it
  * offers more than one base model, and the server reports those ids because it is the side that
  * spells and resolves them (`img-zit-int8`). Everything else here is the client's own decision:
- * which media kinds are selectable, that a workflow the canvas drives from a button is not, and that a
- * disabled or unavailable workflow is left out rather than offered and then refused.
+ * which media kinds are selectable, and that a disabled or unavailable workflow is left out rather
+ * than offered and then refused.
+ *
+ * A workflow the canvas also drives from a button (interpolate, upscale, angle) is *tagged*, not
+ * dropped: the node panel offers it — that is how a node can be an interpolation at all — while the
+ * "default model for new nodes" setting must not, because a default has to run from a prompt.
  */
 const CAPABILITIES: ModelCapability[] = ["image", "video", "audio"];
 
@@ -29,13 +33,47 @@ function durationOf(workflow: ServerWorkflow) {
     return { min, max };
 }
 
+/** A contract from the wire, keeping only the numbers the panel shows. */
+function acceptsOf(accepts: WorkflowAccepts | undefined): ModelAccepts | undefined {
+    if (!accepts) return undefined;
+    const limit = (value: { min?: number; max?: number } | undefined) => (value ? { min: Number(value.min) || 0, max: Number(value.max) || 0 } : undefined);
+    const images = limit(accepts.images);
+    const videos = limit(accepts.videos);
+    const audios = limit(accepts.audios);
+    const minTotal = Number(accepts.minTotal) || 0;
+    if (!images && !videos && !audios && !minTotal) return undefined;
+    return { images, videos, audios, minTotal };
+}
+
+/** Whether the workflow can be asked something in words. */
+function hasPromptBinding(workflow: ServerWorkflow) {
+    return Boolean(workflow.bindings && Object.prototype.hasOwnProperty.call(workflow.bindings, "prompt"));
+}
+
+/** The knobs a node panel renders, reduced to what a control needs. */
+function parametersOf(workflow: ServerWorkflow) {
+    const parameters = (workflow.parameters || [])
+        .filter((item) => item && typeof item.key === "string" && item.key.trim())
+        .map((item) => ({
+            key: item.key.trim(),
+            label: item.label?.trim() || undefined,
+            type: item.type?.trim() || undefined,
+            default: item.default,
+            min: Number.isFinite(item.min) ? Number(item.min) : undefined,
+            max: Number.isFinite(item.max) ? Number(item.max) : undefined,
+            step: Number.isFinite(item.step) ? Number(item.step) : undefined,
+            options: item.options?.map((option) => (typeof option === "string" ? option : String((option as { value?: unknown })?.value ?? ""))).filter(Boolean),
+        }));
+    return parameters.length ? parameters : undefined;
+}
+
 /** The models one workflow contributes, in the order the server listed them. */
 export function modelsOf(workflow: ServerWorkflow): ChannelModel[] {
     const capability = workflow.type as ModelCapability;
     if (!CAPABILITIES.includes(capability)) return [];
     if (workflow.enabled === false || workflow.availability?.available === false) return [];
-    if (isToolWorkflow(workflow.id)) return [];
     const duration = durationOf(workflow);
+    const contracts = workflow.variantContracts ? Object.fromEntries(Object.entries(workflow.variantContracts).map(([mode, contract]) => [mode, { accepts: acceptsOf(contract?.accepts), mode: contract?.mode }])) : undefined;
 
     return (workflow.models || []).map((model) => ({
         name: model.id,
@@ -51,6 +89,12 @@ export function modelsOf(workflow: ServerWorkflow): ChannelModel[] {
         blockedModes: Object.keys(workflow.availability?.modeProblems || {}),
         imageInputs: model.imageInputs,
         duration,
+        tool: isToolWorkflow(workflow.id),
+        hasPrompt: hasPromptBinding(workflow),
+        mode: workflow.mode || undefined,
+        accepts: acceptsOf(workflow.accepts),
+        contracts,
+        parameters: parametersOf(workflow),
     }));
 }
 
@@ -79,6 +123,12 @@ export function modelSignature(models: ChannelModel[]) {
             model.variantModes || [],
             model.variantLabels || {},
             model.blockedModes || [],
+            model.tool ? 1 : 0,
+            model.hasPrompt ? 1 : 0,
+            model.mode || "",
+            model.accepts || null,
+            model.contracts || null,
+            model.parameters || null,
         ]),
     );
 }

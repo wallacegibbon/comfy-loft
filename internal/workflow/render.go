@@ -24,6 +24,45 @@ type PublicEntry struct {
 	VariantLabels map[string]string `json:"variantLabels"`
 	ImportedAt    string            `json:"importedAt,omitempty"`
 	Source        *Source           `json:"source,omitempty"`
+
+	// The request contract, so a client shows what a workflow needs instead of knowing it by name:
+	// which media mix it accepts, the mode it runs in (text / frames / reference), and how a
+	// first/last-frame graph counts its images. These are the same three fields `PlanMedia` reads
+	// (#63), so the panel and the 400 cannot disagree about them.
+	Accepts   *Accepts       `json:"accepts,omitempty"`
+	Mode      string         `json:"mode,omitempty"`
+	FrameMode *FrameModeRule `json:"frameMode,omitempty"`
+	// Per-mode contracts, present only for a workflow with variants. A mode is a different graph
+	// with different wiring, so its media mix can differ (Qwen's inpaint wants a source and a mask;
+	// t2i wants none) — the mode the reader picks must be the one whose contract they see.
+	VariantContracts map[string]VariantContract `json:"variantContracts,omitempty"`
+}
+
+// VariantContract is one mode's request contract: what the entry declares, overridden by what the
+// variant declares, exactly as `ResolveForMode` merges them for a run.
+type VariantContract struct {
+	Accepts   *Accepts       `json:"accepts,omitempty"`
+	Mode      string         `json:"mode,omitempty"`
+	FrameMode *FrameModeRule `json:"frameMode,omitempty"`
+}
+
+// variantContractOf resolves one mode's effective contract. It is the single answer to "what does
+// this mode accept", used both by the wire projection and by `ResolveForMode` before validation.
+func variantContractOf(entry *Entry, variant *Variant) VariantContract {
+	contract := VariantContract{Accepts: entry.Accepts, Mode: entry.Mode, FrameMode: entry.FrameMode}
+	if variant == nil {
+		return contract
+	}
+	if variant.Accepts != nil {
+		contract.Accepts = variant.Accepts
+	}
+	if variant.Mode != "" {
+		contract.Mode = variant.Mode
+	}
+	if variant.FrameMode != nil {
+		contract.FrameMode = variant.FrameMode
+	}
+	return contract
 }
 
 // Schema describes how a workflow maps request fields onto graph inputs.
@@ -64,6 +103,15 @@ func PublicProjection(entry *Entry) PublicEntry {
 		VariantLabels: entry.VariantLabelsMap(),
 		ImportedAt:    entry.ImportedAt,
 		Source:        entry.Source,
+		Accepts:       entry.Accepts,
+		Mode:          entry.Mode,
+		FrameMode:     entry.FrameMode,
+	}
+	if entry.Variants.Len() > 0 {
+		out.VariantContracts = make(map[string]VariantContract, entry.Variants.Len())
+		for _, mode := range entry.Variants.Keys {
+			out.VariantContracts[mode] = variantContractOf(entry, entry.Variants.Values[mode])
+		}
 	}
 	if entry.Category != "" {
 		category := entry.Category

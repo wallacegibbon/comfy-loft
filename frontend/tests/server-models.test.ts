@@ -58,10 +58,49 @@ describe("modelsOf", () => {
         expect(modelsOf(workflow({ availability: { available: false } }))).toEqual([]);
     });
 
-    it("leaves out the workflows the canvas drives from a button", () => {
-        // An upscaler takes a clip, not a prompt: it is not a model the picker should offer.
-        expect(modelsOf(workflow({ id: "video-rife", type: "video", models: [{ id: "video-rife" }] }))).toEqual([]);
-        expect(modelsOf(workflow({ id: "image-esrgan-upscale", models: [{ id: "image-esrgan-upscale" }] }))).toEqual([]);
+    it("offers a tool workflow, tagged, instead of hiding it", () => {
+        // An interpolation takes a clip, not a prompt — so it must not be a *default* (see
+        // `defaultModelOptions`), but a node can be one, and hiding it is what made the canvas
+        // show an interpolation node as its text-to-video default.
+        const [rife] = modelsOf(workflow({ id: "video-rife", type: "video", models: [{ id: "video-rife" }] }));
+        expect(rife).toMatchObject({ name: "video-rife", tool: true });
+        const [upscaler] = modelsOf(workflow({ id: "image-esrgan-upscale", models: [{ id: "image-esrgan-upscale" }] }));
+        expect(upscaler).toMatchObject({ name: "image-esrgan-upscale", tool: true });
+        // A workflow picked from the list is not a tool.
+        expect(modelsOf(workflow())[0].tool).toBe(false);
+    });
+
+    it("says whether a workflow can be told anything in words", () => {
+        // The `prompt` binding is the fact: an interpolation has none, so its node shows no box.
+        expect(modelsOf(workflow({ bindings: { prompt: { node: "1" }, width: { node: "2" } } }))[0].hasPrompt).toBe(true);
+        expect(modelsOf(workflow({ id: "video-rife", type: "video", bindings: { video: { node: "1" }, multiplier: { node: "2" } }, models: [{ id: "video-rife" }] }))[0].hasPrompt).toBe(false);
+    });
+
+    it("carries the media contract and the mode the workflow declares", () => {
+        const [model] = modelsOf(
+            workflow({
+                id: "video-rife",
+                type: "video",
+                mode: "reference",
+                accepts: { videos: { min: 1, max: 1 } },
+                models: [{ id: "video-rife" }],
+            }),
+        );
+        expect(model.mode).toBe("reference");
+        expect(model.accepts).toEqual({ images: undefined, videos: { min: 1, max: 1 }, audios: undefined, minTotal: 0 });
+    });
+
+    it("gives each mode its own contract, so a panel shows the mode's rules", () => {
+        const [model] = modelsOf(
+            workflow({
+                id: "image-qwen21",
+                variantModes: ["edit", "t2i"],
+                variantContracts: { edit: { accepts: { images: { min: 1, max: 4 } } }, t2i: { accepts: { images: { max: 0 } }, mode: "t2i" } },
+                models: [{ id: "image-qwen21" }],
+            }),
+        );
+        expect(model.contracts?.t2i.accepts?.images).toEqual({ min: 0, max: 0 });
+        expect(model.contracts?.edit.accepts?.images).toEqual({ min: 1, max: 4 });
     });
 
     it("carries the workflow's variant modes onto every entry", () => {
@@ -112,7 +151,7 @@ describe("modelsOf", () => {
 describe("serverModels", () => {
     it("flattens the workflows in the order the server sent them", () => {
         const models = serverModels([workflow(), workflow({ id: "video-h3-t2v", name: "video-h3-t2v", type: "video", models: [{ id: "video-h3-t2v" }] }), workflow({ id: "video-rife", type: "video", models: [{ id: "video-rife" }] })]);
-        expect(models.map((model) => model.name)).toEqual(["image-z-image-turbo", "video-h3-t2v"]);
+        expect(models.map((model) => model.name)).toEqual(["image-z-image-turbo", "video-h3-t2v", "video-rife"]);
     });
 });
 

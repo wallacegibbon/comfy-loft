@@ -80,6 +80,7 @@ import {
     snapNodesIntoGroup,
 } from "@/lib/canvas/canvas-node-geometry";
 import { adoptLegacyRunIds, audioExtension, buildGenerationConfig, failedWatch, hasResumableRun, hydrateCanvasImages, imageExtension, isGenerationCanceled, resetInterruptedGeneration, runWatchEnded } from "@/lib/canvas/canvas-generation-helpers";
+import { videoRunMetadata } from "@/lib/canvas/video-run-metadata";
 import { getNodeDefinition, isBuiltinNodeType } from "@/lib/canvas/node-registry";
 import { registerBuiltinNodes } from "@/components/canvas/nodes/builtin-nodes";
 import { confirm } from "@/components/kit/confirm";
@@ -417,13 +418,7 @@ function InfiniteCanvasPage() {
                         item.id === node.id
                             ? applyGeneratedVideo(item, video, {
                                   prompt: item.metadata?.prompt,
-                                  model: generationConfig.model,
-                                  size: generationConfig.size,
-                                  seconds: generationConfig.videoSeconds,
-                                  vquality: generationConfig.vquality,
-                                  generateAudio: generationConfig.videoGenerateAudio,
-                                  watermark: generationConfig.videoWatermark,
-                                  videoMode: generationConfig.videoMode,
+                                  ...videoRunMetadata(generationConfig),
                                   previewUrl: undefined,
                                   previewMime: undefined,
                                   previewStep: undefined,
@@ -2407,7 +2402,6 @@ function InfiniteCanvasPage() {
                     onInfo={(node) => openNodeTool("info", node.id)}
                     onDecreaseFont={(node) => handleFontSizeChange(node.id, Math.max(10, (node.metadata?.fontSize || 14) - 2))}
                     onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
-                    onToggleDialog={(node) => setDialogNodeId((current) => (current === node.id ? null : node.id))}
                     onInterpolateVideo={(node) => void interpolateVideoNode(node)}
                     onDownload={downloadNodeImage}
                     onMaskEdit={(node) => openNodeTool("maskEdit", node.id)}

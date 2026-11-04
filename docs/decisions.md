@@ -9709,3 +9709,86 @@ app: `npx vitest run` (368), `npm run check` (863/849 keys, 180 modules, prettie
 `frontend/src/components/canvas/canvas-image-settings-popover.tsx`,
 `frontend/src/components/canvas/canvas-audio-settings-popover.tsx`,
 `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.
+
+## 262. The video node's Edit button is gone
+
+**Decision** The video node's hover toolbar no longer carries an `Edit` item. Everything it did was already
+somewhere else, and the "somewhere else" is the same panel.
+
+**What it was** `onToggleDialog(node)` — open (or close) the node's prompt panel. A click on a node body opens
+exactly that panel (`project.tsx`: a mouse-up that did not move anything calls `setDialogNodeId`), so the button was
+a second way to do the one thing a click does. It was also the only button whose label promised an *edit* and whose
+action was a **generate**: inside that panel, `↑` re-runs the node and replaces its clip in place. A user who pressed
+"Edit" on a finished clip to look at it found the thing that would overwrite it.
+
+**What went with it** The `onToggleDialog` prop, the `MessageSquare` import, and `common.edit` in both dictionaries
+(the i18n check refuses a dead key, which is how the last trace of it would have been found anyway).
+
+**Cost** None measured: nothing referenced the button — no test, no agent tool, no keyboard shortcut — and clicking
+the node still opens the panel. The panel itself still re-runs in place, which is its own question (#263 makes the
+difference between "runs a step" and "answers a prompt" visible, which is most of what made this button read wrong).
+
+**Tested** `npm run check` (863→862 keys, i18n/dead keys, exports, prettier, tsc) and `npx vitest run` (368) pass
+with the button gone.
+
+**Where** `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`, `frontend/src/pages/canvas/project.tsx`,
+`frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
+
+## 263. A workflow's request contract is on the wire, and a step is a node's model
+
+**Decision** Three things, one idea — *the panel reads what the workflow declares*:
+
+1. `GET /api/workflows` carries the request contract: `accepts` (per media kind, `max: 0` meaning "takes none"),
+   `mode` (`text` / `frames` / `reference`), `frameMode`, and `variantContracts` (one per mode) for a workflow with
+   variants. These are the exact fields `PlanMedia` validates against, resolved by the same helper
+   (`variantContractOf`) that `ResolveForMode` uses, so the panel and the 400 cannot disagree.
+2. A workflow the canvas also drives from a button (interpolate, upscale, angle) is **tagged, not dropped** from the
+   model list. A node can be one — that is how an interpolation node exists — but `defaultModelOptions` keeps it out
+   of the "default model for new nodes" setting, because a default must run from a prompt.
+3. A node whose workflow has no `prompt` binding gets a panel built from its contract: the connected media and what
+   it still needs (from `accepts`), its knobs (from `parameters`), and no prompt box, no size/second/mode controls.
+   Its run sends only those knobs and its media by kind, so nothing is accepted-and-ignored.
+
+**What was wrong** The interpolation node created by the toolbar's Interpolate button showed **H3 text-to-video**: its
+`metadata.model` was the workflow id `video-rife`, which the model list filtered out, so `resolveModelForCapability`
+could not find it and fell back to the configured default video model. The same fallback then drew the rest of the
+lie — a red "text-to-video does not accept images" warning over a clip that was the thing it ran on, and
+`720p · 1:1 · 6s · First & last frame` for a workflow with no size, no seconds and no mode. Two sources of truth were
+the cause: the registry declared `mode` and `accepts` for every H3 workflow and none of it reached the client, so the
+canvas re-derived it from ids (`video-model-mode.ts`, `isH3T2V`, the `videoMode: "interpolate"` invented value that
+`videoModeLabel` then bent back into "First & last frame").
+
+**Why the contract and not a name list** A name list is what drifted: `video-h3-frames` was spelled in the client to
+decide a mode, `video-rife` was spelled in a second list to decide visibility, and neither could know about a
+workflow added tomorrow. `mode` and `accepts` are already the registry's own words — `video-h3-t2v` says
+`mode: "text"`, `accepts: {images: {max: 0}}` — so `videoModelModePatch` became a one-line read of `mode` and the
+tool panel a render of `accepts` + `parameters`.
+
+**Why not fold H3 into one entry with `variants`** It would work — `ResolveForMode` + `mergeVariantContract` are
+exactly that mechanism, and `image-qwen21` uses it (`edit`/`inpaint`/`outpaint`/`t2i`, each with its own `accepts`).
+But the four H3 workflows are four *ids* in every saved canvas, so folding them means an alias or a hydrate
+migration, and after this change the client already gets the same mode switch from `mode` for free. Two traps found
+while checking: `mergeVariantContract` does not merge `Parameters` (a variant cannot declare its own knobs), and
+`video-h3-character-swap` declared no `mode` — now `"reference"`, its behaviour made explicit.
+
+**What stays hardcoded** The composer's own H3 branches (`isH3T2V`, the frames/reference mode switch in
+`video-settings-panel.tsx`): they still recognise `video-h3-*` to decide *which mode options to offer*, which is now
+a UI question about one family of workflows rather than a fact about the run. `accepts.note` is deliberately not on
+the wire — it is English registry data, and the panel's copy comes from `i18n` (#66).
+
+**Also** A step writes no settings onto its node: `videoRunMetadata` / `buildImageGenerationMetadata` keep `model` +
+`params` + `references` and drop size/seconds/resolution/mode, so a node cannot claim a 720p it was never asked for.
+
+**Tested** `internal/workflow/render_test.go` (the row carries `accepts`; each mode carries its own contract, and
+the run path resolves the same one), `tests/server-models.test.ts` (a tool is tagged, says `hasPrompt: false`, and
+carries its contract), `tests/api-video-runs.test.ts` (a step submits `{multiplier: 3}` + `media.video` and no
+prompt), `tests/api-image-upscale.test.ts` (an upscaler submits `{upscale_model}` + `media.image`). `go test ./...`,
+`npx vitest run` (373), `npm run check` (870/856 keys, 182 modules) pass.
+
+**Where** `internal/workflow/render.go`, `internal/workflow/registry.go`, `workflows/registry.json`,
+`frontend/src/services/api/{workflows,video,image}.ts`, `frontend/src/lib/server-models.ts`,
+`frontend/src/lib/canvas/{tool-workflows,video-model-mode,video-run-metadata,canvas-node-factory}.ts`,
+`frontend/src/stores/use-config-store.ts`, `frontend/src/hooks/use-local-server-sync.ts`,
+`frontend/src/components/canvas/{canvas-tool-node-panel,canvas-node-prompt-panel}.tsx`,
+`frontend/src/components/{model-picker.tsx,settings/preferences-dialog.tsx}`,
+`frontend/src/pages/canvas/{project.tsx,hooks/*.ts}`, `frontend/scripts/check-i18n.cjs`.

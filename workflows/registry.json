@@ -1348,6 +1348,7 @@
         "minTotal": 2,
         "note": "character swap needs one source video and at least one reference image"
       },
+      "mode": "reference",
       "sourceVideoFrames": true,
       "lora": {
         "filter": "H3|minimax_h3|TaoMate-H3",

@@ -21,7 +21,7 @@ vi.mock("@/lib/image-utils", () => ({
     dataUrlToFile: (image: { name?: string }) => new File([new Uint8Array([1, 2, 3])], image.name || "source.png", { type: "image/png" }),
 }));
 
-const { requestUpscale } = await import("@/services/api/image");
+const { requestEdit, requestUpscale } = await import("@/services/api/image");
 
 // A run belongs to a canvas (#156): these cases post into one.
 const { setActiveCanvas } = await import("@/services/canvas-files");
@@ -109,6 +109,48 @@ function runBody(calls: Call[]) {
 
 beforeEach(() => {
     vi.unstubAllGlobals();
+});
+
+/** A config whose one model is a *step*: no prompt binding, one declared knob. */
+const stepServer = () =>
+    ({
+        ...server(),
+        channels: [
+            {
+                id: "local",
+                name: "local",
+                baseUrl: "http://127.0.0.1:8190/v1",
+                models: [
+                    {
+                        name: "image-esrgan-upscale",
+                        capability: "image",
+                        workflowId: "image-esrgan-upscale",
+                        tool: true,
+                        hasPrompt: false,
+                        imageInputs: 1,
+                        parameters: [{ key: "upscale_model", type: "select", options: ["RealESRGAN_x2plus.pth", "RealESRGAN_x4plus.pth"], default: "RealESRGAN_x2plus.pth" }],
+                    },
+                ],
+            },
+        ],
+        model: "local::image-esrgan-upscale",
+        imageModel: "local::image-esrgan-upscale",
+        params: { upscale_model: "RealESRGAN_x4plus.pth" },
+    }) as unknown as Config;
+
+describe("an image node running a step", () => {
+    it("sends the declared knob and the source picture, and no prompt", async () => {
+        const { calls } = stubServer();
+
+        await requestEdit(stepServer(), "words an upscaler never reads", [image("source.png")]);
+
+        const body = runBody(calls);
+        expect(body.workflow).toBe("image-esrgan-upscale");
+        // No `prompt`, no `size`, no `mode`: the upscaler declares none of them, and the server accepts and
+        // ignores an undeclared key, so sending one would read as a knob that did nothing.
+        expect(body.inputs).toEqual({ upscale_model: "RealESRGAN_x4plus.pth" });
+        expect(body.media).toEqual({ image: [UPLOAD_ID] });
+    });
 });
 
 describe("requestUpscale", () => {

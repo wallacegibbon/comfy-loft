@@ -8,7 +8,7 @@ import { getMediaBlob, resolveMediaUrl, type UploadedFile } from "@/services/fil
 import { imageToDataUrl } from "@/services/image-storage";
 import { cancelRun, createRun, uploadMedia, waitForRun, RunFailedError, type Run, type RunRequest } from "@/services/api/runs";
 import { generatedVideo } from "@/lib/canvas/generated-media";
-import { resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
+import { modelTakesPrompt, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
@@ -42,7 +42,39 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
     const selectedModel = (config.model || config.videoModel).trim();
     const requestConfig = resolveModelRequestConfig(config, selectedModel);
     assertVideoConfig(requestConfig, requestConfig.model);
+    // A step, not a prompt: an interpolation is told a multiplier and given a clip, and nothing else.
+    // Sending the composer's prompt and size would be accepted by the server and quietly ignored, which
+    // is the one failure mode this build refuses to have (docs/protocol.md).
+    if (!modelTakesPrompt(requestConfig, requestConfig.model)) return createVideoStepTask(requestConfig, references, options);
     return createServerVideoTask(requestConfig, prompt, references, options);
+}
+
+/**
+ * Submit a video *step*: the workflow's own parameters, and its media by kind.
+ *
+ * The media role is the binding's kind (`video`, `audio`, `image`), which is how the server's planner
+ * reads it — a step has no first-frame/last-frame/reference distinction to make, because it has no modes.
+ */
+async function createVideoStepTask(config: AiConfig, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
+    const media: Record<string, string | string[]> = {};
+    try {
+        const images = await Promise.all(references.map((image, index) => uploadReferenceImage(config, image, index, options)));
+        if (images.length) media.image = images;
+        const videos = await Promise.all((options?.videos || []).map((video, index) => uploadReferenceClip(config, video, `source-${index + 1}.mp4`, "invalidReferenceVideo", options)));
+        if (videos.length) media.video = videos;
+        const audios = await Promise.all((options?.audios || []).map((audio, index) => uploadReferenceClip(config, audio, `source-${index + 1}.mp3`, "invalidReferenceAudio", options)));
+        if (audios.length) media.audio = audios;
+        const run = await createRun(config, {
+            workflow: config.model,
+            inputs: { ...(config.params || {}), ...(options?.params || {}) },
+            ...(Object.keys(media).length ? { media } : {}),
+            askedBy: options?.askedBy,
+        });
+        return { id: run.id, model: config.model };
+    } catch (error) {
+        throwIfCanceled(error);
+        throw new Error(apiErrorMessage(error, apiText("videoTaskCreateFailed")));
+    }
 }
 
 /**
@@ -125,37 +157,42 @@ async function createServerVideoTask(config: AiConfig, prompt: string, reference
 
 /** Upload the planned media and return the role → upload id map a run request takes. */
 async function serverVideoMedia(config: AiConfig, plan: ServerVideoPlan, options?: VideoMediaOptions): Promise<Record<string, string | string[]>> {
-    const signal = options?.signal;
     const media: Record<string, string | string[]> = {};
-    // A reference that is already a canvas file is named, not copied: the run reads media by name inside its
-    // own canvas (#174). Only a reference with no file yet is uploaded to give it one.
-    const uploadImage = async (image: ReferenceImage, index: number) => {
-        const existing = mediaIdOf(image);
-        if (existing) return existing;
-        const dataUrl = await imageToDataUrl(image, { signal });
-        if (!dataUrl) throw new Error(apiText("referenceImageReadFailed"));
-        return (await uploadMedia(config, dataUrlToFile({ ...image, dataUrl }), image.name || `reference-${index + 1}.png`, { signal })).id;
-    };
-    const uploadClip = async (item: ReferenceVideo | ReferenceAudio, name: string, errorKey: "invalidReferenceVideo" | "invalidReferenceAudio") => {
-        const existing = mediaIdOf(item);
-        if (existing) return existing;
-        const file = await referenceMediaToFile(item, name, errorKey, options);
-        return (await uploadMedia(config, file, file.name, { signal })).id;
-    };
-
     if (plan.mode === "frames") {
         const first = plan.frameMode === "first" || plan.frameMode === "both" ? plan.images[0] : undefined;
         const last = plan.frameMode === "last" ? plan.images[0] : plan.frameMode === "both" ? plan.images[1] : undefined;
-        if (first) media.first_frame = await uploadImage(first, 0);
-        if (last) media.last_frame = await uploadImage(last, first ? 1 : 0);
+        if (first) media.first_frame = await uploadReferenceImage(config, first, 0, options);
+        if (last) media.last_frame = await uploadReferenceImage(config, last, first ? 1 : 0, options);
         return media;
     }
     if (plan.mode !== "reference") return media;
 
-    if (plan.images.length) media.reference = await Promise.all(plan.images.map((image, index) => uploadImage(image, index)));
-    if (plan.videos.length) media.video = await Promise.all(plan.videos.map((video, index) => uploadClip(video, `reference-${index + 1}.mp4`, "invalidReferenceVideo")));
-    if (plan.audios.length) media.audio = await Promise.all(plan.audios.map((audio, index) => uploadClip(audio, `reference-${index + 1}.mp3`, "invalidReferenceAudio")));
+    if (plan.images.length) media.reference = await Promise.all(plan.images.map((image, index) => uploadReferenceImage(config, image, index, options)));
+    if (plan.videos.length) media.video = await Promise.all(plan.videos.map((video, index) => uploadReferenceClip(config, video, `reference-${index + 1}.mp4`, "invalidReferenceVideo", options)));
+    if (plan.audios.length) media.audio = await Promise.all(plan.audios.map((audio, index) => uploadReferenceClip(config, audio, `reference-${index + 1}.mp3`, "invalidReferenceAudio", options)));
     return media;
+}
+
+/**
+ * A reference as the id a run names it by.
+ *
+ * A reference that is already a canvas file is named, not copied: the run reads media by name inside its
+ * own canvas (#174). Only a reference with no file yet is uploaded to give it one.
+ */
+async function uploadReferenceImage(config: AiConfig, image: ReferenceImage, index: number, options?: RequestOptions) {
+    const signal = options?.signal;
+    const existing = mediaIdOf(image);
+    if (existing) return existing;
+    const dataUrl = await imageToDataUrl(image, { signal });
+    if (!dataUrl) throw new Error(apiText("referenceImageReadFailed"));
+    return (await uploadMedia(config, dataUrlToFile({ ...image, dataUrl }), image.name || `reference-${index + 1}.png`, { signal })).id;
+}
+
+async function uploadReferenceClip(config: AiConfig, item: ReferenceVideo | ReferenceAudio, name: string, errorKey: "invalidReferenceVideo" | "invalidReferenceAudio", options?: RequestOptions) {
+    const existing = mediaIdOf(item);
+    if (existing) return existing;
+    const file = await referenceMediaToFile(item, name, errorKey, options);
+    return (await uploadMedia(config, file, file.name, { signal: options?.signal })).id;
 }
 
 /**

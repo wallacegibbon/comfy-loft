@@ -18,7 +18,7 @@ afterAll(() => {
     else Reflect.deleteProperty(globalThis, "localStorage");
 });
 
-const { defaultConfig, resolveModelForCapability, useConfigStore } = await import("../src/stores/use-config-store");
+const { defaultConfig, defaultModelOptions, resolveModelForCapability, useConfigStore, workflowModelOptions } = await import("../src/stores/use-config-store");
 const { buildGenerationConfig } = await import("../src/lib/canvas/canvas-generation-helpers");
 const { CanvasNodeType } = await import("../src/types/canvas");
 
@@ -62,6 +62,30 @@ test("a new node without a selection still uses its configured default", () => {
 
 test("switching generation capability still selects a model of the new capability", () => {
     expect(resolveModelForCapability(config, "replacement::image-a", "video")).toBe("replacement::video-b");
+});
+
+// A tool — an interpolation, an upscaler — takes a clip or a picture and has nothing to be asked, so it can
+// never be the answer to "which model does a new node use". It is offered in a node's own list, which is how
+// a node can be one at all.
+test("a step is offered to a node but never picked as the default", () => {
+    const withStep: AiConfig = {
+        ...config,
+        channels: [
+            {
+                id: "replacement",
+                name: "Replacement",
+                baseUrl: "https://example.com",
+                // First in the list, which is what a fallback would otherwise reach for.
+                models: [
+                    { name: "image-esrgan-upscale", capability: "image", workflowId: "image-esrgan-upscale", tool: true, hasPrompt: false },
+                    { name: "image-a", capability: "image", workflowId: "image-a" },
+                ],
+            },
+        ],
+    };
+    expect(workflowModelOptions(withStep, "image")).toContain("replacement::image-esrgan-upscale");
+    expect(defaultModelOptions(withStep, "image")).toEqual(["replacement::image-a"]);
+    expect(defaultModelOptions(withStep, "image")).not.toContain("replacement::image-esrgan-upscale");
 });
 
 // The node remembers what it was made with. Recovery asks about that model by name, so a task that

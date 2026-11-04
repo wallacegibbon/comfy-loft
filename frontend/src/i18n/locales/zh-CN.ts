@@ -34,7 +34,6 @@ export default {
         save: "保存",
         yes: "是",
         no: "否",
-        edit: "编辑",
         delete: "删除",
         copied: "已复制",
         promptCopied: "提示词已复制",
@@ -771,6 +770,14 @@ export default {
             captioning: "正在反推…",
             videoTextAddDisabled: "文生视频不接参考素材；要接图请切换到首尾帧或多参",
             videoTextRefsWarning: "文生视频不接图片/视频/音频；请断开参考，或在视频设置切换到首尾帧/多参",
+        },
+        toolPanel: {
+            needs: "需要 {{count}} {{kind}} · 已连 {{have}}",
+            needsAny: "至少需要 {{count}} 个素材 · 已连 {{have}}",
+            noMedia: "这一步不需要参考素材，只有参数。",
+            kinds: { image: "张图片", video: "条视频", audio: "段音频" },
+            full: "这一步不再接受更多参考素材",
+            blocked: "先连上这一步需要的素材",
         },
         references: {
             title: "参考内容",

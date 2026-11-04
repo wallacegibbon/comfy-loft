@@ -7,6 +7,8 @@ import { createVideoInterpolateTask, waitForVideoGenerationTask } from "@/servic
 import { useEffectiveConfig } from "@/stores/use-config-store";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
 import { isGenerationCanceled } from "@/lib/canvas/canvas-generation-helpers";
+import { VIDEO_INTERPOLATE_WORKFLOW } from "@/lib/canvas/tool-workflows";
+import { videoModelForWorkflow } from "@/lib/canvas/video-model-mode";
 import { VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH, applyGeneratedVideo } from "@/lib/canvas/canvas-generated-video";
 import { NODE_STATUS_ERROR, NODE_STATUS_LOADING } from "@/lib/canvas/canvas-node-status";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
@@ -31,6 +33,11 @@ export function useVideoEditors(deps: NodeEditorDeps) {
             const sourceWidth = node.metadata?.naturalWidth || node.width;
             const sourceHeight = node.metadata?.naturalHeight || node.height;
             const size = fitNodeSize(sourceWidth, sourceHeight, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
+            // The node says which workflow it runs from the moment it exists. Naming it only after the run
+            // was accepted left it looking like whatever the canvas falls back to — an H3 text-to-video
+            // node, with a prompt box and a red warning that it takes no references (#263).
+            const model = videoModelForWorkflow(effectiveConfig, VIDEO_INTERPOLATE_WORKFLOW) || VIDEO_INTERPOLATE_WORKFLOW;
+            const params = { multiplier: 2 };
             setRunningNodeId(childId);
             setNodes((prev) => [
                 ...prev,
@@ -42,7 +49,7 @@ export function useVideoEditors(deps: NodeEditorDeps) {
                     position: { x: node.position.x + node.width + 96, y: node.position.y },
                     width: size.width,
                     height: size.height,
-                    metadata: { prompt: node.metadata?.prompt, status: NODE_STATUS_LOADING },
+                    metadata: { prompt: node.metadata?.prompt, status: NODE_STATUS_LOADING, model, params },
                 },
             ]);
             setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
@@ -62,15 +69,15 @@ export function useVideoEditors(deps: NodeEditorDeps) {
                     { multiplier: 2 },
                     { signal: controller.signal },
                 );
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, runId: task.id, model: "video-rife", params: { multiplier: 2 } } } : item)));
+                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, runId: task.id, model, params } } : item)));
                 const video = await waitForVideoGenerationTask(effectiveConfig, task, { signal: controller.signal });
                 setNodes((prev) =>
                     prev.map((item) =>
                         item.id === childId
                             ? applyGeneratedVideo(item, video, {
                                   prompt: node.metadata?.prompt,
-                                  model: "video-rife",
-                                  videoMode: "interpolate",
+                                  model,
+                                  params,
                                   previewUrl: undefined,
                                   previewMime: undefined,
                                   previewStep: undefined,

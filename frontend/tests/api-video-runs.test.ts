@@ -177,6 +177,48 @@ describe("createVideoGenerationTask", () => {
     });
 });
 
+/** A config whose one model is a *step*: no prompt binding, one declared knob. */
+const stepServer = (overrides: Record<string, unknown> = {}) =>
+    server({
+        channels: [
+            {
+                id: "local",
+                name: "local",
+                baseUrl: "http://127.0.0.1:8190/v1",
+                models: [
+                    {
+                        name: "video-rife",
+                        capability: "video",
+                        workflowId: "video-rife",
+                        tool: true,
+                        hasPrompt: false,
+                        accepts: { videos: { min: 1, max: 1 }, minTotal: 0 },
+                        parameters: [{ key: "multiplier", type: "number", min: 2, max: 3, default: 2 }],
+                    },
+                ],
+            },
+        ],
+        model: "local::video-rife",
+        videoModel: "local::video-rife",
+        params: { multiplier: 3 },
+        ...overrides,
+    });
+
+describe("createVideoGenerationTask on a step workflow", () => {
+    it("sends the workflow's own parameters and its clip, and no prompt at all", async () => {
+        const { calls } = stubServer({ upload: () => json({ upload: { id: VIDEO_ID, kind: "video", mime: "video/mp4", bytes: 3, filename: "clip.mp4" } }) });
+
+        await createVideoGenerationTask(stepServer(), "words an interpolation never reads", [], { videos: [{ id: "v1", name: "clip.mp4", type: "video/mp4", storageKey: "k1" } as never] });
+
+        const body = runBody(calls);
+        expect(body.workflow).toBe("video-rife");
+        // Exactly the declared knob: `prompt`/`size`/`seconds` are accepted by the server and ignored,
+        // which is the silent no-op this path exists to avoid.
+        expect(body.inputs).toEqual({ multiplier: 3 });
+        expect(body.media).toEqual({ video: [VIDEO_ID] });
+    });
+});
+
 describe("createVideoInterpolateTask", () => {
     it("is one run of the RIFE workflow with the clip and the multiplier", async () => {
         const { calls } = stubServer({ upload: () => json({ upload: { id: VIDEO_ID, kind: "video", mime: "video/mp4", bytes: 3, filename: "source.mp4" } }) });

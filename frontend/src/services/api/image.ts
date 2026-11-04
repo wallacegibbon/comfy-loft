@@ -1,6 +1,6 @@
 import i18n from "@/i18n";
 import { LOCAL_SERVER_BASE_URL, isLocalServerUrl } from "@/constant/app-mode";
-import { channelModelOf, modelImageInputs, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
+import { channelModelOf, modelImageInputs, modelTakesPrompt, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { mediaIdOf } from "@/services/canvas-files";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
@@ -123,6 +123,10 @@ function withSystemPrompt(config: AiConfig, prompt: string) {
 
 async function requestServerImages(input: { config: AiConfig; prompt: string; references: ReferenceImage[]; size?: string; background?: string; imageMode?: string; params: Record<string, unknown>; options?: RequestOptions }): Promise<UploadedImage> {
     const { config, prompt, references, size, background, imageMode, params, options } = input;
+    // A step rather than a prompt: an upscaler is told which model and given a picture. Its inputs are the
+    // ones it declares, and its media is the picture by kind — nothing here is renamed into a prompt field,
+    // because sending an undeclared key is accepted and ignored, which reads as a knob that did nothing.
+    if (!modelTakesPrompt(config, config.model)) return requestServerStep({ config, references, params, options });
     const inputs: Record<string, unknown> = { prompt };
     if (size) inputs.size = size;
     if (background) inputs.background = background;
@@ -144,6 +148,32 @@ async function requestServerImages(input: { config: AiConfig; prompt: string; re
         options?.onRun?.(run.id);
         const finished = await waitForRun(config, run.id, { signal: options?.signal, onProgress: options?.onProgress, cancelOnAbort: true });
         // The run wrote these files into the canvas; the node references them where they are (#173).
+        return await generatedImage(config, finished, { signal: options?.signal });
+    } catch (error) {
+        throwIfCanceled(error);
+        throw new Error(apiErrorMessage(error, apiText("requestFailed"), "imageTimeout"));
+    }
+}
+
+/**
+ * Submit an image *step*: the workflow's declared parameters, and its source picture by kind.
+ *
+ * The count is the capacity the workflow reports (`imageInputs`), which is the same number the server
+ * derives from its bindings — an upscaler takes one picture, so an extra one is not uploaded at all rather
+ * than silently dropped later.
+ */
+async function requestServerStep(input: { config: AiConfig; references: ReferenceImage[]; params: Record<string, unknown>; options?: RequestOptions }): Promise<UploadedImage> {
+    const { config, references, params, options } = input;
+    const capacity = modelImageInputs(config, config.model);
+    const usable = typeof capacity === "number" ? references.slice(0, Math.max(0, capacity)) : references;
+    const media: Record<string, string[]> = {};
+    for (const [index, reference] of usable.entries()) {
+        media.image = [...(media.image || []), await mediaId(config, reference, `source-${index + 1}.png`, options?.signal)];
+    }
+    try {
+        const run = await createRun(config, { workflow: config.model, inputs: { ...params }, ...(Object.keys(media).length ? { media } : {}), askedBy: options?.askedBy });
+        options?.onRun?.(run.id);
+        const finished = await waitForRun(config, run.id, { signal: options?.signal, onProgress: options?.onProgress, cancelOnAbort: true });
         return await generatedImage(config, finished, { signal: options?.signal });
     } catch (error) {
         throwIfCanceled(error);

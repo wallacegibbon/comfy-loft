@@ -27,18 +27,19 @@ export function useLocalServerSync() {
             if (modelSignature(channel.models) === modelSignature(models)) return;
 
             const channels = config.channels.map((item) => (item.id === channel.id ? { ...item, baseUrl: LOCAL_SERVER_BASE_URL, models } : item));
-            const optionsFor = (capability: ModelCapability) => channels.flatMap((item) => item.models.filter((model) => model.capability === capability).map((model) => encodeChannelModel(item.id, model.name)));
-            const imageOptions = optionsFor("image");
+            // A tool takes a clip and has nothing to be asked, so it can never be the model a fresh node
+            // starts on — only one a node is deliberately set to.
+            const defaultOptionsFor = (capability: ModelCapability) => channels.flatMap((item) => item.models.filter((model) => model.capability === capability && !model.tool).map((model) => encodeChannelModel(item.id, model.name)));
             useConfigStore.setState({
                 config: {
                     ...config,
                     channels,
                     models: modelOptionsFromChannels(channels),
-                    imageModel: pickModelOption("image", config.imageModel, imageOptions),
-                    videoModel: pickModelOption("video", config.videoModel, optionsFor("video")),
-                    audioModel: pickModelOption("audio", config.audioModel, optionsFor("audio")),
+                    imageModel: pickModelOption("image", config.imageModel, defaultOptionsFor("image")),
+                    videoModel: pickModelOption("video", config.videoModel, defaultOptionsFor("video")),
+                    audioModel: pickModelOption("audio", config.audioModel, defaultOptionsFor("audio")),
                     // The image model is also the general one: text-to-image is the default action.
-                    model: pickModelOption("image", config.model, imageOptions),
+                    model: pickModelOption("image", config.model, defaultOptionsFor("image")),
                     baseUrl: LOCAL_SERVER_BASE_URL,
                 },
             });
