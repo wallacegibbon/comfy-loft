@@ -14,7 +14,28 @@ const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiE
  * and what is left is whether there is one. `baseUrl` and `modelName` do travel — they are where a model
  * points, which is how two entries called the same thing are told apart.
  */
-export type AgentModel = { id: number; name: string; protocolType?: string; baseUrl?: string; modelName?: string; contextLimit?: number; hasKey?: boolean };
+/**
+ * One model, as the agent describes it and as a form may change it.
+ *
+ * Every field of a `model.conf` entry except the key, which never leaves the server (`hasKey` says whether
+ * there is one). The reasoning blocks arrive as JSON, because that is what they are: a request body merged in
+ * at that reasoning level, shown in the editor as text (`lib/agent-models.ts`).
+ */
+export type AgentModel = {
+    id: number;
+    name: string;
+    protocolType?: string;
+    baseUrl?: string;
+    modelName?: string;
+    contextLimit?: number;
+    maxTokens?: number;
+    reasoning0?: unknown;
+    reasoning1?: unknown;
+    reasoning2?: unknown;
+    reasoningField?: string;
+    serialToolCalls?: boolean;
+    hasKey?: boolean;
+};
 
 /**
  * The agent, as sessions.

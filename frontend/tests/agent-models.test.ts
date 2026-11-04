@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
  * that exists (its four visible fields, and a key only when this page has one to give), and what travels
  * for one that is being created (everything, and nothing invented).
  */
-const { emptyModelDraft, modelDraftComplete, modelDraftOf, modelSyncPayload } = await import("@/lib/agent-models");
+const { emptyModelDraft, modelDraftComplete, modelDraftOf, modelSyncPayload, reasoningError } = await import("@/lib/agent-models");
 
 const model = (overrides: Partial<Parameters<typeof modelSyncPayload>[0][number]> = {}) => ({
     id: 1,
@@ -18,9 +18,18 @@ const model = (overrides: Partial<Parameters<typeof modelSyncPayload>[0][number]
     baseUrl: "https://api.deepseek.com",
     modelName: "deepseek-flash",
     contextLimit: 1000000,
+    maxTokens: 65536,
+    reasoning0: { thinking: { type: "disabled" } },
+    reasoning1: { thinking: { type: "enabled" }, reasoning_effort: "high" },
+    reasoning2: { thinking: { type: "enabled" }, reasoning_effort: "xhigh" },
+    reasoningField: "reasoning_content",
+    serialToolCalls: true,
     hasKey: true,
     ...overrides,
 });
+
+/** The draft of one model, which is what an edit starts from. */
+const draftOf = (overrides: Partial<typeof model> = {}) => modelDraftOf(model(overrides));
 
 describe("modelSyncPayload", () => {
     it("sends every model on screen, by id, and never a key", () => {
@@ -41,11 +50,11 @@ describe("modelSyncPayload", () => {
     });
 
     it("adds the draft after the models that are already there, key and all", () => {
-        const change = { kind: "add" as const, draft: { name: "  New / Claude ", modelId: " claude-haiku-4 ", baseUrl: " https://api.anthropic.com ", protocol: "anthropic" as const, apiKey: " sk-new " } };
+        const change = { kind: "add" as const, draft: { ...emptyModelDraft, name: "  New / Claude ", modelId: " claude-haiku-4 ", baseUrl: " https://api.anthropic.com ", protocol: "anthropic" as const, apiKey: " sk-new " } };
         const payload = JSON.parse(modelSyncPayload([model()], change));
 
         expect(payload).toHaveLength(2);
-        expect(payload[1]).toEqual({ name: "New / Claude", protocol_type: "anthropic", base_url: "https://api.anthropic.com", model_name: "claude-haiku-4", api_key: "sk-new" });
+        expect(payload[1]).toMatchObject({ name: "New / Claude", protocol_type: "anthropic", base_url: "https://api.anthropic.com", model_name: "claude-haiku-4", api_key: "sk-new" });
         // A new model has no id: the agent assigns ids when it writes the list.
         expect(payload[1]).not.toHaveProperty("id");
     });
@@ -80,7 +89,83 @@ describe("modelSyncPayload", () => {
 
 describe("modelDraftOf", () => {
     it("fills the form from the model, with the key it cannot know left empty", () => {
-        expect(modelDraftOf(model({ protocolType: "anthropic" }))).toEqual({ name: "DeepSeek / Flash", modelId: "deepseek-flash", baseUrl: "https://api.deepseek.com", protocol: "anthropic", apiKey: "" });
+        expect(modelDraftOf(model({ protocolType: "anthropic" }))).toMatchObject({ name: "DeepSeek / Flash", modelId: "deepseek-flash", baseUrl: "https://api.deepseek.com", protocol: "anthropic", apiKey: "" });
+    });
+
+    // Every field of the entry is on the form (#249): what a form does not show is a value the user cannot set.
+    it("fills the rest of the entry too, and shows each reasoning block as the JSON it is", () => {
+        const draft = modelDraftOf(model());
+
+        expect(draft).toMatchObject({ contextLimit: "1000000", maxTokens: "65536", reasoningField: "reasoning_content", serialToolCalls: true });
+        expect(JSON.parse(draft.reasoning1)).toEqual({ thinking: { type: "enabled" }, reasoning_effort: "high" });
+        // Indented, because a person has to be able to read it in a textarea.
+        expect(draft.reasoning1).toContain("\n");
+    });
+
+    it("shows nothing for a block the entry does not have", () => {
+        expect(modelDraftOf(model({ reasoning0: undefined })).reasoning0).toBe("");
+        expect(modelDraftOf(model({ reasoning0: null })).reasoning0).toBe("");
+    });
+});
+
+describe("the rest of a model's entry, as the form edits it", () => {
+    it("sends the token caps, the blocks, the reasoning field and the tool-call mode", () => {
+        const payload = JSON.parse(
+            modelSyncPayload([model()], {
+                kind: "edit",
+                id: 1,
+                draft: { ...draftOf(), contextLimit: "200000", maxTokens: "8192", reasoningField: "reasoning_text", serialToolCalls: false, reasoning0: `{"thinking":{"type":"disabled"}}` },
+            }),
+        );
+
+        expect(payload[0]).toMatchObject({
+            context_limit: 200000,
+            max_tokens: 8192,
+            reasoning_field: "reasoning_text",
+            serial_tool_calls: false,
+            reasoning_0: { thinking: { type: "disabled" } },
+        });
+        // An untouched block travels as itself: it was shown, so it is sent back.
+        expect(payload[0].reasoning_2).toEqual({ thinking: { type: "enabled" }, reasoning_effort: "xhigh" });
+    });
+
+    // A cleared box is an answer, where an empty key field is a silence: the form showed the block, so
+    // emptying it removes it, and `null` is how that is said.
+    it("sends null for a block the user cleared", () => {
+        const payload = JSON.parse(modelSyncPayload([model()], { kind: "edit", id: 1, draft: { ...draftOf(), reasoning2: "   " } }));
+
+        expect(payload[0].reasoning_2).toBeNull();
+    });
+
+    it("sends an empty reasoning field as nothing, so the provider's default stands", () => {
+        const payload = JSON.parse(modelSyncPayload([model()], { kind: "edit", id: 1, draft: { ...draftOf(), reasoningField: "  " } }));
+
+        expect(payload[0]).not.toHaveProperty("reasoning_field");
+    });
+
+    it('counts a cleared token cap as the zero model.conf writes for "not set"', () => {
+        const payload = JSON.parse(modelSyncPayload([model()], { kind: "edit", id: 1, draft: { ...draftOf(), contextLimit: "", maxTokens: "abc" } }));
+
+        expect(payload[0]).toMatchObject({ context_limit: 0, max_tokens: 0 });
+    });
+});
+
+describe("reasoningError", () => {
+    it("accepts a blank block and a JSON object", () => {
+        expect(reasoningError("")).toBe("");
+        expect(reasoningError("   ")).toBe("");
+        expect(reasoningError(`{"thinking":{"type":"enabled"}}`)).toBe("");
+        expect(reasoningError("{}")).toBe("");
+    });
+
+    // The blocks are merged into a request body, so anything else is a request the provider rejects.
+    it("refuses what is not a JSON object, and says which of the two things is wrong", () => {
+        expect(reasoningError("{oops")).toBe("config.preferences.modelReasoningNotJson");
+        expect(reasoningError(`{"thinking":}`)).toBe("config.preferences.modelReasoningNotJson");
+        expect(reasoningError(`"enabled"`)).toBe("config.preferences.modelReasoningNotObject");
+        expect(reasoningError("5")).toBe("config.preferences.modelReasoningNotObject");
+        expect(reasoningError("[1,2]")).toBe("config.preferences.modelReasoningNotObject");
+        expect(reasoningError("null")).toBe("config.preferences.modelReasoningNotObject");
     });
 });
 
@@ -90,5 +175,14 @@ describe("modelDraftComplete", () => {
         // The key is optional: a local endpoint answers without one.
         expect(modelDraftComplete({ ...emptyModelDraft, name: "Local", modelId: "qwen" })).toBe(false);
         expect(modelDraftComplete({ ...emptyModelDraft, name: "   ", modelId: "qwen", baseUrl: "http://127.0.0.1:9999/v1" })).toBe(false);
+    });
+
+    // A form that would send JSON it could not parse is a form that must not save: Save stays off, and the
+    // field says why.
+    it("wants the reasoning blocks to be JSON objects", () => {
+        const complete = { ...emptyModelDraft, name: "Local", modelId: "qwen", baseUrl: "http://127.0.0.1:9999/v1" };
+        expect(modelDraftComplete({ ...complete, reasoning1: `{"thinking":{"type":"enabled"}}` })).toBe(true);
+        expect(modelDraftComplete({ ...complete, reasoning1: "{oops" })).toBe(false);
+        expect(modelDraftComplete({ ...complete, reasoning2: "nope" })).toBe(false);
     });
 });

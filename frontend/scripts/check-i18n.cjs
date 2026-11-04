@@ -69,6 +69,10 @@ const HAND_RESOLVED = [
     "config.preferences.defaultVideoModel",
     "canvas.sidePanel.tab.canvases",
     "canvas.sidePanel.tab.elements",
+    // `t(error)` in the model form: `reasoningError` answers with the key of the reason a reasoning block is
+    // not usable, or "" for one that is — a pure function with no i18n of its own (`lib/agent-models.ts`).
+    "config.preferences.modelReasoningNotJson",
+    "config.preferences.modelReasoningNotObject",
 ];
 
 // Namespaces reached by string concatenation, declared one by one. Two forms:

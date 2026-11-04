@@ -2,28 +2,38 @@ import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/kit/button";
+import { Switch } from "@/components/kit/choice";
 import { Dialog } from "@/components/kit/dialog";
 import { Field } from "@/components/kit/field";
-import { Input } from "@/components/kit/input";
+import { Input, InputNumber } from "@/components/kit/input";
 import { Select } from "@/components/kit/select";
-import { modelDraftComplete, type ModelDraft, type ModelProtocol } from "@/lib/agent-models";
+import { modelDraftComplete, reasoningError, type ModelDraft, type ModelProtocol } from "@/lib/agent-models";
 
 /**
- * One model, as a form: the five things `model.conf` needs and nothing else.
+ * One model, as a form: every field of the `model.conf` entry a page can see.
  *
  * It is a dialog rather than a row of inputs under the list, because a model *is* a small document —
- * AlayaCore's entry has a name, an id, an address, a protocol and a key, and no two of them belong on one
- * line. The list behind it stays a list.
+ * AlayaCore's entry has a name, an id, an address, a protocol, a key, two token caps, three reasoning blocks
+ * and two switches, and no two of them belong on one line (#249). The list behind it stays a list.
  *
  * Add and edit are the same form. What differs is the key: a model that exists has one the page has never
  * been shown, so empty means "the one that is stored" and the note says so. A new model with an empty key
  * gets no key, which a local endpoint is happy with.
+ *
+ * The reasoning blocks are JSON text, because they are JSON: each is merged into the request body as-is at
+ * one reasoning level, and no form of named fields could say what a provider accepts. A blank box is a
+ * decision — it removes the block — and text that is not a JSON object keeps the Save button off.
  */
 export function AgentModelDialog({ draft: initial, editing, onCancel, onSave }: { draft: ModelDraft; editing: boolean; onCancel: () => void; onSave: (draft: ModelDraft) => void }): ReactNode {
     const { t } = useTranslation();
     const [draft, setDraft] = useState<ModelDraft>(initial);
     const change = (patch: Partial<ModelDraft>) => setDraft((current) => ({ ...current, ...patch }));
     const ready = modelDraftComplete(draft);
+    const reasoning = [
+        { key: "reasoning0" as const, label: t("config.preferences.modelReasoning0") },
+        { key: "reasoning1" as const, label: t("config.preferences.modelReasoning1") },
+        { key: "reasoning2" as const, label: t("config.preferences.modelReasoning2") },
+    ];
 
     return (
         <Dialog
@@ -59,7 +69,7 @@ export function AgentModelDialog({ draft: initial, editing, onCancel, onSave }: 
                     ]}
                 />
             </Field>
-            <Field label={t("config.preferences.modelApiKey")} className="mb-0">
+            <Field label={t("config.preferences.modelApiKey")} className="mb-3">
                 <Input
                     type="password"
                     autoComplete="off"
@@ -72,6 +82,33 @@ export function AgentModelDialog({ draft: initial, editing, onCancel, onSave }: 
                     onPressEnter={() => ready && onSave(draft)}
                 />
             </Field>
+            <div className="mb-3 grid grid-cols-2 gap-3">
+                <Field label={t("config.preferences.modelContextLimit")} className="mb-0">
+                    <InputNumber min={0} step={1024} value={draft.contextLimit ? Number(draft.contextLimit) : null} onChange={(value) => change({ contextLimit: value === null ? "" : String(value) })} />
+                </Field>
+                <Field label={t("config.preferences.modelMaxTokens")} className="mb-0">
+                    <InputNumber min={0} step={1024} value={draft.maxTokens ? Number(draft.maxTokens) : null} onChange={(value) => change({ maxTokens: value === null ? "" : String(value) })} />
+                </Field>
+            </div>
+            <Field label={t("config.preferences.modelReasoningField")} className="mb-3">
+                <Input value={draft.reasoningField} placeholder="reasoning_content" onChange={(event) => change({ reasoningField: event.target.value })} />
+            </Field>
+            <Field className="mb-3">
+                <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm">{t("config.preferences.modelSerialToolCalls")}</span>
+                    <Switch checked={draft.serialToolCalls} onChange={(serialToolCalls) => change({ serialToolCalls })} />
+                </div>
+            </Field>
+            <div className="mb-1 text-xs text-stone-500">{t("config.preferences.modelReasoningNote")}</div>
+            {reasoning.map(({ key, label }) => {
+                const error = reasoningError(draft[key]);
+                return (
+                    <Field key={key} label={label} className="mb-2">
+                        <Input.TextArea rows={2} spellCheck={false} status={error ? "error" : "normal"} className="font-mono text-xs" value={draft[key]} onChange={(event) => change({ [key]: event.target.value } as Partial<ModelDraft>)} />
+                        {error ? <div className="mt-1 text-xs text-red-500">{t(error)}</div> : null}
+                    </Field>
+                );
+            })}
         </Dialog>
     );
 }

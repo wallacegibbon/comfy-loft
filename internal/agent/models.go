@@ -9,15 +9,23 @@ import (
 // The one command whose arguments a canvas may not fill in on its own.
 //
 // `model_sync` takes the whole list — AlayaCore replaces every model in `model.conf` with what it is given
-// and writes the file — while the list a canvas was shown is `Model`: four fields per entry, no `api_key`,
-// no `reasoning_N`, no token caps. Forwarded as sent, one edit would delete every key on the machine and
-// every reasoning block beside it.
+// and writes the file — while the list a canvas was shown is `Model`: every field an editor can read, no
+// `api_key`, and nothing this build has not been taught. Forwarded as sent, one edit would delete every key
+// on the machine.
 const modelSyncCommand = "model_sync"
 
-// modelEditorFields are the fields an editor may replace on a model the server already knows. Everything
-// else in the stored entry — the reasoning blocks, the token caps, the fields this server has no control
-// for — is the server's to keep, because the canvas has never seen it.
-var modelEditorFields = [...]string{"name", "protocol_type", "base_url", "model_name"}
+// modelEditorFields are the fields an editor may replace on a model the server already knows — which is every
+// field of the entry a form can show (#249). Everything else in the stored object (an `api_key`, and whatever
+// AlayaCore adds tomorrow) is the server's to keep, because the canvas has never seen it.
+var modelEditorFields = [...]string{
+	"name", "protocol_type", "base_url", "model_name",
+	"context_limit", "max_tokens", "reasoning_field", "serial_tool_calls",
+}
+
+// modelReasoningFields are the reasoning blocks: raw JSON merged into a request body per level. They are
+// edited as JSON text, and a blank box is a decision — it removes the block — where a blank field elsewhere
+// would be a silence.
+var modelReasoningFields = [...]string{"reasoning_0", "reasoning_1", "reasoning_2"}
 
 // mergeModelSync completes the list a canvas sent into the list `model_sync` expects.
 //
@@ -53,6 +61,24 @@ func (s *Session) mergeModelSync(args string) ([]modelObject, error) {
 			if key := entry.text("api_key"); key != "" {
 				object["api_key"] = entry["api_key"]
 			}
+		}
+		// The reasoning blocks are the one field where a blank box is an answer: a form showed the value, so
+		// an emptied one means "remove it". Absent still says nothing — a page that has never heard of these
+		// fields keeps what is stored, which is what makes this merge safe for a bundle older than it.
+		for _, field := range modelReasoningFields {
+			raw, sent := entry[field]
+			if !sent {
+				continue
+			}
+			if len(raw) == 0 || string(raw) == "null" || string(raw) == `""` {
+				delete(object, field)
+				continue
+			}
+			var block map[string]any
+			if err := json.Unmarshal(raw, &block); err != nil || block == nil {
+				return nil, fmt.Errorf("%s: %s must be a JSON object, or empty to remove it", modelSyncCommand, field)
+			}
+			object[field] = raw
 		}
 		delete(object, "id")
 		object["id"] = json.RawMessage(strconv.Itoa(index + 1))

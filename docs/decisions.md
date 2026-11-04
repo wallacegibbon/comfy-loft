@@ -9072,3 +9072,63 @@ stopping the server: the agent exits on the frame, logging a clean `exit pid=…
 
 **Where** `internal/agent/{spawn.go,sessions.go}` (+`release_test.go`, `session_test.go`'s `fakeAgent`),
 `internal/server/server.go`, `docs/known-issues.md`.
+
+## 249. The model form has every field of the entry, and the reasoning blocks are JSON the user types
+
+**Decision** A model's `model.conf` entry is editable in full from the preferences window. The page is shown
+every field but the key — `context_limit`, `max_tokens`, `reasoning_0/1/2`, `reasoning_field`,
+`serial_tool_calls` joined the five that were there — and every one of them is a field the merge will replace
+(`agent.modelEditorFields`). The three reasoning blocks are edited as **JSON text**, because that is what they
+are, and a cleared box sends `null`, which removes the block.
+
+**What was wrong** The form showed five fields and the server replaced four. AlayaCore's entry has twelve:
+
+```
+name, protocol_type, base_url, api_key, model_name, context_limit, max_tokens,
+reasoning_0, reasoning_1, reasoning_2, reasoning_field, serial_tool_calls
+```
+
+So a user whose provider needed a 65536 output cap, a `reasoning_field`, serial tool calls or a per-level
+thinking block had to open `~/.config/comfyloft-server/alayacore/model.conf` in an editor — and the next edit
+in the UI round-tripped the file through a `model_sync` that kept those values but could never change them.
+Measured on the real agent before and after (`alayacore --rawio … < /dev/null`, one startup broadcast):
+`{"id":1,…,"context_limit":262144,"max_tokens":65536,"reasoning_1":{"reasoning_effort":"medium"},
+"reasoning_2":{"reasoning_effort":"xhigh"},"serial_tool_calls":false}`.
+
+**Why the blocks are text and not named fields** `reasoning_N` is "raw provider-level JSON merged into the
+request body at that level" (AlayaCore's own words). OpenAI wants `{"thinking":{"type":"enabled"},
+"reasoning_effort":"high"}`; Anthropic wants its own vocabulary inside the same field; a third provider will
+want a third. A form of named fields would be a form that can only describe the two providers somebody thought
+of, and would have to be rebuilt for the third. The text is the value, and the form's whole contribution is
+saying when it does not parse.
+
+**The one place `null` is the answer.** Everywhere else, a field left empty says nothing and the stored value
+stands — the `api_key` above all, which the page has never been shown. A reasoning block is different: the form
+displayed it, so emptying the box is a decision, and it is sent as `null` and merged away. *Absent* still means
+"nothing to say", which is what keeps this honest for a browser running a bundle from before this change: it
+does not know these fields exist, so it must not be able to delete them.
+
+**Where the refusal lives** A block that is not a JSON **object** is refused twice: the form keeps Save off and
+says which of the two things is wrong (`reasoningError`), and the merge refuses it again with a sentence naming
+the field (`model_sync: reasoning_1 must be a JSON object, or empty to remove it`). The second exists because
+the first is a browser: the blocks go into a request body as they stand, so a string or an array would be a
+request AlayaCore sends malformed, and `model.conf` is not a file to learn that from.
+
+**Numbers as text in the form** `contextLimit` and `maxTokens` are strings in the draft, not numbers: a
+half-typed `1` on the way to `1000000` must not become a `NaN` that reads as zero, and a cleared box means zero
+— which is what `model.conf` writes for "not set". `InputNumber` gives back `null` for empty, and the draft
+converts both ways in one place (`lib/agent-models.ts`).
+
+**Tested** `internal/agent/models_test.go`: the list a canvas sees carries the token caps, the blocks, the
+reasoning field and the tool-call mode (and still no `api_key`); an edit replaces every one of them; a cleared
+block is removed while the key stays; a page that never mentions a block does not delete it; a block that is a
+string, a number or an array is refused by name. `frontend/tests/agent-models.test.ts` (19 tests): the draft
+fills every field and shows a block as indented JSON, `null` is sent for a cleared one, an empty
+`reasoning_field` is sent as nothing, a cleared cap is `0`, and `reasoningError` separates "not JSON" from "not
+an object". Verified live against the real agent's startup frame, above. `make check` 19 packages, `npx vitest
+run` 330, `npm run check` (853 zh / 839 en), `npm run build` 560.88 kB.
+
+**Where** `internal/agent/{events.go,models.go}` (+`models_test.go`), `frontend/src/services/api/agent.ts`,
+`frontend/src/lib/agent-models.ts`, `frontend/src/components/settings/agent-model-dialog.tsx`,
+`frontend/tests/agent-models.test.ts`, `frontend/scripts/check-i18n.cjs` (two hand-resolved keys),
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts`.

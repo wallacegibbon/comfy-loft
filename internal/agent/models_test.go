@@ -174,3 +174,131 @@ func TestModelSyncTellsTheOtherSessions(t *testing.T) {
 		t.Errorf("ModelSync changed the sending session's own list (%d models)", len(got))
 	}
 }
+
+// Everything a form can edit has to reach it first. The list a canvas is shown is `Model`, and a field that
+// is missing there is a field the user cannot set — which is what made `max_tokens`, the reasoning blocks and
+// the tool-call mode invisible while AlayaCore was reading all of them (#249).
+func TestTheListACanvasSeesCarriesEveryFieldAFormEdits(t *testing.T) {
+	state := startupWith(t, modelListFrame)
+	event := state.event()
+
+	first := event.Models[0]
+	if first.MaxTokens != 65536 || first.ContextLimit != 262144 {
+		t.Errorf("tokens = %d/%d, want 65536 max and 262144 context", first.MaxTokens, first.ContextLimit)
+	}
+	if !strings.Contains(string(first.Reasoning1), "medium") {
+		t.Errorf("reasoning_1 = %s, want the block the agent announced", first.Reasoning1)
+	}
+	if first.Reasoning0 != nil || first.Reasoning2 != nil {
+		t.Errorf("reasoning_0/reasoning_2 = %s/%s, want nothing: neither is in this entry", first.Reasoning0, first.Reasoning2)
+	}
+	if !first.SerialToolCalls {
+		t.Error("serial_tool_calls = false, want true")
+	}
+	// The key is the one thing that stays here, and the page says so instead (`hasKey`).
+	if strings.Contains(string(mustJSON(t, first)), "sk-one") {
+		t.Error("the model event carries the api_key")
+	}
+
+	second := event.Models[1]
+	if second.SerialToolCalls {
+		t.Error("a model with no serial_tool_calls is not serial, and says so")
+	}
+	if second.MaxTokens != 0 {
+		t.Errorf("max_tokens = %d, want 0 for an entry that names none", second.MaxTokens)
+	}
+}
+
+// Every field a form shows is a field an edit may replace — and only the ones it sent.
+func TestModelSyncEditsEveryFieldAFormShows(t *testing.T) {
+	session := &Session{ID: "canvas:1", state: startupWith(t, modelListFrame)}
+
+	sent := `[{"id":1,"name":"DeepSeek / Flash","protocol_type":"openai","base_url":"https://api.deepseek.com",` +
+		`"model_name":"deepseek-flash","context_limit":1000000,"max_tokens":8192,"reasoning_field":"reasoning_text",` +
+		`"serial_tool_calls":false,"reasoning_0":{"thinking":{"type":"disabled"}},` +
+		`"reasoning_1":{"thinking":{"type":"enabled"},"reasoning_effort":"high"}}]`
+	merged, err := session.mergeModelSync(sent)
+	if err != nil {
+		t.Fatalf("mergeModelSync: %v", err)
+	}
+
+	edited := merged[0]
+	if got := edited.number("context_limit"); got != 1000000 {
+		t.Errorf("context_limit = %d, want the page's value", got)
+	}
+	if got := edited.number("max_tokens"); got != 8192 {
+		t.Errorf("max_tokens = %d, want the page's value", got)
+	}
+	if got := edited.text("reasoning_field"); got != "reasoning_text" {
+		t.Errorf("reasoning_field = %q, want the page's value", got)
+	}
+	if edited.boolean("serial_tool_calls") {
+		t.Error("serial_tool_calls = true, want the page's false")
+	}
+	if got := string(edited["reasoning_0"]); !strings.Contains(got, "disabled") {
+		t.Errorf("reasoning_0 = %s, want the page's block", got)
+	}
+	if got := string(edited["reasoning_1"]); !strings.Contains(got, "high") {
+		t.Errorf("reasoning_1 = %s, want the page's block", got)
+	}
+	// Untouched, so still there: the key.
+	if got := edited.text("api_key"); got != "sk-one" {
+		t.Errorf("api_key = %q, want sk-one kept", got)
+	}
+}
+
+// A reasoning block is the one field where a blank box is an answer: the form showed the value, so clearing it
+// removes the block. Not sending the field at all still means "I know nothing about it", which is what keeps
+// this merge safe for a page older than these fields.
+func TestModelSyncRemovesAReasoningBlockOnlyWhenThePageClearsIt(t *testing.T) {
+	session := &Session{ID: "canvas:1", state: startupWith(t, modelListFrame)}
+
+	untouched, err := session.mergeModelSync(`[{"id":1,"name":"V100 / Qwen"}]`)
+	if err != nil {
+		t.Fatalf("mergeModelSync: %v", err)
+	}
+	if _, ok := untouched[0]["reasoning_1"]; !ok {
+		t.Error("reasoning_1 was removed by a page that never mentioned it")
+	}
+
+	cleared, err := session.mergeModelSync(`[{"id":1,"name":"V100 / Qwen","reasoning_1":null}]`)
+	if err != nil {
+		t.Fatalf("mergeModelSync: %v", err)
+	}
+	if _, ok := cleared[0]["reasoning_1"]; ok {
+		t.Errorf("reasoning_1 = %s, want it gone after the page cleared it", cleared[0]["reasoning_1"])
+	}
+	if got := cleared[0].text("api_key"); got != "sk-one" {
+		t.Errorf("api_key = %q, want it kept: clearing a reasoning block is not clearing the model", got)
+	}
+}
+
+// The blocks are merged into a request body, so anything that is not an object is a request AlayaCore would
+// send malformed. Refused here, where the sentence can name the field.
+func TestModelSyncRefusesAReasoningBlockThatIsNotAnObject(t *testing.T) {
+	session := &Session{ID: "canvas:1", state: startupWith(t, modelListFrame)}
+
+	for _, sent := range []string{
+		`[{"id":1,"name":"V100 / Qwen","reasoning_1":"{\"reasoning_effort\":\"high\"}"}]`,
+		`[{"id":1,"name":"V100 / Qwen","reasoning_1":5}]`,
+		`[{"id":1,"name":"V100 / Qwen","reasoning_1":[1,2]}]`,
+	} {
+		_, err := session.mergeModelSync(sent)
+		if err == nil {
+			t.Fatalf("mergeModelSync(%s) was accepted, want a refusal naming reasoning_1", sent)
+		}
+		if !strings.Contains(err.Error(), "reasoning_1") {
+			t.Errorf("error = %q, want it to name the field", err)
+		}
+	}
+}
+
+// mustJSON renders a value for an assertion that is about what is *not* in it.
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return payload
+}

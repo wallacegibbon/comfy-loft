@@ -89,6 +89,18 @@ type Model struct {
 	ModelName    string `json:"modelName,omitempty"`
 	ContextLimit int    `json:"contextLimit,omitempty"`
 	HasKey       bool   `json:"hasKey,omitempty"`
+	MaxTokens    int    `json:"maxTokens,omitempty"`
+	// The three reasoning blocks, as the agent holds them: raw JSON merged into a request body at each
+	// reasoning level (0 off, 1 normal, 2 max). Sent as JSON rather than as text because that is what they
+	// are; the form that edits them shows the text and parses it back (`lib/agent-models.ts`).
+	Reasoning0 json.RawMessage `json:"reasoning0,omitempty"`
+	Reasoning1 json.RawMessage `json:"reasoning1,omitempty"`
+	Reasoning2 json.RawMessage `json:"reasoning2,omitempty"`
+	// The response key that carries reasoning text for this endpoint; empty means the provider's default.
+	ReasoningField string `json:"reasoningField,omitempty"`
+	// Whether a step's tool calls run one at a time. Always stated, never omitted: an absent field would
+	// read as "not known", and false is the answer that means "run them in parallel" (#249).
+	SerialToolCalls bool `json:"serialToolCalls"`
 }
 
 // modelObject is one entry of `SM model_list`, exactly as the agent sent it.
@@ -106,14 +118,42 @@ type modelObject map[string]json.RawMessage
 // info is the part of an entry a canvas is shown.
 func (o modelObject) info() Model {
 	return Model{
-		ID:           o.number("id"),
-		Name:         o.text("name"),
-		ProtocolType: o.text("protocol_type"),
-		BaseURL:      o.text("base_url"),
-		ModelName:    o.text("model_name"),
-		ContextLimit: o.number("context_limit"),
-		HasKey:       o.text("api_key") != "",
+		ID:              o.number("id"),
+		Name:            o.text("name"),
+		ProtocolType:    o.text("protocol_type"),
+		BaseURL:         o.text("base_url"),
+		ModelName:       o.text("model_name"),
+		ContextLimit:    o.number("context_limit"),
+		HasKey:          o.text("api_key") != "",
+		MaxTokens:       o.number("max_tokens"),
+		Reasoning0:      o.raw("reasoning_0"),
+		Reasoning1:      o.raw("reasoning_1"),
+		Reasoning2:      o.raw("reasoning_2"),
+		ReasoningField:  o.text("reasoning_field"),
+		SerialToolCalls: o.boolean("serial_tool_calls"),
 	}
+}
+
+// raw is one field exactly as it arrived, or nil for a field that is absent or JSON `null`.
+//
+// Nil rather than the four bytes of `null`: a reasoning block that is not there and one that is written as
+// `null` are the same thing to AlayaCore (it merges a value only when it has length), and one of them should
+// not appear in a page's JSON as something to edit.
+func (o modelObject) raw(field string) json.RawMessage {
+	value, ok := o[field]
+	if !ok || len(value) == 0 || string(value) == "null" {
+		return nil
+	}
+	return value
+}
+
+// boolean is one boolean field, or false for a field that is absent or not a boolean.
+func (o modelObject) boolean(field string) bool {
+	var value bool
+	if raw, ok := o[field]; ok {
+		_ = json.Unmarshal(raw, &value)
+	}
+	return value
 }
 
 // text is one string field, or "" for a field that is absent or not a string.
