@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/kit/select-primitive";
 import { cn } from "@/lib/utils";
-import { baseModelOptions, channelModelOf, defaultModelOptions, modelOptionLabel, selectableModelsByCapability, workflowModelOptions, workflowModelValue, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
+import { baseModelOptions, defaultModelOptions, modelOptionLabel, selectableModelsByCapability, workflowModelOptions, workflowModelValue, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
 
 type ModelPickerExtraOption = { value: string; label: string; disabled?: boolean };
 
@@ -133,10 +133,7 @@ type LevelPickerProps = {
 /** Top-level dropdown: pick a workflow only; variants live under the workflow they belong to. */
 export function WorkflowModelPicker({ config, value, onChange, capability, className, fullWidth = false, placeholder, onMissingConfig, excludeTools = false }: LevelPickerProps & { capability?: ModelCapability; excludeTools?: boolean }) {
     const options = useMemo<LevelOption[]>(
-        () =>
-            (excludeTools ? defaultModelOptions(config, capability) : workflowModelOptions(config, capability))
-                .filter((model) => channelModelOf(config, model)?.model.workflowId !== "video-h3-fast")
-                .map((model) => ({ value: model, label: modelOptionLabel(config, model) })),
+        () => (excludeTools ? defaultModelOptions(config, capability) : workflowModelOptions(config, capability)).map((model) => ({ value: model, label: modelOptionLabel(config, model) })),
         [config, capability, excludeTools],
     );
     const selected = useMemo(() => workflowModelValue(config, value) || value, [config, value]);

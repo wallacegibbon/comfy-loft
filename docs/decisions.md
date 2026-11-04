@@ -9842,3 +9842,29 @@ the rule it now follows is a field on the definition rather than arithmetic in t
 `frontend/src/components/canvas/canvas-image-toolbar-tools.tsx`,
 `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`, `frontend/src/pages/canvas/project.tsx`,
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
+
+## 265. A branch for a workflow the registry does not have
+
+**Decision** The two places that still named `video-h3-fast` are gone: the filter inside
+`WorkflowModelPicker` and the special case in the H3 composer's mode switch. The composer now always routes
+a mode change through `videoModelForWorkflow`, which is what every other H3 node already did.
+
+**Why** The workflow is not in `workflows/registry.json` — the video entries are `video-h3-t2v`,
+`video-h3-frames`, `video-h3-ref2va`, `video-h3-character-swap` and `video-rife` — and no Go file names it
+either. So both branches guarded an id the server cannot send: the picker filtered out a model that can
+never be in the list, and the composer's early return was unreachable. #263 left the remaining `isH3*`
+branches in this file on purpose, calling them a UI question about one family of workflows; a branch for a
+workflow that is not in the registry is not a question, it is a leftover of the days when the client knew
+which workflows existed.
+
+**Cost** None. The only thing that could still reach those branches is a saved node whose model is
+`video-h3-fast`, and there is no such node: the project is unreleased, and nothing was written while that id
+existed. That is why this is a deletion rather than a compatibility shim — the shim would have had to be
+carried forever and would have taught the next reader that the id means something.
+
+**Tested** `npx tsc --noEmit` (removing the only `channelModelOf` use in the picker left an unused import,
+which the compiler refuses), `npm run check` (866/852 keys, 182 modules, prettier clean), `npx vitest run`
+(40 files, 374 tests), `npm run build` (568.88 kB).
+
+**Where** `frontend/src/components/model-picker.tsx`,
+`frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.

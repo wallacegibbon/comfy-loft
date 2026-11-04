@@ -111,10 +111,6 @@ export function CanvasNodePromptPanel({
     const textVideoHasReferences = isH3T2V && hasMediaReferences;
     const frameMode: "first" | "last" | "both" = node.metadata?.frameMode === "last" || node.metadata?.frameMode === "both" || node.metadata?.frameMode === "first" ? node.metadata.frameMode : imageReferences.length >= 2 ? "both" : "first";
     const changeVideoMode = (value: "text" | "frames" | "reference") => {
-        if (workflowId === "video-h3-fast") {
-            onConfigChange(node.id, { videoMode: value, ...(value === "frames" ? { frameMode } : {}) });
-            return;
-        }
         const baseId = value === "reference" ? "video-h3-ref2va" : value === "frames" ? "video-h3-frames" : "video-h3-t2v";
         const nextModel = videoModelForWorkflow(config, baseId);
         onConfigChange(node.id, { ...(nextModel ? { model: nextModel } : {}), videoMode: value, ...(value === "frames" ? { frameMode } : {}) });
