@@ -10589,3 +10589,43 @@ overflows horizontally once the button has a width. `make check` (deadcode 506),
 
 **Where** `frontend/src/components/canvas/canvas-agent-panel.tsx` (`ReasoningBlock`),
 `frontend/src/lib/canvas/reasoning-preview.ts`, `frontend/tests/reasoning-preview.test.ts`.
+
+## 283. The summarize threshold is the operator's, and it is a flag or nothing
+
+**Decision** `AGENT_AUTO_SUMMARIZE` (0–100, unset = 0) is read by `config.Load` and carried to every spawn as
+`--auto-summarize=<n>`. Zero means the flag is not passed at all, not that `--auto-summarize=0` is passed. A value
+that is not a whole number in 0–100 stops the server at startup with a sentence naming the variable.
+
+**Why it is an environment variable, and not a field in the models editor** AlayaCore reads this threshold from its
+command line, not from `model.conf`: it belongs to the process, not to a model, and a session's model can be changed
+after the process exists (`model_set`). The models editor edits `model.conf`, which is AlayaCore's file; a field there
+would either do nothing or need AlayaCore to grow one. The other two agent knobs (`ALAYACORE_BIN`,
+`AGENT_CONFIG_PATH`) are in the same table in `docs/server.md` for the same reason, and the server is the side that
+spawns the process, so the number arrives where the flags are built.
+
+**Why not the settings document** It would put the number where a user could set it in the UI, which is what the other
+preferences do — but the server spawns on socket connect, so a client-written document would be steering process
+arguments, which is exactly what #280 took away when it deleted `?history=1`. If this ever needs a control in the
+panel, it needs a server-owned setting, and that is a different decision.
+
+**Why strict** Every other number in the loader falls back to its default when it cannot be parsed, because those
+defaults work. This one's default is "off", and off is invisible: a mistyped threshold would look exactly like a
+conversation that never filled up. AlayaCore refuses the same values for the same reason (its `validate.go`), and a
+server that accepted 150 would hand it a flag the agent rejects a moment later, turning a configuration mistake into a
+spawn failure at the first message instead of a startup failure.
+
+**Cost** The threshold is one number for every session on the server, canvas and models editor alike; per-canvas
+thresholds would need a flag per spawn chosen by something, and nothing has asked for one.
+
+**Tested** `TestAutoSummarizeIsTheOperatorsNumberOrNothing` (unset, `0`, `65`, `100`, padded, `101`, `-1`, `65%`,
+`sixty` — the last four must fail and name the variable), `TestAutoSummarizeIsAFlagOnlyWhenAskedFor` (0 leaves the
+flag off, 65 and 100 carry it), and on an isolated `:8191` with the real AlayaCore: `AGENT_AUTO_SUMMARIZE=150` refused
+to start with `startup failed: AGENT_AUTO_SUMMARIZE must be 0 (off) or 1-100 (a threshold percentage), got 150`; with
+`=65` the spawned process's `/proc/<pid>/cmdline` read
+`alayacore --rawio --builtin-tools=read_file --auto-summarize=65 --config-path …` and the session connected
+(`models=3`), so the agent accepts the flag it was given; with the variable unset the same line has no
+`--auto-summarize` in it at all. `make check` (deadcode 506), `go test ./...`.
+
+**Where** `internal/config/config.go` (`AgentAutoSummarize`, `autoSummarizeValue`), `internal/config/config_test.go`,
+`internal/agent/spawn.go` (`SpawnOptions.AutoSummarize`, `args`), `internal/agent/args_test.go`,
+`internal/server/routes_agent.go` (`agentOptions`), `docs/server.md`, `.env.example`.

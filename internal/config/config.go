@@ -70,6 +70,10 @@ type Config struct {
 	// AGENT_BIN_DISCOVERY in internal/agent).
 	AgentBin        string
 	AgentConfigPath string
+	// AgentAutoSummarize is AGENT_AUTO_SUMMARIZE: the share of the model's context, in percent, at which
+	// AlayaCore summarizes the conversation to make room. 0 — the default, and what an unset variable
+	// means — is off, and the flag is then not passed at all.
+	AgentAutoSummarize int
 	// AgentSkills is the container of the skills this server ships (prompts/skills), passed to the
 	// agent so it can read them itself. The wording is the agent's business, not the server's.
 	AgentSkills string
@@ -139,6 +143,15 @@ func WithPublicBaseURL(url string) Option {
 func Load(opts ...Option) (*Config, error) {
 	root := resolveRootDir()
 
+	// Parsed before the struct literal so a number that cannot mean anything stops the server here,
+	// naming the variable, rather than being rounded to "off" by the lenient int parsing the settings
+	// above use — an operator who mistyped a threshold would otherwise get no summarization and no word
+	// about it.
+	autoSummarize, err := autoSummarizeValue(os.Getenv("AGENT_AUTO_SUMMARIZE"))
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		RootDir:          root,
 		ServerPort:       intValue(os.Getenv("COMFYLOFT_SERVER_PORT"), 8190),
@@ -165,6 +178,7 @@ func Load(opts ...Option) (*Config, error) {
 		ResourceConcurrency: intValue(os.Getenv("RESOURCE_CONCURRENCY"), 2),
 		AgentBin:            strings.TrimSpace(os.Getenv("ALAYACORE_BIN")),
 		AgentConfigPath:     strings.TrimSpace(os.Getenv("AGENT_CONFIG_PATH")),
+		AgentAutoSummarize:  autoSummarize,
 		AgentSkills:         filepath.Join(root, "prompts", "skills"),
 	}
 
@@ -311,6 +325,28 @@ func stringOr(value, fallback string) string {
 }
 
 // intValue mirrors the old num(): a positive integer, otherwise the fallback.
+// autoSummarizeValue reads AGENT_AUTO_SUMMARIZE: 0 or unset (off), or 1-100 (the threshold percentage).
+//
+// Stricter than the numbers above it on purpose. Those have a working default to fall back to, so a
+// mistyped value costs a setting the operator can see is still the default; this one's default is off,
+// which looks exactly like a model that never filled up. AlayaCore refuses an out-of-range threshold for
+// the same reason (its own `validate.go`), and there is no point in the server accepting a number the
+// agent will reject a second later at spawn.
+func autoSummarizeValue(value string) (int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("AGENT_AUTO_SUMMARIZE must be a whole percentage, got %q", value)
+	}
+	if parsed < 0 || parsed > 100 {
+		return 0, fmt.Errorf("AGENT_AUTO_SUMMARIZE must be 0 (off) or 1-100 (a threshold percentage), got %d", parsed)
+	}
+	return parsed, nil
+}
+
 func intValue(value string, fallback int) int {
 	parsed, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil || parsed <= 0 {

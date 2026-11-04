@@ -70,6 +70,9 @@ func (s *Server) agentOptions() agent.SpawnOptions {
 		ConfigPath: s.cfg.AgentConfigPath,
 		Skills:     s.cfg.AgentSkills,
 		Tools:      "read_file",
+		// The one number the operator may set that AlayaCore cannot read from its own config file: the
+		// context threshold for summarizing (`AGENT_AUTO_SUMMARIZE`). 0 leaves the flag off entirely.
+		AutoSummarize: s.cfg.AgentAutoSummarize,
 		// The one thing the server says on its own account: the rule that chooses between the canvas
 		// tools, which no single tool's description can state (`agent_instructions.go`).
 		System: []string{canvasInstructions},

@@ -21,6 +21,7 @@ func isolateEnv(t *testing.T) {
 		"MAX_STORED_TASKS", "CLEANUP_INTERVAL_MS",
 		"MAX_UPLOAD_BYTES", "MAX_WORKFLOW_BYTES",
 		"RESOURCE_CONCURRENCY", "COMFYLOFT_SERVER_ROOT",
+		"ALAYACORE_BIN", "AGENT_CONFIG_PATH", "AGENT_AUTO_SUMMARIZE",
 	} {
 		t.Setenv(name, "")
 	}
@@ -288,5 +289,47 @@ func TestAgentDirectoryHasNoSegmentOfItsOwn(t *testing.T) {
 	}
 	if want := "/comfyloft-server/alayacore"; !strings.HasSuffix(filepath.ToSlash(cfg.AgentConfigPath), want) {
 		t.Fatalf("AgentConfigPath = %q, want it to end in %q", cfg.AgentConfigPath, want)
+	}
+}
+
+// TestAutoSummarizeIsTheOperatorsNumberOrNothing: the percentage is passed through when the operator set
+// one, and is off when they did not — and a number that cannot be a percentage stops the server rather
+// than becoming "off", because off is invisible: an operator who mistyped 150 would get a conversation
+// that silently never summarizes.
+func TestAutoSummarizeIsTheOperatorsNumberOrNothing(t *testing.T) {
+	for _, tc := range []struct {
+		value   string
+		want    int
+		wantErr bool
+	}{
+		{value: "", want: 0},
+		{value: "0", want: 0},
+		{value: "65", want: 65},
+		{value: "100", want: 100},
+		{value: " 40 ", want: 40},
+		{value: "101", wantErr: true},
+		{value: "-1", wantErr: true},
+		{value: "65%", wantErr: true},
+		{value: "sixty", wantErr: true},
+	} {
+		isolateEnv(t)
+		root := t.TempDir()
+		t.Setenv("COMFYLOFT_SERVER_ROOT", root)
+		t.Setenv("DATA_DIR", filepath.Join(root, "data"))
+		t.Setenv("AGENT_AUTO_SUMMARIZE", tc.value)
+
+		cfg, err := Load()
+		switch {
+		case tc.wantErr:
+			if err == nil {
+				t.Errorf("%q: Load succeeded with AutoSummarize = %d, want an error", tc.value, cfg.AgentAutoSummarize)
+			} else if !strings.Contains(err.Error(), "AGENT_AUTO_SUMMARIZE") {
+				t.Errorf("%q: error does not name the variable: %v", tc.value, err)
+			}
+		case err != nil:
+			t.Errorf("%q: Load: %v", tc.value, err)
+		case cfg.AgentAutoSummarize != tc.want:
+			t.Errorf("%q: AutoSummarize = %d, want %d", tc.value, cfg.AgentAutoSummarize, tc.want)
+		}
 	}
 }

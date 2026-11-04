@@ -55,6 +55,10 @@ type SpawnOptions struct {
 	// send its calls, and which session it speaks for. AlayaCore hands its environment to the stdio
 	// servers it starts, so this is how a per-session fact reaches a static `mcp.conf`.
 	Env []string
+	// AutoSummarize is the share of the model's context, in percent, at which AlayaCore summarizes the
+	// conversation to make room. 0 is off, and off is the absence of the flag rather than the number 0:
+	// a setting the operator never made is not the server's to state.
+	AutoSummarize int
 	// Session is the file AlayaCore keeps this conversation in. It is not work: it is what lets the next
 	// process replay what was said. Empty means the conversation dies with the process, which is what a
 	// session that is not a conversation wants — the models editor is asked one command and nothing after it.
@@ -72,6 +76,9 @@ type SpawnOptions struct {
 // with `CI model_set` once the session is ready, which is where the agent reports the outcome.
 func (o SpawnOptions) args() []string {
 	args := []string{"--rawio", "--builtin-tools=" + o.Tools}
+	if o.AutoSummarize > 0 {
+		args = append(args, fmt.Sprintf("--auto-summarize=%d", o.AutoSummarize))
+	}
 	if o.ConfigPath != "" {
 		args = append(args, "--config-path", o.ConfigPath)
 	}

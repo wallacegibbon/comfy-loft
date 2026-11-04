@@ -126,6 +126,7 @@ authentication; there is no configuration in this server that makes an untrusted
 | `RESOURCE_CONCURRENCY` | `2` | Parallel downloads during a resource install. |
 | `ALAYACORE_BIN` | _(found)_ | The agent binary. Empty looks on `PATH`, then beside the server. |
 | `AGENT_CONFIG_PATH` | `UserConfigDir()/comfyloft-server/<host>/alayacore` | The agent's own config directory (`model.conf`, and the `mcp.conf` the server writes). One per host, because `mcp.conf` names the address the agent dials back to; a pre-#147 `model.conf` is copied into it once. |
+| `AGENT_AUTO_SUMMARIZE` | `0` | Passed to the agent as `--auto-summarize`: at this percentage of the model's context, AlayaCore summarizes the conversation to make room. `0` — and unset — is off, and passes no flag at all. A value outside `0`–`100` stops the server at startup instead of quietly meaning "off", because off is what a mistyped threshold looks like. |
 | `MCP_BIN` | beside the server binary (`comfyloft-mcp`) | Overrides where the bridge is expected. The path goes into the static `mcp.conf` on every start, so a moved release directory does not leave a stale one behind. |
 
 ### The server runs beside ComfyUI
