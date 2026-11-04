@@ -163,6 +163,11 @@ func (s *Server) handleSpeechTranscribe(ctx *httpx.Ctx) error {
 		return err
 	}
 
+	// Where the recording is going, on the line before it goes: the failure message carries the address when the
+	// hop fails, but a transcript that comes back empty has no message at all, and the answer to "which server did
+	// that?" is this line (decisions #255).
+	s.logger.Info("speech: transcribing %d bytes with %s", len(files[0].Bytes), profile.Destination())
+
 	body, contentType, err := speechUpload(files[0].Bytes, profile.Model, firstValue(form.Values, "language"))
 	if err != nil {
 		return httpx.NewError(http.StatusInternalServerError, "speech_request_failed", "could not build the speech request: "+err.Error())

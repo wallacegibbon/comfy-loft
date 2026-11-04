@@ -1,8 +1,10 @@
 package store
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"comfyloft/internal/logx"
@@ -188,5 +190,64 @@ func TestSpeechProfilesNumberNewEntriesAfterTheHighestID(t *testing.T) {
 			t.Errorf("id %d was reused for %q", view.ID, view.Name)
 		}
 		seen[view.ID] = true
+	}
+}
+
+// Which server the audio goes to is the one fact about this file worth a line, and the credential must not be in
+// it: the log is a file somebody pastes into an issue (#255).
+func TestSpeechProfilesSayWhereDictationGoes(t *testing.T) {
+	buffer := &bytes.Buffer{}
+	key := "sk-test"
+	profiles := NewSpeechProfiles(t.TempDir(), logx.NewWithWriter("test", buffer))
+
+	// Nothing configured yet: the line says so rather than saying nothing, because the panel's refusal ("no speech
+	// server is configured") is what a reader will be looking at.
+	profiles.Load()
+	if !strings.Contains(buffer.String(), "speech: no profile configured") {
+		t.Errorf("log = %q, want it to say nothing is configured", buffer.String())
+	}
+
+	buffer.Reset()
+	if err := profiles.Replace([]SpeechProfileInput{{
+		Name:  "Local audio.cpp",
+		URL:   "http://127.0.0.1:18080/v1/audio/transcriptions",
+		Model: "refine",
+		Key:   &key,
+	}}, 0); err != nil {
+		t.Fatalf("Replace: %v", err)
+	}
+	line := buffer.String()
+	for _, want := range []string{"dictation goes to", `"Local audio.cpp"`, "http://127.0.0.1:18080/v1/audio/transcriptions", "model refine", "with a key"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("log = %q, want it to contain %q", line, want)
+		}
+	}
+	if strings.Contains(line, key) {
+		t.Errorf("log = %q, carries the key itself", line)
+	}
+
+	// Switching which profile is active is the case the whole feature exists for, so it is a line.
+	buffer.Reset()
+	other := "https://api.openai.com/v1/audio/transcriptions"
+	if err := profiles.Replace([]SpeechProfileInput{
+		{ID: 1, URL: "http://127.0.0.1:18080/v1/audio/transcriptions", Model: "refine"},
+		{Name: "OpenAI", URL: other, Model: "whisper-1"},
+	}, 2); err != nil {
+		t.Fatalf("Replace: %v", err)
+	}
+	if !strings.Contains(buffer.String(), other) {
+		t.Errorf("log = %q, want the newly active address", buffer.String())
+	}
+
+	// Re-saving the same list is not news.
+	buffer.Reset()
+	if err := profiles.Replace([]SpeechProfileInput{
+		{ID: 1, URL: "http://127.0.0.1:18080/v1/audio/transcriptions", Model: "refine"},
+		{ID: 2, Name: "OpenAI", URL: other, Model: "whisper-1"},
+	}, 2); err != nil {
+		t.Fatalf("Replace: %v", err)
+	}
+	if buffer.Len() != 0 {
+		t.Errorf("log = %q, want no line when nothing moved", buffer.String())
 	}
 }

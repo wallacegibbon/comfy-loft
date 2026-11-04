@@ -28,6 +28,11 @@ type Session struct {
 
 	proc *Process
 
+	// Log is where this session says which server its turns go to. It is the sessions' logger, handed down at
+	// creation: the pump is the only thing that sees the agent's own `model` frames, and the address is the one
+	// fact about a turn that is worth a line (`events.go`'s `destination`).
+	Log *logx.Logger
+
 	// state is the startup broadcast as the agent last restated it: written by the pump, and read by a
 	// second connection asking what this session is, so it has a lock of its own.
 	stateMu sync.RWMutex
@@ -110,7 +115,7 @@ func (s *Sessions) Connect(ctx context.Context, id string, opts SpawnOptions) (C
 		return Connected{}, err
 	}
 
-	session := &Session{ID: id, proc: proc, state: state, pending: map[string]chan toolAnswer{}}
+	session := &Session{ID: id, proc: proc, state: state, pending: map[string]chan toolAnswer{}, Log: s.Log}
 	session.gone = func(reason string) { s.Close(id, reason) }
 
 	// Two connects can now race for one name. The first to file owns it and the other releases what it
@@ -130,7 +135,7 @@ func (s *Sessions) Connect(ctx context.Context, id string, opts SpawnOptions) (C
 	go session.pump()
 
 	if s.Log != nil {
-		s.Log.Info("agent: connected session=%s pid=%d models=%d active=%q", id, proc.Cmd.Process.Pid, len(state.models), activeName(state))
+		s.Log.Info("agent: connected session=%s pid=%d models=%d %s", id, proc.Cmd.Process.Pid, len(state.models), destinationLine(state.destination()))
 	}
 	return Connected{Session: session, Startup: state.event(), History: history, Spawned: true}, nil
 }
@@ -410,9 +415,19 @@ func (s *Session) pump() {
 		}
 		// The end of a turn is a marker, not a second copy of the answer: the deltas already carried it,
 		// and two strings that agree until they do not are worse than one.
+		//
+		// `destination` is taken either side of the frame, because this is where the agent announces that it is
+		// sending somewhere else — a model switch, or a list that repointed the active one. A line per change, and
+		// none when the answer is the same, so a `model` frame repeated with the same id (the agent restates its
+		// state) does not fill the log.
 		s.stateMu.Lock()
+		before := s.state.destination()
 		ended := turnStep(&s.state, frame, true, s.publish)
+		after := s.state.destination()
 		s.stateMu.Unlock()
+		if after != before {
+			s.Log.Info("agent: session=%s %s", s.ID, destinationLine(after))
+		}
 		if ended {
 			// Cleared before the `done` leaves, so a caller that acts on the end of a turn — the panel
 			// reopening its session, the delete route deciding — sees an idle agent.
@@ -482,11 +497,16 @@ func newSessionID() string {
 	return hex.EncodeToString(buffer)
 }
 
-func activeName(state startup) string {
-	if state.active == nil {
-		return ""
+// destinationLine is where a session's turns go, as the end of a log line.
+//
+// This is the line to look at when a turn is slow, refused or answered by the wrong provider: it names the model
+// and the address it is actually sent to, which the model picker alone does not (`destination`), and an empty one
+// is said rather than left blank.
+func destinationLine(where string) string {
+	if where == "" {
+		return "no model active"
 	}
-	return state.active.Name
+	return "sending to " + where
 }
 
 // readStartup reads the frames an agent emits before it accepts input: its own startup broadcast, and

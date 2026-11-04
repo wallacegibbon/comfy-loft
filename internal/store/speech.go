@@ -45,6 +45,28 @@ type SpeechProfile struct {
 	Key   string `json:"key,omitempty"`
 }
 
+// Destination is where this profile's recordings are sent, as one line for the log: which profile, the address,
+// the model, and whether a credential travels with it — never the credential itself.
+//
+// It is `agent`'s own answer to the same question (`Model`'s base URL), because these are the two places this
+// server sends a request somebody else's server answers, and both are worth a line when something is slow, wrong
+// or refused.
+func (p SpeechProfile) Destination() string {
+	parts := []string{p.URL}
+	if p.Model != "" {
+		parts = append(parts, "model "+p.Model)
+	}
+	if p.Key != "" {
+		parts = append(parts, "with a key")
+	}
+	// A profile with no name is described by its address alone, which is what the window shows for it too — a
+	// line that repeated the address as the name would read like a mistake.
+	if name := strings.TrimSpace(p.Name); name != "" {
+		return fmt.Sprintf("%q -> %s", name, strings.Join(parts, ", "))
+	}
+	return strings.Join(parts, ", ")
+}
+
 // SpeechProfileView is one profile as a page may see it: everything but the key, which a page only ever
 // learns the presence of.
 type SpeechProfileView struct {
@@ -104,6 +126,11 @@ func (s *SpeechProfiles) Load() {
 		if !os.IsNotExist(err) {
 			s.logger.Warn("failed to read the speech profiles: %s", err)
 		}
+		// Said even when there is no file: "nothing is configured" is the answer a reader needs when dictation
+		// refuses, and it is the same line the configured case writes.
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		s.logActive("")
 		return
 	}
 	var document struct {
@@ -117,7 +144,17 @@ func (s *SpeechProfiles) Load() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.install(document.Profiles, document.Active)
-	s.logger.Info("speech: %d profile(s) loaded, active=%d", len(s.profiles), s.activeID)
+	s.logActive("%d profile(s) loaded; ", len(s.profiles))
+}
+
+// logActive says where dictation would go, which is the one fact about this file worth a line: a wrong address
+// here is a recording sent to the wrong machine, and the panel only shows what came back.
+func (s *SpeechProfiles) logActive(prefix string, args ...any) {
+	if profile, ok := s.activeLocked(); ok {
+		s.logger.Info("speech: "+prefix+"dictation goes to %s", append(args, profile.Destination())...)
+		return
+	}
+	s.logger.Info("speech: "+prefix+"no profile configured, so dictation will say so", args...)
 }
 
 // warnAboutTheOldKeyFile says so when the single-key file this build used to write is still there.
@@ -208,7 +245,18 @@ func (s *SpeechProfiles) Replace(inputs []SpeechProfileInput, active int) error 
 	if err := s.persist(profiles, chosen); err != nil {
 		return err
 	}
+	before := ""
+	if profile, ok := s.activeLocked(); ok {
+		before = profile.Destination()
+	}
 	s.profiles, s.activeID, s.nextID = profiles, chosen, nextID
+	// Only a change to the line is worth a line: the list is saved on every edit, and re-saving an unchanged profile
+	// is not news. The name is part of it, because a reader looking for "which of these is active" needs it.
+	if after, ok := s.activeLocked(); ok && after.Destination() != before {
+		s.logActive("%d profile(s) saved; ", len(s.profiles))
+	} else if !ok && before != "" {
+		s.logActive("")
+	}
 	return nil
 }
 

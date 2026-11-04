@@ -9371,3 +9371,54 @@ file beside it untouched. `make check` 20 packages including the new dead-export
 
 **Where** `internal/util/util.go` (+`util_test.go`), `internal/canvas/canvas.go`, `internal/settings/settings.go`,
 `internal/server/{runtime_config,agent_config}.go`.
+
+## 255. Both requests that leave this server say where they are going, in the log
+
+**Decision** Two destinations are printed: the **speech server** dictation posts to — at startup, whenever the
+active profile changes, and once per recording — and the **model server** a session's turns go to — when the
+session starts and whenever the destination changes. Neither line ever contains a credential.
+
+**Why it had to be printed at all.** Both are requests this server makes on the user's behalf to a server the user
+configured, and until now neither said where: the speech list was visible only in the preferences window (which
+shows an *address*, not which of five profiles is active when the window is closed), and the agent's line was
+`agent: connected session=… models=2 active="Fleet / qwen3"` — the model's **name**, which is not the address. So
+"it is slow", "it answered nonsense", "it refused with a key error" and "my dictation is silent" all arrived with
+nothing in the log to correlate them against. The failure paths did better than the successes: a hop that cannot
+connect says `could not reach the speech server at <address>`, and an empty transcript says nothing at all — which
+is exactly the case where the address is the answer.
+
+**Why the address had to be looked up, not read.** `SM model` carries `active_id`, `active_name` and
+`context_limit`; the `base_url` and `model_name` only ever arrive in `SM model_list`. So `startup.destination()`
+resolves the active id against the list it holds, and says so when the id is not in it (`"gone" (its entry is not in
+the list)`) rather than looking like "no model". An active model with no `model_name` (`whisper.cpp`'s `/inference`
+shape, a local llama.cpp with no alias) prints the address and the protocol only.
+
+**One line per change, not per frame.** The agent restates its state — the same `model` frame can arrive again, and
+a canvas saves the model list on every edit — so the pump and `adoptModels` compare `destination()` either side of
+the frame and write only when it differs. Measured: re-sending `model_set 2` when two is already active writes
+nothing; switching to it writes `agent: session=… sending to "Fake / two" -> …`.
+
+**Where each line lives.** The store owns the speech ones (`Load`, `Replace`), because the file is the answer and the
+store is the only thing that reads it — including the case where the file is *absent*, where the line says "no
+profile configured, so dictation will say so", which is the sentence a reader needs when the panel refuses. The
+route adds the per-recording line just before the hop, because the bytes are there and "which server did that?"
+is a per-request question. The agent's lines are in the session (`Connect`, the pump, `adoptModels`), the only
+places that see the agent's own frames; `Session` gained the `Log` it was missing.
+
+**What is deliberately not printed.** The `api_key` (`SM model_list` carries every one in cleartext, and a log line
+ends up in an issue), and the profile's key — only `with a key`, so "the server wants a credential and mine is
+wrong" is still visible.
+
+**Tested** `internal/agent/startup_test.go`: `destination()` is empty before the agent names a model, resolves the
+address and model name of the active entry, prints the address alone for a model with no name, says so when the
+active id is not in the list, and never carries the key. `internal/agent/session_test.go`: a spawned fake agent logs
+`sending to "Fake / one" -> http://127.0.0.1:1/v1, model m, openai` at connect, logs `"Fake / two"` after a
+`model_set`, and writes nothing when the destination did not move. `internal/store/store_test.go`: the line for a
+configured profile names it, its address, its model and `with a key` but not the key; switching the active profile
+prints the new address; re-saving the same list prints nothing; an empty store says nothing is configured. Verified
+live: `speech: 1 profile(s) loaded; dictation goes to "Local audio.cpp" -> http://127.0.0.1:18080/v1/audio/transcriptions, model refine, with a key`
+and, with no file, `speech: no profile configured, so dictation will say so`. `make check` 20 packages,
+`npx vitest run` 345, `npm run check`, `npm run build`.
+
+**Where** `internal/agent/{events.go,sessions.go,models.go}`, `internal/agent/{startup_test.go,session_test.go}`,
+`internal/store/speech.go`, `internal/store/store_test.go`, `internal/server/routes_speech.go`, `docs/server.md`.

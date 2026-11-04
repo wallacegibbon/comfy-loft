@@ -256,6 +256,36 @@ func (s *startup) event() Event {
 	return event
 }
 
+/**
+ * Where the active model's requests are sent, as one line for the log.
+ *
+ * The address is looked up in the list rather than read off `active`, because a `model` frame carries the id, the
+ * name and the context limit and nothing else — the `base_url` and the model name only ever arrive in
+ * `model_list`. So this answers the question a reader actually has when something is slow, wrong or refused:
+ * *which server, and as which model?* (`active` says which model, which is not the same answer.)
+ *
+ * Empty before the agent has said which model is active. The key is never part of it: `SM model_list` carries
+ * every `api_key` in cleartext, and a log file is not the place for one.
+ */
+func (s *startup) destination() string {
+	if s.active == nil {
+		return ""
+	}
+	entry := s.modelByID(s.active.ID)
+	if entry == nil {
+		return fmt.Sprintf("%q (its entry is not in the list)", s.active.Name)
+	}
+	info := entry.info()
+	parts := []string{info.BaseURL}
+	if info.ModelName != "" {
+		parts = append(parts, "model "+info.ModelName)
+	}
+	if info.ProtocolType != "" {
+		parts = append(parts, info.ProtocolType)
+	}
+	return fmt.Sprintf("%q -> %s", info.Name, strings.Join(parts, ", "))
+}
+
 // modelByID is the entry with this id, or nil. Ids are positions (`model.conf` order, restated by every
 // `SM model_list`), which is what makes them the handle a canvas may send back.
 func (s *startup) modelByID(id int) modelObject {

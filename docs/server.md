@@ -422,7 +422,13 @@ and `RUNTIME_CONFIG_PATH` publishes that script as a file for a static host. `GE
 the list and which entry is active, with `hasKey` and never a key; `PUT /api/speech/profiles` takes the whole
 list back with `{"profiles":[…],"active":<id>}`, where an entry without a key field keeps the stored one and
 `""` removes it. Dictation is sent to the active profile with the key as `Authorization: Bearer`, and no key is
-ever sent back over HTTP (decisions #246, #252).
+ever sent back over HTTP (decisions #246, #252). Where it goes is in the log, for the same reason the agent's
+models are (#255):
+
+```
+speech: 1 profile(s) loaded; dictation goes to "Local audio.cpp" -> http://127.0.0.1:18080/v1/audio/transcriptions, model refine, with a key
+speech: transcribing 32044 bytes with "Local audio.cpp" -> http://127.0.0.1:18080/v1/audio/transcriptions, model refine
+```
 
 A run carries its own `preview` (`{url, mime}` with a timestamp) and its own `progress` in the
 payload, so a client polling a run needs no second endpoint for either — there is no `/api/previews`
@@ -448,6 +454,17 @@ protocol, the key, `context_limit`, `max_tokens`, `reasoning_field`, `serial_too
 reasoning blocks, each written as the JSON it is. A block that will not parse keeps the form from saving, and
 the merge refuses one that is not an object — the blocks are merged into a request body as they stand. A
 cleared block is sent as `null`, which removes it; a field the page says nothing about is kept as it was.
+
+**Where a turn goes is in the log** (#255). A `model` frame carries the id and the name of the active model and
+nothing else, so the address is looked up in the list the agent announced and printed with it:
+
+```
+agent: connected session=… pid=… models=3 sending to "Fleet / qwen3" -> http://127.0.0.1:8080/v1, model qwen3-8b, openai
+agent: session=… sending to "Fleet / kimi" -> https://api.moonshot.cn/v1, model kimi-k2, openai
+```
+
+One line when a session starts and one whenever the destination actually changes — a `model` frame that restates
+the same thing, or a re-saved list, writes nothing. The `api_key` is never part of it.
 
 ## Architecture
 

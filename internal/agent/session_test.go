@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"comfyloft/internal/logx"
 )
 
 // fakeAgent is a stand-in for the real binary that speaks the same wire, so these tests describe the
@@ -363,5 +365,57 @@ func TestTellReportsASessionThatIsGone(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "canvas:nobody") {
 		t.Errorf("error = %q, want it to name the session", err)
+	}
+}
+
+// The two moments a reader needs in the log: what a session was sending to when it started, and that it moved.
+// Both are the agent's own words translated (`events.go`'s `destination`), and neither may carry an API key.
+func TestSessionLogsWhereItsTurnsGo(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fake-agent")
+	if err := os.WriteFile(path, []byte(fakeAgent), 0o755); err != nil {
+		t.Fatalf("write fake agent: %v", err)
+	}
+	var logged strings.Builder
+	sessions := NewSessions(logx.NewWithWriter("test", &logged))
+	t.Cleanup(func() { sessions.Close("test", "test over") })
+
+	connected, err := sessions.Connect(context.Background(), "test", SpawnOptions{Binary: path})
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	watcher := &recorder{}
+	stopWatching := connected.Session.Watch(watcher.sink)
+	t.Cleanup(func() { stopWatching() })
+
+	line := logged.String()
+	for _, want := range []string{"sending to", `"Fake / one"`, "http://127.0.0.1:1/v1", "model m", "openai"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("connect log = %q, want it to contain %q", line, want)
+		}
+	}
+	if strings.Contains(line, "secret-key") {
+		t.Errorf("connect log = %q, carries an api_key", line)
+	}
+
+	// Switching model is a switch of server, so the pump says so — and says it once, not on every restatement.
+	logged.Reset()
+	if err := connected.Session.Send(Request{Command: "model_set", Args: "2"}); err != nil {
+		t.Fatalf("send model_set: %v", err)
+	}
+	watcher.waitFor(t, "the model the agent switched to", func(event Event) bool {
+		return event.Type == "model" && event.Active != nil && event.Active.Name == "Fake / two"
+	})
+	if line := logged.String(); !strings.Contains(line, `"Fake / two"`) || !strings.Contains(line, "model m2") {
+		t.Errorf("switch log = %q, want the model that is now in use", line)
+	}
+
+	// A model frame that says the same thing again is the agent restating itself, which is not news.
+	logged.Reset()
+	if err := connected.Session.Send(Request{Command: "model_set", Args: "2"}); err != nil {
+		t.Fatalf("send model_set: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if line := logged.String(); strings.Contains(line, "sending to") {
+		t.Errorf("log = %q, want no line when the destination did not move", line)
 	}
 }

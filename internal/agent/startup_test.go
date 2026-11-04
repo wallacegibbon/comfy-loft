@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,5 +49,44 @@ func TestConnectFailsWhenTheAgentSaysNothing(t *testing.T) {
 		t.Fatal("connect reported success for an agent that never spoke")
 	} else if !strings.Contains(err.Error(), "ready") {
 		t.Errorf("error = %q", err)
+	}
+}
+
+// Which server a turn is sent to is the question behind most "why is it slow / why is it refused" reports, and the
+// `model` frame cannot answer it: it carries the name and the id, and the address only ever arrives in
+// `model_list`. So the answer is looked up, and the key is never part of it — `model_list` carries every `api_key`
+// in cleartext and a log file is not the place for one (#255).
+func TestDestinationNamesTheAddressTheActiveModelIsSentTo(t *testing.T) {
+	state := startup{}
+	if where := state.destination(); where != "" {
+		t.Errorf("destination = %q before the agent named a model, want nothing", where)
+	}
+
+	state.collect("model_list", json.RawMessage(`{"models":[
+		{"id":1,"name":"one","protocol_type":"openai","base_url":"http://127.0.0.1:1/v1","api_key":"sk-secret","model_name":"m1"},
+		{"id":2,"name":"two","protocol_type":"anthropic","base_url":"https://api.example.com","api_key":"sk-secret","model_name":"claude-x"}
+	]}`))
+	state.collect("model", json.RawMessage(`{"active_id":2,"active_name":"two","context_limit":1000}`))
+
+	want := `"two" -> https://api.example.com, model claude-x, anthropic`
+	if where := state.destination(); where != want {
+		t.Errorf("destination = %q, want %q", where, want)
+	}
+	if where := state.destination(); strings.Contains(where, "sk-secret") {
+		t.Errorf("destination = %q, carries a key", where)
+	}
+
+	// A model with no name of its own is a server that names nothing (`whisper.cpp`'s `/inference` shape, and a
+	// local llama.cpp with no alias): the address alone still says where the turn goes.
+	state.collect("model_list", json.RawMessage(`{"models":[{"id":1,"name":"bare","protocol_type":"openai","base_url":"http://127.0.0.1:8080/v1"}]}`))
+	state.collect("model", json.RawMessage(`{"active_id":1,"active_name":"bare","context_limit":0}`))
+	if where := state.destination(); where != `"bare" -> http://127.0.0.1:8080/v1, openai` {
+		t.Errorf("destination = %q, want the address without a model name", where)
+	}
+
+	// An active model whose entry is not in the list still says so, rather than looking like "no model".
+	state.collect("model", json.RawMessage(`{"active_id":9,"active_name":"gone","context_limit":0}`))
+	if where := state.destination(); where != `"gone" (its entry is not in the list)` {
+		t.Errorf("destination = %q, want it to say the entry is missing", where)
 	}
 }

@@ -125,8 +125,15 @@ func (s *Sessions) tellModels(models []modelObject, except string) {
 // stay as they were: they are this session's, and the file they came from does not decide them.
 func (s *Session) adoptModels(models []modelObject) {
 	s.stateMu.Lock()
+	before := s.state.destination()
 	s.state.models = models
 	event := s.state.event()
+	after := s.state.destination()
 	s.stateMu.Unlock()
+	// A list that repointed the active model is a session that now talks to a different server, which is worth the
+	// same line the pump writes when the agent says so itself.
+	if after != before {
+		s.Log.Info("agent: session=%s %s", s.ID, destinationLine(after))
+	}
 	s.publish(event)
 }
