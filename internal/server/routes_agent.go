@@ -16,10 +16,9 @@ import (
 // routesAgent registers the agent routes.
 //
 // A session is one agent process with one name, and the name is the client's — the canvas panel calls
-// its own `canvas:<canvasId>`, a node's panel calls its own `node:<id>`. The lifetimes differ (the
-// canvas's agent lives as long as its socket, a node's while its panel is open) and the client owns both,
+// its own `canvas:<canvasId>`, and the models editor calls `settings`. The client owns the lifetime,
 // because the client is what knows when a surface went away. The server only files processes under
-// names, and keeps the one conversation that has somewhere to go — a canvas's — inside that canvas.
+// names, and keeps the conversation that has somewhere to go — a canvas's — inside that canvas.
 func (s *Server) routesAgent(mux *http.ServeMux) {
 	s.route(mux, "GET /api/agent/socket/{session}", s.handleAgentSocket)
 	s.route(mux, "DELETE /api/agent/session/{session}", s.handleAgentSessionDelete)
@@ -132,8 +131,8 @@ func (s *Server) handleAgentSocket(ctx *httpx.Ctx) error {
 	}
 
 	// Whether this name keeps a conversation is the client's answer, not the server's: a canvas panel is a
-	// dialogue with a history and asks for one, a node's reverse-prompt is one question and does not.
-	// File processes under names — do not teach it which names mean what.
+	// dialogue with a history and asks for one, the models editor is a form and does not. File processes
+	// under names — do not teach it which names mean what.
 	history := ctx.R.URL.Query().Get("history") == "1"
 	options, err := s.agentOptionsFor(id, history)
 	if err != nil {

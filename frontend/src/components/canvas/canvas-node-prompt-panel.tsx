@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowUp, LoaderCircle, Maximize2, ScanText, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUp, LoaderCircle, Maximize2 } from "lucide-react";
 
 import { useTranslation } from "react-i18next";
 
@@ -16,19 +16,14 @@ import { NODE_CONTROLS } from "./panels/node-controls";
 import { SentPromptDisclosure } from "./sent-prompt-disclosure";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData } from "@/types/canvas";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
-import { resolveCanvasReferenceImages } from "@/lib/canvas/canvas-resource-references";
-import { requestPromptChat } from "@/services/api/prompts";
-import { agentSession, endAgentSession, nodeAgent, openAgentSession, subscribeAgentSessions } from "@/services/api/agent";
 import { videoModelForMode } from "@/lib/canvas/video-model-mode";
 import { CanvasNodeReferenceBar } from "./canvas-node-reference-bar";
 import { CanvasToolNodePanel } from "./canvas-tool-node-panel";
-import { abortCaptionJob, hasCaptionJob, registerCaptionJob, releaseCaptionJob } from "@/lib/canvas/caption-jobs";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
 
 type CanvasNodePromptPanelProps = {
     node: CanvasNodeData;
-    /** The canvas this node lives in: the name its agent is filed under. */
     isRunning: boolean;
     onConfigChange: (nodeId: string, patch: Partial<CanvasNodeData["metadata"]>) => void;
     onGenerate: (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => void;
@@ -44,6 +39,12 @@ type CanvasNodePromptPanelProps = {
     onOpenMossLayoutEditor?: (nodeId: string) => void;
 };
 
+/**
+ * The prompt of one node that generates — the words it will be asked, and the button that asks them.
+ *
+ * A text card is not one of those: it holds words and nothing asks it anything, so it is edited on the card
+ * itself and has no panel at all (#278). That is why this component has three kinds in it and no fourth.
+ */
 export function CanvasNodePromptPanel({
     node,
     nodes,
@@ -66,10 +67,9 @@ export function CanvasNodePromptPanel({
     const theme = useCanvasTheme();
     const mode = defaultMode(node.type);
     const config = buildNodeConfig(globalConfig, node, mode);
-    const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
-    // The words this box holds — the question, never the answer: a text node's card is its content, and
-    // `nodePromptOf` is the field the panel and the agent's `set_prompt` both write (#229).
+    // The words this box holds — the question, never the answer: `nodePromptOf` is the field the panel and
+    // the agent's `set_prompt` both write (#229).
     const [prompt, setPrompt] = useState(nodePromptOf(node));
     const [draft, setDraft] = useState(prompt);
     const draftRef = useRef(draft);
@@ -92,20 +92,6 @@ export function CanvasNodePromptPanel({
     const sourceVideoReference = mentionReferences.find((reference) => reference.kind === "video");
     const sourceVideoNode = sourceVideoReference ? nodes.find((item) => item.id === sourceVideoReference.nodeId) : undefined;
     const sourceVideoDurationSeconds = sourceVideoNode?.metadata?.durationMs && sourceVideoNode.metadata.durationMs > 0 ? sourceVideoNode.metadata.durationMs / 1000 : undefined;
-    // This panel's own agent. Connecting starts it; the panel going away releases it, so a node that is
-    // not being worked on holds no process at all.
-    const agentName = nodeAgent(node.id);
-    // The button reflects the session, not a flag beside it: this panel is connected exactly while its
-    // agent is alive, and the agent is released when the answer ends.
-    const agentConnected = useSyncExternalStore(subscribeAgentSessions, () => agentSession(agentName).connected);
-    const [connecting, setConnecting] = useState(false);
-    const captionStatus = mode === "text" ? node.metadata?.captionStatus : undefined;
-    const captionRunning = mode === "text" && captionStatus === "running";
-    const captionResult = mode === "text" ? node.metadata?.captionPrompt || "" : "";
-    const captionError = mode === "text" ? node.metadata?.captionError || "" : "";
-    // Captioning has exactly one path now: the connected agent reads the image and answers. There is no
-    // separate vision endpoint to configure.
-    const canCaption = mode === "text" && imageReferences.length > 0 && !isRunning && !captionRunning;
     const hasMediaReferences = mentionReferences.some((reference) => reference.kind !== "text");
     const textVideoHasReferences = refusesMedia && hasMediaReferences;
     // Which controls sit beside the prompt box is the kind's business: one component per kind, looked up here
@@ -152,17 +138,6 @@ export function CanvasNodePromptPanel({
         return () => document.removeEventListener("pointerdown", commitOnOutsidePointer, true);
     }, []);
 
-    // Applying an answer — a caption, a rewrite the agent suggested — writes the prompt, and nothing else.
-    //
-    // For a text node this used to write the words into `content`, `prompt` and `composerContent` at once:
-    // the last place the old "one sentence, three fields" model survived (#229), and a way for the panel
-    // to overwrite a card nobody asked it to touch. The card is not the prompt's to rewrite (#230).
-    const applyPromptResult = (value: string) => {
-        setDraft(value);
-        setPrompt(value);
-        onConfigChange(node.id, promptPatch(node, value));
-    };
-
     const submit = () => {
         const text = draft.trim();
         if (isRunning) return;
@@ -200,67 +175,6 @@ export function CanvasNodePromptPanel({
         onGenerate(node.id, mode, text);
     };
 
-    // The panel going away ends that node's agent: it was started for this panel, and nothing else is
-    // reading it. (The canvas's own agent is the opposite case and lives until it is closed by hand.)
-    useEffect(() => () => endAgentSession(agentName), [agentName]);
-
-    // The first click starts an agent so its model list can be shown; the next asks the question.
-    const connectAgent = async () => {
-        setConnecting(true);
-        try {
-            await openAgentSession(config, agentName);
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : t("canvas.agent.connectFailed"));
-        } finally {
-            setConnecting(false);
-        }
-    };
-
-    const clearCaptionPreview = () => {
-        onConfigChange(node.id, { captionStatus: undefined, captionPrompt: undefined, captionError: undefined });
-    };
-
-    const captionPrompt = async () => {
-        if (!canCaption) return;
-        const controller = new AbortController();
-        registerCaptionJob(node.id, controller);
-        onConfigChange(node.id, { captionStatus: "running", captionPrompt: undefined, captionError: undefined });
-        try {
-            const images = await resolveCanvasReferenceImages(imageReferences.slice(0, 1), nodes);
-            if (!images.length) throw new Error(t("canvas.promptPanel.captionNoImage"));
-            // `requestPromptChat` opens the session first, which is what makes this work on a panel whose
-            // agent has not been connected yet: the button is the only way in, so it cannot assume someone
-            // pressed 连接 before it (#257).
-            const result = await requestPromptChat(
-                agentName,
-                config,
-                { prompt: "用一段话描述这张图片，输出可以直接当作生图提示词的描述，只输出描述本身。", images },
-                {
-                    signal: controller.signal,
-                    onDelta: (text) => onConfigChange(node.id, { captionPrompt: text }),
-                },
-            );
-            onConfigChange(node.id, { captionStatus: "done", captionPrompt: result });
-        } catch (error) {
-            if (controller.signal.aborted) clearCaptionPreview();
-            else onConfigChange(node.id, { captionStatus: "error", captionError: error instanceof Error ? error.message : t("canvas.promptPanel.captionFailed") });
-        } finally {
-            releaseCaptionJob(node.id, controller);
-        }
-    };
-
-    const stopCaption = () => {
-        abortCaptionJob(node.id);
-        clearCaptionPreview();
-    };
-
-    useEffect(() => {
-        if (mode !== "text" || node.metadata?.captionStatus !== "running" || hasCaptionJob(node.id)) return;
-        // A page reload loses the in-memory controller; do not leave a stale running state.
-        clearCaptionPreview();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mode, node.id, node.metadata?.captionStatus]);
-
     const openExpandedEditor = () => {
         setExpanded(true);
     };
@@ -286,11 +200,7 @@ export function CanvasNodePromptPanel({
                 onStop={onStop}
                 onDisconnectReference={onDisconnectReference}
                 onStartReferenceSelection={onStartReferenceSelection}
-                prompt={
-                    modelTakesPrompt(globalConfig, config.model)
-                        ? { value: draft, onChange: setDraft, onCommit: commitPrompt, placeholder: t(`canvas.promptPanel.${mode === "image" && hasImageContent ? "editImage" : mode === "text" && hasTextContent ? "editText" : mode}`) }
-                        : undefined
-                }
+                prompt={modelTakesPrompt(globalConfig, config.model) ? { value: draft, onChange: setDraft, onCommit: commitPrompt, placeholder: t(`canvas.promptPanel.${mode === "image" && hasImageContent ? "editImage" : mode}`) } : undefined}
             />
         );
     }
@@ -329,7 +239,7 @@ export function CanvasNodePromptPanel({
                 }}
                 className="thin-scrollbar h-40 w-full cursor-text resize-none rounded-xl px-3 py-2 text-sm leading-5 outline-none"
                 style={{ background: "transparent", color: theme.node.text }}
-                placeholder={t(`canvas.promptPanel.${mode === "image" && hasImageContent ? "editImage" : mode === "text" && hasTextContent ? "editText" : mode}`)}
+                placeholder={t(`canvas.promptPanel.${mode === "image" && hasImageContent ? "editImage" : mode}`)}
             />
 
             <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
@@ -356,101 +266,21 @@ export function CanvasNodePromptPanel({
                         frameMode={frameMode}
                         onVideoModeChange={changeVideoMode}
                         sourceDurationSeconds={sourceVideoDurationSeconds}
-                        agentName={agentName}
                     />
                 </div>
-                {mode === "text" ? (
-                    <Tooltip title={canCaption ? t("canvas.promptPanel.captionHint") : t("canvas.promptPanel.captionNeedsImage")}>
-                        <Button
-                            type="text"
-                            className="!h-10 ml-auto shrink-0 !rounded-full !px-2 text-xs"
-                            style={{ color: theme.node.text }}
-                            icon={captionRunning ? <LoaderCircle className="size-4 animate-spin" /> : <ScanText className="size-4" />}
-                            disabled={!canCaption && !captionRunning}
-                            onClick={() => (captionRunning ? stopCaption() : void captionPrompt())}
-                            aria-label={captionRunning ? t("canvas.promptPanel.captionStop") : t("canvas.promptPanel.caption")}
-                        >
-                            {captionRunning ? t("canvas.promptPanel.captionStop") : t("canvas.promptPanel.captionShort")}
-                        </Button>
-                    </Tooltip>
-                ) : null}
                 <Button
                     type="primary"
-                    className={`${mode === "text" ? "" : "ml-auto"} !h-10 shrink-0 !rounded-full ${isRunning || connecting ? "!min-w-10 !px-2" : "!min-w-16 !px-3"}`}
+                    className={`ml-auto !h-10 shrink-0 !rounded-full ${isRunning ? "!min-w-10 !px-2" : "!min-w-16 !px-3"}`}
                     danger={isRunning}
-                    disabled={!isRunning && !connecting && (mode === "text" && !agentConnected ? false : !draft.trim() && !connectedText)}
+                    disabled={!isRunning && !draft.trim() && !connectedText}
                     title={isRunning ? t("canvas.promptPanel.stop") : undefined}
-                    onClick={() => {
-                        if (isRunning) return onStop(node.id);
-                        // Text: the first click starts an agent (so the model list appears), the next asks.
-                        if (mode === "text" && !agentConnected) return void connectAgent();
-                        submit();
-                    }}
-                    aria-label={t(isRunning ? "canvas.promptPanel.stop" : mode === "text" && !agentConnected ? "canvas.agent.connect" : "canvas.promptPanel.generate")}
+                    onClick={() => (isRunning ? onStop(node.id) : submit())}
+                    aria-label={t(isRunning ? "canvas.promptPanel.stop" : "canvas.promptPanel.generate")}
                 >
-                    <span className="flex items-center gap-1.5">
-                        {isRunning || connecting ? <LoaderCircle className="size-4 animate-spin" /> : mode === "text" && !agentConnected ? <span className="text-xs">{t("canvas.agent.connect")}</span> : <ArrowUp className="size-4" />}
-                    </span>
+                    <span className="flex items-center gap-1.5">{isRunning ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}</span>
                 </Button>
             </div>
             <SentPromptDisclosure sent={node.metadata?.sentPrompt} current={draft} />
-            {captionRunning || captionResult || captionError ? (
-                <div className="mt-2 rounded-xl border p-2" style={{ borderColor: theme.toolbar.border, background: theme.toolbar.panel }}>
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium">{t("canvas.promptPanel.captionTitle")}</span>
-                        <Button
-                            type="text"
-                            size="small"
-                            className="!h-6 !w-6 !min-w-6 !rounded-full !p-0"
-                            icon={<X className="size-3.5" />}
-                            onClick={() => (captionRunning ? stopCaption() : clearCaptionPreview())}
-                            aria-label={t(captionRunning ? "canvas.promptPanel.captionStop" : "canvas.promptPanel.previewClose")}
-                        />
-                    </div>
-                    {captionRunning ? (
-                        <div className="flex items-center gap-2 text-xs opacity-70">
-                            <LoaderCircle className="size-3.5 animate-spin" />
-                            <span>{t("canvas.promptPanel.captioning")}</span>
-                        </div>
-                    ) : null}
-                    {captionError ? <div className="text-xs text-[#ef4444]">{captionError}</div> : null}
-                    {captionResult ? (
-                        <>
-                            <textarea
-                                readOnly
-                                value={captionResult}
-                                className="thin-scrollbar mt-2 h-40 w-full resize-none rounded-lg border p-2 text-xs leading-5 outline-none"
-                                style={{ borderColor: theme.toolbar.border, background: "transparent", color: theme.node.text }}
-                                onWheel={(event) => event.stopPropagation()}
-                            />
-                            <div className="mt-2 flex justify-end gap-2">
-                                <Button size="small" onClick={() => clearCaptionPreview()}>
-                                    {t("canvas.promptPanel.previewClose")}
-                                </Button>
-                                <Button
-                                    size="small"
-                                    onClick={() => {
-                                        applyPromptResult(draft.trim() ? `${draft.trim()}\n\n${captionResult}` : captionResult);
-                                        clearCaptionPreview();
-                                    }}
-                                >
-                                    {t("canvas.promptPanel.appendPrompt")}
-                                </Button>
-                                <Button
-                                    size="small"
-                                    type="primary"
-                                    onClick={() => {
-                                        applyPromptResult(captionResult);
-                                        clearCaptionPreview();
-                                    }}
-                                >
-                                    {t("canvas.promptPanel.replacePrompt")}
-                                </Button>
-                            </div>
-                        </>
-                    ) : null}
-                </div>
-            ) : null}
             <Dialog
                 title={t("canvas.promptPanel.editorTitle")}
                 open={expanded}
@@ -487,7 +317,7 @@ export function CanvasNodePromptPanel({
                         }}
                         className="thin-scrollbar h-[52dvh] min-h-80 w-full resize-none rounded-xl border p-4 text-[15px] leading-6 outline-none"
                         style={{ background: "transparent", borderColor: theme.toolbar.border, color: theme.node.text }}
-                        placeholder={t(`canvas.promptPanel.${mode === "image" && hasImageContent ? "editImage" : mode === "text" && hasTextContent ? "editText" : mode}`)}
+                        placeholder={t(`canvas.promptPanel.${mode === "image" && hasImageContent ? "editImage" : mode}`)}
                     />
                 </div>
             </Dialog>
@@ -495,8 +325,12 @@ export function CanvasNodePromptPanel({
     );
 }
 
-function defaultMode(type: CanvasNodeData["type"]): CanvasNodeGenerationMode {
-    return type === CanvasNodeType.Text ? "text" : type === CanvasNodeType.Video ? "video" : type === CanvasNodeType.Audio ? "audio" : "image";
+/**
+ * The kind a node generates. A card that holds words is not here at all: it has no panel and nothing to
+ * generate, so the callers never ask — `nodeTakesPanel` is the one that says so (#278).
+ */
+function defaultMode(type: CanvasNodeData["type"]): CanvasGenerationMode {
+    return type === CanvasNodeType.Video ? "video" : type === CanvasNodeType.Audio ? "audio" : "image";
 }
 
 function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: CanvasNodeGenerationMode): AiConfig {

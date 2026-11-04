@@ -34,7 +34,7 @@ import (
 type Config struct {
 	// Endpoint is the server's loopback base URL, e.g. http://127.0.0.1:41235.
 	Endpoint string
-	// Session is the agent session this bridge belongs to — usually a canvas, sometimes one node.
+	// Session is the agent session this bridge belongs to: the canvas this conversation is about.
 	Session string
 	// Version is the wire contract this build speaks. The server refuses a bridge it does not know,
 	// because with two binaries a mixed install is a real possibility.

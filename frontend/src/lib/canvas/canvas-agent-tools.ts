@@ -8,7 +8,7 @@ import type { ToolContent } from "@/services/api/agent";
 import { generateAnswer, GENERATE_START_WAIT_MS, type GenerateOptions, type GenerateStart } from "@/lib/canvas/agent-generate";
 import { describeCanvas } from "@/lib/canvas/canvas-agent-view";
 import { configuredClause, generationClause } from "@/lib/canvas/node-generation-facts";
-import { nodeContentOf, nodeOtherTextsOf, nodePromptOf } from "@/lib/canvas/node-prompt-field";
+import { nodeContentOf, nodePromptOf } from "@/lib/canvas/node-prompt-field";
 import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type Position } from "@/types/canvas";
 
 /**
@@ -185,20 +185,23 @@ function saidTwice(nodeId: string, words: string, nodes: CanvasNodeData[], conne
  * node (docs/decisions.md #77), not made beside it. A variant is a new node fed through the reference bar,
  * which is what `create_node` plus a connection is — so both intents keep their own tool.
  *
- * On a text node this is the question, not the answer: the panel's box is what the node will be asked to
- * write, and the card is what it wrote. The answer says so, because an agent that is told "the prompt of
- * text-1 is now …" and nothing else reasonably concludes it has changed the text (#229).
+ * Change what a node is made from: a picture's prompt, a film's, a sound's. A text node has none — it holds
+ * words and nothing asks it anything — so the call is refused rather than writing a field no surface shows.
  */
 function setPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
     const prompt = promptOf(args);
     if (prompt === undefined) return { content: [textBlock("set_prompt needs a prompt")], isError: true };
     const node = namedNode(hands, args);
     if (!node) return noSuchNode(args);
+    if (node.type === CanvasNodeType.Text) {
+        return {
+            content: [textBlock(`${node.id} is a text node: it holds words and has no prompt, so there is nothing to ask it. Write what it says with set_text — an empty string clears it.`)],
+            isError: true,
+        };
+    }
 
     hands.setNodePrompt(node.id, prompt);
-    const isQuestion = node.type === CanvasNodeType.Text && Boolean(nodeContentOf(node));
-    const note = isQuestion ? ` — that is the question ${node.id} will answer next, not its text: what it says now is unchanged. Use set_text to write the text itself, or generate to have it answer again` : "";
-    return { content: [textBlock(`the prompt of ${node.id} is now: ${prompt.slice(0, 200)}${note}${saidTwice(node.id, prompt, hands.nodes(), hands.connections())}`)], isError: false };
+    return { content: [textBlock(`the prompt of ${node.id} is now: ${prompt.slice(0, 200)}${saidTwice(node.id, prompt, hands.nodes(), hands.connections())}`)], isError: false };
 }
 
 /**
@@ -206,8 +209,7 @@ function setPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
  *
  * A text node's content is words, so it is the one node whose content an agent can write directly; for a
  * picture, a film or a sound the same intent is `set_prompt` plus `generate`, because the content there is
- * bytes (#229). The prompt is left alone: it is the question that made the words, and rewriting the answer
- * by hand does not make that question untrue — it is still what was last asked.
+ * bytes (#229).
  */
 function setText(hands: CanvasHands, args: unknown): ToolAnswer {
     const text = textOf(args);
@@ -235,8 +237,8 @@ function setText(hands: CanvasHands, args: unknown): ToolAnswer {
  * The session travels with the generation for the message that comes later: it is the one thing that
  * knows which conversation asked, and the run carries it so the server can say how it went.
  *
- * The mode is the one the node's own panel would use: a content node generates what it is, and a config node
- * generates the kind its composer is set to (that is what pressing its button does).
+ * The mode is the one the node's own panel would use: a node generates what it is. A text node generates
+ * nothing, so it is refused here rather than pressed.
  */
 async function pressGenerate(hands: CanvasHands, args: unknown, session: string): Promise<ToolAnswer> {
     const node = namedNode(hands, args);
@@ -244,21 +246,16 @@ async function pressGenerate(hands: CanvasHands, args: unknown, session: string)
 
     // A node generates what it is.
     const mode: string = node.type;
+    if (mode === CanvasNodeType.Text) {
+        return { content: [textBlock(`${node.id} is a text node: it holds words, and nothing generates them. Write what it should say with set_text — that is the same thing as editing the card on the canvas.`)], isError: true };
+    }
     if (!GENERATE_MODES.includes(mode)) return { content: [textBlock(`a ${node.type} node has nothing to generate`)], isError: true };
 
     // Ask the question the page is about to ask, before pressing. A wire into a node that holds nothing
-    // carries nothing (#230), and the page refuses a press like that — but a text node's press reports
-    // nothing back at all (it streams, so there is no run id to report), and the agent would be told an
-    // answer was on its way when nothing was started. The rule is one function, asked here as well.
+    // carries nothing (#230), and the page refuses a press like that — so the refusal is stated here too,
+    // in the same words, rather than the agent being told a run is out when none was started.
     const blocked = inputsHoldingNothing(node.id, hands.nodes(), hands.connections());
     if (blocked.length) return { content: [textBlock(describeEmptyInputs(blocked))], isError: true };
-
-    // A text node is answered by its own agent, which writes into the node: there is no run behind it and
-    // so nothing to be told about later.
-    if (mode === CanvasNodeType.Text) {
-        void hands.generateNode(node.id, mode as CanvasGenerationMode, nodePromptOf(node));
-        return { content: [textBlock(`pressed generate on ${node.id} (text). The node writes the answer itself as it streams — canvas_read_node it to see how far it has got.`)], isError: false };
-    }
 
     const start = await pressAndWait(hands, node.id, mode as CanvasGenerationMode, nodePromptOf(node), session);
     // A refusal is a failed call: the agent asked for something that did not happen, and a quiet success
@@ -289,7 +286,7 @@ function pressAndWait(hands: CanvasHands, nodeId: string, mode: CanvasGeneration
     });
 }
 
-const GENERATE_MODES: string[] = [CanvasNodeType.Text, CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio];
+const GENERATE_MODES: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio];
 
 /**
  * Read one node's actual content.
@@ -308,11 +305,9 @@ async function readNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> 
     if (!node) return noSuchNode(args);
 
     const content: ToolContent[] = [];
-    // What the node holds. A text node holds words; a batch holds several, and the card is only showing
-    // one of them — dropping the rest would be this module's own mistake in miniature (#229).
+    // What the node holds. A text node holds words and that is the whole of it: the card is the content.
     const words = nodeContentOf(node);
     if (words) content.push(textBlock(words));
-    for (const other of nodeOtherTextsOf(node)) content.push(textBlock(other));
 
     const media = await mediaOf(node);
     if (media) content.push(media);
@@ -330,8 +325,8 @@ async function readNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> 
  * because a prompt is private until someone asks for it, and because a list that carried every node's
  * prompt twice was both large and ambiguous (#233).
  *
- * A text node is where the two are easiest to confuse, so its answer says which is which: the card is
- * what it says, this is what it will be asked next.
+ * A text node has no prompt at all, so this answers with that fact and points at `read_node`: the card is
+ * what it says, and nothing is asked of it.
  *
  * The second sentence is what a rewrite needs before it can be a rewrite: which workflow the words will
  * be handed to, and how long the video is (#257). The wording is not the agent's to choose — H3's skill
@@ -341,16 +336,15 @@ async function readNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> 
 function readPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
     if (!node) return noSuchNode(args);
+    if (node.type === CanvasNodeType.Text) {
+        return { content: [textBlock(`${node.id} (text) has no prompt: it holds words, and nothing asks it anything. What it says is its content, which read_node answers with, and set_text writes.`)], isError: false };
+    }
 
     const words = nodePromptOf(node);
     const configured = configuredClause(node.metadata);
     const setting = configured ? `\n${node.id} is ${configured}.` : "";
-    if (!words.trim()) {
-        const has = nodeContentOf(node) ? " — what it says is its content, which read_node answers with" : "";
-        return { content: [textBlock(`${node.id} (${node.type}) has no prompt: nothing has been asked of it yet${has}`)], isError: false };
-    }
-    const note = node.type === CanvasNodeType.Text ? ` — the question it will answer next; what it says now is its content, which read_node answers with` : "";
-    return { content: [textBlock(words + note + setting)], isError: false };
+    if (!words.trim()) return { content: [textBlock(`${node.id} (${node.type}) has no prompt: nothing has been asked of it yet`)], isError: false };
+    return { content: [textBlock(words + setting)], isError: false };
 }
 
 /**

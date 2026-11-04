@@ -8,9 +8,9 @@ import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "../sr
  * The tools the agent may call, and what each one writes.
  *
  * These are decisions rather than wiring, so they are called here the way the page calls them: a name, the
- * arguments as they arrived, the hands the page lends, and a session to answer on. What the fix behind
- * them has to hold is one thing above all: a text node's prompt is the question it will answer and its
- * content is the answer it gave, so `set_prompt` must never be mistaken for "change the text" (#229).
+ * arguments as they arrived, the hands the page lends, and a session to answer on. What the fix behind them
+ * has to hold is one thing above all: a text node is its words and nothing else, so every tool that treats
+ * it as something with a question refuses instead of writing a field no surface shows (#278).
  */
 
 // The node types' own definitions, which is where "a card that frames a picture keeps its shape" lives
@@ -53,8 +53,7 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [])
 }
 
 const card = "宫崎骏风格的森林。";
-const question = "宫崎骏风格的森林场景，无文字，无字幕，无对话气泡";
-const textSaying = (content: string, composerContent?: string) => node("text", { content, ...(composerContent ? { composerContent } : {}) });
+const textSaying = (content: string) => node("text", { content });
 
 const textOf = async (hands: CanvasHands, name: string, args: Record<string, unknown>) => {
     const answer = await runTool(name, args, hands, "canvas:test");
@@ -62,8 +61,8 @@ const textOf = async (hands: CanvasHands, name: string, args: Record<string, unk
 };
 
 describe("set_text: writing what the card says", () => {
-    test("writes the text itself, and leaves the question alone", async () => {
-        const { hands, written } = handsFor([textSaying(card, question)]);
+    test("writes the text itself, and it is the only field a text node has", async () => {
+        const { hands, written } = handsFor([textSaying(card)]);
         const { answer, text } = await textOf(hands, "set_text", { nodeId: "text-1", text: "夜里的森林。" });
         expect(answer.isError).not.toBe(true);
         expect(written.texts).toEqual([["text-1", "夜里的森林。"]]);
@@ -94,44 +93,29 @@ describe("set_text: writing what the card says", () => {
     });
 });
 
-describe("set_prompt: the question, and where it stops being one", () => {
-    test("on a text node holding its answer, it says the text is unchanged", async () => {
-        const { hands, written } = handsFor([textSaying(card, question)]);
-        const { text } = await textOf(hands, "set_prompt", { nodeId: "text-1", prompt: "改成夜景。" });
-        expect(written.prompts).toEqual([["text-1", "改成夜景。"]]);
-        expect(text).toContain("not its text");
+describe("set_prompt: the question a node will be asked", () => {
+    test("a text node has no question, so it is refused rather than written somewhere nothing shows", async () => {
+        const { hands, written } = handsFor([textSaying(card)]);
+        const { answer, text } = await textOf(hands, "set_prompt", { nodeId: "text-1", prompt: "改成夜景。" });
+        expect(answer.isError).toBe(true);
+        expect(written.prompts).toEqual([]);
+        expect(text).toContain("it holds words and has no prompt");
         expect(text).toContain("set_text");
     });
 
-    test("on a node that says nothing yet, it is the whole story", async () => {
-        const { hands } = handsFor([node("image", { content: "/api/canvases/c/files/a.png" })]);
-        const { text } = await textOf(hands, "set_prompt", { nodeId: "image-1", prompt: "a brass compass" });
-        expect(text).not.toContain("not its text");
+    test("on a picture, it is the words that will make it", async () => {
+        const { hands, written } = handsFor([node("image", { content: "/api/canvases/c/files/a.png" })]);
+        const { answer } = await textOf(hands, "set_prompt", { nodeId: "image-1", prompt: "a brass compass" });
+        expect(answer.isError).not.toBe(true);
+        expect(written.prompts).toEqual([["image-1", "a brass compass"]]);
     });
 });
 
 describe("read_node: what the node holds", () => {
-    test("a text node answers with its card, not with the question that made it", async () => {
-        const { hands } = handsFor([textSaying(card, question)]);
+    test("a text node answers with its words", async () => {
+        const { hands } = handsFor([textSaying(card)]);
         const { answer } = await textOf(hands, "read_node", { nodeId: "text-1" });
         expect(answer.content).toEqual([{ type: "text", text: card }]);
-    });
-
-    test("a batch answers with every text, the card's own first", async () => {
-        const batch = node("text", {
-            content: "second",
-            primaryTextId: "t2",
-            texts: [
-                { id: "t1", status: "success", content: "first" },
-                { id: "t2", status: "success", content: "second" },
-            ],
-        });
-        const { hands } = handsFor([batch]);
-        const { answer } = await textOf(hands, "read_node", { nodeId: "text-1" });
-        expect(answer.content).toEqual([
-            { type: "text", text: "second" },
-            { type: "text", text: "first" },
-        ]);
     });
 
     test("a node holding nothing says so rather than inventing words", async () => {
@@ -141,13 +125,14 @@ describe("read_node: what the node holds", () => {
     });
 });
 
-describe("generate: the words that were asked", () => {
-    test("a text node is asked its question, never handed its own answer to rewrite", async () => {
-        // The panel's box is what gets run. Passing the card instead would ask the node to answer its own
-        // text, which is the same confusion this fix is about, one tool further in.
-        const { hands, written } = handsFor([textSaying(card, question)]);
-        await runTool("generate", { nodeId: "text-1" }, hands, "canvas:test");
-        expect(written.generated).toEqual([["text-1", question]]);
+describe("generate: pressing a node's button", () => {
+    test("a text node generates nothing, and the answer says what does write it", async () => {
+        const { hands, written } = handsFor([textSaying(card)]);
+        const { answer, text } = await textOf(hands, "generate", { nodeId: "text-1" });
+        expect(answer.isError).toBe(true);
+        expect(written.generated).toEqual([]);
+        expect(text).toContain("nothing generates them");
+        expect(text).toContain("set_text");
     });
 });
 
@@ -206,9 +191,8 @@ describe("a name this page does not know", () => {
 /**
  * A press that would carry nothing is refused before it is made.
  *
- * The page refuses it too, and a picture's refusal comes back through the press (`pressAndWait`). A text
- * node's does not: it streams, so there is no run id to report and the agent would be told an answer is on
- * its way. One function answers "what would this wire carry", asked here as well (#230).
+ * The page refuses it too, but the agent would be told a run is out and then wait for a message that never
+ * comes, so the same function is asked here as well (#230).
  */
 describe("generate: a wire that carries nothing", () => {
     test("refuses in the page's own words, and starts nothing", async () => {
@@ -217,15 +201,6 @@ describe("generate: a wire that carries nothing", () => {
 
         expect(answer.isError).toBe(true);
         expect(text).toMatch(/^text-1 .*holds nothing yet/);
-        expect(written.generated).toEqual([]);
-    });
-
-    test("refuses a text node's press the same way, because that press reports nothing back", async () => {
-        const { hands, written } = handsFor([node("image", {}), node("text", { prompt: "write about the forest" })], [{ id: "c1", fromNodeId: "image-1", toNodeId: "text-1" }]);
-        const { answer, text } = await textOf(hands, "generate", { nodeId: "text-1" });
-
-        expect(answer.isError).toBe(true);
-        expect(text).toMatch(/^image-1 .*holds nothing yet/);
         expect(written.generated).toEqual([]);
     });
 
@@ -255,21 +230,19 @@ describe("generate: a wire that carries nothing", () => {
  * two are easiest to confuse.
  */
 describe("read_prompt: the question behind a node", () => {
-    test("answers with the words the panel shows, and says what they are", async () => {
-        const { hands } = handsFor([textSaying(card, question)]);
+    test("a text node has no prompt, and the answer points at what it does have", async () => {
+        const { hands } = handsFor([textSaying(card)]);
         const { answer, text } = await textOf(hands, "read_prompt", { nodeId: "text-1" });
 
         expect(answer.isError).not.toBe(true);
-        expect(text).toContain(question);
-        expect(text).toContain("the question it will answer next");
-        // The card is the other kind of words, and the answer points at the tool that reads it.
+        expect(text).toContain("has no prompt");
         expect(text).not.toContain(card);
         expect(text).toContain("read_node");
     });
 
-    test("says so when nothing has been asked of the node", async () => {
-        const { hands } = handsFor([textSaying(card)]);
-        const { answer, text } = await textOf(hands, "read_prompt", { nodeId: "text-1" });
+    test("says so when nothing has been asked of a picture", async () => {
+        const { hands } = handsFor([node("image", { content: "/api/canvases/c/files/a.png" })]);
+        const { answer, text } = await textOf(hands, "read_prompt", { nodeId: "image-1" });
 
         expect(answer.isError).not.toBe(true);
         expect(text).toContain("has no prompt");

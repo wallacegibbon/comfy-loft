@@ -57,7 +57,7 @@ type SpawnOptions struct {
 	Env []string
 	// Session is the file AlayaCore keeps this conversation in. It is not work: it is what lets the next
 	// process replay what was said. Empty means the conversation dies with the process, which is what a
-	// node's single question wants: one file per node would outlive the node that asked.
+	// session that is not a conversation wants — the models editor is asked one command and nothing after it.
 	Session string
 	// System is text appended to the agent's own system prompt, one entry per `--system` flag. It is for
 	// what a tool description cannot say: the rule that chooses between the tools.

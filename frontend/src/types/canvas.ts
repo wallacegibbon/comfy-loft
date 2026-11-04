@@ -39,15 +39,9 @@ export enum CanvasNodeType {
 export type CanvasNodeTypeId = CanvasNodeType | (string & {});
 
 type CanvasNodeStatus = "idle" | "success" | "loading" | "error";
-export type CanvasGenerationMode = "text" | "image" | "video" | "audio";
+/** What a node generates: the three kinds a workflow makes. A text node is words, so it generates nothing. */
+export type CanvasGenerationMode = "image" | "video" | "audio";
 export type CanvasImageGenerationType = "generation" | "edit";
-
-export type CanvasNodeText = {
-    id: string;
-    status: CanvasNodeStatus;
-    errorDetails?: string;
-    content: string;
-};
 
 export type CanvasMossLayoutRegion = {
     id: string;
@@ -96,9 +90,6 @@ export type CanvasNodeMetadata = {
     size?: string;
     quality?: string;
     background?: string;
-    textCount?: number;
-    texts?: CanvasNodeText[];
-    primaryTextId?: string;
     seconds?: string;
     vquality?: string;
     generateAudio?: string;
@@ -107,9 +98,6 @@ export type CanvasNodeMetadata = {
     videoSelfLiftMode?: string;
     frameMode?: "first" | "last" | "both";
     imageMode?: "t2i" | "edit" | "inpaint" | "outpaint" | "layout";
-    captionStatus?: "running" | "done" | "error";
-    captionPrompt?: string;
-    captionError?: string;
     /** The prompt that was actually sent, when it is not the text the user typed (context appended). */
     sentPrompt?: string;
     outpaint?: { left: number; top: number; right: number; bottom: number; width: number; height: number };

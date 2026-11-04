@@ -29,7 +29,6 @@ import { useGenerationRuns } from "@/pages/canvas/hooks/use-generation-runs";
 import type { GenerationRun, GenerationRunDeps } from "@/pages/canvas/hooks/use-generation-runs";
 import { captureVideoFrame, type VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 
-import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { ActiveConnectionPath, ConnectionPath } from "@/components/canvas/canvas-connections";
 import { CanvasConflictDialog } from "@/components/canvas/canvas-conflict-dialog";
 import { CanvasNodeContextMenu } from "@/components/canvas/canvas-context-menu";
@@ -491,7 +490,6 @@ function InfiniteCanvasPage() {
                                   status: NODE_STATUS_IDLE,
                                   errorDetails: undefined,
                                   stepProgress: undefined,
-                                  texts: node.metadata.texts?.map((text) => (text.status === NODE_STATUS_LOADING ? { ...text, status: NODE_STATUS_ERROR, errorDetails: t("common.requestCanceled") } : text)),
                               },
                           }
                         : node,
@@ -1759,7 +1757,7 @@ function InfiniteCanvasPage() {
     const handleNodeResizeEnd = useCallback(() => setIsNodeResizing(false), []);
 
     const handleNodeContentChange = useCallback((nodeId: string, content: string) => {
-        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, content, texts: node.metadata?.texts?.map((text) => (text.id === node.metadata?.primaryTextId ? { ...text, content } : text)) } } : node)));
+        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, content } } : node)));
     }, []);
 
     // A hand-typed title replaces the generated one, so the key that would re-translate it goes with
@@ -1819,32 +1817,6 @@ function InfiniteCanvasPage() {
         [t],
     );
 
-    const createImageReversePromptNodes = useCallback(
-        (node: CanvasNodeData) => {
-            if (node.type !== CanvasNodeType.Image || !node.metadata?.content) {
-                toast.warning(t("canvas.runtime.emptyReverse"));
-                return;
-            }
-
-            const gap = 96;
-            const textSpec = NODE_DEFAULT_SIZE[CanvasNodeType.Text];
-            const textNode = {
-                ...createCanvasNode(CanvasNodeType.Text, { x: node.position.x + node.width + gap + textSpec.width / 2, y: node.position.y + node.height / 2 }, { content: "", status: NODE_STATUS_SUCCESS, fontSize: 14 }),
-                title: t("canvas.runtime.reverseTitle"),
-                titleKey: "canvas.runtime.reverseTitle",
-            };
-
-            setNodes((prev) => [...prev, textNode]);
-            // Images act as reference input for the text card; captioning runs from the text card's prompt panel.
-            setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: textNode.id }]);
-            setSelectedNodeIds(new Set([textNode.id]));
-            setSelectedConnectionId(null);
-            setDialogNodeId(textNode.id);
-            setContextMenu(null);
-        },
-        [t],
-    );
-
     // The node editors live in their own modules; this object is the entire surface they get.
     const nodeEditorDeps: NodeEditorDeps = useMemo(
         () => ({ setNodes, setConnections, setSelectedNodeIds, setSelectedConnectionId, setDialogNodeId, setRunningNodeId, closeNodeTool, startGenerationRequest, finishGenerationRequest }),
@@ -1890,7 +1862,7 @@ function InfiniteCanvasPage() {
         }),
         [completeVideoNodeTask, finishGenerationRequest, pollVideoNodeTask, setDialogNodeId, setNodes, setSelectedConnectionId, setSelectedNodeIds, startGenerationRequest],
     );
-    const { runImageGeneration, runVideoGeneration, runAudioGeneration, runTextGeneration, pollAudioRun, pollImageRun } = useGenerationRuns(generationRunDeps);
+    const { runImageGeneration, runVideoGeneration, runAudioGeneration, pollAudioRun, pollImageRun } = useGenerationRuns(generationRunDeps);
 
     /**
      * Pick up the runs that were out when the page went away.
@@ -1940,8 +1912,7 @@ function InfiniteCanvasPage() {
                 return;
             }
             const generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode);
-            // Text is answered by the agent, which needs nothing configured here; media needs a workflow.
-            if (mode !== "text" && !isAiConfigReady(generationConfig, generationConfig.model)) {
+            if (!isAiConfigReady(generationConfig, generationConfig.model)) {
                 openPreferences();
                 start({ started: false, reason: `no model is set for ${mode} generation on this canvas, and the node's panel opened its settings` });
                 return;
@@ -1949,8 +1920,8 @@ function InfiniteCanvasPage() {
 
             setRunningNodeId(nodeId);
             const runController = startGenerationRequest(nodeId, nodeId, nodeId);
-            // The prompt is the prompt. A text node that already holds an answer is not a document to
-            // revise — regenerating asks the same question again, and refining means editing the prompt.
+            // The prompt is the prompt: regenerating asks the same question again, and refining the
+            // picture means editing the question.
             const generationContext = await hydrateNodeGenerationContext(buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, prompt));
             if (generationContext.loras.length) generationConfig.params = { ...(generationConfig.params || {}), loras: generationContext.loras };
             const effectivePrompt = generationContext.prompt.trim();
@@ -1961,7 +1932,7 @@ function InfiniteCanvasPage() {
                 return;
             }
             const markSourceStatus = sourceNode?.type !== CanvasNodeType.Image;
-            if (!effectivePrompt && (mode === "text" || mode === "audio")) {
+            if (!effectivePrompt && mode === "audio") {
                 finishGenerationRequest(nodeId, runController);
                 setRunningNodeId(null);
                 start({ started: false, reason: "the node has no prompt to generate from" });
@@ -1991,12 +1962,7 @@ function InfiniteCanvasPage() {
                     return;
                 }
 
-                if (mode === "audio") {
-                    await runAudioGeneration(run);
-                    return;
-                }
-
-                await runTextGeneration(run);
+                await runAudioGeneration(run);
             } catch (error) {
                 if (isGenerationCanceled(error)) {
                     start({ started: false, reason: "the generation was stopped before it started" });
@@ -2285,7 +2251,9 @@ function InfiniteCanvasPage() {
                                           ? "disabled"
                                           : "available"
                             }
-                            showPanel={!isNodeResizing && dialogNodeId === node.id && !selectionBox}
+                            // A card that holds words has no panel: its words are edited on the card itself, and
+                            // nothing asks it anything (#278). Everything else under the pointer opens one.
+                            showPanel={!isNodeResizing && dialogNodeId === node.id && !selectionBox && node.type !== CanvasNodeType.Text}
                             groupChildCount={groupChildCountById.get(node.id) || 0}
                             isGroupDropTarget={dropTargetGroupId === node.id}
                             showImageInfo={showImageInfo}
@@ -2399,7 +2367,6 @@ function InfiniteCanvasPage() {
                     onSuperResolve={(node) => openNodeTool("superResolve", node.id)}
                     onAngle={(node) => openNodeTool("angle", node.id)}
                     onViewImage={handleNodeViewImage}
-                    onReversePrompt={createImageReversePromptNodes}
                     onDelete={(node) => deleteNodes(new Set([node.id]))}
                     onUngroup={(node) => ungroupSelection(new Set([node.id]))}
                 />

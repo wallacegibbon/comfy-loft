@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
-import { Brush, Camera, Copy, FileText, Grid2x2, Maximize2, Scissors, Sparkles, ZoomIn } from "lucide-react";
+import { Brush, Camera, Copy, Grid2x2, Maximize2, Scissors, Sparkles, ZoomIn } from "lucide-react";
 
 import type { CanvasNodeData } from "@/types/canvas";
 import i18n from "@/i18n";
 
-type ImageNodeActionToolId = "copyPrompt" | "reversePrompt" | "maskEdit" | "crop" | "split" | "upscale" | "superResolve" | "angle" | "view";
+type ImageNodeActionToolId = "copyPrompt" | "maskEdit" | "crop" | "split" | "upscale" | "superResolve" | "angle" | "view";
 export type ImageQuickToolId = "info" | "delete" | "download" | ImageNodeActionToolId;
 
 type ImageToolHandlers = {
@@ -16,7 +16,6 @@ type ImageToolHandlers = {
     onAngle: (node: CanvasNodeData) => void;
     onViewImage: (node: CanvasNodeData) => void;
     onCopyPrompt: (node: CanvasNodeData) => void;
-    onReversePrompt: (node: CanvasNodeData) => void;
 };
 
 type ImageToolDefinition = {
@@ -46,14 +45,6 @@ const imageToolDefinitions: ImageToolDefinition[] = [
         title: () => i18n.t("canvas.imageTools.copyPromptTitle"),
         icon: () => <Copy className="size-4" />,
         run: (node, handlers) => handlers.onCopyPrompt(node),
-    },
-    {
-        id: "reversePrompt",
-        defaultVisible: true,
-        label: () => i18n.t("canvas.imageTools.reversePrompt"),
-        title: () => i18n.t("canvas.imageTools.reversePromptTitle"),
-        icon: () => <FileText className="size-4" />,
-        run: (node, handlers) => handlers.onReversePrompt(node),
     },
     {
         id: "maskEdit",

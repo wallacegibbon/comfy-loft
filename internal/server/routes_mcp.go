@@ -148,7 +148,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "set_prompt",
-		Description: "Change the words that will make this node — the prompt its own panel shows. Running it again afterwards replaces that node's result (docs/decisions.md #77); a variant is a new node. On a text node that already says something this changes the question, not the text: the node will be asked this next, and what it says now stays. Write the text itself with set_text.",
+		Description: "Change the words that will make this node — the prompt its own panel shows. Running it again afterwards replaces that node's result (docs/decisions.md #77); a variant is a new node. A text node has no prompt: it holds words that nothing asks for, so write those with set_text, and this refuses rather than writing a field no surface shows.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -160,7 +160,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "set_text",
-		Description: "Write a text node's words, the way editing the card on the canvas does: what the node says becomes this. Its prompt is left alone — that is the question that made the words. A picture, a film or a sound has no text to write: give it a prompt with set_prompt and press generate.",
+		Description: "Write a text node's words, the way editing the card on the canvas does: what the node says becomes this. It is the only way to change a text node — there is no prompt behind the words. A picture, a film or a sound has no text to write: give it a prompt with set_prompt and press generate.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -172,7 +172,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "generate",
-		Description: "Press one node's generate button — the same thing the node's own panel does. It starts the work and answers at once; the node shows its own progress and holds the result. A picture, a film or a sound takes minutes, so do not wait for it and do not poll the node: when the run ends you are sent a message saying how it went, and you can carry on. A text node is different — it writes its answer itself as it streams.",
+		Description: "Press one node's generate button — the same thing the node's own panel does. It starts the work and answers at once; the node shows its own progress and holds the result. A picture, a film or a sound takes minutes, so do not wait for it and do not poll the node: when the run ends you are sent a message saying how it went, and you can carry on. A text node generates nothing — write its words with set_text.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -183,7 +183,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "read_node",
-		Description: "Read what one node holds: a text node's text, or the image, video or audio itself — not a description of it, and not the words it will be asked next. A text node holding a batch answers with every text, the one its card shows first. A node something generated ends with a line naming the workflow that made it and the moment that run finished; both are facts the canvas recorded, so they are the answer to \"which model drew this, and when\" rather than a guess.",
+		Description: "Read what one node holds: a text node's words, or the image, video or audio itself — not a description of it, and not the words it will be asked next. A node something generated ends with a line naming the workflow that made it and the moment that run finished; both are facts the canvas recorded, so they are the answer to \"which model drew this, and when\" rather than a guess.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -194,7 +194,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "read_prompt",
-		Description: "Read the words a node will be asked — the prompt its own panel shows, and the words set_prompt writes. This is the pair to read_node: read_node answers with what the node holds, this answers with the question behind it. A text node is where the two are easiest to confuse: its card is what it says, its prompt is what it will be asked next. A node nobody has asked anything of has no prompt, and that is the answer.",
+		Description: "Read the words a node will be asked — the prompt its own panel shows, and the words set_prompt writes. This is the pair to read_node: read_node answers with what the node holds, this answers with the question behind it. A text node has no prompt at all, and this says so: what it holds is words, and read_node answers with them. A node nobody has asked anything of has no prompt, and that is the answer too.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {

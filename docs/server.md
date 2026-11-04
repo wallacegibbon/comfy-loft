@@ -214,7 +214,7 @@ back what AlayaCore says. The server owns no wording, no model choice and no sta
 | `POST`   | `/mcp` (own listener)          | The agent's tools, reached through `comfyloft-mcp`. Loopback only — never the address above.      |
 
 A session is one `alayacore --rawio` process with one socket, filed under a name the **client** chooses:
-the canvas agent panel calls its own `canvas:<canvasId>`, a node's panel calls its own `node:<id>`. That
+the canvas agent panel calls its own `canvas:<canvasId>`, and the models editor calls `settings`. That
 prefix is the only thing the server reads about a name — it never learns what a node is, and it does not
 care which canvas a name points at beyond where the file goes.
 

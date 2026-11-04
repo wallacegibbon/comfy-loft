@@ -398,12 +398,11 @@ func TestSocketRelaysTheUsersWordsOnce(t *testing.T) {
 	}
 }
 
-// TestOneShotSessionKeepsNoFile: a node's agent asks one question and writes the answer into the node. It is
-// not a conversation, so it gets no file — one per node would live in the canvas forever, and an earlier
-// question would be carried into the next answer.
-func TestOneShotSessionKeepsNoFile(t *testing.T) {
+// TestSessionWithoutHistoryKeepsNoFile: the models editor asks one command and has nothing to come back to,
+// so it gets no file. A conversation is kept inside its canvas, and this name is not one.
+func TestSessionWithoutHistoryKeepsNoFile(t *testing.T) {
 	server, api, _ := startMCPServer(t)
-	conn, err := comfy.DialWS(context.Background(), socketURL(server, "node:n1", false))
+	conn, err := comfy.DialWS(context.Background(), socketURL(server, "settings", false))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -420,8 +419,8 @@ func TestOneShotSessionKeepsNoFile(t *testing.T) {
 	until(t, conn, "done")
 
 	// There is nowhere for it to go: a conversation is kept inside its canvas, and this name is not one.
-	if file, err := api.sessionFile("node:n1"); err == nil {
-		t.Fatalf("a one-shot session has a conversation file: %s", file)
+	if file, err := api.sessionFile("settings"); err == nil {
+		t.Fatalf("a session without history has a conversation file: %s", file)
 	}
 }
 

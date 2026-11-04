@@ -1,9 +1,7 @@
 import i18n from "@/i18n";
 import { serverProtocolRoot } from "@/services/api/runs";
 import { apiErrorMessage, httpJson } from "@/services/api/http";
-import { imageToDataUrl } from "@/services/image-storage";
 import type { AiConfig } from "@/stores/use-config-store";
-import type { ReferenceImage } from "@/types/image";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
@@ -124,14 +122,11 @@ export type AgentSession = {
     usage?: AgentUsage;
 };
 
-type Turn = { answer: string; resolve: () => void; reject: (error: Error) => void };
-
 type Live = {
     name: string;
     socket: WebSocket;
     opened: boolean;
     session: AgentSession;
-    waiting?: Turn;
     opening: Promise<AgentSession>;
 };
 
@@ -186,7 +181,7 @@ export function agentSession(name: string): AgentSession {
 }
 
 /**
- * A session's name: the canvas panel's, one per canvas, and one per node panel.
+ * A session's name: the canvas panel's, one per canvas.
  *
  * The canvas's name carries the canvas id because the conversation is kept inside that canvas: the server
  * reads the id out of the name and puts the file in the canvas's own directory, so the conversation is
@@ -194,7 +189,6 @@ export function agentSession(name: string): AgentSession {
  * meant one conversation for every canvas — what was said on one showed up on the next.
  */
 export const canvasAgent = (canvasId: string) => `canvas:${canvasId}`;
-export const nodeAgent = (nodeId: string) => `node:${nodeId}`;
 
 /**
  * The models editor's session.
@@ -208,8 +202,8 @@ export const settingsAgent = "settings";
 function socketUrl(config: AiConfig, name: string, history: boolean): string {
     const root = serverProtocolRoot(config.baseUrl);
     // `history=1` is this surface saying "this name is a conversation": the agent then keeps it in a file
-    // that outlives the socket, inside the canvas the name points at. A node's one-shot question does not
-    // ask, and leaves nothing behind.
+    // that outlives the socket, inside the canvas the name points at. The models editor does not ask, and
+    // leaves nothing behind.
     return `${root.replace(/^http/i, "ws")}/api/agent/socket/${encodeURIComponent(name)}${history ? "?history=1" : ""}`;
 }
 
@@ -263,19 +257,6 @@ export function openAgentSession(config: AiConfig, name: string, options?: { his
                 live.socket.close();
             }
 
-            // The turn a caller is waiting for, whichever surface asked.
-            if (event.type === "delta" && live.waiting) live.waiting.answer += event.text || "";
-            if (event.type === "done" && live.waiting) {
-                const turn = live.waiting;
-                live.waiting = undefined;
-                turn.resolve();
-            }
-            if (event.type === "error" && live.waiting) {
-                const turn = live.waiting;
-                live.waiting = undefined;
-                turn.reject(new Error(event.message || apiText("requestFailed")));
-            }
-
             if (!live.opened) {
                 live.opened = true;
                 if (event.type === "models") {
@@ -303,8 +284,6 @@ export function openAgentSession(config: AiConfig, name: string, options?: { his
             live.opened = false;
             live.session = blank(name);
             if (sessions.get(name) === live) sessions.delete(name);
-            live.waiting?.reject(new Error(apiText("requestFailed")));
-            live.waiting = undefined;
             for (const listener of listenersOf(name)) listener({ type: "closed" });
             notify();
             if (!wasOpen) reject(new Error(apiText("requestFailed")));
@@ -383,66 +362,6 @@ export function sendAgentMessage(name: string, message: AgentMessage): boolean {
 }
 
 /**
- * Ask one question on a session and wait for the turn to end, keeping the answer the deltas built.
- *
- * This is what a rewrite, a caption and a text node's body all are: one question on the session the
- * surface already has. Nothing here opens a second connection or a second process.
- */
-async function askAgentSession(name: string, request: { prompt: string; images?: ReferenceImage[] }, options?: { signal?: AbortSignal; onEvent?: (event: AgentEvent) => void }): Promise<string> {
-    const live = sessions.get(name);
-    if (!live || live.socket.readyState !== WebSocket.OPEN) throw new Error(apiText("requestFailed"));
-    // A signal that already fired never calls its listener, so the turn would wait for an answer nobody is
-    // going to stop asking for.
-    if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
-
-    const images = await Promise.all((request.images || []).map((image) => imageToDataUrl(image)));
-    const listener = options?.onEvent;
-    const registry = listener ? listenersOf(name) : undefined;
-    if (listener && registry) registry.add(listener);
-
-    let detach = () => {};
-    try {
-        return await new Promise<string>((resolve, reject) => {
-            const turn: Turn = { answer: "", resolve: () => resolve(turn.answer), reject };
-            live.waiting = turn;
-            const onAbort = () => {
-                if (live.waiting === turn) live.waiting = undefined;
-                cancelAgentSession(name);
-                // A stopped turn is not a failed one: the name is what the callers test, and a
-                // translated sentence here read as an error and marked the node red.
-                reject(new DOMException("Aborted", "AbortError"));
-            };
-            // Detached when the turn ends, so the listener cannot outlive it: an abort that arrives after
-            // the answer would otherwise cancel whatever the agent is doing next.
-            detach = () => options?.signal?.removeEventListener("abort", onAbort);
-            options?.signal?.addEventListener("abort", onAbort, { once: true });
-            if (!sendAgentMessage(name, { prompt: request.prompt, images })) {
-                live.waiting = undefined;
-                reject(new Error(apiText("requestFailed")));
-            }
-        });
-    } finally {
-        detach();
-        if (listener && registry) registry.delete(listener);
-    }
-}
-
-/**
- * Ask one question on a session that exists for that answer alone, and release the agent afterwards.
- *
- * This is what a node panel's agent is: connect starts it, the model is chosen on it, one answer comes
- * back, and it is gone. Asking again means pressing connect again — which is honest, because a second
- * answer would otherwise be a second turn in a conversation nobody asked to continue.
- */
-export async function askOnceAgentSession(name: string, request: { prompt: string; images?: ReferenceImage[] }, options?: { signal?: AbortSignal; onEvent?: (event: AgentEvent) => void }): Promise<string> {
-    try {
-        return await askAgentSession(name, request, options);
-    } finally {
-        endAgentSession(name);
-    }
-}
-
-/**
  * AlayaCore's one cancel argument: stop the task, and leave the words that were queued into it alone so they
  * run as the next prompt (`commands.CancelArgKeepSteering` on the other side). An empty argument — what a
  * cancel carries when nothing says otherwise — drops them with the task, which is why stopping cannot be
@@ -454,8 +373,7 @@ const CANCEL_KEEP_STEERING = "keep_steering";
  * Stop the answer being written. The session keeps its history.
  *
  * `keepSteering` is the choice when the panel has a queue to speak for: the messages typed into the running
- * turn are not lost with it, they become the next question. Without it — and for every caller that has no
- * queue on screen, like a node's one-shot prompt being interrupted — they go with the task, and AlayaCore
+ * turn are not lost with it, they become the next question. Without it they go with the task, and AlayaCore
  * says so in the transcript.
  */
 export function cancelAgentSession(name: string, keepSteering = false): void {
@@ -471,17 +389,6 @@ export function closeAgentSession(name: string): void {
     live.socket.close();
     live.session = blank(name);
     notify();
-}
-
-/** End the session for good: the agent is released, history and all. */
-export function endAgentSession(name: string): void {
-    if (!sendAgentMessage(name, { close: true })) {
-        closeAgentSession(name);
-        return;
-    }
-    // The server closes the socket after releasing. Drop this side shortly after either way, so a dead
-    // session cannot be mistaken for a live one.
-    setTimeout(() => closeAgentSession(name), 1000);
 }
 
 /**

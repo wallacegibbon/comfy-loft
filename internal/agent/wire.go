@@ -1,4 +1,4 @@
-// Package agent drives AlayaCore's rawio frame protocol: one agent process per prompt request.
+// Package agent drives AlayaCore's rawio frame protocol: one frame per line, in both directions.
 //
 // The wire is one frame per line — `[2-byte tag][JSON value]` — as specified in AlayaCore's
 // adapter guide. This file is the codec only; spawn.go owns the process, run.go the request.

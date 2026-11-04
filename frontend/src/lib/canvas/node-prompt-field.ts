@@ -1,20 +1,18 @@
-import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeText } from "@/types/canvas";
+import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata } from "@/types/canvas";
 
 /**
  * A node's words, and the one function that answers each question about them.
  *
- * There are three kinds, and they are not interchangeable: `content` is what the node holds, `prompt` is
+ * There are two kinds, and they are not interchangeable: `content` is what the node holds, and `prompt` is
  * the words it will be asked next — the ones that made it, for a node a run made and nobody has retyped
- * since — and `composerContent` is what you type when it already holds something (so typing cannot throw
- * the result away, #91).
+ * since. A text node has only the first: its card *is* its content, and nothing asks it a question (#278).
  *
- * The canvas used to answer all three with one function and a chain of fallbacks —
+ * The canvas used to answer both with one function and a chain of fallbacks —
  * `composerContent ?? prompt ?? content ?? texts[0]` — which is harmless while every node's content is a
  * file: reading a picture answered with its prompt and nobody minded, because the picture came along in
- * the same answer. A text node's content *is* words, so the same chain answered "what does this node say"
- * with the question that was asked to make it. The agent could read the box and never the card, and it
- * wrote the box when it was asked to change the text — the tools were telling it a different story than
- * the canvas shows (#229).
+ * the same answer. A text node's content is words, so the same chain answered "what does this node say" with
+ * the question that was asked to make it. The agent could read the box and never the card, and it wrote the
+ * box when it was asked to change the text (#229).
  *
  * One question, one function. The panel and the tools ask the same ones, so they cannot disagree about
  * where a node's words live.
@@ -22,9 +20,9 @@ import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata, type Canv
  * `prompt` is a question, not a record of provenance, and the difference is what keeps a hand-edited card
  * honest: editing the words (by hand, or with `set_text`) leaves the question they no longer answer, which
  * is right — it is still what running the node sends. Nothing is left claiming to have made those words,
- * because on a text node there is nothing to claim: a text node has no run behind it, so #227's maker facts
- * are stamped on media only. That is why writing a card needs no scrubbing, while a file entering a node
- * needed all of it (#228).
+ * because on a text node there is nothing to claim: a text node has no run behind it, so #227's maker
+ * facts are stamped on media only. That is why writing a card needs no scrubbing, while a file entering a
+ * node needed all of it (#228).
  */
 
 /** The types whose content is media — a picture, a film, a sound — rather than words. */
@@ -39,27 +37,14 @@ const MEDIA_TYPES: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, Canva
  */
 export function nodeContentOf(node: CanvasNodeData): string {
     if (node.type !== CanvasNodeType.Text) return "";
-    return (primaryTextOf(node)?.content || node.metadata?.content || "").trim();
-}
-
-/**
- * The rest of a text batch: what the card is not showing.
- *
- * A batch is one node holding several texts (the `N 条` button expands them). The card shows the primary
- * one, so a reader that only asked `nodeContentOf` would silently drop the others — the same omission this
- * module exists to end, in miniature.
- */
-export function nodeOtherTextsOf(node: CanvasNodeData): string[] {
-    if (node.type !== CanvasNodeType.Text) return [];
-    const primaryId = primaryTextOf(node)?.id;
-    return (node.metadata?.texts || [])
-        .filter((text) => text.id !== primaryId)
-        .map((text) => (text.content || "").trim())
-        .filter(Boolean);
+    return (node.metadata?.content || "").trim();
 }
 
 /**
  * The words the node will be asked next: what its own panel shows in the box, and what running it sends.
+ *
+ * A text node has no prompt — it is the answer, not a question — so this answers `""` for one, and every
+ * caller that would have written it refuses instead (`set_prompt`, `pressGenerate`).
  *
  * For a node a run made, and nobody has retyped since, these are also the words that made it — and they
  * stop being that the moment a hand edits the content, which is why this is a question and not evidence.
@@ -69,6 +54,7 @@ export function nodeOtherTextsOf(node: CanvasNodeData): string[] {
  * back shorter than what the user typed would eat the space they had just pressed.
  */
 export function nodePromptOf(node: CanvasNodeData): string {
+    if (node.type === CanvasNodeType.Text) return "";
     return node.metadata?.composerContent ?? node.metadata?.prompt ?? "";
 }
 
@@ -103,19 +89,12 @@ export function promptPatch(node: CanvasNodeData, words: string): Partial<Canvas
 /**
  * The words a node holds, for finding it.
  *
- * Generous on purpose — this is a search: it looks in whatever field the node's words may be in, and in a
- * text node's batch. Media nodes contribute no words beyond their title and prompt: their `content` is the
- * picture itself, so searching it made "png" match every image on the canvas.
+ * Generous on purpose — this is a search: it looks in whatever field the node's words may be in. Media
+ * nodes contribute no words beyond their title and prompt: their `content` is the picture itself, so
+ * searching it made "png" match every image on the canvas.
  */
 export function nodeWords(node: CanvasNodeData): string {
     const parts: Array<string | undefined> = [node.title, node.metadata?.composerContent, node.metadata?.prompt];
-    if (node.type === CanvasNodeType.Text) parts.push(node.metadata?.content, ...(node.metadata?.texts || []).map((text) => text.content));
+    if (node.type === CanvasNodeType.Text) parts.push(node.metadata?.content);
     return parts.filter(Boolean).join("\n");
-}
-
-/** The text a card is showing: the primary of a batch, or the node's own single text. */
-function primaryTextOf(node: CanvasNodeData): CanvasNodeText | undefined {
-    const texts = node.metadata?.texts || [];
-    if (!texts.length) return undefined;
-    return texts.find((text) => text.id === (node.metadata?.primaryTextId || texts[0].id)) || texts[0];
 }

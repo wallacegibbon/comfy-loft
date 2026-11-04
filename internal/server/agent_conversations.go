@@ -8,9 +8,9 @@ package server
 //
 // The session name is still the client's. The canvas panel names its session `canvas:<id>` (the one place
 // on the other side of this contract is `canvasAgent` in `frontend/src/services/api/agent.ts`), and that
-// prefix is all this file reads about a name. A name that is not a canvas keeps nothing: a node's panel
-// asks one question at a time and writes the answer into the node, so a conversation file there would
-// carry an earlier question into the next answer and leave one file per node on disk.
+// prefix is all this file reads about a name. A name that is not a canvas keeps nothing: the models editor
+// is a session that lives while its window is open and is asked one command, so a file for it would be a
+// conversation nobody can come back to.
 
 import (
 	"fmt"

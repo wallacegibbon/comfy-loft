@@ -24,9 +24,9 @@ func TestSessionFileIsTheCanvasesOwn(t *testing.T) {
 		t.Fatalf("sessionFile = %q, want the canvas's own %s", path, canvas.AgentSessionName)
 	}
 
-	// A node's panel asks one question at a time: nothing to keep.
-	if file, err := server.sessionFile("node:n1"); err == nil {
-		t.Fatalf("a node's session has a conversation file: %s", file)
+	// A session that is not a canvas has nowhere to keep one, and that is not a failure: it is the answer.
+	if file, err := server.sessionFile("settings"); err == nil {
+		t.Fatalf("a session that is not a canvas has a conversation file: %s", file)
 	}
 	// And a canvas that does not exist has no conversation, rather than a directory made for one.
 	if file, err := server.sessionFile("canvas:0123456789ab"); err == nil {

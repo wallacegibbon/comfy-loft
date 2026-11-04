@@ -10362,3 +10362,56 @@ from 0 as before; a wheel over a paused clip moves the canvas zoom 100% → 112%
 (574.92 kB), `go test ./...`, `make check` (deadcode 506).
 
 **Where** `frontend/src/components/canvas/canvas-node.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
+
+## 278. A text card is words, and nothing asks it anything
+
+**Decision** A text node has one field: `content`. It has no `prompt`, no `composerContent`, no panel and no
+generate button — `generate` is refused on one and so is `set_prompt`, and `set_text` is the only writer. The
+反推提示词 button is gone with everything it needed: `captionStatus`/`captionPrompt`/`captionError`,
+`caption-jobs.ts`, `requestPromptChat` (`services/api/prompts.ts`), `askOnceAgentSession`, `endAgentSession`, and
+the `node:<id>` session name — a text node's own agent had no other caller. The batch machinery went with the
+generation that made it: `texts`, `primaryTextId`, `textCount`, and `TextContent`'s `BatchFrame` /
+`ExpandedTextCard` / `TextSlotStatus`. `CanvasGenerationMode` lost `"text"`, so the compiler had to visit every
+place that had assumed four kinds.
+
+**Why** A text node's prompt was read by exactly one thing: the node's own agent, which answered it and wrote the
+card. Nothing else — a connection carries `content` (`resourceText`, `resourceKind` and `builtinResource` all go
+through `nodeContentOf`), the server never reads the field, and no run ever carried it. So the field existed to
+feed a process whose whole job was to fill the card, and the canvas agent does that directly: `read_node` hands
+it a picture, `set_text` writes words, `create_node` makes a card that already says them. Measured on the user's
+own canvas first: its one text node held `content` and no `prompt` at all — the one-off agent had never been
+used there.
+
+反推 was the last caller, and it was the thing #257 deleted everywhere else: a sentence written inside the canvas
+(`用一段话描述这张图片…`, hardcoded Chinese, no skill, no test) whose answer went into `prompt` — a field nothing
+downstream reads — so the real flow was 反推 → press ↑ → the same model asked to repeat that sentence → the card.
+Two round trips to say one thing, from a button that made a node to hold a question nothing else wanted.
+
+**Why not keep 反推 as a tool** A tool would have to carry the same sentence, and there is nowhere honest to put
+it: the canvas has no place for prompt wording that is not a skill (#76, #257), and a tool description is read by
+the model before it acts rather than being the thing it acts on.
+
+**Cost** Turning a picture into words is now a conversation with the canvas agent instead of one click, and it
+needs a model that declares image input — `read_node` hands the bytes over either way, but whether a model can
+read them is AlayaCore's judgement, not this server's. The per-node model picker for writing a card goes with the
+panel: the canvas agent's model is the one that writes now. A canvas saved before this change may hold a text
+node whose `prompt` had words in it; that field is no longer read, and folding it into `content` would be
+inventing an answer to a question nobody can see.
+
+**Tested** In the browser on an isolated copy (`/tmp/verify`, port 8191) of the user's canvas: a click on the
+text card opens no panel (0 `[data-node-panel]` elements; before the change it opened one with a prompt box and a
+连接 button), a double-click still opens the card's editor with the words in it, an image node's panel is
+unchanged (model picker, 1:1, Generate, sent-prompt disclosure — and no 反推 and no agent picker), and the
+hover toolbar lists info/remove/download/copy prompt/mask/crop/split/upscale/super-resolve/angle/view/configure
+with no 反推, as does the quick-tools window. `npx vitest run` (378 in 39 files — `api-prompts.test.ts` went with
+its subject, the rest rewritten for the new answers), `npm run check` (862 zh keys, 829 en, 25 dead keys removed
+from each, 186 modules), `npm run build` 558.77 kB, `make check` (deadcode 506), `go test ./...`.
+
+**Where** `frontend/src/types/canvas.ts`, `frontend/src/lib/canvas/node-prompt-field.ts`,
+`frontend/src/lib/canvas/canvas-agent-tools.ts`, `frontend/src/components/canvas/canvas-node.tsx`,
+`frontend/src/components/canvas/canvas-node-prompt-panel.tsx`,
+`frontend/src/components/canvas/{canvas-node-hover-toolbar,canvas-image-toolbar-tools}.tsx`,
+`frontend/src/components/canvas/panels/{node-controls,node-controls-props}.tsx`,
+`frontend/src/pages/canvas/project.tsx`, `frontend/src/pages/canvas/hooks/use-generation-runs.ts`,
+`frontend/src/services/api/agent.ts`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
+`internal/server/{routes_mcp.go,agent_instructions.go}`, `docs/server.md`.

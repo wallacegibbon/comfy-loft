@@ -5,7 +5,6 @@ import type { CanvasGenerationMode } from "@/types/canvas";
 import { AudioControls } from "./audio-controls";
 import { ImageControls } from "./image-controls";
 import type { NodeControlsProps } from "./node-controls-props";
-import { TextControls } from "./text-controls";
 import { VideoControls } from "./video-controls";
 
 /**
@@ -13,7 +12,8 @@ import { VideoControls } from "./video-controls";
  *
  * The panel used to hold this as a chain of `mode === … ? … : …` arms in the middle of its own JSX, which put
  * four different clusters of pickers in one function and left every kind's facts (the placeholder, whether the
- * button generates or connects an agent) as ternaries beside them. This is the same move the card itself
+ * button generates or connects an agent) as ternaries beside them. There are three kinds now: a text card holds
+ * words and generates nothing, so it has no controls and no panel (#278). This is the same move the card itself
  * already made for its content (`nodeContentRenderers`): a static table, read at render, one component per
  * kind.
  *
@@ -25,5 +25,4 @@ export const NODE_CONTROLS: Record<CanvasGenerationMode, ComponentType<NodeContr
     image: ImageControls,
     video: VideoControls,
     audio: AudioControls,
-    text: TextControls,
 };

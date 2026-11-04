@@ -1,13 +1,10 @@
 import { useCallback, useRef } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
-import { nanoid } from "nanoid";
 
 import { toast } from "@/components/kit/toast";
 import { requestAudioGeneration } from "@/services/api/audio";
 import { requestEdit, requestGeneration } from "@/services/api/image";
-import { nodeAgent } from "@/services/api/agent";
-import { requestPromptChat } from "@/services/api/prompts";
 import { waitForRun, type Run, type RunProgress, type RunRequest } from "@/services/api/runs";
 import type { GenerateStart } from "@/lib/canvas/agent-generate";
 import { generatedAudio, generatedImage } from "@/lib/canvas/generated-media";
@@ -20,7 +17,7 @@ import { audioMetadata, buildAudioGenerationMetadata, buildImageGenerationMetada
 import { buildGenerationConfig, failedWatch, generationReferenceUrls, isGenerationCanceled } from "@/lib/canvas/canvas-generation-helpers";
 import { videoRunMetadata } from "@/lib/canvas/video-run-metadata";
 import { NODE_STATUS_ERROR, NODE_STATUS_LOADING, NODE_STATUS_SUCCESS } from "@/lib/canvas/canvas-node-status";
-import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeText } from "@/types/canvas";
+import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 import type { NodeGenerationContext } from "@/components/canvas/canvas-node-generation";
 import type { ReferenceImage } from "@/types/image";
@@ -363,123 +360,6 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
         [finishGenerationRequest, setNodes, setRunStepProgress, startGenerationRequest],
     );
 
-    const runTextGeneration = useCallback(
-        async (run: GenerationRun) => {
-            const { nodeId, prompt, effectivePrompt, generationConfig, generationContext, runController } = run;
-            // One prompt, one answer: a connected agent answers exactly one question, so a batch of texts
-            // is no longer a thing (the count control went with the old text settings).
-            const textIds = [nanoid()];
-            // Asked from a text node, the answer belongs to that node: generating again rewrites it rather
-            // than dropping a second one beside it.
-            setNodes((prev) =>
-                prev.map((node) =>
-                    node.id === nodeId
-                        ? {
-                              ...node,
-                              title: prompt.slice(0, 32) || "Generated Text",
-                              metadata: {
-                                  ...node.metadata,
-                                  prompt,
-                                  status: NODE_STATUS_LOADING,
-                                  fontSize: 14,
-                                  model: generationConfig.model,
-                                  textCount: 1,
-                                  texts: textIds.map((id) => ({ id, status: NODE_STATUS_LOADING, content: "" })),
-                                  primaryTextId: textIds[0],
-                              },
-                          }
-                        : node,
-                ),
-            );
-            setSelectedNodeIds(new Set([nodeId]));
-            setSelectedConnectionId(null);
-            setDialogNodeId(nodeId);
-
-            const controller = startGenerationRequest(nodeId, nodeId, nodeId, runController);
-            // What actually went out goes on the node the user pressed, because that is the node whose
-            // prompt the panel shows: the composition happened to *that* draft, not to the answer's.
-            setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, sentPrompt: effectivePrompt } } : node)));
-            const results = await Promise.all(
-                textIds.map(async (textId): Promise<CanvasNodeText | null> => {
-                    try {
-                        // The agent answers as it goes, so the node fills in while it talks.
-                        const content = await requestPromptChat(
-                            nodeAgent(nodeId),
-                            generationConfig,
-                            { prompt: effectivePrompt, images: generationContext.referenceImages },
-                            {
-                                signal: controller.signal,
-                                onDelta: (text) =>
-                                    setNodes((prev) =>
-                                        prev.map((node) =>
-                                            node.id === nodeId
-                                                ? {
-                                                      ...node,
-                                                      metadata: {
-                                                          ...node.metadata,
-                                                          ...(node.metadata?.primaryTextId === textId ? { content: text } : {}),
-                                                          texts: node.metadata?.texts?.map((item) => (item.id === textId ? { ...item, content: text } : item)),
-                                                      },
-                                                  }
-                                                : node,
-                                        ),
-                                    ),
-                            },
-                        );
-                        setNodes((prev) =>
-                            prev.map((node) =>
-                                node.id === nodeId
-                                    ? {
-                                          ...node,
-                                          metadata: {
-                                              ...node.metadata,
-                                              ...(node.metadata?.primaryTextId === textId ? { content } : {}),
-                                              texts: node.metadata?.texts?.map((item) => (item.id === textId ? { ...item, content, status: NODE_STATUS_SUCCESS } : item)),
-                                          },
-                                      }
-                                    : node,
-                            ),
-                        );
-                        return { id: textId, status: NODE_STATUS_SUCCESS, content } satisfies CanvasNodeText;
-                    } catch (error) {
-                        if (isGenerationCanceled(error)) return null;
-                        const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
-                        setNodes((prev) =>
-                            prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, texts: node.metadata?.texts?.map((item) => (item.id === textId ? { ...item, status: NODE_STATUS_ERROR, errorDetails } : item)) } } : node)),
-                        );
-                        return { id: textId, status: NODE_STATUS_ERROR, content: "", errorDetails } satisfies CanvasNodeText;
-                    }
-                }),
-            );
-
-            if (controller.signal.aborted) return;
-            const completedTexts = results.flatMap((item) => (item?.status === NODE_STATUS_SUCCESS ? [item] : []));
-            const failedTexts = results.filter((item) => item?.status === NODE_STATUS_ERROR);
-            const firstText = completedTexts[0];
-            if (failedTexts.length) toast.error(firstText ? t("canvas.runtime.partialTextFailed") : failedTexts[0]?.errorDetails || t("canvas.runtime.generationFailed"));
-            setNodes((prev) =>
-                prev.map((node) => {
-                    if (node.id === nodeId) {
-                        const primaryText = completedTexts.find((text) => text.id === node.metadata?.primaryTextId) || firstText;
-                        return {
-                            ...node,
-                            metadata: {
-                                ...node.metadata,
-                                content: primaryText?.content || "",
-                                texts: completedTexts,
-                                primaryTextId: primaryText?.id,
-                                status: primaryText ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR,
-                                errorDetails: primaryText ? undefined : t("canvas.runtime.generationFailed"),
-                            },
-                        };
-                    }
-                    return node;
-                }),
-            );
-        },
-        [finishGenerationRequest, startGenerationRequest, t],
-    );
-
     /**
      * Resume the run an audio node was waiting on when the page went away.
      *
@@ -594,5 +474,5 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
         [effectiveConfig, fillImage, finishGenerationRequest, isAiConfigReady, openPreferences, setNodes, setRunStepProgress, setRunningNodeId, startGenerationRequest, t],
     );
 
-    return { runImageGeneration, runVideoGeneration, runAudioGeneration, runTextGeneration, pollAudioRun, pollImageRun };
+    return { runImageGeneration, runVideoGeneration, runAudioGeneration, pollAudioRun, pollImageRun };
 }

@@ -1,16 +1,19 @@
 import { describe, expect, test } from "vitest";
 
-import { nodeContentOf, nodeOtherTextsOf, nodePromptOf, nodeWords, promptPatch } from "../src/lib/canvas/node-prompt-field";
+import { nodeContentOf, nodePromptOf, nodeWords, promptPatch } from "../src/lib/canvas/node-prompt-field";
 import type { CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
 
 /**
- * A node's words: what it holds, what made it, and where an instruction goes.
+ * A node's words: what it holds, and where an instruction goes.
  *
- * The three used to be one function with a chain of fallbacks (`composerContent ?? prompt ?? content ??
+ * These used to be one function with a chain of fallbacks (`composerContent ?? prompt ?? content ??
  * texts[0]`), which answered "what does this node say" with the question that was asked to make it. On a
- * picture that is invisible — the picture travels in the same answer — and on a text node it is the whole
+ * picture that is invisible — the picture travels in the same answer — and on a text node it was the whole
  * problem: the agent could read the prompt box and never the card, so that is what it wrote when it was
  * asked to change the text (#229).
+ *
+ * A text node has since lost the question altogether (#278): it holds words and nothing asks it anything,
+ * so it answers `""` for a prompt and every writer of one refuses it.
  */
 
 function node(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData {
@@ -21,31 +24,16 @@ const card = "宫崎骏风格的森林。";
 const question = "宫崎骏风格的森林场景，无文字，无字幕，无对话气泡";
 
 describe("what a node holds", () => {
-    test("a text node's content is the card, and its prompt is the question that was asked", () => {
-        const text = node("text", { content: card, composerContent: question, prompt: question });
+    test("a text node's content is its card, and it is all it has", () => {
+        const text = node("text", { content: card });
         expect(nodeContentOf(text)).toBe(card);
-        expect(nodePromptOf(text)).toBe(question);
-    });
-
-    test("a batch says the one its card shows, and the rest are still there to read", () => {
-        const text = node("text", {
-            content: "second",
-            primaryTextId: "t2",
-            texts: [
-                { id: "t1", status: "success", content: "first" },
-                { id: "t2", status: "success", content: "second" },
-                { id: "t3", status: "success", content: "   " },
-            ],
-        });
-        expect(nodeContentOf(text)).toBe("second");
-        expect(nodeOtherTextsOf(text)).toEqual(["first"]);
+        expect(nodePromptOf(text)).toBe("");
     });
 
     test("a picture, a film or a sound holds no words at all", () => {
         for (const type of ["image", "video", "audio"] as const) {
             const media = node(type, { content: "/api/canvases/c/files/a.png", prompt: "a brass compass" });
             expect(nodeContentOf(media)).toBe("");
-            expect(nodeOtherTextsOf(media)).toEqual([]);
             expect(nodePromptOf(media)).toBe("a brass compass");
         }
     });
@@ -84,26 +72,12 @@ describe("whether a node holds a result", () => {
     });
 });
 
-describe("where an instruction goes", () => {
-    test("into composerContent once the node holds something, so typing cannot throw it away", () => {
-        for (const type of ["text", "image", "video", "audio"] as const) {
-            expect(promptPatch(node(type, { content: "holds" }), "words")).toEqual({ composerContent: "words" });
-        }
-    });
-
-    test("into prompt while the node holds nothing, ready to be run", () => {
-        for (const type of ["text", "image", "video", "audio"] as const) {
-            expect(promptPatch(node(type), "words")).toEqual({ prompt: "words" });
-        }
-    });
-});
-
 describe("finding a node by its words", () => {
-    test("the card's words are searchable, not only the question", () => {
-        const text = node("text", { content: card, composerContent: question });
+    test("the card's words are searchable, and so is a picture's question", () => {
+        const text = node("text", { content: card });
         expect(nodeWords(text)).toContain(card);
-        expect(nodeWords(text)).toContain(question);
         expect(nodeWords(text)).toContain("text-1");
+        expect(nodeWords(node("image", { prompt: question }))).toContain(question);
     });
 
     test("a picture contributes its prompt and not its file name", () => {
