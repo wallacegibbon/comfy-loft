@@ -229,17 +229,24 @@ func Truncate(value string, max int) string {
 // WriteFileAtomic writes to a temporary file and renames it, so readers never
 // observe a half-written document.
 func WriteFileAtomic(file string, data []byte) error {
+	return WriteFileAtomicMode(file, data, 0o644)
+}
+
+// WriteFileAtomicMode is WriteFileAtomic with the mode stated, for the one file here whose contents are a
+// credential: a speech profile's key must not be readable by a second account, while a task index or a
+// preference file that only its owner can read is a workspace somebody cannot copy.
+//
+// The mode is set on the temporary file and the rename keeps it — a rename would otherwise publish whatever the
+// umask chose, so the chmod is not a belt-and-braces but the only place the mode is decided.
+func WriteFileAtomicMode(file string, data []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		return err
 	}
 	tmp := fmt.Sprintf("%s.%d.tmp", file, time.Now().UnixNano())
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := os.WriteFile(tmp, data, mode); err != nil {
 		return err
 	}
-	// The mode os.WriteFile asked for is filtered by the umask; a task index or a preference file that only
-	// its owner can read is a workspace somebody cannot copy. Written explicitly, for the same reason the
-	// canvas files are.
-	if err := os.Chmod(tmp, 0o644); err != nil {
+	if err := os.Chmod(tmp, mode); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}

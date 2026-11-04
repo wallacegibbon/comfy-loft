@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"comfyloft/internal/httpx"
+	"comfyloft/internal/store"
 )
 
 /**
- * What was said, as words, from the speech server the user configured.
+ * What was said, as words, from the speech server the user configured; and the list of those servers.
  *
- * The panel records a WAV in the browser and posts it here; this forwards it, unchanged, to the
- * OpenAI-compatible `/v1/audio/transcriptions` address the page named, and answers with its `text`.
+ * The panel records a WAV in the browser and posts it here; this forwards it, unchanged, to the active
+ * profile's OpenAI-compatible `/v1/audio/transcriptions` and answers with its `text`.
  *
  * **Why a route at all.** That address answers no CORS headers — an `OPTIONS` on it is a 404 and a `POST`
  * comes back without `Access-Control-Allow-Origin` — so a page on this origin can send the request and then
@@ -25,22 +26,22 @@ import (
  * other: a phone opening the canvas over the LAN would be asking itself for a speech server. The server is
  * the one process that can reach it, so it carries the one file.
  *
- * **Why the address travels with the request** instead of being read out of `data/settings.json`. The
- * preferences document is the canvas's and the server deliberately understands no key in it
- * (internal/settings); a route that parsed it would be the first exception, and it would have to parse it
- * again on every request. The page already knows the address, and passes it the way it passes the audio.
+ * **Why the address no longer travels with the request.** #239 sent it in the form because the preferences
+ * document was the only place a speech server existed, and the server deliberately understands no key in that
+ * document. The list lives here now (`GET/PUT /api/speech/profiles`, `store.SpeechProfiles`), so the address,
+ * the model name and the credential are one entry in one file that only this process reads — and the request
+ * carries the recording and nothing else about where it goes (#252).
  *
- * **What is not here.** No model is named, no language is guessed, no audio is inspected: the fields the
- * page sends are the fields the speech server gets, and whatever it says — including why it refused — is
- * what the user reads. This route's whole job is the hop (docs/decisions.md #239).
+ * **What is not here.** No audio is inspected and no language is guessed: `language` is the panel's hint and
+ * it travels as given, and whatever the speech server says — including why it refused — is what the user
+ * reads. This route's whole job is the hop.
  *
  * **What follows from the protocol being somebody else's.** `POST /v1/audio/transcriptions` is OpenAI's
  * shape, copied by every OpenAI-compatible server, and it fixes `required: [file, model]` while saying
- * nothing about which model, at which address, or with which credential — those are facts about the server
- * at the other end. The page carries the first two, because it is where they are chosen; the credential is
- * the one thing it never touches: it is stored on this server (`GET/PUT /api/speech/key`, mode 0600) and
- * added here as `Authorization: Bearer`, because that is the protocol's only security scheme and a field the
- * server does not know is an error (#246).
+ * nothing about which model, at which address, or with which credential — those are facts about the server at
+ * the other end, which is why they are a profile and not a constant (#246). `Authorization: Bearer` is the
+ * protocol's only security scheme; OpenAI refuses a form field it does not know (`additionalProperties:
+ * false`), so the key cannot travel in the body either.
  */
 
 const (
@@ -51,63 +52,118 @@ const (
 	speechAnswerBytes = 1 << 20
 )
 
-// routesSpeech registers speech-to-text and the credential it may need.
+// routesSpeech registers speech-to-text and the list of servers it can be sent to.
 func (s *Server) routesSpeech(mux *http.ServeMux) {
 	s.route(mux, "POST /api/speech/transcriptions", s.handleSpeechTranscribe)
-	s.route(mux, "GET /api/speech/key", s.handleSpeechKeyStatus)
-	s.route(mux, "PUT /api/speech/key", s.handleSpeechKeySave)
+	s.route(mux, "GET /api/speech/profiles", s.handleSpeechProfiles)
+	s.route(mux, "PUT /api/speech/profiles", s.handleSpeechProfilesSave)
 }
 
-// handleSpeechKeyStatus implements GET /api/speech/key: whether a credential is stored, and nothing else.
+// handleSpeechProfiles implements GET /api/speech/profiles: the list, and which entry is active.
 //
-// The key itself never comes back over HTTP. The page needs to know whether to say "a key is stored" and
-// whether to offer the field at all; the request that uses it is made by this server, so the page never has
-// to hold it (#246).
-func (s *Server) handleSpeechKeyStatus(ctx *httpx.Ctx) error {
-	okJSON(ctx.W, map[string]any{"stored": s.speechKey.Stored()})
+// No key is in the answer. A page needs to know whether one is stored — to say so, and to offer to replace or
+// clear it — and the request that uses it is made by this server, so the page never has to hold it (#246).
+func (s *Server) handleSpeechProfiles(ctx *httpx.Ctx) error {
+	okJSON(ctx.W, s.speechProfilesAnswer())
 	return nil
 }
 
-// handleSpeechKeySave implements PUT /api/speech/key with `{key: "…"}`. A blank key removes the stored one.
-func (s *Server) handleSpeechKeySave(ctx *httpx.Ctx) error {
+// handleSpeechProfilesSave implements PUT /api/speech/profiles with `{profiles: [...], active: <id>}`.
+//
+// The whole list, in the page's order, with one entry added, changed or removed: the list is the file, so an
+// entry that is missing is a profile that was deleted. A key travels only when the page has one to give — a
+// new profile, or one whose key the user has just retyped — and `""` removes the stored one.
+func (s *Server) handleSpeechProfilesSave(ctx *httpx.Ctx) error {
 	body, err := bodyOrEmpty(ctx)
 	if err != nil {
 		return err
 	}
-	raw, present := body["key"]
+	raw, present := body["profiles"]
 	if !present || raw == nil {
-		return httpx.BadRequest("speech_key_missing", "the request has no key")
+		return httpx.BadRequest("speech_profiles_missing", "the request has no profiles")
 	}
-	key, isString := raw.(string)
-	if !isString {
-		return httpx.BadRequest("speech_key_invalid", "the key must be a string")
+	entries, isList := raw.([]any)
+	if !isList {
+		return httpx.BadRequest("speech_profiles_invalid", "profiles must be a list")
 	}
-	if err := s.speechKey.Set(key); err != nil {
+	inputs := make([]store.SpeechProfileInput, 0, len(entries))
+	seen := make(map[int]bool, len(entries))
+	for _, entry := range entries {
+		object, isObject := entry.(map[string]any)
+		if !isObject {
+			return httpx.BadRequest("speech_profiles_invalid", "every profile must be an object")
+		}
+		input := store.SpeechProfileInput{Name: httpx.String(object, "name"), URL: httpx.String(object, "url"), Model: httpx.String(object, "model")}
+		if raw, present := object["id"]; present && raw != nil {
+			id, ok := wholeNumber(raw)
+			if !ok || id < 1 {
+				return httpx.BadRequest("speech_profile_id_invalid", "a profile id must be a whole number")
+			}
+			if seen[id] {
+				return httpx.BadRequest("speech_profile_id_invalid", "two profiles cannot share an id")
+			}
+			seen[id] = true
+			input.ID = id
+		}
+		endpoint, err := speechEndpoint(input.URL)
+		if err != nil {
+			return err
+		}
+		input.URL = endpoint
+		if raw, present := object["key"]; present && raw != nil {
+			key, isString := raw.(string)
+			if !isString {
+				return httpx.BadRequest("speech_key_invalid", "the key must be a string")
+			}
+			input.Key = &key
+		}
+		inputs = append(inputs, input)
+	}
+	active := 0
+	if raw, present := body["active"]; present && raw != nil {
+		id, ok := wholeNumber(raw)
+		if !ok {
+			return httpx.BadRequest("speech_profile_id_invalid", "the active profile must be a whole number")
+		}
+		active = id
+	}
+	if err := s.speechProfiles.Replace(inputs, active); err != nil {
 		return err
 	}
-	okJSON(ctx.W, map[string]any{"stored": s.speechKey.Stored()})
+	okJSON(ctx.W, s.speechProfilesAnswer())
 	return nil
+}
+
+// speechProfilesAnswer is what both profile routes say: the list, and which entry is active.
+func (s *Server) speechProfilesAnswer() map[string]any {
+	profiles, active := s.speechProfiles.List()
+	return map[string]any{"profiles": profiles, "active": active}
 }
 
 // handleSpeechTranscribe implements POST /api/speech/transcriptions.
 //
-// The body is multipart: `url` (where the speech server listens), `key` (the credential, if that server wants
-// one), `file` (the WAV), and any further text fields (`model`, `language`) which are forwarded as sent.
+// The body is multipart: `file` (the WAV) and `language`, a hint about the sound. The address, the model name
+// and the credential come from the active profile — nothing in this request can name a different server, which
+// is what keeps a recording from being posted somewhere the user did not choose.
 func (s *Server) handleSpeechTranscribe(ctx *httpx.Ctx) error {
 	form, err := ctx.Form()
 	if err != nil {
-		return err
-	}
-	endpoint := strings.TrimSpace(firstValue(form.Values, "url"))
-	if err := checkSpeechEndpoint(endpoint); err != nil {
 		return err
 	}
 	files := ctx.Files()
 	if len(files) == 0 || len(files[0].Bytes) == 0 {
 		return httpx.BadRequest("speech_no_audio", "the request carries no audio")
 	}
+	profile, configured := s.speechProfiles.Active()
+	if !configured {
+		return httpx.BadRequest("speech_profile_missing", "no speech server is configured: add one in the preferences")
+	}
+	endpoint, err := speechEndpoint(profile.URL)
+	if err != nil {
+		return err
+	}
 
-	body, contentType, err := speechUpload(files[0].Bytes, form.Values)
+	body, contentType, err := speechUpload(files[0].Bytes, profile.Model, firstValue(form.Values, "language"))
 	if err != nil {
 		return httpx.NewError(http.StatusInternalServerError, "speech_request_failed", "could not build the speech request: "+err.Error())
 	}
@@ -116,20 +172,18 @@ func (s *Server) handleSpeechTranscribe(ctx *httpx.Ctx) error {
 		return httpx.BadRequest("speech_address_invalid", "the speech address is not a usable URL")
 	}
 	request.Header.Set("Content-Type", contentType)
-	// The credential is the server's, not the page's: the protocol's only security scheme is
-	// `Authorization: Bearer`, and OpenAI refuses a form field it does not know (`additionalProperties:
-	// false`), so the key cannot travel in the body either. A server that checks nothing — the audio.cpp
-	// build this was measured against — answers a request carrying a bogus Bearer with a 200, so sending
-	// one it never asked for costs nothing.
-	if key := s.speechKey.Get(); key != "" {
-		request.Header.Set("Authorization", "Bearer "+key)
+	// The credential is the profile's, not the page's. A server that checks nothing — the audio.cpp build this
+	// was measured against answers a request carrying a bogus Bearer with a 200 — so sending one it never asked
+	// for costs nothing, and a key is only ever stored because the user typed one.
+	if profile.Key != "" {
+		request.Header.Set("Authorization", "Bearer "+profile.Key)
 	}
 
 	client := &http.Client{Timeout: speechTimeout}
 	response, err := client.Do(request)
 	if err != nil {
-		// The address is the user's, so the failure to reach it is said with the address in it: a typo in
-		// a port and a server that is not running are the same error otherwise.
+		// The address is the user's, so the failure to reach it is said with the address in it: a typo in a port
+		// and a server that is not running are the same error otherwise.
 		return httpx.NewError(http.StatusBadGateway, "speech_unreachable", "could not reach the speech server at "+endpoint+": "+err.Error())
 	}
 	defer response.Body.Close()
@@ -163,39 +217,42 @@ func (s *Server) handleSpeechTranscribe(ctx *httpx.Ctx) error {
 	return nil
 }
 
-// checkSpeechEndpoint refuses anything that is not a plain http(s) address, so a typo is a 400 with a
-// sentence rather than a dial error from deep inside the client.
-func checkSpeechEndpoint(endpoint string) error {
+// speechEndpoint validates a profile's address and returns it trimmed, so a typo is a 400 with a sentence
+// rather than a dial error from deep inside the client.
+func speechEndpoint(raw string) (string, error) {
+	endpoint := strings.TrimSpace(raw)
 	if endpoint == "" {
-		return httpx.BadRequest("speech_address_missing", "the request names no speech address")
+		return "", httpx.BadRequest("speech_address_missing", "every speech profile needs an address")
 	}
 	parsed, err := url.Parse(endpoint)
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return httpx.BadRequest("speech_address_invalid", "the speech address must be an http or https URL")
+		return "", httpx.BadRequest("speech_address_invalid", "the speech address must be an http or https URL")
 	}
-	return nil
+	return endpoint, nil
 }
 
-// speechUpload rebuilds the multipart body the speech server expects: every text field the page sent,
-// then the audio as `file`.
+// speechUpload rebuilds the multipart body the speech server expects: the model the profile names, the
+// language the page heard, then the audio as `file`.
 //
-// The file is named and typed as a WAV because that is what it is — the browser encoded it (the speech
-// server only accepts real WAV, which is why the panel writes the header itself). Rebuilding rather than
-// forwarding the parsed request keeps the outgoing body to the fields that mean something: `url` is this
-// server's business and stops here, and `key` is a credential this server holds — a body field by that name
-// is not the speech server's to read. Nothing else is dropped, because the model name and the language are
-// the speech server's to read.
-func speechUpload(audio []byte, values map[string][]string) ([]byte, string, error) {
+// Built here rather than forwarded, and from two named parts rather than from everything the page sent: a
+// request that forwarded its own fields would let a page name a model — or a `key` — that is not in the profile
+// it chose, which is exactly the indirection the list exists to remove.
+//
+// The file is named and typed as a WAV because that is what it is — the browser encoded it (the speech server
+// only accepts real WAV, which is why the panel writes the header itself).
+func speechUpload(audio []byte, model, language string) ([]byte, string, error) {
 	var buffer bytes.Buffer
 	writer := multipart.NewWriter(&buffer)
-	for name, entries := range values {
-		if name == "url" || name == "key" {
-			continue
+	// A model the profile leaves blank is no field at all: the protocol requires one, and the server that wants
+	// it says so in its own words, where a name this build invented would come back as an unknown model id.
+	if model != "" {
+		if err := writer.WriteField("model", model); err != nil {
+			return nil, "", err
 		}
-		for _, entry := range entries {
-			if err := writer.WriteField(name, entry); err != nil {
-				return nil, "", err
-			}
+	}
+	if language != "" {
+		if err := writer.WriteField("language", language); err != nil {
+			return nil, "", err
 		}
 	}
 	part, err := writer.CreateFormFile("file", "speech.wav")
@@ -217,4 +274,13 @@ func firstValue(values map[string][]string, name string) string {
 		return entries[0]
 	}
 	return ""
+}
+
+// wholeNumber reads a JSON number that is an integer, which is what an id is.
+func wholeNumber(value any) (int, bool) {
+	number, ok := value.(float64)
+	if !ok || number != float64(int(number)) || number > float64(1<<31) || number < -(1<<31) {
+		return 0, false
+	}
+	return int(number), true
 }

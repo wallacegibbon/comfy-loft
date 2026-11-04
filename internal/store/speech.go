@@ -9,111 +9,249 @@ import (
 	"sync"
 
 	"comfyloft/internal/logx"
+	"comfyloft/internal/util"
 )
 
 /**
- * The credential the configured speech server wants, if it wants one.
+ * The speech servers the user configured, which of them dictation uses, and the credential each one wants.
  *
- * **Why not the preferences document.** `data/settings.json` is read by every browser that loads the page —
- * `GET /config.js` carries the whole document so the first paint can be themed — and, when the operator names
- * `RUNTIME_CONFIG_PATH`, it is written out as a file for a static host with no server in the request path. A
- * credential in it would be handed to every client that can reach the server and published to whatever host
- * serves that file. So the key lives in a file of its own, mode 0600, and the page only ever learns whether
- * one is stored (`GET /api/speech/key`). That is the same rule the agent's model keys already follow: the
- * server holds them and never sends them out (`config.preferences.apiKeyStored`).
+ * **Why this is the server's file and not a preference.** Speech-to-text is an OpenAI-compatible
+ * `POST /v1/audio/transcriptions` on somebody else's machine — an audio.cpp server on this one, or a paid
+ * provider — so a profile is a fact about a server, and its key is part of it. The preferences document
+ * (`data/settings.json`) is served whole by `GET /config.js` to every browser that loads the canvas (#220) and
+ * is written out as a file for a static host when the operator names `RUNTIME_CONFIG_PATH`, so a credential in
+ * it would be a credential for every client and a published one for the internet. That is the rule the agent's
+ * models already follow: the server holds the list, the page is shown `hasKey` and never the key (#246, #249).
  *
- * The key is one value, not a keyring: this build talks to one speech server (#239), and a second provider
- * would be a second file, not a second field here.
+ * **Why a list and not one server.** One address, one model name and one key is a description of one machine
+ * (#239, #246) — and a workspace is used from a laptop at a desk with a local gguf on the CPU and from a
+ * laptop in a café with a hosted whisper. The list makes both exist at once and one of them active; the
+ * recording never changes shape, because whatever `Active` answers is what the request is sent to.
+ *
+ * **The list is the file.** A page sends back the whole list it is looking at, in its order, with one entry
+ * added, changed or removed; an entry that is missing is a profile that was deleted. That is one write, one
+ * atomic rename and one answer, and it leaves no room for a half-applied edit — the same rule `model_sync`
+ * takes for the agent's models.
+ *
+ * **The key travels with its entry.** A page is never shown one, so an entry that arrives without a `key`
+ * field says nothing about the stored one and keeps it; `""` removes it. `Set`-by-id was not needed: the list
+ * *is* the state, so an id that is not in it is a key that is not stored.
  */
-type SpeechKey struct {
+type SpeechProfile struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	URL   string `json:"url"`
+	Model string `json:"model"`
+	Key   string `json:"key,omitempty"`
+}
+
+// SpeechProfileView is one profile as a page may see it: everything but the key, which a page only ever
+// learns the presence of.
+type SpeechProfileView struct {
+	ID     int    `json:"id"`
+	Name   string `json:"name"`
+	URL    string `json:"url"`
+	Model  string `json:"model"`
+	HasKey bool   `json:"hasKey"`
+}
+
+// SpeechProfileInput is one profile as a page sent it back: no id for a new one, and no key unless there is one
+// to give. A nil Key keeps the stored one; `""` removes it.
+type SpeechProfileInput struct {
+	ID    int
+	Name  string
+	URL   string
+	Model string
+	Key   *string
+}
+
+// SpeechProfiles is the list, which entry is active, and the file it lives in.
+type SpeechProfiles struct {
 	file   string
 	logger *logx.Logger
 	mu     sync.RWMutex
-	key    string
+	// profiles is in the user's order, which is the order the page shows and sends back.
+	profiles []SpeechProfile
+	// activeID is the profile dictation uses. It is never 0 while a profile exists: a list with nothing active
+	// is a list where the microphone fails for a reason nothing on screen explains.
+	activeID int
+	// nextID numbers the profiles a page adds, so an id is stable for as long as the entry exists.
+	nextID int
 }
 
-// NewSpeechKey builds the store for <dataDir>/speech-key.json.
-func NewSpeechKey(dataDir string, logger *logx.Logger) *SpeechKey {
-	return &SpeechKey{file: filepath.Join(dataDir, "speech-key.json"), logger: logger}
+// NewSpeechProfiles builds the store for <dataDir>/speech.json.
+func NewSpeechProfiles(dataDir string, logger *logx.Logger) *SpeechProfiles {
+	return &SpeechProfiles{file: filepath.Join(dataDir, "speech.json"), logger: logger, nextID: 1}
 }
 
-// Load reads the stored key. A missing file is the ordinary case — no key — and says nothing.
-func (s *SpeechKey) Load() {
+// SpeechProfileUnknownError reports a list that names a profile this store does not have, which is a page and a
+// server disagreeing rather than a typo: refusing it is better than inventing an entry.
+type SpeechProfileUnknownError struct{ ID int }
+
+// Error implements the error interface.
+func (e *SpeechProfileUnknownError) Error() string {
+	return fmt.Sprintf("there is no speech profile %d", e.ID)
+}
+
+// Code returns the documented error code for the HTTP layer.
+func (e *SpeechProfileUnknownError) Code() string { return "speech_profile_unknown" }
+
+// Load reads the list. A missing file is the ordinary case — nothing configured — and says nothing.
+func (s *SpeechProfiles) Load() {
+	s.warnAboutTheOldKeyFile()
 	data, err := os.ReadFile(s.file)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			s.logger.Warn("failed to read the speech key: %s", err)
+			s.logger.Warn("failed to read the speech profiles: %s", err)
 		}
 		return
 	}
 	var document struct {
-		Key string `json:"key"`
+		Profiles []SpeechProfile `json:"profiles"`
+		Active   int             `json:"active"`
 	}
 	if err := json.Unmarshal(stripBOM(data), &document); err != nil {
-		s.logger.Warn("failed to read the speech key: %s", err)
+		s.logger.Warn("failed to read the speech profiles: %s", err)
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.key = strings.TrimSpace(document.Key)
+	s.install(document.Profiles, document.Active)
+	s.logger.Info("speech: %d profile(s) loaded, active=%d", len(s.profiles), s.activeID)
 }
 
-// Get is the key, or "" when none is stored.
-func (s *SpeechKey) Get() string {
+// warnAboutTheOldKeyFile says so when the single-key file this build used to write is still there.
+//
+// It is not read and it is not removed: a credential somebody typed is not this process's to delete. But a
+// secret file nothing will ever read again should not sit in the data directory unexplained.
+func (s *SpeechProfiles) warnAboutTheOldKeyFile() {
+	old := filepath.Join(filepath.Dir(s.file), "speech-key.json")
+	if _, err := os.Stat(old); err == nil {
+		s.logger.Info("speech: %s is no longer read — a credential now belongs to the profile that uses it", old)
+	}
+}
+
+// List is every profile as a page may see it, and the id of the active one (0 when there are none).
+func (s *SpeechProfiles) List() ([]SpeechProfileView, int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.key
+	views := make([]SpeechProfileView, 0, len(s.profiles))
+	for _, profile := range s.profiles {
+		views = append(views, SpeechProfileView{ID: profile.ID, Name: profile.Name, URL: profile.URL, Model: profile.Model, HasKey: profile.Key != ""})
+	}
+	return views, s.activeID
 }
 
-// Stored reports whether a key is stored, which is all the page is told.
-func (s *SpeechKey) Stored() bool { return s.Get() != "" }
-
-// Set stores the key, or removes the file when the key is blank.
+// Active is the profile dictation uses, credential included, or false when nothing is configured.
 //
-// Owner-only, unlike every other file here: a task index that only its owner can read is a workspace somebody
-// cannot copy, and a credential that a second account can read is a credential that has leaked. The temporary
-// file is created 0600 for the same reason — a rename would otherwise publish the mode the umask chose.
-func (s *SpeechKey) Set(key string) error {
-	trimmed := strings.TrimSpace(key)
-	if trimmed == "" {
-		s.mu.Lock()
-		s.key = ""
-		s.mu.Unlock()
-		if err := os.Remove(s.file); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("store: cannot remove the speech key: %w", err)
+// This is the one reader that gets the key, because this is the one place that puts it on a request. Nothing
+// that answers a page may call it.
+func (s *SpeechProfiles) Active() (SpeechProfile, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.activeLocked()
+}
+
+func (s *SpeechProfiles) activeLocked() (SpeechProfile, bool) {
+	for _, profile := range s.profiles {
+		if profile.ID == s.activeID {
+			return profile, true
 		}
-		return nil
+	}
+	return SpeechProfile{}, false
+}
+
+// Replace makes the list these entries and this entry active, and writes the file.
+//
+// An unknown id is refused rather than adopted: it means the page is editing a list the server no longer has,
+// and the answer to that is "reload", not a second profile with the same id.
+func (s *SpeechProfiles) Replace(inputs []SpeechProfileInput, active int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	stored := make(map[int]SpeechProfile, len(s.profiles))
+	for _, profile := range s.profiles {
+		stored[profile.ID] = profile
+	}
+	profiles := make([]SpeechProfile, 0, len(inputs))
+	nextID := s.nextID
+	for _, input := range inputs {
+		profile := SpeechProfile{Name: strings.TrimSpace(input.Name), URL: strings.TrimSpace(input.URL), Model: strings.TrimSpace(input.Model)}
+		if input.ID > 0 {
+			previous, known := stored[input.ID]
+			if !known {
+				return &SpeechProfileUnknownError{ID: input.ID}
+			}
+			profile.ID, profile.Key = previous.ID, previous.Key
+		} else {
+			profile.ID, nextID = nextID, nextID+1
+		}
+		if input.Key != nil {
+			profile.Key = strings.TrimSpace(*input.Key)
+		}
+		profiles = append(profiles, profile)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(s.file), 0o755); err != nil {
-		return fmt.Errorf("store: cannot create %s: %w", filepath.Dir(s.file), err)
+	// An active id that is not in the new list is the first entry: a page that just removed the active profile
+	// sends the id it had, and "none active" would make the microphone fail with nothing on screen saying why.
+	chosen := 0
+	for _, profile := range profiles {
+		if profile.ID == active {
+			chosen = active
+			break
+		}
 	}
-	payload, err := json.Marshal(map[string]string{"key": trimmed})
-	if err != nil {
-		return fmt.Errorf("store: cannot encode the speech key: %w", err)
+	if chosen == 0 && len(profiles) > 0 {
+		chosen = profiles[0].ID
 	}
-	temp, err := os.CreateTemp(filepath.Dir(s.file), "."+filepath.Base(s.file)+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("store: cannot open a temporary file for %s: %w", s.file, err)
+
+	if err := s.persist(profiles, chosen); err != nil {
+		return err
 	}
-	name := temp.Name()
-	defer func() { _ = os.Remove(name) }()
-	if err := temp.Chmod(0o600); err != nil {
-		_ = temp.Close()
-		return fmt.Errorf("store: cannot set the mode of %s: %w", name, err)
-	}
-	if _, err := temp.Write(append(payload, '\n')); err != nil {
-		_ = temp.Close()
-		return fmt.Errorf("store: cannot write %s: %w", name, err)
-	}
-	if err := temp.Close(); err != nil {
-		return fmt.Errorf("store: cannot close %s: %w", name, err)
-	}
-	if err := os.Rename(name, s.file); err != nil {
-		return fmt.Errorf("store: cannot install %s: %w", s.file, err)
-	}
-	s.mu.Lock()
-	s.key = trimmed
-	s.mu.Unlock()
+	s.profiles, s.activeID, s.nextID = profiles, chosen, nextID
 	return nil
+}
+
+// persist writes the document, owner-only: it is the only file here that holds credentials.
+func (s *SpeechProfiles) persist(profiles []SpeechProfile, active int) error {
+	payload, err := json.MarshalIndent(map[string]any{"version": 1, "profiles": profiles, "active": active}, "", "  ")
+	if err != nil {
+		return fmt.Errorf("store: cannot encode the speech profiles: %w", err)
+	}
+	if err := util.WriteFileAtomicMode(s.file, append(payload, '\n'), 0o600); err != nil {
+		return fmt.Errorf("store: cannot write %s: %w", s.file, err)
+	}
+	return nil
+}
+
+// install takes over a document read from disk, renumbering what cannot be an id and dropping what cannot be a
+// profile. A file is somebody's to edit, and an entry with no address is an entry a request cannot be sent to.
+func (s *SpeechProfiles) install(stored []SpeechProfile, active int) {
+	profiles := make([]SpeechProfile, 0, len(stored))
+	seen := make(map[int]bool, len(stored))
+	s.nextID = 1
+	for _, profile := range stored {
+		profile.Name = strings.TrimSpace(profile.Name)
+		profile.URL = strings.TrimSpace(profile.URL)
+		profile.Model = strings.TrimSpace(profile.Model)
+		profile.Key = strings.TrimSpace(profile.Key)
+		if profile.URL == "" {
+			continue
+		}
+		if profile.ID < 1 || seen[profile.ID] {
+			profile.ID = s.nextID
+		}
+		seen[profile.ID] = true
+		if profile.ID >= s.nextID {
+			s.nextID = profile.ID + 1
+		}
+		profiles = append(profiles, profile)
+	}
+	s.profiles, s.activeID = profiles, active
+	if _, ok := s.activeLocked(); !ok {
+		s.activeID = 0
+		if len(profiles) > 0 {
+			s.activeID = profiles[0].ID
+		}
+	}
 }

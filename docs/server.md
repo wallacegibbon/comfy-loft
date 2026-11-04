@@ -415,12 +415,14 @@ file in the same directory and is renamed into place, so a reader never sees hal
 write also bumps `rev`, and a save whose `If-Match` names an older one is refused with `409` and the
 current summary in `details.current` — the browser is a cache now, and a cache that races must lose.
 
-**One thing is deliberately not in that document.** The speech server's API key, when it has one, lives in
-`data/speech-key.json`, mode `0600`, and never travels to a page: `/config.js` is the document whole, so a
-credential in it would be handed to every client that can load the canvas, and `RUNTIME_CONFIG_PATH`
-publishes that script as a file for a static host. `GET /api/speech/key` answers `{"stored":…}` and
-`PUT /api/speech/key` with `{"key":…}` stores or, blank, removes it; the key is added to the speech request
-by the server as `Authorization: Bearer` and is never sent back over HTTP (decisions #246).
+**One thing is deliberately not in that document.** The speech servers — where each one listens, the model it
+calls its own, and the credential it wants — live in `data/speech.json`, mode `0600`: `/config.js` is the
+document whole, so a credential in the preferences would be handed to every client that can load the canvas,
+and `RUNTIME_CONFIG_PATH` publishes that script as a file for a static host. `GET /api/speech/profiles` answers
+the list and which entry is active, with `hasKey` and never a key; `PUT /api/speech/profiles` takes the whole
+list back with `{"profiles":[…],"active":<id>}`, where an entry without a key field keeps the stored one and
+`""` removes it. Dictation is sent to the active profile with the key as `Authorization: Bearer`, and no key is
+ever sent back over HTTP (decisions #246, #252).
 
 A run carries its own `preview` (`{url, mime}` with a timestamp) and its own `progress` in the
 payload, so a client polling a run needs no second endpoint for either — there is no `/api/previews`

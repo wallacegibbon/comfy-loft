@@ -47,23 +47,6 @@ export type AiConfig = {
     audioFormat: string;
     audioSpeed: string;
     audioInstructions: string;
-    /**
-     * Where the speech server listens, for the words dictated into the agent's prompt.
-     *
-     * An OpenAI-compatible `POST /v1/audio/transcriptions` that takes a WAV file and answers `{"text": …}`.
-     * The page posts the recording to the server and the server posts it here, because that server answers
-     * no CORS headers and is usually only reachable from this machine (`services/api/speech.ts`, #239).
-     */
-    asrUrl: string;
-    /**
-     * The speech model, as the speech server itself names it.
-     *
-     * Not a constant: `model` is required by the protocol and every server spells it differently (audio.cpp
-     * uses the id of a local gguf, `refine`; OpenAI uses `whisper-1` or `gpt-4o-transcribe`), so a name baked
-     * into the build fits exactly one machine. Blank sends no `model` at all, which is what a server that
-     * names nothing (`whisper.cpp`'s `/inference`) wants (#246).
-     */
-    asrModel: string;
     videoSeconds: string;
     vquality: string;
     videoGenerateAudio: string;
@@ -85,24 +68,6 @@ export type AiConfig = {
     seedFixed?: string;
     params?: Record<string, unknown>;
 };
-
-/**
- * The speech server this build was measured against: a local audio.cpp server.
- *
- * It is filled in rather than left blank because the field is the only setting the feature has, and a blank
- * one would make a working setup look like a missing one. Any OpenAI-compatible `/v1/audio/transcriptions`
- * that takes WAV works — that is the whole of the protocol this build knows (#239).
- */
-export const DEFAULT_SPEECH_ADDRESS = "http://127.0.0.1:18080/v1/audio/transcriptions";
-
-/**
- * The model name that address's server reports, filled in for the same reason the address is.
- *
- * `refine` is the offline Qwen3-ASR on the audio.cpp server this was built against (`GET /v1/models` on it
- * lists `refine` and `stream`). It is a default, not a constant: point the address at OpenAI and this has to
- * become `whisper-1` or `gpt-4o-transcribe`, because the name is a fact about the server (#246).
- */
-export const DEFAULT_SPEECH_MODEL = "refine";
 
 const CHANNEL_MODEL_SEPARATOR = "::";
 const localDefaultChannel: ModelChannel = {
@@ -131,11 +96,6 @@ export const defaultConfig: AiConfig = {
     audioFormat: "mp3",
     audioSpeed: "1",
     audioInstructions: "",
-    // The local audio.cpp speech server: the address the panel's dictation was built and measured against
-    // (rtf ≈ 0.12, WAV in, `{"text": …}` out). It is a default and not a constant because a speech server
-    // is somewhere else on somebody else's machine, so the field is the setting.
-    asrUrl: DEFAULT_SPEECH_ADDRESS,
-    asrModel: DEFAULT_SPEECH_MODEL,
     videoSeconds: "6",
     vquality: "720",
     videoGenerateAudio: "true",
@@ -289,6 +249,11 @@ function hydrateConfig(stored: Partial<AiConfig>): AiConfig {
     // page that moved — a different port, a different host, a phone on the LAN — was otherwise left pointing
     // every request, and the agent's socket, at the address it itself had just stopped living at.
     const config = { ...defaultConfig, ...stored, baseUrl: defaultBaseUrl() };
+    // Two fields this document used to carry: where the speech server listened and what it called its model. The
+    // list is the server's now, one profile per server (#252), so a stored copy is a second and already dead
+    // answer to where audio goes — and the mirror would keep writing it back to every browser.
+    delete (config as { asrUrl?: unknown }).asrUrl;
+    delete (config as { asrModel?: unknown }).asrModel;
     if (!Array.isArray(stored.channels)) config.channels = [];
     const channels = normalizeChannels(config);
     const models = modelOptionsFromChannels(channels);

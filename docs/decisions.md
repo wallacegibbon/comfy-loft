@@ -9204,3 +9204,74 @@ drew.
 `frontend/src/components/canvas/use-hold-to-talk.ts`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
 `frontend/tests/agent-dictation.test.ts`.
+
+## 252. Speech servers are a list, and the active one is what dictation uses
+
+**Decision** Speech-to-text has more than one server now. A list of **profiles** lives in `data/speech.json`
+(mode `0600`): each is a name, an address, a model name and a key, one of them is active, and the active one is
+where a recording goes. `GET /api/speech/profiles` answers `{"profiles":[{id,name,url,model,hasKey}],"active":<id>}`,
+`PUT /api/speech/profiles` takes the **whole list** back with one entry added, changed, removed or activated, and
+`POST /api/speech/transcriptions` no longer names a server at all. This replaces the single `asrUrl`/`asrModel`
+pair of settings and the single `data/speech-key.json` of #246, and it retires one sentence of #239: the address
+no longer travels with the request, because the list is the server's own file and not the preferences document.
+
+**Why a list.** #246's own words were "the key is one value, not a keyring: this build talks to one speech
+server". The second half of that sentence stopped being true the moment the address, the model name and the key
+became settings: a workspace is used from a desk with a local audio.cpp on the CPU and from a café with a hosted
+whisper, and one field each means editing all three between them — or leaving an address pointing at a machine
+that is not there. Profiles are the shape the agent's models already have (#249), so the window has one list
+pattern and one dialog pattern rather than two.
+
+**Why the list is the server's.** A profile *is* an address **and** a credential, and the preferences document
+is served whole by `GET /config.js` to every browser that loads the canvas and written out as a file for a static
+host when the operator names `RUNTIME_CONFIG_PATH` — measured, not assumed (#246). So the key cannot live in it,
+and a list with per-profile keys can only live where the keys are. The page is shown `hasKey` and never a key,
+exactly as `agent.Model` shows the agent's models. The form's only keys are the ones the user has just typed: a
+new profile's, or a replacement for a stored one.
+
+**The five rules that make one list safe to write from two windows.** The whole list goes back, in the page's
+order, so an entry that is missing is a profile that was deleted — the same rule `model_sync` takes, and one
+atomic rename rather than a sequence of edits that can half-apply. An entry that arrives **without a `key` field
+says nothing** about the stored key, which is how a stored key survives an edit to the address; `""` removes it,
+and removing one is a checkbox on the form, because a blank field cannot mean both "keep" and "delete". An **id
+the server does not have is refused** (`speech_profile_unknown`, 400) rather than adopted: two pages disagreeing
+is a reload, not a duplicate. **Ids are the server's to assign** — a page sends none for a new profile — so no
+client invents an id that another client's list already has. And **the active id is never 0 while a profile
+exists**: an id that names nothing becomes the first entry, so deleting the active profile leaves the microphone
+working instead of failing with nothing on screen explaining it.
+
+**What the request carries now.** `file` and `language`, and nothing else. The model name and the credential come
+from the active profile, so a form field cannot redirect a recording: the old route forwarded every field the
+page sent except `url` and `key`, which meant a `model` field could name a different model than the one the user
+configured. The body is now built from two named parts. `language` stays the page's because it is a fact about one
+utterance — the interface's language — and not about the server.
+
+**Two costs.** A profile's address, model and `hasKey` are on the server, so the window reads them when it opens
+(a failed read says so, and the Add button waits for the answer: a PUT that merges into a list the page has not
+seen would delete the profiles it does not know about). And `data/speech-key.json` from #246 is no longer read;
+it is left alone rather than deleted — a credential is not this process's to remove — and the log says once that
+it is dead (`speech: … is no longer read`).
+
+**Tested** `internal/server/routes_speech_test.go`: the recording goes to the **active** profile and the inactive
+one is never called; the model and the `Authorization: Bearer` are the profile's even when the page's form names a
+different model, key and address; a profile with no key invites no header; a blank model sends no `model` field;
+no profile is a 400 `speech_profile_missing`; 401/413/429 pass through while 500 becomes 502; `speech.json` is
+`0600`, holds the key, and no answer contains it; an entry sent back without a key keeps the stored one and `""`
+removes it; an unknown id, a duplicated id, a fractional id, a non-list, a profile with no address and an `ftp`
+address are each a 400 with a code and leave the list untouched; the active id falls back to the first entry.
+`internal/store/store_test.go`: a hand-edited file with colliding, missing and unusable entries loads as three
+usable profiles with distinct ids, and ids are never reused across a reload.
+`frontend/tests/api-speech.test.ts` and `speech-profiles.test.ts`: the request names no server, model or key; the
+list is read and written as a whole; an untouched entry carries no key field; a typed key is trimmed and sent; a
+blank field sends nothing and `removeKey` sends `""`. Exactly two refusals are re-worded in the dictionary
+rather than passed on: `speech_profile_missing` (an empty list, which is a setting in this window) and
+`speech_profile_unknown` (another window wrote the list first, where "there is no speech profile 7" is not
+something a reader can act on). Everything else, including every refusal from the speech server itself, keeps the
+server's words. `make check` 19 packages, `npx vitest run` 343, `npm run check` (864/850 keys), `npm run build`.
+
+**Where** `internal/store/speech.go` (+`store_test.go`), `internal/util/util.go` (`WriteFileAtomicMode`),
+`internal/server/routes_speech.go` (+`_test.go`), `internal/server/server.go`,
+`frontend/src/services/api/speech.ts`, `frontend/src/lib/speech-profiles.ts`,
+`frontend/src/components/settings/{speech-profiles-section,speech-profile-dialog,preferences-dialog}.tsx`,
+`frontend/src/stores/use-config-store.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
+`frontend/tests/{api-speech,speech-profiles}.test.ts`, `docs/server.md`, `README.md`.
