@@ -114,9 +114,7 @@ export type CanvasNodeMetadata = {
     sentPrompt?: string;
     outpaint?: { left: number; top: number; right: number; bottom: number; width: number; height: number };
     layout?: CanvasMossLayout;
-    audioVoice?: string;
     audioFormat?: string;
-    audioSpeed?: string;
     audioInstructions?: string;
     references?: string[];
     /**

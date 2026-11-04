@@ -323,7 +323,6 @@ export function CanvasNodePromptPanel({
                             <CanvasImageSettingsPopover
                                 config={config}
                                 placement="topLeft"
-                                hasReferences={imageReferences.length > 0}
                                 buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3"
                                 onConfigChange={(key, value) => onConfigChange(node.id, { [key]: value })}
                                 onParamsChange={(params) => onConfigChange(node.id, { params: { ...node.metadata?.params, ...params } })}
@@ -524,9 +523,8 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         imageMode: node.metadata?.imageMode || globalConfig.imageMode || "",
         outpaint: node.metadata?.outpaint || globalConfig.outpaint,
         layout: node.metadata?.layout || globalConfig.layout,
-        audioVoice: node.metadata?.audioVoice || globalConfig.audioVoice || defaultConfig.audioVoice,
         audioFormat: node.metadata?.audioFormat || globalConfig.audioFormat || defaultConfig.audioFormat,
-        audioSpeed: node.metadata?.audioSpeed || globalConfig.audioSpeed || defaultConfig.audioSpeed,
+        audioSeconds: node.metadata?.seconds || globalConfig.audioSeconds || defaultConfig.audioSeconds,
         audioInstructions: node.metadata?.audioInstructions || globalConfig.audioInstructions || defaultConfig.audioInstructions,
         seed: node.metadata?.seed || globalConfig.seed || "",
         seedFixed: node.metadata?.seedFixed ?? globalConfig.seedFixed ?? "false",
@@ -544,8 +542,7 @@ function videoConfigPatch(key: keyof AiConfig, value: string) {
 }
 
 function audioConfigPatch(key: CanvasAudioSettingKey, value: string) {
-    if (key === "audioVoice") return { audioVoice: value };
     if (key === "audioFormat") return { audioFormat: value };
-    if (key === "audioSpeed") return { audioSpeed: value };
+    if (key === "audioSeconds") return { seconds: value };
     return { audioInstructions: value };
 }

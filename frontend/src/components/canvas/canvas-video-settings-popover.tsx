@@ -66,6 +66,11 @@ export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClass
             />
         ) : null;
     const durationSummary = durationLocked ? `${i18n.t("settingsPanels.video.followSource")}${sourceDurationSeconds != null ? ` · ${sourceDurationSeconds.toFixed(1)}s` : ""}` : videoSecondsLabel(config.videoSeconds);
+    // One line, and the whole of it in a `title` as well: the pill is narrower than this sentence, so what
+    // the button cannot show a reader has to be reachable another way (#261).
+    const summary = `${videoResolutionLabel(config.vquality)} · ${videoSizeLabel(config.size)} · ${durationSummary} · ${videoModeLabel(config.videoMode)}${
+        videoSelfLiftLabel(config.videoSelfLiftMode) ? ` · ${videoSelfLiftLabel(config.videoSelfLiftMode)}` : ""
+    }`;
 
     return (
         <>
@@ -76,12 +81,10 @@ export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClass
                     className={buttonClassName || "!h-8 !max-w-[220px] !justify-start !rounded-full !px-2.5"}
                     style={{ background: theme.node.fill, color: theme.node.text }}
                     icon={<Settings2 className="size-3.5" />}
+                    title={summary}
                     onClick={() => setOpen((current) => !current)}
                 >
-                    <span className="truncate">
-                        {videoResolutionLabel(config.vquality)} · {videoSizeLabel(config.size)} · {durationSummary} · {videoModeLabel(config.videoMode)}
-                        {videoSelfLiftLabel(config.videoSelfLiftMode) ? ` · ${videoSelfLiftLabel(config.videoSelfLiftMode)}` : ""}
-                    </span>
+                    <span>{summary}</span>
                 </Button>
             </span>
             {panel}

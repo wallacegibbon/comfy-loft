@@ -23,11 +23,6 @@ type CanvasImageSettingsPopoverProps = {
     onOpenMaskEditor?: () => void;
     onOpenOutpaintEditor?: () => void;
     onOpenMossLayoutEditor?: () => void;
-    /**
-     * Whether this node has image references connected. A conditioned run is one answer per press
-     * (docs/decisions.md #79), so the trigger stops promising a count that will not be used.
-     */
-    hasReferences?: boolean;
     buttonClassName?: string;
     getPopupContainer?: (triggerNode: HTMLElement) => HTMLElement;
     placement?: "topLeft" | "top" | "topRight" | "bottomLeft" | "bottom" | "bottomRight";
@@ -80,18 +75,7 @@ function qwenModelInfo(config: AiConfig) {
     return { modes, labels: model.variantLabels, blocked: model.blockedModes || [] };
 }
 
-export function CanvasImageSettingsPopover({
-    config,
-    onConfigChange,
-    onParamsChange,
-    onOpenChange,
-    onOpenMaskEditor,
-    onOpenOutpaintEditor,
-    onOpenMossLayoutEditor,
-    hasReferences = false,
-    buttonClassName,
-    placement = "topLeft",
-}: CanvasImageSettingsPopoverProps) {
+export function CanvasImageSettingsPopover({ config, onConfigChange, onParamsChange, onOpenChange, onOpenMaskEditor, onOpenOutpaintEditor, onOpenMossLayoutEditor, buttonClassName, placement = "topLeft" }: CanvasImageSettingsPopoverProps) {
     const { t } = useTranslation();
     const theme = useCanvasTheme();
     const buttonRef = useRef<HTMLSpanElement>(null);
@@ -153,6 +137,9 @@ export function CanvasImageSettingsPopover({
             />
         ) : null;
 
+    // The pill is narrower than this sentence for most sizes, so the whole of it also lives in a `title` (#261).
+    const summary = qwen ? qwenTriggerLabel : imageSizeLabel(activeSize);
+
     return (
         <>
             <span ref={buttonRef} className="inline-flex min-w-0">
@@ -162,9 +149,10 @@ export function CanvasImageSettingsPopover({
                     className={buttonClassName || "!h-8 !max-w-[180px] !justify-start !rounded-full !px-2.5"}
                     style={{ background: theme.node.fill, color: theme.node.text }}
                     icon={<Settings2 className="size-3.5" />}
+                    title={summary}
                     onClick={() => updateOpen(!open)}
                 >
-                    <span className="truncate">{qwen ? qwenTriggerLabel : hasReferences ? imageSizeLabel(activeSize) : imageSizeLabel(activeSize)}</span>
+                    <span>{summary}</span>
                 </Button>
             </span>
             {panel}

@@ -13,12 +13,29 @@ import type { ChannelModel, ModelCapability } from "@/stores/use-config-store";
  */
 const CAPABILITIES: ModelCapability[] = ["image", "video", "audio"];
 
+/**
+ * How long the workflow lets its output be, when it says so at all.
+ *
+ * A music workflow declares a `duration` parameter with the range it accepts, and that declaration is the
+ * only place the canvas can learn the bounds from: `audio-minimax-music-3` allows 4–360 s because the model
+ * itself stops there. A workflow that declares none gets no bounds and its node offers no duration control;
+ * hardcoding a range here would be a second answer to a question the registry already answers.
+ */
+function durationOf(workflow: ServerWorkflow) {
+    const parameter = (workflow.parameters || []).find((item) => item?.key === "duration" && item.type === "number");
+    const min = Number(parameter?.min);
+    const max = Number(parameter?.max);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return undefined;
+    return { min, max };
+}
+
 /** The models one workflow contributes, in the order the server listed them. */
 export function modelsOf(workflow: ServerWorkflow): ChannelModel[] {
     const capability = workflow.type as ModelCapability;
     if (!CAPABILITIES.includes(capability)) return [];
     if (workflow.enabled === false || workflow.availability?.available === false) return [];
     if (isToolWorkflow(workflow.id)) return [];
+    const duration = durationOf(workflow);
 
     return (workflow.models || []).map((model) => ({
         name: model.id,
@@ -33,6 +50,7 @@ export function modelsOf(workflow: ServerWorkflow): ChannelModel[] {
         // instead of failing inside ComfyUI after the user has committed to it.
         blockedModes: Object.keys(workflow.availability?.modeProblems || {}),
         imageInputs: model.imageInputs,
+        duration,
     }));
 }
 
@@ -56,6 +74,8 @@ export function modelSignature(models: ChannelModel[]) {
             model.baseModel || "",
             model.baseModelLabel || "",
             model.imageInputs ?? -1,
+            model.duration?.min ?? -1,
+            model.duration?.max ?? -1,
             model.variantModes || [],
             model.variantLabels || {},
             model.blockedModes || [],

@@ -17,6 +17,14 @@ import { cn } from "@/lib/utils";
  *     canvas composer buttons and depends on being able to select one without the other.
  *   - Sizes match antd's metrics exactly (24 / 32 / 40 px), because these buttons sit in
  *     dense toolbars next to controls that were laid out against those heights.
+ *
+ * The label slot is `min-w-0 truncate`, and that is not cosmetic either: a button narrowed by a class
+ * (`!max-w-[200px]`, the composer pills) is a flex container, and a flex item's `min-width: auto` refuses
+ * to shrink below its text — so the label used to spill out of the button's own rounded background while
+ * the `truncate` a call site had put *inside* the slot did nothing, because that span was inline and
+ * inline boxes have no overflow. Measured on a 200 px video pill: 34 px of "First & last frame" drawn past
+ * its background. With `min-w-0` the slot shrinks, and with `truncate` on the slot the text ellipsises
+ * where the button ends (#261).
  */
 type ButtonType = "default" | "primary" | "text" | "link";
 type ButtonSize = "small" | "middle" | "large";
@@ -65,7 +73,11 @@ export function Button({ type = "default", size = "middle", danger = false, icon
     return (
         <button type="button" disabled={disabled || loading} className={cn(BASE, SIZES[size], square && CIRCLE_SIZES[size], shape === "circle" && "rounded-full", danger ? DANGER[type] : PLAIN[type], className)} {...props}>
             {loading ? <LoaderCircle data-slot="icon" className="size-3.5 shrink-0 animate-spin" /> : iconPlacement === "start" ? startIcon(icon) : null}
-            {children === undefined || children === null || children === false ? null : <span data-slot="text">{children}</span>}
+            {children === undefined || children === null || children === false ? null : (
+                <span data-slot="text" className="min-w-0 truncate">
+                    {children}
+                </span>
+            )}
             {!loading && iconPlacement === "end" ? startIcon(icon) : null}
         </button>
     );

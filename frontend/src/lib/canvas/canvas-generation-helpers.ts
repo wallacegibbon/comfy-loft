@@ -67,9 +67,8 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
         imageMode: node?.metadata?.imageMode || config.imageMode || "",
         outpaint: node?.metadata?.outpaint || config.outpaint,
         layout: node?.metadata?.layout || config.layout,
-        audioVoice: node?.metadata?.audioVoice || config.audioVoice || defaultConfig.audioVoice,
         audioFormat: node?.metadata?.audioFormat || config.audioFormat || defaultConfig.audioFormat,
-        audioSpeed: node?.metadata?.audioSpeed || config.audioSpeed || defaultConfig.audioSpeed,
+        audioSeconds: node?.metadata?.seconds || config.audioSeconds || defaultConfig.audioSeconds,
         audioInstructions: node?.metadata?.audioInstructions || config.audioInstructions || defaultConfig.audioInstructions,
         params: Object.keys(params).length ? params : undefined,
     };

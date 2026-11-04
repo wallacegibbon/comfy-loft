@@ -20,6 +20,12 @@ export type ChannelModel = {
     blockedModes?: string[];
     variantLabels?: Record<string, string>;
     imageInputs?: number;
+    /**
+     * The range the workflow declares for its output length, if it declares one (a music workflow does;
+     * a text-to-image one has nothing to say). Absent means the node offers no duration control — and the
+     * request sends none, so the workflow's own binding default answers.
+     */
+    duration?: { min: number; max: number };
 };
 
 type ModelChannel = {
@@ -43,9 +49,9 @@ export type AiConfig = {
     videoModel: string;
     textModel: string;
     audioModel: string;
-    audioVoice: string;
     audioFormat: string;
-    audioSpeed: string;
+    /** How many seconds of audio the run may produce, for a workflow that declares a range. */
+    audioSeconds: string;
     audioInstructions: string;
     videoSeconds: string;
     vquality: string;
@@ -91,9 +97,10 @@ export const defaultConfig: AiConfig = {
     videoModel: "",
     textModel: "",
     audioModel: "",
-    audioVoice: "alloy",
     audioFormat: "mp3",
-    audioSpeed: "1",
+    // A music workflow's own default (60 s, the value its binding writes when the request says nothing),
+    // so the control opens showing the length the first run will actually ask for.
+    audioSeconds: "60",
     audioInstructions: "",
     videoSeconds: "6",
     vquality: "720",
@@ -268,9 +275,8 @@ function hydrateConfig(stored: Partial<AiConfig>): AiConfig {
         videoModel: pickModel(config.videoModel, videoOptions),
         textModel: "",
         audioModel: pickModel(config.audioModel, audioOptions),
-        audioVoice: config.audioVoice || defaultConfig.audioVoice,
         audioFormat: config.audioFormat || defaultConfig.audioFormat,
-        audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
+        audioSeconds: config.audioSeconds || defaultConfig.audioSeconds,
         audioInstructions: config.audioInstructions || "",
         videoSeconds: config.videoSeconds || "6",
         vquality: config.vquality || "720",
@@ -332,7 +338,8 @@ export function normalizeChannelModels(models: Array<string | ChannelModel> | un
         const blockedModes = typeof item === "string" ? undefined : Array.isArray(item.blockedModes) ? item.blockedModes.map((mode) => String(mode).trim()).filter(Boolean) : undefined;
         const variantLabels = typeof item === "string" ? undefined : item.variantLabels && typeof item.variantLabels === "object" ? item.variantLabels : undefined;
         const imageInputs = typeof item === "string" ? undefined : typeof item.imageInputs === "number" ? item.imageInputs : undefined;
-        result.push({ name, capability, label, workflowId, baseModel, baseModelLabel, variantModes, variantLabels, blockedModes, imageInputs });
+        const duration = typeof item !== "string" && item.duration && Number.isFinite(item.duration.min) && Number.isFinite(item.duration.max) && item.duration.max > item.duration.min ? { min: item.duration.min, max: item.duration.max } : undefined;
+        result.push({ name, capability, label, workflowId, baseModel, baseModelLabel, variantModes, variantLabels, blockedModes, imageInputs, duration });
     }
     return result;
 }

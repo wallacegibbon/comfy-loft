@@ -1,19 +1,3 @@
-export const audioVoiceOptions = [
-    { value: "alloy", label: "Alloy" },
-    { value: "ash", label: "Ash" },
-    { value: "ballad", label: "Ballad" },
-    { value: "coral", label: "Coral" },
-    { value: "echo", label: "Echo" },
-    { value: "fable", label: "Fable" },
-    { value: "nova", label: "Nova" },
-    { value: "onyx", label: "Onyx" },
-    { value: "sage", label: "Sage" },
-    { value: "shimmer", label: "Shimmer" },
-    { value: "verse", label: "Verse" },
-    { value: "marin", label: "Marin" },
-    { value: "cedar", label: "Cedar" },
-];
-
 export const audioFormatOptions = [
     { value: "mp3", label: "MP3" },
     { value: "wav", label: "WAV" },
@@ -23,30 +7,21 @@ export const audioFormatOptions = [
     { value: "pcm", label: "PCM" },
 ];
 
-export function normalizeAudioVoiceValue(value: string) {
-    return audioVoiceOptions.some((item) => item.value === value) ? value : "alloy";
+/** The whole-second lengths a music run may ask for, clamped into the range its workflow declares. */
+export function clampAudioSeconds(value: string | number | undefined, duration: { min: number; max: number }) {
+    const seconds = Math.round(Number(value));
+    // Whole seconds, not the declared step (a music workflow's is 1/25 s, the latent's own grid): the number
+    // is an upper bound the model may finish under, and a song length is not something anyone reads to a
+    // hundredth. A value that is not a number at all becomes the shortest run rather than a surprise one.
+    if (!Number.isFinite(seconds)) return duration.min;
+    return Math.min(duration.max, Math.max(duration.min, seconds));
 }
 
 export function normalizeAudioFormatValue(value: string) {
     return audioFormatOptions.some((item) => item.value === value) ? value : "mp3";
 }
 
-export function normalizeAudioSpeedValue(value: string) {
-    const speed = Number(value);
-    if (!Number.isFinite(speed)) return "1";
-    return String(Math.max(0.25, Math.min(4, Number(speed.toFixed(2)))));
-}
-
-export function audioVoiceLabel(value: string) {
-    const voice = normalizeAudioVoiceValue(value);
-    return audioVoiceOptions.find((item) => item.value === voice)?.label || voice;
-}
-
 export function audioFormatLabel(value: string) {
     const format = normalizeAudioFormatValue(value);
     return audioFormatOptions.find((item) => item.value === format)?.label || format;
-}
-
-export function audioSpeedLabel(value: string) {
-    return `${normalizeAudioSpeedValue(value)}x`;
 }

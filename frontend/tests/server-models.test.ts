@@ -77,6 +77,30 @@ describe("modelsOf", () => {
         expect(models[0].variantLabels).toEqual({ edit: "Multi-image edit" });
     });
 
+    it("carries the range the workflow declares for its output length", () => {
+        // A music workflow says how long a song may be; the panel and the request both read the bounds from
+        // here rather than repeating them, so the registry stays the one place that knows (docs/decisions.md #259).
+        const models = modelsOf(
+            workflow({
+                id: "audio-minimax-music-3",
+                type: "audio",
+                parameters: [
+                    { key: "seed", type: "number" },
+                    { key: "duration", type: "number", min: 4, max: 360, step: 0.04 },
+                ],
+                models: [{ id: "audio-minimax-music-3" }],
+            }),
+        );
+        expect(models[0].duration).toEqual({ min: 4, max: 360 });
+    });
+
+    it("has no length to offer when the workflow declares none", () => {
+        // An image workflow has nothing to say about duration, and a `duration` that is not a number is not one
+        // either: both leave the node without the control, and the request without the input.
+        expect(modelsOf(workflow({ parameters: [{ key: "steps", type: "number", min: 1, max: 60 }] }))[0].duration).toBeUndefined();
+        expect(modelsOf(workflow({ type: "audio", parameters: [{ key: "duration", type: "select", options: ["short", "long"] }], models: [{ id: "audio-minimax-music-3" }] }))[0].duration).toBeUndefined();
+    });
+
     it("contributes nothing when the server lists no ids", () => {
         // A workflow whose base models are all missing is not selectable; it is also not a name to
         // guess at, so the workflow id is not used as a fallback.
@@ -100,6 +124,14 @@ describe("modelSignature", () => {
     it("changes when a label changes, so an edited registry reaches the picker", () => {
         const before = modelSignature(modelsOf(workflow()));
         const after = modelSignature(modelsOf(workflow({ models: [{ id: "image-z-image-turbo", label: "Renamed" }] })));
+        expect(after).not.toBe(before);
+    });
+
+    it("changes when a declared duration range changes", () => {
+        // Otherwise the eight-second sweep would compare equal and the slider would keep the range of the
+        // registry that was loaded when the page opened.
+        const before = modelSignature(modelsOf(workflow({ type: "audio", parameters: [{ key: "duration", type: "number", min: 4, max: 360 }], models: [{ id: "audio-x" }] })));
+        const after = modelSignature(modelsOf(workflow({ type: "audio", parameters: [{ key: "duration", type: "number", min: 4, max: 120 }], models: [{ id: "audio-x" }] })));
         expect(after).not.toBe(before);
     });
 });

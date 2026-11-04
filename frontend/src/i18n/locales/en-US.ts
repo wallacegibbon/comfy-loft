@@ -75,11 +75,11 @@ export default {
         },
         audio: {
             title: "Audio settings",
-            voice: "Voice",
             format: "Format",
-            speed: "Speed",
-            instructions: "Lyrics / voice instructions",
-            instructionsPlaceholder: "Music workflows: the lyrics, optional [Verse] / [Chorus] tags; speech workflows: how the voice should sound.",
+            seconds: "Duration",
+            secondsHint: "A ceiling of {{min}}–{{max}} seconds; the model may finish earlier",
+            instructions: "Lyrics",
+            instructionsPlaceholder: "The lyrics, with optional [Verse] / [Chorus] tags",
         },
         model: {
             select: "Select model",

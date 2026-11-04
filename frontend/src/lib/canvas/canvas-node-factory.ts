@@ -106,9 +106,10 @@ export function buildImageGenerationMetadata(type: CanvasImageGenerationType, co
 export function buildAudioGenerationMetadata(config: AiConfig): CanvasNodeMetadata {
     return {
         model: config.model,
-        audioVoice: config.audioVoice,
+        // The node's own length, in the field every duration lives in: the panel reads it back, and the
+        // agent's `read_prompt` reports it as part of what this node is set to run (#259).
+        seconds: config.audioSeconds,
         audioFormat: config.audioFormat,
-        audioSpeed: config.audioSpeed,
         audioInstructions: config.audioInstructions,
     };
 }

@@ -9557,3 +9557,155 @@ loading and the types.
 
 **Where** `frontend/src/components/canvas/sent-prompt-disclosure.tsx`,
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts` (`sentPrompt`).
+
+## 259. A music run is told how long it may be
+
+**Decision** The audio settings panel has a duration control whenever the selected workflow declares a range for
+one, and `requestAudioGeneration` sends that number as `seconds`. The bounds come from the workflow's declaration
+(`parameters[].duration`, 4–360 s for `audio-minimax-music-3`), carried on the model entry as `duration: {min, max}`;
+the node keeps the value in `metadata.seconds` (where a video's length already lives) and the config field is
+`audioSeconds`, defaulting to 60.
+
+**Why it was missing** Nothing on the client ever sent a length, so every song came out at the graph's own
+`max_duration: 60` whatever the panel said — the workflow could be told 4 to 360 seconds and only the registry knew
+it. Everything downstream was already there: `bindings.duration` reads `ctx.Seconds` into `37:13.max_duration`,
+`routes_runs.go` builds `ctx.Seconds` from `inputs.seconds` (falling back to `inputs.duration`), and
+`internal/workflow/shipped_audio_test.go` pins both the 45-second and the 60-second-default paths. The gap was one
+missing input on one request.
+
+**Why the bounds come from the registry rather than a constant** `VIDEO_SECONDS_MIN/MAX` (4–30) are constants because
+every video workflow is the same shape of clip; a song is not, and 4–360 is this model's own ceiling, not a fact about
+audio. A client that hardcodes it would need editing when a longer music workflow arrives, and would offer 360 seconds
+to a workflow that stops at 30. So `durationOf` in `server-models.ts` reads the declaration once, when the model list is
+built, and everything else — the slider, the number box, the request — reads those bounds. The step is the exception:
+the declaration's is 0.04 s (1/25, the latent's grid) and the UI rounds to whole seconds, because this number is an
+upper bound the model may finish under and nobody reads a song length to a hundredth.
+
+**Why the declaration is also the switch** A workflow that declares no duration gets no control and is sent no
+`seconds` — its binding default answers, and the client does not invent a length for a workflow whose inputs it has
+not been told about. That is the same rule as the rest of the panel: what the panel shows, the run receives.
+
+**Cost** `defaultConfig.audioSeconds` is `"60"`, a copy of the value the binding writes when the request says nothing,
+so the control opens showing what the first run will actually ask for. If the registry's default changed, the client
+would keep sending 60 — visible on the panel before the run, not a silent substitution. A node that has never been
+touched has no `metadata.seconds`, so the agent's `read_prompt` reports the workflow without a length until the user
+picks one (a video node behaves the same way). The panel and `buildGenerationConfig` both read `metadata.seconds`
+for `audioSeconds`, so an audio node's length also lands in `videoSeconds` and vice versa — the two are only ever read
+by the kind of node that owns them.
+
+**Tested** `npx vitest run` (368: `tests/audio-duration.test.ts` posts 90 s for a 4–360 workflow, clamps a stored
+600 to 120 for a 4–120 one, sends no `seconds` at all for a workflow that declares none, and keeps the lyrics and the
+container beside it; `clampAudioSeconds` at both ends, on a fractional value, and on a value that is not a number;
+`tests/server-models.test.ts` takes the range from the `duration` declaration, ignores a non-numeric one, and the
+signature changes when the range does). Against the live server (no render):
+`GET /api/workflows` reports `duration 4–360`, and `GET /api/workflows/audio-minimax-music-3/schema` lists `seconds`
+as an accepted number input. The end-to-end wiring — `seconds` → `ctx.Seconds` → `max_duration` — is
+`TestShippedMusicWorkflowBindsCaptionAndLyrics`, which reads the same `registry.json` the server loads.
+
+The panel itself was rendered, not just type-checked: `renderToStaticMarkup` of `AudioSettingsPanel` in a throwaway
+`tests/tmp-render-audio.test.ts` (node environment, `createElement` because vitest here only collects `.test.ts` and
+the file had no DOM) printed the Format pills, a range and number box at 4–360 with the stored `999` clamped to
+`360`, the `s` suffix, the hint with both bounds filled in, and the lyrics box — in both locales (`格式`/`时长`/
+`4–360 秒的上限；模型可能提前结束`/`歌词` and the English ones) — and no voice or speed group; with a model that
+declares no range, the duration group is absent. Deleted afterwards, so this is a check that was run rather than a
+test that stays: the repository has no component test and this entry does not start the pattern.
+
+**Where** `frontend/src/lib/server-models.ts`, `frontend/src/stores/use-config-store.ts`,
+`frontend/src/services/api/audio.ts`, `frontend/src/components/audio-settings-panel.tsx`,
+`frontend/src/components/canvas/canvas-audio-settings-popover.tsx`,
+`frontend/src/components/canvas/canvas-node-prompt-panel.tsx`,
+`frontend/src/lib/canvas/{canvas-generation-helpers,canvas-node-factory,node-settings-memory}.ts`,
+`frontend/src/lib/audio-generation.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts` (`settingsPanels.audio.seconds`),
+`frontend/tests/{audio-duration,server-models}.test.ts`.
+
+## 260. The audio panel has no voice and no speed
+
+**Decision** The audio settings panel lost its Voice group (13 OpenAI voice names) and its Speed group (0.75×, 1×,
+1.25×, 1.5× and a free number). `audioVoice`, `audioSpeed` and their helpers are gone from the config, the node
+metadata, the inheritance list and the locale files.
+
+**Why they went** They reached nothing. `requestAudioGeneration` sent the caption, the lyrics and the container; a
+voice and a speed were values the panel collected, stored, inherited and displayed, and no request ever read. They are
+leftovers from OpenAI's `/v1/audio/speech`, which this server no longer has (`internal/server/audio_runs_e2e_test.go`
+opens with that fact). The one audio workflow the registry holds takes a caption, lyrics, a length and a format; it has
+no voice input and no speed input to bind them to.
+
+**What stayed, and why** The format pills stay even though `audio-minimax-music-3` writes only mp3, flac and opus: the
+container is sent as chosen and the server answers with a message naming the set it accepts, which is a deliberate rule
+(`services/api/audio.ts`) rather than a substitution the node's label would then be wrong about. The lyrics field stays
+— it is the run's `lyrics` input — with its label and placeholder narrowed to lyrics, since the "speech workflows" the
+old text mentioned are not a thing this server registers.
+
+**Why no migration** There are no users, so there is nothing to upgrade: a document written by an older build of this
+tree is not data anyone has. Dead keys in a local document are read by nothing, so they are not a reason for a
+`delete` on the hydrate path and a test for it — that branch was written and then removed before this landed.
+Migration earns its lines when someone
+else's document has to keep working; until then the answer is to fix the shape and let old copies be old. Applied to
+the one place the leftovers actually lived: `data/settings.json` carried six keys nothing in `AiConfig` declares —
+`audioVoice`, `audioSpeed`, `canvasImageCount`, `count`, `progressRingSkin`, `promptOptimizeLanguage` — and they were
+deleted from the file rather than tolerated, so the served `/config.js` now carries none of them (`/data/` is runtime
+state, ignored by git, so this is a file edit and not a commit). (The
+`asrUrl`/`asrModel` deletes above it are #252's, from a different argument: those two are now owned by the server, so a
+copy in the preferences is a second answer to where audio goes.)
+
+**Cost** A future speech workflow has no voice control to inherit; it will get one from its own declaration, the way
+the duration control in #259 does. Undo is `git revert`.
+
+**Tested** `npx vitest run` (368). `npm run check`'s export checker is what forced the helpers out rather than leaving
+them orphaned (180 modules, none without a caller).
+
+**Where** `frontend/src/lib/audio-generation.ts`, `frontend/src/components/audio-settings-panel.tsx`,
+`frontend/src/components/canvas/canvas-audio-settings-popover.tsx`,
+`frontend/src/stores/use-config-store.ts` (type, default, the model list's normaliser), `frontend/src/types/canvas.ts`,
+`frontend/src/lib/canvas/{canvas-generation-helpers,canvas-node-factory,node-settings-memory}.ts`,
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts`.
+
+## 261. A button's label gives way where the button ends
+
+**Decision** `Button`'s label slot (`span[data-slot="text"]`) is `min-w-0 truncate`, and the three composer
+pills — the video, image and audio settings triggers — carry their whole sentence in a `title` as well.
+
+**What was wrong** The video node's settings pill showed `480p · 1:1 · 4s · First & last frame` drawn *past* its
+own rounded background, 34 px of text on nothing. The button was capped (`!max-w-[200px]`) and the call site had put
+`truncate` on a `span` inside it, which cannot work: `Button` wraps children in a `span[data-slot="text"]`, that
+wrapper is a flex item of the button, and a flex item's `min-width: auto` refuses to shrink below its text — so the
+wrapper stayed 208 px wide inside a 200 px button, and the inner `truncate` did nothing because an inline box has no
+overflow to hide. Nothing in the app noticed: the pill is laid out by flexbox, no test has a layout, and `tsc` and
+prettier cannot see a paint that escapes its box.
+
+**Why the kit and not the call site** One call site remembered `truncate` and it silently failed. Put the rule where
+the box is: the slot shrinks (`min-w-0`), and the slot ellipsises (`truncate`) — so a `truncate` inside the slot is
+harmless and a missing one no longer matters. `Button` already promised `whitespace-nowrap`; a label that cannot wrap
+has to have somewhere to go when the button is narrower than it is, and the only alternatives are spilling or
+clipping. This is the clipping one, with an ellipsis to say so.
+
+**Why the titles** With the label ellipsised, the sentence is unreadable at a glance — and it is the only place the
+resolution, ratio, seconds and mode are shown together. `title` costs nothing and matches what `ModelPicker` already
+does for the same reason (`title={optionLabel(current)}`).
+
+**Measured, not assumed** A standalone page with the built stylesheet, the real button classes and the two markups,
+rendered in headless Chrome: before, `button=200.0px slot=208.5px spill=+34.1px`; after, `button=200.0px
+slot=165.4px spill=-9.0px` with `slotScroll=209` — i.e. the text now ends inside the pill and is clipped with an
+ellipsis (the screenshot shows `480p · 1:1 · 4s · First & l…`). The 34 px is the same 34 px counted off the user's
+screenshot (`pill fill ends at x≈445, text at x≈479`).
+
+**What else changed on the way** The image popover's trigger computed `qwen ? label : hasReferences ? size : size` —
+both branches identical, so `hasReferences` was a prop that changed nothing (`tsc` then refused to let it stay once
+the redundant branch went). It is gone from the component and from its one call site. `globals.css` still carries
+`.canvas-composer-icon` / `.canvas-composer-tools` rules whose only purpose was to shrink these labels; nothing
+renders those classes since the composer was rebuilt, so they are dead CSS rather than the fix — left in place here,
+noted for the next sweep.
+
+**Cost** A label that would have been readable at full width is now ellipsised when the button is clamped — which is
+what `!max-w-*` asked for. Buttons with an element child that is meant to poke outside their box would be clipped;
+none exists (checked: no `absolute` child inside a `Button`).
+
+**Tested** The headless-Chrome measurement above (throwaway, `/tmp/pill.html`), and `Button` is on every screen in the
+app: `npx vitest run` (368), `npm run check` (863/849 keys, 180 modules, prettier, tsc), `npm run build` 561.61 kB,
+`make check` (20 packages, 504 exports) all pass afterwards.
+
+**Where** `frontend/src/components/kit/button.tsx`,
+`frontend/src/components/canvas/canvas-video-settings-popover.tsx`,
+`frontend/src/components/canvas/canvas-image-settings-popover.tsx`,
+`frontend/src/components/canvas/canvas-audio-settings-popover.tsx`,
+`frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.

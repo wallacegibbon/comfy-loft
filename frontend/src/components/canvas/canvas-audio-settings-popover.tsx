@@ -2,14 +2,13 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 
-import { AudioSettingsPanel } from "@/components/audio-settings-panel";
+import { AudioSettingsPanel, audioSettingsSummary } from "@/components/audio-settings-panel";
 import { Button } from "@/components/kit/button";
-import { audioFormatLabel, audioSpeedLabel, audioVoiceLabel } from "@/lib/audio-generation";
 import { type CanvasTheme } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import type { AiConfig } from "@/stores/use-config-store";
 
-export type CanvasAudioSettingKey = "audioVoice" | "audioFormat" | "audioSpeed" | "audioInstructions";
+export type CanvasAudioSettingKey = "audioFormat" | "audioSeconds" | "audioInstructions";
 
 type CanvasAudioSettingsPopoverProps = {
     config: AiConfig;
@@ -47,6 +46,7 @@ export function CanvasAudioSettingsPopover({ config, onConfigChange, buttonClass
     }, [open]);
 
     const panel = open && buttonRect ? <AudioSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} onConfigChange={onConfigChange} /> : null;
+    const summary = audioSettingsSummary(config);
 
     return (
         <>
@@ -57,11 +57,10 @@ export function CanvasAudioSettingsPopover({ config, onConfigChange, buttonClass
                     className={buttonClassName || "!h-8 !max-w-[170px] !justify-start !rounded-full !px-2.5"}
                     style={{ background: theme.node.fill, color: theme.node.text }}
                     icon={<Settings2 className="size-3.5" />}
+                    title={summary}
                     onClick={() => setOpen((current) => !current)}
                 >
-                    <span className="truncate">
-                        {audioVoiceLabel(config.audioVoice)} · {audioFormatLabel(config.audioFormat)} · {audioSpeedLabel(config.audioSpeed)}
-                    </span>
+                    <span>{summary}</span>
                 </Button>
             </span>
             {panel}
