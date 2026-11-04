@@ -9,6 +9,7 @@ import { Button } from "@/components/kit/button";
 import { Switch } from "@/components/kit/choice";
 import i18n from "@/i18n";
 import { type CanvasTheme } from "@/lib/canvas-theme";
+import { imageModeFor } from "@/lib/canvas/image-mode";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { serverVariantLabel } from "@/lib/server-labels";
 import { channelModelOf } from "@/stores/use-config-store";
@@ -85,9 +86,12 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onParamsCha
     const activeSize = config.size || "auto";
     const qwen = qwenModelInfo(config);
     const editCanvasRatio = canvasRatioOf(String((config.params as Record<string, unknown> | undefined)?.editCanvasSize || ""), String((config.params as Record<string, unknown> | undefined)?.resolution ?? 1024));
-    // A stored imageMode can outlive the model it was chosen for (switching to Qwen while the
-    // config still says "layout"), so an unknown mode reads as plain text-to-image.
-    const imageMode = qwen && qwen.modes.includes(String(config.imageMode)) && !qwen.blocked.includes(String(config.imageMode)) ? String(config.imageMode) : "t2i";
+    // A stored imageMode can outlive the model it was chosen for (switching to Qwen while the config still says
+    // "layout"), so what the pill claims is the mode the request will use — the same function the request asks.
+    // A mode whose own nodes are missing is not what the pill should claim either: it is offered, marked, and
+    // refused, so the label stays on the mode that runs.
+    const resolvedMode = imageModeFor(config, config.model);
+    const imageMode = resolvedMode && !qwen?.blocked.includes(resolvedMode) ? resolvedMode : "t2i";
     // The trigger reads `mode · scope`: the mode name, then what the canvas will follow.
     const qwenTriggerLabel = !qwen
         ? ""

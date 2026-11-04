@@ -8,7 +8,7 @@ import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
 import { Tooltip } from "@/components/kit/tooltip";
 import { BaseModelPicker, ModelPicker, WorkflowModelPicker } from "@/components/model-picker";
-import { channelModelOf, defaultConfig, modelOptionName, modelTakesPrompt, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig, type ModelAccepts } from "@/stores/use-config-store";
+import { channelModelOf, defaultConfig, modelIsStep, modelOptionName, modelTakesPrompt, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig, type ModelAccepts } from "@/stores/use-config-store";
 
 import { nodePromptOf, promptPatch } from "@/lib/canvas/node-prompt-field";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
@@ -266,11 +266,15 @@ export function CanvasNodePromptPanel({
         setExpanded(true);
     };
 
-    // A node that runs a step has nothing to be asked: an interpolation takes a clip and a multiplier, an
-    // upscaler takes a picture and a model. What its panel shows comes from the workflow's own contract, not
-    // from what this panel knows about the workflows that do take a prompt — which is exactly how an
-    // interpolation node used to render as a text-to-video one, with a prompt box and a model it never ran.
-    if (!modelTakesPrompt(globalConfig, config.model)) {
+    // A node that runs a step is shown the step panel: an interpolation takes a clip and a multiplier, an
+    // upscaler a picture and a model, an angle re-render a picture and three knobs. What that panel shows comes
+    // from the workflow's own contract, not from what this panel knows about the workflows that take a prompt.
+    //
+    // A step that *takes* words keeps its box — the angle re-render is asked what to do with the picture — so
+    // the prompt is handed to the step panel rather than the panel being chosen by whether a box exists. That
+    // choice was the bug: a step with a `prompt` binding looked like a composer model, so its knobs were never
+    // shown and its run went down the from-prompt request path (#267).
+    if (modelIsStep(globalConfig, config.model)) {
         return (
             <CanvasToolNodePanel
                 node={node}
@@ -283,6 +287,11 @@ export function CanvasNodePromptPanel({
                 onStop={onStop}
                 onDisconnectReference={onDisconnectReference}
                 onStartReferenceSelection={onStartReferenceSelection}
+                prompt={
+                    modelTakesPrompt(globalConfig, config.model)
+                        ? { value: draft, onChange: setDraft, onCommit: commitPrompt, placeholder: t(`canvas.promptPanel.${mode === "image" && hasImageContent ? "editImage" : mode === "text" && hasTextContent ? "editText" : mode}`) }
+                        : undefined
+                }
             />
         );
     }

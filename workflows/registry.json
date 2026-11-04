@@ -1261,6 +1261,11 @@
       "type": "image",
       "description": "Qwen-Image 2.1 Turbo + Qwen Multiangle Camera. Local angle regeneration with 0-360 horizontal, -30-60 vertical and zoom.",
       "file": "image-qwen21-angle.json",
+      "parameters": [
+        { "key": "horizontalAngle", "label": "Horizontal angle", "type": "number", "default": 0 },
+        { "key": "pitchAngle", "label": "Pitch angle", "type": "number", "default": 0 },
+        { "key": "cameraDistance", "label": "Camera distance", "type": "number", "default": 5 }
+      ],
       "accepts": {
         "images": {
           "min": 1,

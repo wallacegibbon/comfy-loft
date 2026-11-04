@@ -18,10 +18,11 @@ afterAll(() => {
     else Reflect.deleteProperty(globalThis, "localStorage");
 });
 
-const { defaultConfig, defaultModelOptions, resolveModelForCapability, useConfigStore, workflowModelOptions } = await import("../src/stores/use-config-store");
+const { defaultConfig, defaultModelOptions, modelIsStep, resolveModelForCapability, useConfigStore, workflowModelOptions } = await import("../src/stores/use-config-store");
 const { buildGenerationConfig } = await import("../src/lib/canvas/canvas-generation-helpers");
 const { CanvasNodeType } = await import("../src/types/canvas");
 const { videoFollowsSource, videoModelForMode } = await import("../src/lib/canvas/video-model-mode");
+const { imageModeFor } = await import("../src/lib/canvas/image-mode");
 
 const config: AiConfig = {
     ...defaultConfig,
@@ -115,6 +116,58 @@ test("a mode finds the model that declares it, and an unknown model claims nothi
     expect(videoFollowsSource(withModes, "replacement::video-h3-character-swap")).toBe(true);
     expect(videoFollowsSource(withModes, "replacement::video-h3-t2v")).toBe(false);
     expect(videoFollowsSource(withModes, "replacement::not-listed")).toBe(false);
+});
+
+// A step is what a button drives — and it is one whether or not it happens to take words. The angle
+// re-render takes words, which used to make it look like a composer model: its panel hid its knobs and its
+// run went down the from-prompt path, where those knobs are never sent (docs/decisions.md #267).
+test("a tool is a step even when it takes words, and a model that takes none is a step too", () => {
+    const withModels: AiConfig = {
+        ...config,
+        channels: [
+            {
+                id: "replacement",
+                name: "Replacement",
+                baseUrl: "https://example.com",
+                models: [
+                    { name: "image-qwen21", capability: "image", workflowId: "image-qwen21", hasPrompt: true },
+                    { name: "image-qwen21-angle", capability: "image", workflowId: "image-qwen21-angle", tool: true, hasPrompt: true },
+                    { name: "image-esrgan-upscale", capability: "image", workflowId: "image-esrgan-upscale", tool: true, hasPrompt: false },
+                ],
+            },
+        ],
+    };
+    expect(modelIsStep(withModels, "replacement::image-qwen21-angle")).toBe(true);
+    expect(modelIsStep(withModels, "replacement::image-esrgan-upscale")).toBe(true);
+    expect(modelIsStep(withModels, "replacement::image-qwen21")).toBe(false);
+    // A model the server did not list is unknown, not a step: nothing is claimed about it.
+    expect(modelIsStep(withModels, "replacement::not-listed")).toBe(false);
+});
+
+// A node keeps its mode after the model under it changes, so the mode has to be resolved against the model
+// that will actually run: an inpaint mode sent to a workflow with no mask binding is a request for something
+// the graph cannot do (docs/decisions.md #267).
+test("the image mode sent is one the running model declares", () => {
+    const withModes = (imageMode: string): AiConfig => ({
+        ...config,
+        imageMode,
+        channels: [
+            {
+                id: "replacement",
+                name: "Replacement",
+                baseUrl: "https://example.com",
+                models: [
+                    { name: "image-qwen21", capability: "image", workflowId: "image-qwen21", hasPrompt: true, variantModes: ["edit", "inpaint", "outpaint", "t2i"] },
+                    { name: "image-z-image-turbo", capability: "image", workflowId: "image-z-image-turbo", hasPrompt: true },
+                ],
+            },
+        ],
+    });
+    expect(imageModeFor(withModes("inpaint"), "replacement::image-qwen21")).toBe("inpaint");
+    // A workflow with no modes is sent none: the field is not part of its request at all.
+    expect(imageModeFor(withModes("inpaint"), "replacement::image-z-image-turbo")).toBe("");
+    expect(imageModeFor(withModes("nonsense"), "replacement::image-qwen21")).toBe("t2i");
+    expect(imageModeFor(withModes(""), "replacement::image-qwen21")).toBe("t2i");
 });
 
 // The node remembers what it was made with. Recovery asks about that model by name, so a task that

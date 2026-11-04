@@ -32,6 +32,7 @@ export function CanvasToolNodePanel({
     onStop,
     onDisconnectReference,
     onStartReferenceSelection,
+    prompt,
 }: {
     node: CanvasNodeData;
     nodes: CanvasNodeData[];
@@ -43,6 +44,12 @@ export function CanvasToolNodePanel({
     onStop: (nodeId: string) => void;
     onDisconnectReference?: (fromNodeId: string, toNodeId: string) => void;
     onStartReferenceSelection?: (nodeId: string) => void;
+    /**
+     * The node's prompt, when this step takes words at all — an angle re-render is told what to do with the
+     * picture, an interpolation has nothing to be asked. The words live in the composer's own state, so it
+     * hands them in rather than this panel keeping a second copy of them.
+     */
+    prompt?: { value: string; onChange: (value: string) => void; onCommit: () => void; placeholder: string };
 }) {
     const { t } = useTranslation();
     const theme = useCanvasTheme();
@@ -78,6 +85,16 @@ export function CanvasToolNodePanel({
                 addDisabled={requirements.every((item) => Boolean(item.max) && item.have >= item.max)}
                 addDisabledHint={t("canvas.toolPanel.full")}
             />
+            {prompt ? (
+                <textarea
+                    className="thin-scrollbar mb-2 min-h-16 w-full resize-none rounded-xl border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                    style={{ borderColor: theme.node.stroke, color: theme.node.text }}
+                    placeholder={prompt.placeholder}
+                    value={prompt.value}
+                    onChange={(event) => prompt.onChange(event.target.value)}
+                    onBlur={() => prompt.onCommit()}
+                />
+            ) : null}
             <div className="mb-2 flex min-w-0 items-center gap-2">
                 {/* The node can be retargeted: another step, or a workflow that does take a prompt — the panel
                     becomes that workflow's on the next render, because it is built from the contract. */}
@@ -114,9 +131,9 @@ export function CanvasToolNodePanel({
                         disabled={!isRunning && !ready}
                         onClick={() => {
                             if (isRunning) return onStop(node.id);
-                            // The node's own words stay its own: a step does not send them, but it must
-                            // not wipe what the node was told either.
-                            onGenerate(node.id, mode, node.metadata?.prompt || "");
+                            // A step that takes words sends the box; one that does not sends the node's own
+                            // words unchanged, so the run never claims a prompt the user did not write.
+                            onGenerate(node.id, mode, prompt ? prompt.value : node.metadata?.prompt || "");
                         }}
                         aria-label={t(isRunning ? "canvas.promptPanel.stop" : "canvas.promptPanel.generate")}
                     >

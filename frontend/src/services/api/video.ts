@@ -8,7 +8,7 @@ import { getMediaBlob, resolveMediaUrl, type UploadedFile } from "@/services/fil
 import { imageToDataUrl } from "@/services/image-storage";
 import { cancelRun, createRun, uploadMedia, waitForRun, RunFailedError, type Run, type RunRequest } from "@/services/api/runs";
 import { generatedVideo } from "@/lib/canvas/generated-media";
-import { modelTakesPrompt, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
+import { modelIsStep, modelTakesPrompt, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
@@ -45,7 +45,7 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
     // A step, not a prompt: an interpolation is told a multiplier and given a clip, and nothing else.
     // Sending the composer's prompt and size would be accepted by the server and quietly ignored, which
     // is the one failure mode this build refuses to have (docs/protocol.md).
-    if (!modelTakesPrompt(requestConfig, requestConfig.model)) return createVideoStepTask(requestConfig, references, options);
+    if (modelIsStep(requestConfig, requestConfig.model)) return createVideoStepTask(requestConfig, prompt, references, options);
     return createServerVideoTask(requestConfig, prompt, references, options);
 }
 
@@ -55,7 +55,7 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
  * The media role is the binding's kind (`video`, `audio`, `image`), which is how the server's planner
  * reads it — a step has no first-frame/last-frame/reference distinction to make, because it has no modes.
  */
-async function createVideoStepTask(config: AiConfig, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
+async function createVideoStepTask(config: AiConfig, prompt: string, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
     const media: Record<string, string | string[]> = {};
     try {
         const images = await Promise.all(references.map((image, index) => uploadReferenceImage(config, image, index, options)));
@@ -66,7 +66,7 @@ async function createVideoStepTask(config: AiConfig, references: ReferenceImage[
         if (audios.length) media.audio = audios;
         const run = await createRun(config, {
             workflow: config.model,
-            inputs: { ...(config.params || {}), ...(options?.params || {}) },
+            inputs: { ...(modelTakesPrompt(config, config.model) ? { prompt } : {}), ...(config.params || {}), ...(options?.params || {}) },
             ...(Object.keys(media).length ? { media } : {}),
             askedBy: options?.askedBy,
         });

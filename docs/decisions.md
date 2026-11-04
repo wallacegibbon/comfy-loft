@@ -9921,3 +9921,61 @@ what changed is which branch a control takes, with the shipped registry's declar
 `frontend/src/lib/canvas/video-model-mode.ts`, `frontend/src/components/video-settings-panel.tsx`,
 `frontend/src/components/canvas/{canvas-video-settings-popover,canvas-node-prompt-panel}.tsx`,
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts`, `frontend/tests/{server-models,model-selection}.test.ts`.
+
+## 267. A step is a tool, and the mode sent is one the model declares
+
+**Decision** Three fixes, one root: a workflow's *identity* was standing in where what it *declares* was the
+answer.
+
+1. **The image mode sent is resolved against the model that will run it.** `imageModeFor(config, model)` — the
+   node's choice when the model declares it, else `t2i` when that is declared, else the first mode declared,
+   and nothing at all for a workflow with no modes. `requestGeneration` uses it to decide the media roles and
+   the outpaint numbers, and the settings pill uses it for the mode it claims to be on.
+2. **A step is a tool.** `modelIsStep` is `tool === true || hasPrompt === false`, and the five places that have
+   to agree now ask it: the node panel, the image request, the video request, and the two metadata builders.
+   `modelTakesPrompt` stays, asking the different question it always asked — whether that step has a text box.
+3. **The angle workflow declares its three knobs.** `image-qwen21-angle` binds through
+   `from: params.horizontalAngle`, `params.pitchAngle`, `params.cameraDistance`, but declared no parameters —
+   and a name is a valid input only when it is a semantic request key, a declared parameter, or a binding
+   addressed as `params.<binding key>`. So the names the client sent were refused as `unknown_input`, and the
+   binding's own keys were refused too: the knobs had no way in from either side.
+
+**Why** Each one was a silent wrong request, not an untidiness:
+- A node keeps its `imageMode` when the model under it changes, so an "inpaint" chosen on Qwen travelled to a
+  workflow with one mode and no mask binding. The panel clamped that for its label; the request did not, and
+  sent a mask role and padding to a graph that binds neither.
+- The angle re-render takes words, so `hasPrompt` was true, so it was treated as a from-prompt model: its panel
+  showed no knobs (they were unsettable) and its run went down the from-prompt path, where a step's parameters
+  are never sent. A tool that happens to accept words is still a tool.
+- With the knobs declared, the step panel renders them from the declaration with no client code — which is the
+  same shape as #263: the panel shows what the workflow declares, and the server validates against the same
+  declaration.
+
+**Found on the way** The step request dropped the prompt entirely, which was invisible while every step
+happened to have no prompt binding. It would have broken the one step that takes words the moment that step
+started going down the step path. The step request now carries the prompt exactly where the workflow binds one,
+and the step panel shows the box exactly there too.
+
+**Cost** The angle workflow accepts three inputs it used to refuse — a widening of one workflow's surface, by
+declaration. No ranges are declared for them, so a knob is unbounded at the API: the graph's own transform
+(`int`, `invert10`) is the only judge. A bound belongs in the registry beside the default, and inventing one
+here would be a second answer to a question the graph already answers.
+
+A stale `imageMode` is now dropped rather than sent: someone who chose inpaint on Qwen and switched to Z-Image
+gets a plain text-to-image run instead of a refusal. That is a silent substitution, and it is the deliberate
+one — a request that cannot mean what it says is worse than one that means what the panel has been showing all
+along.
+
+**Tested** `go test ./...`, `make check` (deadcode 505) — `TestShippedAngleWorkflowAcceptsItsKnobs` pins the
+declaration from both sides: the three names are accepted, the binding's own key (`horizontal`) is still
+refused because nothing reads it, and a word is refused where a number belongs. Frontend: `npx tsc --noEmit`,
+`npm run check` (867/853 keys, 183 modules), `npx vitest run` (40 files, 380 tests — `modelIsStep` covering a
+tool that takes words, a tool that does not, a composer model and an unlisted one; `imageModeFor` covering a
+declared mode, a stale one, an empty one and a workflow with no modes; and an angle step's request carrying the
+prompt beside its knobs), `npm run build` (569.95 kB).
+
+**Where** `internal/workflow/shipped_angle_test.go`, `workflows/registry.json`,
+`frontend/src/lib/canvas/image-mode.ts`, `frontend/src/stores/use-config-store.ts`,
+`frontend/src/services/api/{image,video}.ts`, `frontend/src/lib/canvas/{video-run-metadata,canvas-node-factory}.ts`,
+`frontend/src/components/canvas/{canvas-node-prompt-panel,canvas-tool-node-panel,canvas-image-settings-popover}.tsx`,
+`frontend/tests/{model-selection,api-image-upscale}.test.ts`.

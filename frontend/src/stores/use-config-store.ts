@@ -299,6 +299,22 @@ export function modelTakesPrompt(config: AiConfig, value: string) {
     return channelModelOf(config, value)?.model.hasPrompt !== false;
 }
 
+/**
+ * Whether the canvas runs this model as a step: a workflow a button drives (an interpolation, an upscaler,
+ * an angle re-render) or one with nothing to be told in words.
+ *
+ * A step gets the step panel and submits the step request — words or knobs, never a prompt-shaped run. The
+ * two halves are one predicate because they must agree: a model that the panel treats as a step but the
+ * request sends as a from-prompt run is a node whose knobs are never sent, which is what happened to the
+ * angle workflow while its `prompt` binding made it look like a composer model (#267).
+ *
+ * `modelTakesPrompt` answers a different question and stays: whether that step has a text box at all.
+ */
+export function modelIsStep(config: AiConfig, value: string) {
+    const model = channelModelOf(config, value)?.model;
+    return Boolean(model?.tool) || model?.hasPrompt === false;
+}
+
 /** The base-model entry of the workflow the current model belongs to, used to echo the top-level dropdown. */
 export function workflowModelValue(config: AiConfig, value: string) {
     const found = channelModelOf(config, value);

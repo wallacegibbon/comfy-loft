@@ -8,7 +8,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * the run protocol: now the source image is uploaded once, named by role, and the chosen workflow's
  * own knobs are the typed inputs.
  */
-vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
+// `t` answers with the key, except where the caller passes the sentence to wrap: the reference-prefix
+// template takes the user's words as `prompt`, and keeping them makes the assertion below about the words
+// that reached the run rather than about the wrapper's own text.
+vi.mock("@/i18n", () => ({ default: { t: (key: string, options?: { prompt?: string }) => (typeof options?.prompt === "string" ? options.prompt : key) } }));
 vi.mock("@/services/api/server-status", () => ({ noteServerError: () => undefined, noteServerResponse: () => undefined }));
 
 // Media conversion is a browser concern; these tests are about the request the canvas builds. A generated
@@ -149,6 +152,48 @@ describe("an image node running a step", () => {
         // No `prompt`, no `size`, no `mode`: the upscaler declares none of them, and the server accepts and
         // ignores an undeclared key, so sending one would read as a knob that did nothing.
         expect(body.inputs).toEqual({ upscale_model: "RealESRGAN_x4plus.pth" });
+        expect(body.media).toEqual({ image: [UPLOAD_ID] });
+    });
+});
+
+// A step that takes words: the angle re-render is told what to keep and what to change, and it is one of the
+// workflows the canvas drives from a button. It is a step because it is a tool — not because it has no prompt
+// box — so its request carries the prompt *and* its knobs (docs/decisions.md #267).
+const angleServer = () =>
+    ({
+        ...server(),
+        channels: [
+            {
+                id: "local",
+                name: "local",
+                baseUrl: "http://127.0.0.1:8190/v1",
+                models: [
+                    {
+                        name: "image-qwen21-angle",
+                        capability: "image",
+                        workflowId: "image-qwen21-angle",
+                        tool: true,
+                        hasPrompt: true,
+                        imageInputs: 1,
+                        parameters: [],
+                    },
+                ],
+            },
+        ],
+        model: "local::image-qwen21-angle",
+        imageModel: "local::image-qwen21-angle",
+        params: { horizontalAngle: 30, pitchAngle: 5, cameraDistance: 4 },
+    }) as unknown as Config;
+
+describe("a step that takes words", () => {
+    it("sends the prompt beside its knobs, and only because it binds one", async () => {
+        const { calls } = stubServer();
+
+        await requestEdit(angleServer(), "keep the colours, turn the camera left", [image("source.png")]);
+
+        const body = runBody(calls);
+        expect(body.workflow).toBe("image-qwen21-angle");
+        expect(body.inputs).toEqual({ prompt: "keep the colours, turn the camera left", horizontalAngle: 30, pitchAngle: 5, cameraDistance: 4 });
         expect(body.media).toEqual({ image: [UPLOAD_ID] });
     });
 });

@@ -1,4 +1,4 @@
-import { modelTakesPrompt, type AiConfig } from "@/stores/use-config-store";
+import { modelIsStep, type AiConfig } from "@/stores/use-config-store";
 import type { CanvasNodeData } from "@/types/canvas";
 
 /**
@@ -13,7 +13,7 @@ import type { CanvasNodeData } from "@/types/canvas";
  */
 export function videoRunMetadata(config: AiConfig): CanvasNodeData["metadata"] {
     const params = config.params ? { params: config.params } : {};
-    if (!modelTakesPrompt(config, config.model)) return { model: config.model, ...params };
+    if (modelIsStep(config, config.model)) return { model: config.model, ...params };
     return {
         model: config.model,
         size: config.size,
