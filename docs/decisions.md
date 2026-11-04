@@ -9267,14 +9267,16 @@ blank field sends nothing and `removeKey` sends `""`. Exactly two refusals are r
 rather than passed on: `speech_profile_missing` (an empty list, which is a setting in this window) and
 `speech_profile_unknown` (another window wrote the list first, where "there is no speech profile 7" is not
 something a reader can act on). Everything else, including every refusal from the speech server itself, keeps the
-server's words. `make check` 19 packages, `npx vitest run` 343, `npm run check` (864/850 keys), `npm run build`.
+server's words. `frontend/tests/config-speech-migration.test.ts`: a stored document carrying the old `asrUrl` and
+`asrModel` hydrates to a config that has neither, and the rest of the document survives that. `make check` 19
+packages, `npx vitest run` 345, `npm run check` (864/850 keys), `npm run build`.
 
 **Where** `internal/store/speech.go` (+`store_test.go`), `internal/util/util.go` (`WriteFileAtomicMode`),
 `internal/server/routes_speech.go` (+`_test.go`), `internal/server/server.go`,
 `frontend/src/services/api/speech.ts`, `frontend/src/lib/speech-profiles.ts`,
 `frontend/src/components/settings/{speech-profiles-section,speech-profile-dialog,preferences-dialog}.tsx`,
 `frontend/src/stores/use-config-store.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
-`frontend/tests/{api-speech,speech-profiles}.test.ts`, `docs/server.md`, `README.md`.
+`frontend/tests/{api-speech,speech-profiles,config-speech-migration}.test.ts`, `docs/server.md`, `README.md`.
 
 ## 253. Twelve Go exports nothing could reach are gone, and a gate says so from now on
 
