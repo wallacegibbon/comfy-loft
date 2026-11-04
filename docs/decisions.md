@@ -10743,3 +10743,60 @@ stub that accepts `/prompt` and never finishes:
 `frontend/src/pages/canvas/project.tsx` (the empty-prompt beats),
 `frontend/src/pages/canvas/hooks/use-generation-runs.ts`, `docs/server.md`, `tests/agent-generate.test.ts`,
 `tests/canvas-agent-tools.test.ts`.
+
+## 286. The rules that tell the agent how this canvas is meant to be used
+
+**Decision** The canvas's system prompt grew by three paragraphs and one rewritten one, and the two tools that
+write words gained a sentence each:
+- *Candidates are one card.* "When the user wants several pictures of the same thing to choose from, make one text
+  node holding the words, make the picture nodes, and connect the card into each of them with canvas_connect —
+  leave their own prompts empty — then press each one with canvas_generate." Editing the card and pressing again is
+  a new set from the new words; another candidate is a new node, because pressing replaces what a node holds.
+- *Nothing about negations.* A rule saying "write only what should be there, never a negation, never a row of NOs"
+  was written, measured, and **removed**: the prompt does not mention negatives at all — not to forbid them, not to
+  define them, and not to quote them. `set_text` and `set_prompt` say nothing about them either.
+- *Placement leaves room.* "When you make a node or move one, leave room: read the card sizes list_nodes reports,
+  and put the cards side by side or one under another, not on top of each other."
+- *Asking about a node is answered by showing it.* The old paragraph began "The viewport is the user's" and buried
+  the rule in an aside; it now begins with the trigger — "When the user asks about a node … call canvas_focus_node
+  on it before you answer, and write its title with an @ in front" — and keeps "Naming a node is not showing it."
+- *One clause in "Say a thing once".* "when the words are new **and only that node needs them**, they belong in its
+  own prompt" — otherwise it contradicted the card.
+
+**Why** Measured on a real canvas (192.168.3.233): the agent wired three nodes to one text card and pressed generate
+in one turn — the idiom this prompt now describes — so the shape is right and the prompt is the place to say it. The
+placement rule is the one the user asked for out of a real conversation: three 240-high pictures landed at
+y=-120/80/280 and overlapped, and they said so. The focus rule already existed and was too soft to survive the
+sentence after it ("one node per answer is enough"), which is why a question about a node came back as an id.
+
+**Why these words, and for the smaller model too** The same rules are read by a cloud model and by whatever local
+one serves `generic-model`, so every paragraph is written the same way: the trigger first, the tool named in the
+sentence, the imperative before the reason, and no aside nested inside an aside. Length was the other constraint —
+8 paragraphs, 537 words — and the shape is the mitigation: a model that reads only each paragraph's first sentence
+still has every rule.
+
+**Why the prompt says nothing about negations** Because it did not work, and because saying it may have made it
+worse. Three times, against the local `generic-model`, with a card whose own text already ends in "NO text, NO
+words, NO letters …", the agent copied that row into the words it wrote — the example in front of it beats a rule
+about examples. Strengthening the paragraph twice and repeating it in the two tools that write words changed nothing.
+Worse, the rule had to *quote* the words it forbade ("no text", "NO words"), which puts them in the prompt for a model
+to imitate. The operator's instruction settled it: do not ask it not to write them, do not mention them at all. What
+happens on a canvas whose own cards show the habit is therefore the cards' business; a card that does not show it
+teaches nothing. Enforcing it would be a code rule in `set_text` (refuse or strip a trailing row), which nobody has
+asked for.
+
+**Cost** 391 → 624 words, six paragraphs → nine. The order is changed: candidates and placement sit right after
+"prefer a connection to a copy", because they are that rule applied, and focus — the rule the user asked for — moved
+one place down.
+
+**Tested** `TestAgentSpawnCarriesTheCanvasRule` now names one phrase per rule, in the order the prompt states them
+(a paragraph that loses its rule is a behaviour that quietly goes back to the model's taste). Live, on an isolated
+`:8191` with the real AlayaCore and the real ComfyUI: "用那张森林提示词卡，给我两个候选图" produced the whole idiom
+in one turn — one card, two picture nodes, two connections, two presses, no prompt on either node, both runs
+`completed`, and the canvases placed side by side without touching the card; and pressing generate on a node the
+agent had hollowed out (no prompt, no connection) came back in the same second as
+`generate on image-… did not start: workflow image-z-image-turbo requires a non-empty prompt`. The negation rule is
+the one that was measured three times and removed, as above. `make check` (deadcode 508), `go test ./...`,
+`npx tsc --noEmit`, `npm run check` (i18n 860/827, exports 188), `npx vitest run` (398), `npm run build` (560.63 kB).
+
+**Where** `internal/server/agent_instructions.go` (the eight paragraphs), `internal/server/mcp_test.go`.

@@ -170,11 +170,37 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 // help. It is set on every spawn, canvas panel and node panel alike. The last rule is #203: a prompt is
 // said once, in the box or in a connected text node, and the agent may not write both — the panel stopped
 // copying the connected text into the box in #185, and `create_node` still let the agent do it.
+//
+// One phrase per rule, in the order the prompt states them: a paragraph that loses its rule is a behaviour
+// that quietly goes back to being decided by the model's taste (#281, #282, #286).
 func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 	server := newTestServer(t, newFakeComfy(t))
 
 	system := strings.Join(server.agentOptions().System, "\n")
-	for _, want := range []string{"canvas_connect", "copy", "canvas_focus_node", "leave that node's own prompt empty", "the node the user asked about", "canvas_set_text", "carries nothing", "canvas_read_prompt"} {
+	wants := []string{
+		"Your tools are the canvas_* tools",
+		"Prefer a connection to a copy",
+		"copy content only when the user asked for a separate copy",
+		// #286: candidates are one card the pictures share, pressed one by one.
+		"several pictures of the same thing to choose from",
+		"leave their own prompts empty",
+		"press each one with canvas_generate",
+		"another candidate is a new node",
+		// #286: layout is checked against the sizes, not guessed.
+		"read the card sizes list_nodes reports",
+		"not on top of each other",
+		// #286: asking about a node is answered by moving the user's view to it.
+		"Naming a node is not showing it",
+		"write its title with an @ in front",
+		"the viewport is the user's",
+		// #203: said once, in the box or in the card.
+		"leave that node's own prompt empty",
+		"only that node needs them",
+		"carries nothing",
+		"canvas_set_text",
+		"canvas_read_prompt",
+	}
+	for _, want := range wants {
 		if !strings.Contains(system, want) {
 			t.Fatalf("the agent's system prompt does not mention %q: %q", want, system)
 		}
