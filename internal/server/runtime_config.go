@@ -6,11 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"comfyloft/internal/httpx"
+	"comfyloft/internal/util"
 )
 
 /**
@@ -158,27 +157,8 @@ func escapeLineSeparators(payload []byte) []byte {
 	return bytes.ReplaceAll(bytes.ReplaceAll(payload, []byte("\u2028"), []byte(`\u2028`)), []byte("\u2029"), []byte(`\u2029`))
 }
 
-// writeRuntimeFile replaces the file in one step, so a page loading at that instant reads the old one
-// or the new one and never half of either.
+// writeRuntimeFile replaces the file in one step, so a page loading at that instant reads the old one or the new
+// one and never half of either.
 func writeRuntimeFile(path string, content []byte) error {
-	temp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	// CreateTemp makes the file owner-only; the canvas's browser reads it, so it is 0644 like the rest.
-	if err := temp.Chmod(0o644); err != nil {
-		_ = temp.Close()
-		_ = os.Remove(temp.Name())
-		return err
-	}
-	name := temp.Name()
-	defer func() { _ = os.Remove(name) }()
-	if _, err := temp.Write(content); err != nil {
-		_ = temp.Close()
-		return err
-	}
-	if err := temp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(name, path)
+	return util.WriteFileAtomic(path, content)
 }

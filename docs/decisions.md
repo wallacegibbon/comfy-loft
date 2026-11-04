@@ -9336,3 +9336,36 @@ from another file`. `make check` 20 packages (the tool is now vetted and tested 
 **Where** `tools/deadcode/{main.go,main_test.go}`, `Makefile` (`deadcode`, `check`, `PKGS`, `.PHONY`),
 `internal/{comfy,config,httpx,resource,setup,store,workflow}/*.go`, `docs/known-issues.md` (entry 2 leaves it),
 `docs/server.md`, `README.md`.
+
+## 254. One writer for every write: five copies of temp-file-then-rename became one
+
+**Decision** `internal/canvas`, `internal/settings`, `internal/server` (the first-paint script and `mcp.conf`) and
+`internal/store` (already there) all write through `util.WriteFileAtomic` / `util.WriteFileAtomicMode`, and those
+are the only two functions in the tree that create a temporary file. The four private copies — `canvas.writeFile`,
+`settings.writeFile`, `writeRuntimeFile`, `writeMCPConf` — are now three-line wrappers that add their package's
+error text.
+
+**Why it was wrong before.** Four implementations of the same six steps had drifted apart in the ways that matter
+and agreed in the ways that do not: `mcp.conf` was written to a *fixed* `mcp.conf.tmp` name, so two writers could
+interleave into it (and a `SweepTempFiles` pattern could not collect it either); the other three each had to
+repeat the `CreateTemp`-makes-it-0600 correction; and the mode — the one thing a credential file must not get
+wrong — existed in four places, one of which was `0o600` and three of which were `0o644` with nothing but a comment
+saying why. That is the shape a copy takes before it stops agreeing.
+
+**What the single writer does now.** `os.CreateTemp` for the name (O_EXCL over a counter and a random suffix: the
+one thing a `.UnixNano()` name cannot promise is that two writers of the same file never land in the same
+nanosecond — and the previous `WriteFileAtomic` had exactly that race), `Chmod` before any byte is written, then
+write, close, rename. The name it leaves behind is `.` + the file's base + `.<digits>.tmp`, which is the shape
+`SweepTempFiles` already matches, so a killed process still leaves something collected rather than a file per kill.
+
+**What is deliberately still per call site.** The two things that are not the writer's business: whether the
+document ends with a newline (`settings.json` does, `canvas.json` does not, and neither is the file layer's opinion)
+and the sentence an error carries (`canvas: cannot write …` says where it happened).
+
+**Tested** `internal/util/util_test.go`: the mode survives the rename (`0600` written, `0600` read back), the bytes
+are the bytes, a second write replaces the document and leaves the directory holding only the file, the default is
+`0644`, and a temporary file in the shape the writer produces is what `SweepTempFiles` collects — with an ordinary
+file beside it untouched. `make check` 20 packages including the new dead-export gate, `npx vitest run` 343.
+
+**Where** `internal/util/util.go` (+`util_test.go`), `internal/canvas/canvas.go`, `internal/settings/settings.go`,
+`internal/server/{runtime_config,agent_config}.go`.

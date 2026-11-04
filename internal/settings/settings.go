@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"comfyloft/internal/util"
 )
 
 const (
@@ -98,30 +100,12 @@ func validate(document []byte) error {
 	return nil
 }
 
-// writeFile writes through a temporary file in the same directory and renames it into place, so a
-// reader never sees half a document and a failed write leaves nothing behind.
+// writeFile writes through `util.WriteFileAtomic`: a temporary file in the same directory, renamed into place, so
+// a reader never sees half a document and a failed write leaves nothing behind. The trailing newline is this
+// store's own: the document is the canvas's, and a file a person may open reads better with one.
 func writeFile(path string, data []byte) error {
-	temp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("settings: cannot open a temporary file for %s: %w", path, err)
-	}
-	// CreateTemp makes the file owner-only; the document is meant to be 0644 like every other write here.
-	if err := temp.Chmod(0o644); err != nil {
-		_ = temp.Close()
-		_ = os.Remove(temp.Name())
-		return fmt.Errorf("settings: cannot set the mode of %s: %w", path, err)
-	}
-	name := temp.Name()
-	defer func() { _ = os.Remove(name) }()
-	if _, err := temp.Write(append(data, '\n')); err != nil {
-		_ = temp.Close()
+	if err := util.WriteFileAtomic(path, append(data, '\n')); err != nil {
 		return fmt.Errorf("settings: cannot write %s: %w", path, err)
-	}
-	if err := temp.Close(); err != nil {
-		return fmt.Errorf("settings: cannot close %s: %w", path, err)
-	}
-	if err := os.Rename(name, path); err != nil {
-		return fmt.Errorf("settings: cannot install %s: %w", path, err)
 	}
 	return nil
 }

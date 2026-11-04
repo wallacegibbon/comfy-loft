@@ -25,6 +25,7 @@ import (
 
 	"comfyloft/internal/agent"
 	"comfyloft/internal/mcpstdio"
+	"comfyloft/internal/util"
 )
 
 // mcpConfPath is where the agent reads its MCP servers from.
@@ -50,17 +51,11 @@ func (s *Server) writeMCPConf() {
 		s.logger.Warn("agent: cannot create %s: %s", s.cfg.AgentConfigPath, err)
 		return
 	}
-	// Written through a temporary file in the same directory: a session spawned while the server is
-	// rewriting this must find either the old file or the new one, never half of either.
+	// Written through a temporary file in the same directory: a session spawned while the server is rewriting this
+	// must find either the old file or the new one, never half of either.
 	target := s.mcpConfPath()
-	temp := target + ".tmp"
-	if err := os.WriteFile(temp, []byte(content), 0o644); err != nil {
-		s.logger.Warn("agent: cannot write %s: %s", temp, err)
-		return
-	}
-	if err := os.Rename(temp, target); err != nil {
-		s.logger.Warn("agent: cannot install %s: %s", target, err)
-		_ = os.Remove(temp)
+	if err := util.WriteFileAtomic(target, []byte(content)); err != nil {
+		s.logger.Warn("agent: cannot write %s: %s", target, err)
 	}
 }
 

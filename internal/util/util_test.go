@@ -224,3 +224,74 @@ func TestSweepTempFilesTakesOnlyAtomicLeftovers(t *testing.T) {
 		t.Error("a directory that happens to match the pattern must not be removed")
 	}
 }
+
+// One writer for four stores, one of which holds a credential: the mode has to survive the rename, the bytes have
+// to be whole, and nothing may be left beside the file.
+func TestWriteFileAtomicMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nested", "speech.json")
+
+	if err := WriteFileAtomicMode(path, []byte("{\"key\":\"sk-test\"}\n"), 0o600); err != nil {
+		t.Fatalf("WriteFileAtomicMode: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	// A rename keeps whatever mode the temporary file had, so this is the only place the mode is decided — and a
+	// credential that a second account can read is a credential that has leaked.
+	if mode := info.Mode().Perm(); mode != 0o600 {
+		t.Errorf("mode = %o, want 600", mode)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "{\"key\":\"sk-test\"}\n" {
+		t.Errorf("content = %q (%v), want the bytes that were written", data, err)
+	}
+
+	// A second write replaces the document and keeps both the mode and the directory clean.
+	if err := WriteFileAtomicMode(path, []byte("{}"), 0o600); err != nil {
+		t.Fatalf("second WriteFileAtomicMode: %v", err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "{}" {
+		t.Errorf("content = %q, want the replacement", data)
+	}
+	leftovers, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	if len(leftovers) != 1 || leftovers[0].Name() != "speech.json" {
+		t.Errorf("the directory holds %d entries, want only the file: %v", len(leftovers), leftovers)
+	}
+
+	// The default is the readable mode the rest of this tree writes with.
+	preferences := filepath.Join(dir, "settings.json")
+	if err := WriteFileAtomic(preferences, []byte("{}\n")); err != nil {
+		t.Fatalf("WriteFileAtomic: %v", err)
+	}
+	if info, err := os.Stat(preferences); err != nil || info.Mode().Perm() != 0o644 {
+		t.Errorf("mode = %v (%v), want 644", info.Mode().Perm(), err)
+	}
+}
+
+// A killed process leaves a temporary file behind, and `SweepTempFiles` is what collects it: the name has to be one
+// it recognises, or the data directory grows a file per kill.
+func TestSweepTempFilesCollectsWhatTheWriterLeaves(t *testing.T) {
+	dir := t.TempDir()
+	// The shape `os.CreateTemp("."+base+".*.tmp")` produces, and an ordinary file that must survive.
+	leftover := filepath.Join(dir, ".settings.json.123456789.tmp")
+	if err := os.WriteFile(leftover, []byte("half a document"), 0o644); err != nil {
+		t.Fatalf("write leftover: %v", err)
+	}
+	kept := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(kept, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write kept: %v", err)
+	}
+
+	SweepTempFiles(dir)
+
+	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+		t.Errorf("the leftover temporary file is still there: %v", err)
+	}
+	if _, err := os.Stat(kept); err != nil {
+		t.Errorf("the file itself was removed: %v", err)
+	}
+}

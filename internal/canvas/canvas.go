@@ -26,6 +26,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"comfyloft/internal/util"
 )
 
 const (
@@ -354,33 +356,12 @@ func validateDocument(document []byte) error {
 	return nil
 }
 
-// writeFile writes through a temporary file and renames it into place.
-//
-// The temporary file is created in the destination directory so the rename is a rename and not a
-// copy, and it is removed on every failure path — a crash leaves one, a returned error leaves none.
+// writeFile writes through `util.WriteFileAtomic`, which is where every write in this tree goes: one place
+// decides the mode, one place owns the temporary name, and one place is what `SweepTempFiles` collects after a
+// crash. The temporary file is created in the destination directory, so the rename is a rename and not a copy.
 func writeFile(path string, data []byte) error {
-	temp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("canvas: cannot open a temporary file for %s: %w", path, err)
-	}
-	// CreateTemp makes the file owner-only; everything written here is meant to be 0644, which is what the
-	// direct writes use. A temporary file nobody can see yet is the one place that is safe to correct.
-	if err := temp.Chmod(0o644); err != nil {
-		_ = temp.Close()
-		_ = os.Remove(temp.Name())
-		return fmt.Errorf("canvas: cannot set the mode of %s: %w", path, err)
-	}
-	name := temp.Name()
-	defer func() { _ = os.Remove(name) }()
-	if _, err := temp.Write(data); err != nil {
-		_ = temp.Close()
+	if err := util.WriteFileAtomic(path, data); err != nil {
 		return fmt.Errorf("canvas: cannot write %s: %w", path, err)
-	}
-	if err := temp.Close(); err != nil {
-		return fmt.Errorf("canvas: cannot close %s: %w", path, err)
-	}
-	if err := os.Rename(name, path); err != nil {
-		return fmt.Errorf("canvas: cannot install %s: %w", path, err)
 	}
 	return nil
 }

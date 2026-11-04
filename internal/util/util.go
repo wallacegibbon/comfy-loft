@@ -238,27 +238,37 @@ func WriteFileAtomic(file string, data []byte) error {
 //
 // The mode is set on the temporary file and the rename keeps it — a rename would otherwise publish whatever the
 // umask chose, so the chmod is not a belt-and-braces but the only place the mode is decided.
+//
+// The temporary name comes from `os.CreateTemp`, which is O_EXCL over a counter and a random suffix: two writers
+// of the same file in the same nanosecond is the one clock this cannot rely on. It is also the name
+// `SweepTempFiles` recognises, so a killed process leaves something that is collected.
 func WriteFileAtomicMode(file string, data []byte, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+	dir := filepath.Dir(file)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	tmp := fmt.Sprintf("%s.%d.tmp", file, time.Now().UnixNano())
-	if err := os.WriteFile(tmp, data, mode); err != nil {
+	temp, err := os.CreateTemp(dir, "."+filepath.Base(file)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	if err := os.Chmod(tmp, mode); err != nil {
-		_ = os.Remove(tmp)
+	name := temp.Name()
+	defer func() { _ = os.Remove(name) }()
+	if err := temp.Chmod(mode); err != nil {
+		_ = temp.Close()
 		return err
 	}
-	if err := os.Rename(tmp, file); err != nil {
-		_ = os.Remove(tmp)
+	if _, err := temp.Write(data); err != nil {
+		_ = temp.Close()
 		return err
 	}
-	return nil
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(name, file)
 }
 
 // SweepTempFiles removes the leftovers of an interrupted WriteFileAtomic: a temporary file whose name is
-// `<something>.<nanoseconds>.tmp`, written next to its target and renamed over it. A process that is
+// `.<name>.<digits>.tmp`, written next to its target and renamed over it. A process that is
 // killed between the two leaves it behind, and nothing would ever read it again — they accumulate in
 // DATA_DIR one per kill (five had piled up in this tree before anything looked).
 //
