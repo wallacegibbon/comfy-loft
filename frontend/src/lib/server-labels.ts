@@ -21,3 +21,15 @@ export function serverModelLabel(id: string, fallback?: string) {
 export function serverVariantLabel(mode: string, fallback?: string) {
     return chinese(`server.variants.${mode}`) || fallback || mode;
 }
+
+/**
+ * A workflow's knob, named the same way a model id and a variant mode are.
+ *
+ * `parameters[].label` is the registry's English (`Multiplier`, `Horizontal angle`), and a knob declared by a
+ * hand-written workflow has nothing else. So the dictionary answers for the ones that ship here, keyed by the
+ * parameter's own `key` — the identifier the server already sends — and an unknown knob still renders the
+ * registry's words instead of a raw key.
+ */
+export function serverParameterLabel(key: string, fallback?: string) {
+    return chinese(`server.parameters.${key}`) || fallback || key;
+}

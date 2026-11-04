@@ -9979,3 +9979,56 @@ prompt beside its knobs), `npm run build` (569.95 kB).
 `frontend/src/services/api/{image,video}.ts`, `frontend/src/lib/canvas/{video-run-metadata,canvas-node-factory}.ts`,
 `frontend/src/components/canvas/{canvas-node-prompt-panel,canvas-tool-node-panel,canvas-image-settings-popover}.tsx`,
 `frontend/tests/{model-selection,api-image-upscale}.test.ts`.
+
+## 268. The mode a stale node falls back to is the one that asks least
+
+**Decision** `imageModeFor` no longer names a fallback mode. When the node's `imageMode` is not one the model
+declares, the answer is the declared mode whose contract asks the least — the smallest sum of `minTotal` and
+the per-kind minimums — and a family whose modes declare no contracts at all ties at zero and answers with its
+first declared mode. This revises the fallback in #267, which spelled out `t2i`.
+
+**Why** The name was the last one in a function that otherwise reads declarations, and it was right only by
+accident: `t2i` is what the Qwen family calls "words only", and a video or audio family with modes would have
+had no such mode to fall back to. The per-mode contracts are already on the wire (#263), so the fact was
+there: the mode that needs nothing is the mode a request cannot be refused for.
+
+**Cost** Two modes that both need nothing tie, and the first declared one wins — deterministic, but chosen by
+the server's ordering rather than by meaning. A `defaultMode` field in the registry would say it outright; it
+is not worth a wire field until a family actually has two equally-cheap modes and the wrong one matters.
+
+**Tested** `npx vitest run` (380): the Qwen family still resolves a stale mode to `t2i` because that is what
+its contract says (`images.max: 0`), and a two-mode family whose cheapest is `beta` resolves to `beta` — the
+second case is the proof that no mode's name is left in the code.
+
+**Where** `frontend/src/lib/canvas/image-mode.ts`, `frontend/tests/model-selection.test.ts`.
+
+## 269. A knob is named by the dictionary, like every other registry string
+
+**Decision** Parameter labels go through `serverParameterLabel(key, fallback)` in `lib/server-labels.ts`, the
+same helper shape as `serverModelLabel` and `serverVariantLabel`: the Chinese label comes from
+`server.parameters.<key>`, keyed by the identifier the server sends, and the registry's English is the
+fallback. Both renderers use it — the step panel's `ParameterControl` and the super-resolve dialog's fields —
+and the zh-CN dictionary gained an entry for every `key` the shipped registry declares. `check-i18n` declares
+`server.parameters` as a dynamic prefix and as zh-only, like the other two.
+
+**Why** #8 settled this question already: `workflows/registry.json` is data written in English, the dictionary
+words it, and an identifier the dictionary does not know falls back to the registry's text so a hand-written
+workflow still renders instead of showing a raw key. Parameters were the one family of registry strings that
+had skipped it: the step panel printed `Multiplier` and `Horizontal angle` in a Chinese UI, and the
+super-resolve dialog printed the same. The alternatives — a `labelKey` in the registry, or dropping `label`
+from the wire — would be a second mechanism for a problem #8 answers, and would take away the fallback that
+keeps an unknown workflow readable.
+
+**Cost** The Chinese labels are a hand-kept list, and a parameter added to the registry tomorrow ships in
+English until someone adds an entry. The check cannot catch that, because the set of parameters is registry
+data rather than something the source names — #8's cost, now paid by knobs as well. The English screen is
+unchanged, since `chinese()` answers only when the reader's language is zh-CN.
+
+**Tested** `npm run check` (886 zh keys against 853 en, still "the two agree": the block is zh-only by design,
+as declared), `npx tsc --noEmit`, `npx vitest run` (380), `npm run build` (570.69 kB). Not checked in a
+browser: the labels are text in two components, and what could break is a missing entry, which shows the
+registry's English exactly as before.
+
+**Where** `frontend/src/lib/server-labels.ts`, `frontend/src/components/canvas/canvas-tool-node-panel.tsx`,
+`frontend/src/components/canvas/canvas-node-super-resolve-dialog.tsx`, `frontend/src/i18n/locales/zh-CN.ts`,
+`frontend/scripts/check-i18n.cjs`.

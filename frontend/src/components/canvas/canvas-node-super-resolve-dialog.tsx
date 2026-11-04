@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { serverParameterLabel } from "@/lib/server-labels";
+
 import { Button } from "@/components/kit/button";
 import { Dialog } from "@/components/kit/dialog";
 import { InputNumber } from "@/components/kit/input";
@@ -269,10 +271,12 @@ export function CanvasNodeSuperResolveDialog({
 
 function ParameterField({ parameter, value, onChange }: { parameter: WorkflowParameter; value: unknown; onChange: (value: unknown) => void }) {
     const { t } = useTranslation();
+    // The registry names its knobs in English; the dictionary words them (#8, server-labels.ts).
+    const label = serverParameterLabel(parameter.key, parameter.label);
     if (parameter.type === "select") {
         return (
             <label className="flex flex-col gap-1 text-xs opacity-75">
-                <span>{parameter.label}</span>
+                <span>{label}</span>
                 <Select size="small" value={String(value ?? "")} options={(parameter.options || []).map((option) => ({ value: optionValue(option), label: optionLabel(option) }))} onChange={onChange} />
             </label>
         );
@@ -280,7 +284,7 @@ function ParameterField({ parameter, value, onChange }: { parameter: WorkflowPar
     if (parameter.type === "boolean") {
         return (
             <label className="flex flex-col gap-1 text-xs opacity-75">
-                <span>{parameter.label}</span>
+                <span>{label}</span>
                 <Select
                     size="small"
                     value={value ? "true" : "false"}
@@ -296,14 +300,14 @@ function ParameterField({ parameter, value, onChange }: { parameter: WorkflowPar
     if (parameter.type === "number") {
         return (
             <label className="flex flex-col gap-1 text-xs opacity-75">
-                <span>{parameter.label}</span>
+                <span>{label}</span>
                 <InputNumber size="small" min={parameter.min} max={parameter.max} step={parameter.step} value={Number(value) || 0} onChange={(next) => onChange(Number(next) || 0)} />
             </label>
         );
     }
     return (
         <label className="flex flex-col gap-1 text-xs opacity-75">
-            <span>{parameter.label}</span>
+            <span>{label}</span>
             <input className="rounded-md border border-current/20 bg-transparent px-2 py-1" value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} />
         </label>
     );

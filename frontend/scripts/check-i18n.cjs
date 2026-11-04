@@ -102,6 +102,7 @@ const DYNAMIC_PREFIXES = new Map([
     ["canvas.toolbar", { why: "the suffix is the current canvas tool (select/pan)" }],
     ["server.models", { why: "the suffix is a model id from the registry; the Chinese label comes from chinese(), which reads the zh dictionary only (known-issues #10)" }],
     ["server.variants", { why: "the same: a variant mode id from the registry → its Chinese label" }],
+    ["server.parameters", { why: "the same: a parameter `key` from the registry → the Chinese label of a knob" }],
     ["settingsPanels.video", { why: "the suffix is a labelKey from a data table (sizes, speed steps, mode hints)" }],
     ["settingsPanels.video.modes", { why: "the suffix is a mode labelKey from a data table, plus the literals of two hint branches" }],
     ["settingsPanels.model.capabilities", { why: "the suffix is the ModelCapability union; its values live in the type" }],
@@ -235,7 +236,7 @@ if (missingEn.length) problems.push(`missing keys (referenced by code, absent fr
 // Both dictionaries have to describe the same screen, except here: `chinese()` in lib/server-labels.ts
 // reads the zh-CN dictionary only, to give the English model/variant ids in registry.json a Chinese label.
 // The English screen shows the registry's own English text, so having no entry there is correct.
-const ZH_ONLY_PREFIXES = ["server.models.", "server.variants."];
+const ZH_ONLY_PREFIXES = ["server.models.", "server.variants.", "server.parameters."];
 const zhOnlyByDesign = (key) => ZH_ONLY_PREFIXES.some((prefix) => key.startsWith(prefix));
 
 const onlyZh = [...zh.leaves].filter((k) => !en.leaves.has(k) && !zhOnlyByDesign(k)).sort();

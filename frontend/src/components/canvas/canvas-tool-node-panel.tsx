@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/kit/button";
 import { Tooltip } from "@/components/kit/tooltip";
 import { WorkflowModelPicker } from "@/components/model-picker";
+import { serverParameterLabel } from "@/lib/server-labels";
 import { videoModelModePatch } from "@/lib/canvas/video-model-mode";
 import { CanvasNodeReferenceBar } from "./canvas-node-reference-bar";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
@@ -191,7 +192,8 @@ function requirementsOf(accepts: ModelAccepts | undefined, counts: { image: numb
  */
 function ParameterControl({ parameter, value, onChange, theme }: { parameter: ModelParameter; value: unknown; onChange: (value: unknown) => void; theme: ReturnType<typeof useCanvasTheme> }) {
     const current = value ?? parameter.default;
-    const label = parameter.label || parameter.key;
+    // The registry names its knobs in English; the dictionary words them (#8, server-labels.ts).
+    const label = serverParameterLabel(parameter.key, parameter.label);
     const options = parameter.options || [];
     if (options.length) {
         return (

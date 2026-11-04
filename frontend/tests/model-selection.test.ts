@@ -148,7 +148,13 @@ test("a tool is a step even when it takes words, and a model that takes none is 
 // that will actually run: an inpaint mode sent to a workflow with no mask binding is a request for something
 // the graph cannot do (docs/decisions.md #267).
 test("the image mode sent is one the running model declares", () => {
-    const withModes = (imageMode: string): AiConfig => ({
+    const variants = [
+        { name: "edit", accepts: { images: { min: 1, max: 4 } } },
+        { name: "inpaint", accepts: { images: { min: 2, max: 2 } } },
+        { name: "outpaint", accepts: { images: { min: 1, max: 1 } } },
+        { name: "t2i", accepts: { images: { max: 0 } } },
+    ];
+    const withModes = (imageMode: string, modes = variants, workflowId = "image-qwen21"): AiConfig => ({
         ...config,
         imageMode,
         channels: [
@@ -157,7 +163,14 @@ test("the image mode sent is one the running model declares", () => {
                 name: "Replacement",
                 baseUrl: "https://example.com",
                 models: [
-                    { name: "image-qwen21", capability: "image", workflowId: "image-qwen21", hasPrompt: true, variantModes: ["edit", "inpaint", "outpaint", "t2i"] },
+                    {
+                        name: workflowId,
+                        capability: "image",
+                        workflowId,
+                        hasPrompt: true,
+                        variantModes: modes.map((mode) => mode.name),
+                        contracts: Object.fromEntries(modes.map((mode) => [mode.name, { accepts: mode.accepts as never }])),
+                    },
                     { name: "image-z-image-turbo", capability: "image", workflowId: "image-z-image-turbo", hasPrompt: true },
                 ],
             },
@@ -166,8 +179,16 @@ test("the image mode sent is one the running model declares", () => {
     expect(imageModeFor(withModes("inpaint"), "replacement::image-qwen21")).toBe("inpaint");
     // A workflow with no modes is sent none: the field is not part of its request at all.
     expect(imageModeFor(withModes("inpaint"), "replacement::image-z-image-turbo")).toBe("");
+    // A stale or empty mode falls to the one whose contract asks for least — not to a name. Its `t2i` here
+    // only because that is the mode this family declares as needing nothing.
     expect(imageModeFor(withModes("nonsense"), "replacement::image-qwen21")).toBe("t2i");
     expect(imageModeFor(withModes(""), "replacement::image-qwen21")).toBe("t2i");
+    // A family whose cheapest mode is not called `t2i` still resolves, which is the point of asking contracts:
+    const other = [
+        { name: "alpha", accepts: { images: { min: 2, max: 2 } } },
+        { name: "beta", accepts: { images: { min: 1, max: 1 } } },
+    ];
+    expect(imageModeFor(withModes("inpaint", other, "image-other-family"), "replacement::image-other-family")).toBe("beta");
 });
 
 // The node remembers what it was made with. Recovery asks about that model by name, so a task that
