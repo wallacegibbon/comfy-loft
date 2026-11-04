@@ -10629,3 +10629,37 @@ to start with `startup failed: AGENT_AUTO_SUMMARIZE must be 0 (off) or 1-100 (a 
 **Where** `internal/config/config.go` (`AgentAutoSummarize`, `autoSummarizeValue`), `internal/config/config_test.go`,
 `internal/agent/spawn.go` (`SpawnOptions.AutoSummarize`, `args`), `internal/agent/args_test.go`,
 `internal/server/routes_agent.go` (`agentOptions`), `docs/server.md`, `.env.example`.
+
+## 284. The running line says the work, not the thought
+
+**Decision** While an answer is streaming and has not said anything yet, the transcript shows one line under its
+parts: a turning circle and `处理中… / Working…`. The folded reasoning row above it keeps its own title
+(`思考 / Thinking`, #282). The two rows no longer share a word.
+
+**Why** They were both labelled "Thinking": the fold titled the thought, the line said a turn was in progress, and
+side by side in the same bubble they read as one thing drawn twice — the reader cannot tell which one opens. They
+also are not the same claim. The line is true of the whole turn, and a turn that is running `canvas_move_node` is not
+thinking; the fold's title is true only of that part, which is what it holds. One word each: the fold names what is
+inside it, the line says the agent is still going.
+
+**Why the line stays at all** The start of a turn has neither of the other two things — no fold, no call — so without
+it the bubble is empty text over a panel that looks stuck, and the only other evidence is the stop button at the
+composer, a panel's height away. It also carries the turn's shape for a reader who scrolls back mid-answer: the last
+row of the transcript tells them whether anything is still arriving.
+
+**Cost** "Working" does not say what work. That is #281's tool lines and the fold's ends; a word that tried to say
+both again would be the duplicate this decision removes. The line also disappears the moment the first word of the
+answer arrives — the condition is "nothing said yet" — so a turn that goes straight to text never shows it, which is
+correct: its answer is the progress.
+
+**Tested** On an isolated `:8191` with the real AlayaCore and a real turn, the panel's HTML was sampled every
+~0.2 s across the whole turn: `Working…` was present from the instant the turn opened until it ended, absent for the
+sixteen idle samples before it and every sample after it, and `Thinking…` appeared in none of the 100+ samples. Two
+screenshots of the same turn: running, the bubble read
+`> Thinking 用户想要把三个图片节点排成水平直线，间距 40px。当前三个图片节点的位置：… 视频节点：(880, 0)` above
+`◌ Working…`; finished, the folds and the three `✓ calling canvas_move_node` rows with no status line under them.
+`make check` (deadcode 506), `go test ./...`, `npx tsc --noEmit`, `npm run check` (i18n 861/828, exports 188 modules),
+`npx vitest run` (394), `npm run build` (560.20 kB).
+
+**Where** `frontend/src/components/canvas/canvas-agent-panel.tsx` (the streaming-and-silent line),
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts` (`canvas.agent.working`, renamed from `canvas.agent.thinking`).

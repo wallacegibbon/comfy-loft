@@ -694,7 +694,7 @@ export default {
             dictationLimit: "Recording stopped itself at the 1 minute limit",
             transcribing: "Transcribing…",
             close: "Close",
-            thinking: "Thinking…",
+            working: "Working…",
             steeringQueued: "{{count}} queued · used together after the current step",
             earlierMessages: "{{count}} earlier messages",
             stopQueuedTitle: "Stop this turn?",

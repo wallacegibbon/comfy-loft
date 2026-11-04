@@ -578,11 +578,14 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                                     </p>
                                 ),
                             )}
-                            {/* Nothing said yet: the reasoning, if any, has a line of its own above this. */}
+                            {/* Nothing said yet, and the turn is still going: a line saying so. It is not a word
+                                about thinking — the folded reasoning above already carries that, and two rows
+                                both labelled "Thinking" read as one thing drawn twice. The agent is working
+                                regardless of which part it is working on, so the word is about the work. */}
                             {message.role === "assistant" && !textOf(message) && message.streaming ? (
                                 <p className="flex items-center gap-1.5 text-xs opacity-50">
                                     <LoaderCircle className="size-3 animate-spin" />
-                                    {t("canvas.agent.thinking")}
+                                    {t("canvas.agent.working")}
                                 </p>
                             ) : null}
                         </div>

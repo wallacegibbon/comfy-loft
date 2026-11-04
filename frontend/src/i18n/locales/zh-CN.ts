@@ -727,7 +727,7 @@ export default {
             dictationLimit: "录音到了 1 分钟上限，已经自动停止",
             transcribing: "正在识别…",
             close: "关闭",
-            thinking: "思考中…",
+            working: "处理中…",
             steeringQueued: "{{count}} 条消息已排队,会在当前步骤之后一起插入",
             earlierMessages: "更早的 {{count}} 条消息",
             stopQueuedTitle: "停止这个回合?",
