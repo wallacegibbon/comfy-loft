@@ -86,9 +86,6 @@ type Config struct {
 // Option overrides a single field, mirroring the old loadConfig(overrides).
 type Option func(*Config)
 
-// WithServerPort overrides the listen port.
-func WithServerPort(port int) Option { return func(c *Config) { c.ServerPort = port } }
-
 // WithServerHost overrides the listen address.
 func WithServerHost(host string) Option { return func(c *Config) { c.ServerHost = host } }
 
@@ -104,9 +101,6 @@ func WithWorkflowDir(dir string) Option { return func(c *Config) { c.WorkflowDir
 // `<UserConfigDir>/comfyloft-server/alayacore`, which `make check` was doing to the developer's home directory
 // (#244).
 func WithAgentConfigPath(dir string) Option { return func(c *Config) { c.AgentConfigPath = dir } }
-
-// WithMaxImportBytes overrides the ceiling for one imported canvas archive.
-func WithMaxImportBytes(bytes int64) Option { return func(c *Config) { c.MaxImportBytes = bytes } }
 
 // WithDataDir overrides the data directory.
 func WithDataDir(dir string) Option { return func(c *Config) { c.DataDir = dir } }
@@ -128,9 +122,6 @@ func WithoutScanOnStart() Option {
 
 // WithRequestTimeout overrides the image generation timeout.
 func WithRequestTimeout(ms int) Option { return func(c *Config) { c.RequestTimeoutMs = ms } }
-
-// WithAudioTimeout overrides the audio generation timeout (0 = no limit).
-func WithAudioTimeout(ms int) Option { return func(c *Config) { c.AudioTimeoutMs = ms } }
 
 // WithPollInterval overrides the history poll interval.
 func WithPollInterval(ms int) Option { return func(c *Config) { c.PollIntervalMs = ms } }

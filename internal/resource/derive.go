@@ -191,17 +191,6 @@ func (p *providerIndex) withRequires(ids map[string]bool) []string {
 	return sortedKeys(ids)
 }
 
-// DerivedDependencies returns what one registered workflow needs, read off its graphs.
-//
-// It is the single source of truth for a workflow's dependency list; resources.json no longer
-// carries one.
-func (m *Manager) DerivedDependencies(workflowID string) DerivedDependency {
-	m.mu.Lock()
-	index := m.index
-	m.mu.Unlock()
-	return newProviderIndex(index).entryDeps(m.resolvedWorkflow(workflowID))
-}
-
 // resolvedWorkflow looks a workflow id up in the registry, tolerating a manager without one (unit
 // tests) instead of panicking on a nil registry.
 func (m *Manager) resolvedWorkflow(workflowID string) *workflow.Entry {

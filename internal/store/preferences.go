@@ -199,17 +199,6 @@ func (m *MainModels) FileForWorkflow(workflowID string) string {
 	return m.legacy[workflowID]
 }
 
-// Snapshot returns the pack map for diagnostics.
-func (m *MainModels) Snapshot() map[string]mainModelPack {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make(map[string]mainModelPack, len(m.packs))
-	for id, pack := range m.packs {
-		out[id] = mainModelPack{File: pack.File, Workflows: append([]string{}, pack.Workflows...)}
-	}
-	return out
-}
-
 // Set records an override for one pack.
 func (m *MainModels) Set(packID, file string, workflows []string) error {
 	id := strings.TrimSpace(packID)

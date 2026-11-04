@@ -17,26 +17,3 @@ same way and always produce it, so this only bites an imported or trimmed clip.
 **Fix to decide** Detach the audio input when the source has no audio stream, at the cost of never carrying
 audio through the interpolation. The media plan is declared in `registry.json` (`video-rife`), so this is an
 `accepts`/binding question rather than a code branch.
-
----
-
-## 2. The Go half has no "nothing calls this" gate, and eleven exported symbols have no caller
-
-The canvas fails on an export nobody imports (`scripts/check-exports.cjs`) and `tsc` fails on an unused local.
-Neither has a Go counterpart, so an exported function whose last caller a refactor removed stays behind:
-
-`Queue` (`internal/comfy`), `WithAudioTimeout` / `WithServerPort` / `WithMaxImportBytes` (`internal/config`),
-`WriteJSONError` (`internal/httpx`), `DerivedDependencies` (`internal/resource` — its comment still calls it
-"the single source of truth for a workflow's dependency list"), `IsAvailable` / `ModelCandidates`
-(`internal/setup`), `Snapshot` (`internal/store`), `NormalizeModelPath` (`internal/workflow/helpers.go`),
-`ReadGraphFile` (`internal/workflow/registry.go`).
-
-**Fix to decide** Delete them, or add a check to `make check` that fails on an exported Go identifier with no
-reference outside its own file (`golangci-lint`'s `unused` only sees unexported names; `deadcode` needs the
-Network — `proxy.golang.org` was unreachable from here).
-
-**Checked** `WithPublicBaseURL` (`internal/config`) and `OutputPath` (`internal/task`) left this list: a test
-calls each. `golangci-lint` (default linters: errcheck, govet, ineffassign, staticcheck, unused) reports
-nothing else in the product code, and `Hub.promptByRequest` (`internal/generate`) — a map written and deleted
-and never read — was removed (#247).
-

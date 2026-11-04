@@ -9275,3 +9275,64 @@ server's words. `make check` 19 packages, `npx vitest run` 343, `npm run check` 
 `frontend/src/components/settings/{speech-profiles-section,speech-profile-dialog,preferences-dialog}.tsx`,
 `frontend/src/stores/use-config-store.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
 `frontend/tests/{api-speech,speech-profiles}.test.ts`, `docs/server.md`, `README.md`.
+
+## 253. Twelve Go exports nothing could reach are gone, and a gate says so from now on
+
+**Decision** Delete the eleven exported Go symbols `docs/known-issues.md` listed — and the twelfth that surfaced
+once they were gone — and add `tools/deadcode` to `make check`, so the question is answered by the gate rather
+than by somebody grepping once.
+
+**What went, and the shape of each one.** Ten were public spellings of work the package already did privately, or
+a knob nothing turned:
+
+- `comfy.Client.Queue` — a `/queue` reader; a run's progress comes from the hub and the task store, never from
+  ComfyUI's queue.
+- `config.WithAudioTimeout`, `WithServerPort`, `WithMaxImportBytes` — constructor options from the port, where every
+  other option has a caller.
+- `httpx.WriteJSONError` — a one-line wrapper over `WriteError`; middleware calls `WriteError`.
+- `resource.Manager.DerivedDependencies` — its comment still claimed to be "the single source of truth for a
+  workflow's dependency list", which is exactly the kind of sentence that keeps a dead function looking load
+  bearing. The list is derived by `entryDeps`, which `packModelIDs` and the scan call.
+- `setup.Manager.IsAvailable` — `WorkflowStatus` answers the same question with the problems attached, and is what
+  every caller uses.
+- `setup.Manager.ModelCandidates` — the wrapper for `modelCandidatesLocked`, which `scan.go` calls directly.
+- `store.MainModels.Snapshot` — "for diagnostics" that nobody ran.
+- `workflow.NormalizeModelPath` — a second `strings.ReplaceAll(value, "\\", "/")` beside `util.NormalizeSlashes`.
+- `workflow.ReadGraphFile` — a public reader beside `Registry.readGraph`, which also rejects UI-format documents and
+  is the one the registry uses.
+- `workflow.DecodeGraph` — decoded the bytes `ReadGraphFile` had read; with that gone it had no caller at all.
+
+Deleting `ReadGraphFile` is what exposed `DecodeGraph`, which is the argument for the gate in one sentence: the
+dead call each other, so a sweep that stops at the obvious ones leaves a smaller ring behind.
+
+**The gate, and what it is not.** `tools/deadcode` parses every `.go` file of the module and reports an exported
+declaration whose name appears in no other file **and** which no reachable declaration mentions. That second half
+is the whole design: a type is reached structurally, so `store.SpeechProfile` — never written outside its package,
+but `Active()`'s answer — is not reported, and `agent.MaxFrameSize`, read only by the code beside it, is not
+either. Roots are: a name another file mentions, a method any interface declares (including anonymous ones written
+at a call site, plus a short list of the standard library's — `Error`, `MarshalJSON`, `ServeHTTP`…), a test, and
+everything a *private* declaration mentions, because `golangci-lint`'s `unused` is what says the private half is
+used.
+
+It over-approximates on purpose and the report is therefore always real: the scan is name-keyed rather than
+package-keyed (resolving a mention to a package needs type-checking, so one `New` keeps every `New` alive), any
+identifier position counts (a selector `x.Foo` for `Foo`, a struct field's name), and test files are live. What it
+misses is dead code that shares a name with something live; what it reports cannot be a false alarm.
+
+**Why not `deadcode` or `golangci-lint`'s `unused`.** `deadcode` loads packages through the module proxy, which
+this machine cannot reach (`proxy.golang.org` refused, #247's note), and `unused` only looks at unexported names —
+the exact blind spot. A 220-line program with seven unit tests is smaller than the vendoring it would take to make
+`deadcode` run offline.
+
+**Tested** `tools/deadcode/main_test.go` pins each rule with a small source tree: a function nobody calls is
+reported; a caller in another file of the same package counts; a type answered by a live function and a constant a
+live function reads are reachable; what a private function answers is reachable; interface methods (module's own,
+anonymous, and standard library's) are exempt while an exported interface nobody names is not; tests and the knobs
+they drive are live; and two constants in one `const (...)` are two declarations, so one being read does not save
+the other. `go run ./tools/deadcode` on the tree: `503 exported declaration(s) in comfyloft, every one reachable
+from another file`. `make check` 20 packages (the tool is now vetted and tested with the rest — `PKGS` gained
+`./tools/...`), `npx vitest run` 343, `npm run check`, `npm run build`.
+
+**Where** `tools/deadcode/{main.go,main_test.go}`, `Makefile` (`deadcode`, `check`, `PKGS`, `.PHONY`),
+`internal/{comfy,config,httpx,resource,setup,store,workflow}/*.go`, `docs/known-issues.md` (entry 2 leaves it),
+`docs/server.md`, `README.md`.

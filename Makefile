@@ -23,10 +23,10 @@ MCP_PKG     := ./cmd/comfyloft-mcp
 FRONTEND_DIR   := frontend
 NPM            ?= npm
 FRONTEND_STAMP := $(FRONTEND_DIR)/node_modules/.package-lock.json
-# Every Go package lives under cmd/ or internal/. Listing them keeps the gates
+# Every Go package lives under cmd/, internal/ or tools/. Listing them keeps the gates
 # off the vendored frontend: `./...` would walk frontend/node_modules, and a
 # stray .go file in a future npm package would then break `make check`.
-PKGS    := ./cmd/... ./internal/...
+PKGS    := ./cmd/... ./internal/... ./tools/...
 GO_DIRS := cmd internal
 GOFLAGS := -trimpath
 LDFLAGS := -s -w
@@ -35,7 +35,7 @@ LDFLAGS := -s -w
 export CGO_ENABLED := 0
 
 .DEFAULT_GOAL := build
-.PHONY: build run test test-race test-v vet fmt fmt-check lint check check-full verify-static size clean tidy frontend frontend-deps frontend-check frontend-clean help
+.PHONY: build run test test-race test-v vet fmt fmt-check lint check check-full deadcode verify-static size clean tidy frontend frontend-deps frontend-check frontend-clean help
 
 build: ## Compile both binaries into bin/
 	@mkdir -p $(BIN_DIR)
@@ -72,6 +72,13 @@ test: ## Run the test suite
 
 # The race detector needs cgo, so this target re-enables it for the test binary
 # only. The shipped server stays CGO_ENABLED=0 and fully static.
+# The Go half of frontend/scripts/check-exports.cjs: an exported identifier nothing outside its own file can
+# reach. `go vet` does not look at reachability, and golangci-lint's `unused` only sees unexported names, so
+# without this a function whose last caller a refactor removed stays behind, still compiling and still claiming a
+# capability.
+deadcode: ## Fail if an exported Go identifier is reachable only from its own file
+	@$(GO) run ./tools/deadcode
+
 test-race: ## Run the test suite with the race detector (needs a C toolchain)
 	CGO_ENABLED=1 $(GO) test -race $(PKGS)
 
@@ -92,7 +99,7 @@ fmt-check: ## Fail if any file needs formatting
 
 lint: fmt-check vet ## Check formatting and run vet
 
-check: lint test ## The default gate: no C toolchain required
+check: lint test deadcode ## The default gate: no C toolchain required
 
 verify-static: build ## Assert both binaries have no dynamic dependencies
 	@for binary in $(BIN) $(MCP_BIN); do \

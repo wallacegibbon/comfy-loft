@@ -77,7 +77,7 @@ the canvas frontend is a self-contained subtree beside it (see Credits):
 ├── bin/               # build output (not tracked)
 ├── frontend/          # the canvas frontend (from the upstream project, since reworked)
 ├── docs/              # server API and env vars, the run protocol, prompt optimization, runtime deps
-├── tools/             # development scripts
+├── tools/             # development scripts and the dead-export check (`tools/deadcode`)
 ├── Makefile           # make build / check / check-full / verify-static / frontend / frontend-check
 └── start.sh           # builds what is missing or out of date, then starts the server (serves the canvas)
 ```
@@ -241,6 +241,7 @@ own frame protocol on stdin/stdout. Its model list, model choice and skills are 
 - [`docs/known-issues.md`](docs/known-issues.md): the open problems, what breaks and what the fix is.
 - [`docs/runtime-deps.md`](docs/runtime-deps.md): SageAttention and other runtimes must be installed with `pip` by hand (the workbench no longer does it).
 - [`tools/bake-moss-preset.py`](tools/bake-moss-preset.py): bakes MOSS Base+SFT into `moss_balanced_s100.safetensors` — the `builder` behind the `type: "bake"` entry in the resource index; run it with ComfyUI's Python (it imports torch).
+- [`tools/deadcode`](tools/deadcode/main.go): the Go half of the canvas's export check — `make deadcode` fails on an exported identifier nothing outside its own file can reach.
 
 ## License
 

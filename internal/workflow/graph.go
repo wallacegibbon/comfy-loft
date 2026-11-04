@@ -9,7 +9,6 @@
 package workflow
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 )
@@ -185,15 +184,6 @@ func IsUIWorkflow(value any) bool {
 	_, hasNodes := object["nodes"].([]any)
 	_, hasLinks := object["links"].([]any)
 	return hasNodes && hasLinks
-}
-
-// DecodeGraph parses raw JSON bytes into a Graph.
-func DecodeGraph(data []byte) (Graph, error) {
-	var decoded map[string]any
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return nil, err
-	}
-	return Graph(decoded), nil
 }
 
 // asLink builds a ComfyUI link value: [nodeID, slot].

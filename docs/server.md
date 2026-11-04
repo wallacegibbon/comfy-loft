@@ -583,7 +583,7 @@ Two things stay Chinese on purpose, because they are _data_ rather than messagin
 ## Testing
 
 ```bash
-make check        # gofmt check + go vet + the suite
+make check        # gofmt check + go vet + the suite + the dead-export check
 make test-race    # the same suite under the race detector (needs a C toolchain)
 make verify-static
 cd frontend && npm run check && npx vitest run     # the canvas

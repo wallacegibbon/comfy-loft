@@ -532,16 +532,6 @@ func (c *Client) FolderPaths(ctx context.Context) map[string]any {
 	return object
 }
 
-// Queue reads the current queue.
-func (c *Client) Queue(ctx context.Context) (map[string]any, error) {
-	decoded, _, err := c.request(ctx, "/queue", requestOptions{timeout: 5 * time.Second})
-	if err != nil {
-		return nil, err
-	}
-	object, _ := decoded.(map[string]any)
-	return object, nil
-}
-
 // IsReachable probes ComfyUI via /system_stats.
 func (c *Client) IsReachable(ctx context.Context) bool {
 	_, err := c.SystemStats(ctx)

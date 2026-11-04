@@ -3,7 +3,6 @@ package workflow
 import (
 	"errors"
 	"path/filepath"
-	"strings"
 
 	"comfyloft/internal/httpx"
 )
@@ -32,9 +31,4 @@ func resolveOrJoin(base, value string) string {
 		return value
 	}
 	return filepath.Join(base, value)
-}
-
-// NormalizeModelPath exposes slash normalization for callers comparing model names.
-func NormalizeModelPath(value string) string {
-	return strings.ReplaceAll(value, `\`, "/")
 }

@@ -869,12 +869,3 @@ func readFileLimited(path string, maxBytes int64) ([]byte, error) {
 	}
 	return os.ReadFile(path)
 }
-
-// ReadGraphFile loads a graph from disk with the registry's size ceiling.
-func ReadGraphFile(path string, maxBytes int64) (Graph, error) {
-	data, err := readFileLimited(path, maxBytes)
-	if err != nil {
-		return nil, err
-	}
-	return DecodeGraph(data)
-}

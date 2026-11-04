@@ -130,11 +130,6 @@ func WriteError(w http.ResponseWriter, err error) {
 	JSON(w, status, envelope{Error: payload{Message: message, Type: kind, Code: code, Details: details}})
 }
 
-// WriteJSONError writes a bare error message, for middleware that has no *Error.
-func WriteJSONError(w http.ResponseWriter, status int, code, message string) {
-	WriteError(w, NewError(status, code, message))
-}
-
 // Handler is a business handler: returning an error hands rendering to the
 // shared exit point.
 type Handler func(*Ctx) error

@@ -209,24 +209,6 @@ func (m *Manager) HasScanned() bool {
 	return m.hasScanned
 }
 
-// IsAvailable reports whether a workflow can run right now.
-//
-// Unknown ids are treated as unavailable: a workflow added to the registry after the
-// last scan must not be advertised as ready, because the user will only discover the
-// missing models when the generation fails inside ComfyUI.
-func (m *Manager) IsAvailable(id string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if !m.hasScanned {
-		return true
-	}
-	entry, ok := m.available[id]
-	if !ok {
-		return false
-	}
-	return entry.Available
-}
-
 // WorkflowStatus returns the cached verdict, defaulting to a "not scanned" problem.
 func (m *Manager) WorkflowStatus(id string) Availability {
 	m.mu.Lock()
@@ -309,13 +291,6 @@ func (m *Manager) ModelAliasFor(classType, input, value string) string {
 		}
 	}
 	return ""
-}
-
-// ModelCandidates suggests installed alternatives for a missing model.
-func (m *Manager) ModelCandidates(classType, value string) []string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.modelCandidatesLocked(classType, value)
 }
 
 func (m *Manager) modelCandidatesLocked(classType, value string) []string {
