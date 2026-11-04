@@ -8,7 +8,7 @@ import { getMediaBlob, resolveMediaUrl, type UploadedFile } from "@/services/fil
 import { imageToDataUrl } from "@/services/image-storage";
 import { cancelRun, createRun, uploadMedia, waitForRun, RunFailedError, type Run, type RunRequest } from "@/services/api/runs";
 import { generatedVideo } from "@/lib/canvas/generated-media";
-import { modelIsStep, modelTakesPrompt, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
+import { modelIsStep, modelTakesPrompt, paramsAcceptedBy, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
@@ -64,9 +64,10 @@ async function createVideoStepTask(config: AiConfig, prompt: string, references:
         if (videos.length) media.video = videos;
         const audios = await Promise.all((options?.audios || []).map((audio, index) => uploadReferenceClip(config, audio, `source-${index + 1}.mp3`, "invalidReferenceAudio", options)));
         if (audios.length) media.audio = audios;
+        const params = paramsAcceptedBy(config, config.model, { ...(config.params || {}), ...(options?.params || {}) });
         const run = await createRun(config, {
             workflow: config.model,
-            inputs: { ...(modelTakesPrompt(config, config.model) ? { prompt } : {}), ...(config.params || {}), ...(options?.params || {}) },
+            inputs: { ...(modelTakesPrompt(config, config.model) ? { prompt } : {}), ...(params || {}) },
             ...(Object.keys(media).length ? { media } : {}),
             askedBy: options?.askedBy,
         });
@@ -139,7 +140,10 @@ async function createServerVideoTask(config: AiConfig, prompt: string, reference
     const size = normalizeVideoSize(config.size, config.vquality);
     if (size) inputs.size = size;
     if (plan.mode === "frames") inputs.frameMode = plan.frameMode;
-    Object.assign(inputs, { transition_step: config.videoSelfLiftMode === "quality" ? 5 : 6 }, options?.params || config.params || {});
+    // The SelfLift choice is a knob like any other — the workflow has to declare `transition_step` for it to
+    // mean anything — and only the knobs this model takes are sent (#274).
+    const params = paramsAcceptedBy(config, config.model, { transition_step: config.videoSelfLiftMode === "quality" ? 5 : 6, ...(options?.params || config.params || {}) }, plan.mode);
+    if (params) Object.assign(inputs, params);
 
     try {
         const media = await serverVideoMedia(config, plan, options);

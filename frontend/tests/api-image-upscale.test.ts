@@ -267,6 +267,35 @@ describe("a layout run", () => {
     });
 });
 
+// A knob the running model does not declare used to be sent and refused: `unknown_input`, on a field the user
+// never typed. The node keeps its params when the model changes, so the request is where they are pruned
+// (docs/decisions.md #274).
+describe("a stale knob", () => {
+    it("is dropped from the request instead of being refused by the server", async () => {
+        const { calls } = stubServer();
+        const image = {
+            ...server(),
+            channels: [
+                {
+                    id: "local",
+                    name: "local",
+                    baseUrl: "http://127.0.0.1:8190/v1",
+                    models: [{ name: "image-z-image-turbo", capability: "image", workflowId: "image-z-image-turbo", hasPrompt: true, inputs: ["prompt", "size", "seed", "editCanvasSize"] }],
+                },
+            ],
+            model: "local::image-z-image-turbo",
+            imageModel: "local::image-z-image-turbo",
+            // `upscale_model` is what the upscaler wrote onto the node before the model was changed.
+            params: { upscale_model: "RealESRGAN_x4plus.pth", seed: 7 },
+        } as unknown as Config;
+
+        await requestGeneration(image, "a brass compass");
+
+        const body = runBody(calls);
+        expect(body.inputs).toEqual({ prompt: "a brass compass", seed: 7, size: "1024x1024" });
+    });
+});
+
 describe("requestUpscale", () => {
     it("names a source that is already a canvas file instead of copying it", async () => {
         // The node's picture is a file of this canvas, and a run reads its media by name from the same canvas

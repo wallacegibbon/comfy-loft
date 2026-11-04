@@ -10196,3 +10196,57 @@ chooser), so that panel was not looked at; it is the same three lines as the vid
 
 **Where** `frontend/src/components/canvas/panels/{node-controls,node-controls-props,image-controls,video-controls,audio-controls,text-controls}.tsx`,
 `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.
+
+## 274. The keys a run may take are on the wire, and the canvas prunes to them
+
+**Decision** `PublicEntry` and every `VariantContract` now carry `inputs`: the keys a run of that workflow (in
+that mode) may carry. It is `Entry.AcceptedInputs()`, which is `InputSpecs` reduced to its keys — the same list
+`ValidateInputs` enforces. On the client, `paramsAcceptedBy(config, model, params, mode)` keeps only the stored
+knobs that list names, and the four request paths ask it before they send: `requestGeneration`, `requestEdit`,
+`createServerVideoTask`, `createVideoStepTask`.
+
+**Why** A node keeps its `params` when the model under it changes, and a knob belongs to the model that
+declared it, not to the node. So a value from a previous model travelled with the request and was refused:
+
+```
+POST /api/canvases/…/runs  {"workflow":"image-z-image-turbo","inputs":{"prompt":"probe","upscale_model":"…"}}
+→ 400 unknown_input "upscale_model"; workflow image-z-image-turbo accepts: …
+```
+
+That is reachable with the shipped workflows and no operator additions: upscale a picture (the node stores
+`upscale_model`), change the node's model to Z-Image, press generate. The refusal names a field the user never
+typed.
+
+**The same line closes the latent one** `videoSelfLiftMode` used to be sent to every from-prompt video workflow
+as `transition_step`. It is a declared parameter of the four H3 workflows and of nothing else, so an operator's
+own video workflow was refused on every run. Now it is a knobs-like value that survives the same pruning.
+
+**Why the wire and not a client rule** The client could have guessed — union of `parameters` with a hardcoded
+`editCanvasSize` — but `editCanvasSize` is a *request* key rather than a declared parameter, so that rule would
+have dropped it, and a future workflow whose knob is bound as `params.<name>` without a declaration would have
+been dropped too. The server already computes this list for validation; carrying it is what makes the panel and
+the 400 the same answer rather than two.
+
+**Three states, again** `inputs` is absent when a server does not say, and the client then sends everything it
+has: a model it knows nothing about is not a model that takes nothing. `[]` is normalised away for the same
+reason.
+
+**Cost** The workflows payload grows by one array per workflow and per mode (15 to 24 short strings each, the
+request's own keys included). A knob the server does not declare is now dropped silently instead of refused
+loudly — which is the same outcome seen from the other side, since the server would have refused the run
+anyway; what changed is that the run now happens.
+
+**Tested** `go test ./...` (`TestPublicProjectionCarriesTheKeysARunMayTake`: the entry's keys, the variant's own,
+and that a key the projection offers is one `ValidateInputs` accepts), `make check` (deadcode 506),
+`npx tsc --noEmit`, `npm run check` (189 modules, 886/853 keys), `npx vitest run` (391: the picker entry carries
+the list per workflow and per mode, an empty list normalises to absent, `paramsAcceptedBy` keeps an accepted
+knob and `editCanvasSize`, drops the stale one, returns nothing when nothing is left, and passes everything
+through for a model it knows nothing about; and one request-shaped test whose body is exactly
+`{prompt, seed, size}` where `upscale_model` used to be), `npm run build` (574.04 kB). On an isolated copy
+(`/tmp/verify`, port 8191): all thirteen shipped workflows report their keys, `upscale_model` only on the
+upscaler, `multiplier` only on the interpolation, `transition_step` only on the four H3 ones, and
+`image-qwen21/outpaint` adds exactly the eight padding keys its siblings do not have.
+
+**Where** `internal/workflow/{inputs,render,render_test}.go`, `frontend/src/services/api/{workflows,image,video}.ts`,
+`frontend/src/lib/server-models.ts`, `frontend/src/stores/use-config-store.ts`,
+`frontend/tests/{server-models,model-selection,api-image-upscale}.test.ts`.

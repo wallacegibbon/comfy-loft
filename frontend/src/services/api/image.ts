@@ -1,6 +1,6 @@
 import i18n from "@/i18n";
 import { LOCAL_SERVER_BASE_URL, isLocalServerUrl } from "@/constant/app-mode";
-import { modelImageInputs, modelIsStep, modelTakesPrompt, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
+import { modelImageInputs, modelIsStep, modelTakesPrompt, paramsAcceptedBy, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import { imageModeFor } from "@/lib/canvas/image-mode";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { mediaIdOf } from "@/services/canvas-files";
@@ -208,7 +208,9 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
     // Resolved against the model that will run, not taken on trust: a stored mode can outlive the model it was
     // chosen for, and this is the line that decides the roles and the outpaint numbers (#267).
     const imageMode = imageModeFor(requestConfig, requestConfig.model);
-    const requestParams = { ...(options?.params ?? requestConfig.params ?? {}) };
+    // Only the knobs this model takes travel: one left over from another model is a 400 for a field nobody
+    // typed (#274). The layout below is added after, because it is this client's own word rather than a knob.
+    const requestParams = paramsAcceptedBy(requestConfig, requestConfig.model, options?.params ?? requestConfig.params, imageMode) || {};
     // `layout` is the node's own word, not a mode the server has: it means "a text-to-image run whose prompt
     // carries a MOSS layout", and the server renders it into the prompt (`internal/prompt/layout.go`). So it is
     // read from the node's choice, while the mode beside it is the one the model declares — reading the pseudo
@@ -237,7 +239,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const requestSize = resolveRequestSize(config.size);
     const background = normalizeBackground(config.background);
     const imageMode = String(config.imageMode || requestConfig.imageMode || "").trim();
-    const requestParams = { ...(options?.params ?? requestConfig.params ?? {}) };
+    const requestParams = paramsAcceptedBy(requestConfig, requestConfig.model, options?.params ?? requestConfig.params, imageMode) || {};
     if (config.imageMode === "outpaint" && config.outpaint) {
         const { left, top, right, bottom, width, height } = config.outpaint;
         // ComfyUI's ImageScaleToTotalPixels counts 1 MP as 1024², not 1e6.

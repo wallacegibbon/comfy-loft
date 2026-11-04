@@ -78,3 +78,54 @@ func TestPublicProjectionGivesEachVariantItsOwnContract(t *testing.T) {
 		t.Errorf("ResolveForMode kept the entry's accepts: %+v", merged.Accepts.Images)
 	}
 }
+
+// The keys a run may take are the client's answer to "this knob belongs to another model". A node keeps its
+// params when the model under it changes, so without this list the canvas either sends a value the server
+// refuses (a 400 for a field nobody typed) or re-derives the rule and drifts from `ValidateInputs`. The list
+// is that same function, and a variant takes its own — Qwen's outpaint binds padding its siblings do not.
+func TestPublicProjectionCarriesTheKeysARunMayTake(t *testing.T) {
+	entry := &Entry{
+		ID:   "image-qwen21",
+		Name: "image-qwen21",
+		Type: "image",
+		RawBindings: OrderedMap[OrderedMap[any]]{
+			Keys:   []string{"prompt", "seed"},
+			Values: map[string]OrderedMap[any]{"prompt": kv("node", "5"), "seed": kv("node", "7", "from", "params.seed")},
+		},
+		Parameters: []any{map[string]any{"key": "resolution", "type": "number"}},
+		Variants: OrderedMap[*Variant]{
+			Keys: []string{"outpaint"},
+			Values: map[string]*Variant{
+				"outpaint": {
+					File:        "outpaint.json",
+					RawBindings: OrderedMap[OrderedMap[any]]{Keys: []string{"left", "prompt"}, Values: map[string]OrderedMap[any]{"left": kv("node", "2", "from", "params.left"), "prompt": kv("node", "10")}},
+				},
+			},
+		},
+	}
+
+	projected := PublicProjection(entry)
+	accepted := func(keys []string) map[string]bool {
+		out := map[string]bool{}
+		for _, key := range keys {
+			out[key] = true
+		}
+		return out
+	}
+	top := accepted(projected.Inputs)
+	if !top["prompt"] || !top["seed"] || !top["resolution"] {
+		t.Errorf("the entry's own keys are missing from %v", projected.Inputs)
+	}
+	if top["left"] {
+		t.Errorf("a key only the variant binds leaked into the entry's list: %v", projected.Inputs)
+	}
+	mode := accepted(projected.VariantContracts["outpaint"].Inputs)
+	if !mode["left"] || !mode["prompt"] {
+		t.Errorf("the variant's own key is missing from %v", projected.VariantContracts["outpaint"].Inputs)
+	}
+
+	// The list is the validator's own answer, not a second opinion about it.
+	if err := ValidateInputs(entry, map[string]any{"prompt": "x", "seed": 1.0}, InputLimits{}); err != nil {
+		t.Errorf("a key the projection offers was refused: %v", err)
+	}
+}

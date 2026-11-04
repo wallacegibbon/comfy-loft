@@ -29,7 +29,12 @@ export type ModelParameter = {
 };
 
 /** One mode's media contract. */
-type ModelContract = { accepts?: ModelAccepts; mode?: string };
+type ModelContract = {
+    accepts?: ModelAccepts;
+    mode?: string;
+    /** The keys a run of this mode may carry. */
+    inputs?: string[];
+};
 
 export type ChannelModel = {
     name: string;
@@ -76,6 +81,12 @@ export type ChannelModel = {
     mode?: string;
     /** What it accepts in that mode. */
     accepts?: ModelAccepts;
+    /**
+     * The keys a run may carry: the request's own semantic keys, the parameters the workflow declares, and
+     * the bindings it addresses by their own name. A stored knob that is not here belongs to another model,
+     * and sending it fails the run (docs/decisions.md #274).
+     */
+    inputs?: string[];
     /** Per-mode contracts, for a workflow that offers several (`t2i`, `edit`, `inpaint`, `outpaint`). */
     contracts?: Record<string, ModelContract>;
     /**
@@ -290,8 +301,31 @@ export function modelContractOf(config: AiConfig, value: string, mode?: string):
     const declared = mode ? model.contracts?.[mode] : undefined;
     const accepts = declared?.accepts ?? model.accepts;
     const resolvedMode = declared?.mode ?? model.mode;
-    if (!accepts && !resolvedMode) return undefined;
-    return { accepts, mode: resolvedMode };
+    const inputs = declared?.inputs ?? model.inputs;
+    if (!accepts && !resolvedMode && !inputs) return undefined;
+    return { accepts, mode: resolvedMode, inputs };
+}
+
+/**
+ * The stored knobs a request may carry: the ones the model that will run it accepts.
+ *
+ * A node keeps its `params` when the model under it changes — a knob belongs to the model that declared it,
+ * not to the node — so a value from a previous model travelled with the request and was refused as
+ * `unknown_input`, failing a run for a field nobody typed (docs/decisions.md #274). The answer comes from the
+ * same list the server validates against, so what the canvas sends and what a run accepts cannot disagree.
+ *
+ * A model that declares nothing is left alone: nothing is claimed about it, which is the three-state reading
+ * every other acceptance gets. `mode` is the mode the run will resolve to, since a variant takes its own keys.
+ */
+export function paramsAcceptedBy(config: AiConfig, value: string, params: Record<string, unknown> | undefined, mode?: string) {
+    if (!params) return undefined;
+    const accepted = modelContractOf(config, value, mode)?.inputs;
+    if (!accepted) return params;
+    const kept: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(params)) {
+        if (accepted.includes(key)) kept[key] = item;
+    }
+    return Object.keys(kept).length ? kept : undefined;
 }
 
 /** Whether a workflow can be asked something in words. Unknown (an older stored config) means yes. */
@@ -459,9 +493,10 @@ export function normalizeChannelModels(models: Array<string | ChannelModel> | un
         const selfLift = typeof item === "string" ? undefined : item.selfLift === true ? true : undefined;
         const mode = typeof item === "string" ? undefined : item.mode?.trim() || undefined;
         const accepts = typeof item === "string" ? undefined : normalizeAccepts(item.accepts);
+        const inputs = typeof item === "string" ? undefined : normalizeInputs(item.inputs);
         const contracts = typeof item === "string" ? undefined : normalizeContracts(item.contracts);
         const parameters = typeof item === "string" ? undefined : normalizeParameters(item.parameters);
-        result.push({ name, capability, label, workflowId, baseModel, baseModelLabel, variantModes, variantLabels, blockedModes, imageInputs, duration, tool, hasPrompt, bindsSeconds, selfLift, mode, accepts, contracts, parameters });
+        result.push({ name, capability, label, workflowId, baseModel, baseModelLabel, variantModes, variantLabels, blockedModes, imageInputs, duration, tool, hasPrompt, bindsSeconds, selfLift, mode, accepts, inputs, contracts, parameters });
     }
     return result;
 }
@@ -500,15 +535,24 @@ function normalizeAccepts(value: { images?: { min?: number; max?: number }; vide
     return { images, videos, audios, minTotal };
 }
 
-function normalizeContracts(value: Record<string, { accepts?: { images?: { min?: number; max?: number }; videos?: { min?: number; max?: number }; audios?: { min?: number; max?: number }; minTotal?: number }; mode?: string }> | undefined) {
+function normalizeContracts(
+    value: Record<string, { accepts?: { images?: { min?: number; max?: number }; videos?: { min?: number; max?: number }; audios?: { min?: number; max?: number }; minTotal?: number }; mode?: string; inputs?: string[] }> | undefined,
+) {
     if (!value || typeof value !== "object") return undefined;
-    const contracts: Record<string, { accepts?: ReturnType<typeof normalizeAccepts>; mode?: string }> = {};
+    const contracts: Record<string, { accepts?: ReturnType<typeof normalizeAccepts>; mode?: string; inputs?: string[] }> = {};
     for (const [mode, contract] of Object.entries(value)) {
         const trimmed = String(mode).trim();
         if (!trimmed || !contract || typeof contract !== "object") continue;
-        contracts[trimmed] = { accepts: normalizeAccepts(contract.accepts), mode: contract.mode?.trim() || undefined };
+        contracts[trimmed] = { accepts: normalizeAccepts(contract.accepts), mode: contract.mode?.trim() || undefined, inputs: normalizeInputs(contract.inputs) };
     }
     return Object.keys(contracts).length ? contracts : undefined;
+}
+
+/** The keys a run may carry, rebuilt rather than trusted, so a stored document cannot smuggle a shape. */
+function normalizeInputs(value: unknown) {
+    if (!Array.isArray(value)) return undefined;
+    const keys = value.filter((key): key is string => typeof key === "string" && Boolean(key.trim())).map((key) => key.trim());
+    return keys.length ? keys : undefined;
 }
 
 /**

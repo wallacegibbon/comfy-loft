@@ -42,6 +42,19 @@ type InputSpec struct {
 // semanticInputs are the keys that drive the request itself rather than a binding.
 var semanticInputs = []string{"prompt", "negative", "size", "quality", "seconds", "duration", "mode", "background", "editCanvasSize", "layout", "layoutEnabled"}
 
+// AcceptedInputs lists the keys a run of this workflow may carry, which is exactly the set
+// `ValidateInputs` will not refuse. It is the same list the client needs to keep a knob it no longer
+// knows out of a request: a value left over from another model used to reach the server and be answered
+// with `unknown_input`, failing the run for a field nobody typed (docs/decisions.md #274).
+func (e *Entry) AcceptedInputs() []string {
+	specs := e.InputSpecs(InputLimits{})
+	keys := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		keys = append(keys, spec.Key)
+	}
+	return keys
+}
+
 // InputSpecs is the typed contract of a workflow, assembled from three sources: the request-level
 // keys above, the workflow's declared `parameters`, and its non-media binding keys.
 func (e *Entry) InputSpecs(limits InputLimits) []InputSpec {

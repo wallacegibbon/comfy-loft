@@ -45,7 +45,12 @@ export type WorkflowAccepts = {
  * One mode's contract: what it accepts and the mode it runs in. A mode is a different graph, so it may
  * take a different media mix (inpaint wants a source and a mask; t2i wants none).
  */
-type WorkflowContract = { accepts?: WorkflowAccepts; mode?: string };
+type WorkflowContract = {
+    accepts?: WorkflowAccepts;
+    mode?: string;
+    /** The keys a run of this mode may carry. A variant is a different graph, so they differ. */
+    inputs?: string[];
+};
 
 type WorkflowAvailability = {
     available?: boolean;
@@ -92,6 +97,12 @@ export type ServerWorkflow = {
     /** What the workflow accepts, and the mode it runs in. See `WorkflowAccepts`. */
     accepts?: WorkflowAccepts;
     mode?: string;
+    /**
+     * The keys a run may carry — every key `POST /api/runs` will not refuse. A stored knob belongs to the
+     * model that declared it, so the canvas drops the ones the chosen model does not take instead of sending
+     * them and being answered with `unknown_input`.
+     */
+    inputs?: string[];
     /** Per-mode contracts, present only for a workflow with variants. */
     variantContracts?: Record<string, WorkflowContract>;
 };

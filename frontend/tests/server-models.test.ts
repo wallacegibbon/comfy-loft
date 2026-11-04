@@ -165,6 +165,27 @@ describe("modelsOf", () => {
         expect(followsSource[0].bindsSeconds).toBe(false);
     });
 
+    it("carries the keys a run may take, per workflow and per mode", () => {
+        // The client drops a stored knob the chosen model does not take, so a value left over from another
+        // model cannot fail a run as `unknown_input` (docs/decisions.md #274). The list is the server's own:
+        // what `ValidateInputs` will not refuse.
+        const models = modelsOf(
+            workflow({
+                id: "image-qwen21",
+                inputs: ["prompt", "seed", "cfg", "resolution"],
+                variantModes: ["outpaint", "t2i"],
+                variantContracts: { outpaint: { inputs: ["prompt", "seed", "left", "top"] }, t2i: { inputs: ["prompt", "seed"] } },
+                models: [{ id: "image-qwen21" }],
+            }),
+        );
+        expect(models[0].inputs).toEqual(["prompt", "seed", "cfg", "resolution"]);
+        expect(models[0].contracts?.outpaint.inputs).toEqual(["prompt", "seed", "left", "top"]);
+        expect(models[0].contracts?.t2i.inputs).toEqual(["prompt", "seed"]);
+        // A server that says nothing claims nothing: the field is absent rather than an empty list, which
+        // would mean "this workflow takes no keys at all".
+        expect(modelsOf(workflow({ inputs: [] }))[0].inputs).toBeUndefined();
+    });
+
     it("offers the SelfLift toggle only where the workflow declares the knob it writes", () => {
         // The toggle writes `transition_step` (services/api/video.ts), so the declaration is what makes it real:
         // a workflow without the knob would be sent a value nothing reads.

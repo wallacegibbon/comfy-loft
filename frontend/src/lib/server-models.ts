@@ -45,6 +45,13 @@ function acceptsOf(accepts: WorkflowAccepts | undefined): ModelAccepts | undefin
     return { images, videos, audios, minTotal };
 }
 
+/** The keys a run may carry, as the server listed them. Absent means it did not say, which is not "none". */
+function inputsOf(inputs: string[] | undefined) {
+    if (!Array.isArray(inputs)) return undefined;
+    const keys = inputs.filter((key): key is string => typeof key === "string" && Boolean(key.trim())).map((key) => key.trim());
+    return keys.length ? keys : undefined;
+}
+
 /** Whether the workflow can be asked something in words. */
 function hasPromptBinding(workflow: ServerWorkflow) {
     return Boolean(workflow.bindings && Object.prototype.hasOwnProperty.call(workflow.bindings, "prompt"));
@@ -97,7 +104,9 @@ export function modelsOf(workflow: ServerWorkflow): ChannelModel[] {
     if (!CAPABILITIES.includes(capability)) return [];
     if (workflow.enabled === false || workflow.availability?.available === false) return [];
     const duration = durationOf(workflow);
-    const contracts = workflow.variantContracts ? Object.fromEntries(Object.entries(workflow.variantContracts).map(([mode, contract]) => [mode, { accepts: acceptsOf(contract?.accepts), mode: contract?.mode }])) : undefined;
+    const contracts = workflow.variantContracts
+        ? Object.fromEntries(Object.entries(workflow.variantContracts).map(([mode, contract]) => [mode, { accepts: acceptsOf(contract?.accepts), mode: contract?.mode, inputs: inputsOf(contract?.inputs) }]))
+        : undefined;
 
     return (workflow.models || []).map((model) => ({
         name: model.id,
@@ -119,6 +128,7 @@ export function modelsOf(workflow: ServerWorkflow): ChannelModel[] {
         selfLift: hasSelfLift(workflow),
         mode: workflow.mode || undefined,
         accepts: acceptsOf(workflow.accepts),
+        inputs: inputsOf(workflow.inputs),
         contracts,
         parameters: parametersOf(workflow),
     }));
@@ -155,6 +165,7 @@ export function modelSignature(models: ChannelModel[]) {
             model.selfLift ? 1 : 0,
             model.mode || "",
             model.accepts || null,
+            model.inputs || null,
             model.contracts || null,
             model.parameters || null,
         ]),

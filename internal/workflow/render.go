@@ -32,6 +32,9 @@ type PublicEntry struct {
 	Accepts   *Accepts       `json:"accepts,omitempty"`
 	Mode      string         `json:"mode,omitempty"`
 	FrameMode *FrameModeRule `json:"frameMode,omitempty"`
+	// The keys a run may carry, so a client can drop a value it no longer has a model for instead of
+	// sending it and being refused. It is `AcceptedInputs`, the same set the validator enforces (#274).
+	Inputs []string `json:"inputs"`
 	// Per-mode contracts, present only for a workflow with variants. A mode is a different graph
 	// with different wiring, so its media mix can differ (Qwen's inpaint wants a source and a mask;
 	// t2i wants none) — the mode the reader picks must be the one whose contract they see.
@@ -44,6 +47,9 @@ type VariantContract struct {
 	Accepts   *Accepts       `json:"accepts,omitempty"`
 	Mode      string         `json:"mode,omitempty"`
 	FrameMode *FrameModeRule `json:"frameMode,omitempty"`
+	// A variant is a different graph, so it takes different keys: Qwen's outpaint binds the padding
+	// numbers its siblings do not.
+	Inputs []string `json:"inputs,omitempty"`
 }
 
 // variantContractOf resolves one mode's effective contract. It is the single answer to "what does
@@ -51,8 +57,16 @@ type VariantContract struct {
 func variantContractOf(entry *Entry, variant *Variant) VariantContract {
 	contract := VariantContract{Accepts: entry.Accepts, Mode: entry.Mode, FrameMode: entry.FrameMode}
 	if variant == nil {
+		contract.Inputs = entry.AcceptedInputs()
 		return contract
 	}
+	// The mode's accepted keys are computed from the mode's own bindings, which is what a run of that
+	// mode is validated against.
+	merged := *entry
+	if !variant.RawBindings.IsZero() {
+		merged.RawBindings = variant.RawBindings
+	}
+	contract.Inputs = merged.AcceptedInputs()
 	if variant.Accepts != nil {
 		contract.Accepts = variant.Accepts
 	}
@@ -106,6 +120,7 @@ func PublicProjection(entry *Entry) PublicEntry {
 		Accepts:       entry.Accepts,
 		Mode:          entry.Mode,
 		FrameMode:     entry.FrameMode,
+		Inputs:        entry.AcceptedInputs(),
 	}
 	if entry.Variants.Len() > 0 {
 		out.VariantContracts = make(map[string]VariantContract, entry.Variants.Len())
