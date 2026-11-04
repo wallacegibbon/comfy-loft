@@ -10083,3 +10083,31 @@ tools, and what changed is a tool's decision plus one line of `list_nodes`.
 `frontend/src/components/canvas/canvas-node.tsx`, `frontend/src/pages/canvas/project.tsx`,
 `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
 `frontend/tests/{canvas-agent-tools,canvas-agent-view}.test.ts`.
+
+## 271. `layout` is the node's word, not a mode
+
+**Decision** `requestGeneration` reads the layout attachment from the node's own choice
+(`config.imageMode === "layout" && config.layout`) instead of from the resolved mode, which is what
+`requestEdit` had always done. The resolved mode — the one the model declares — decides only what `mode` the
+request carries.
+
+**Why** #267 changed that line to read the resolved mode, and the resolved mode is never "layout": it is not a
+variant any workflow declares. `layout` is the client's name for "a text-to-image run whose prompt carries a
+MOSS layout", which the server renders into the prompt (`internal/prompt/layout.go`). So the guard became
+false, and every layout run dropped its layout — on the workflows where the feature actually works (the MOSS
+ones, which declare no variants), the payload vanished and the run produced a picture from the prompt alone.
+
+This is the failure mode #267 was written against, arriving from the other side: a client word read as if the
+server had declared it. Caught while mapping the image family's remaining id-shaped decisions, not by a test —
+which is why the test now exists.
+
+**Cost** None: the line goes back to what `requestEdit` does, and the two request paths now agree about what a
+layout run is. A stale `layout` on a family that declares modes pins the mode that asks least (#268) *and*
+keeps the layout, which is one more reason the pseudo mode cannot be read from the resolved one.
+
+**Tested** `npx vitest run` (388, two new): a MOSS-shaped workflow sends `layout` + `layoutEnabled` and no
+`mode` at all; a family with declared modes sends `mode: "t2i"` (the mode that asks least) and still carries the
+layout. The first of those fails against #267's line, which is what makes it a regression test rather than a
+description. `npx tsc --noEmit`, `npm run check` (886/853, 183 modules), `npm run build` (572.73 kB).
+
+**Where** `frontend/src/services/api/image.ts`, `frontend/tests/api-image-upscale.test.ts`.

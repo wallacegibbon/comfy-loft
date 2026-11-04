@@ -209,7 +209,11 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
     // chosen for, and this is the line that decides the roles and the outpaint numbers (#267).
     const imageMode = imageModeFor(requestConfig, requestConfig.model);
     const requestParams = { ...(options?.params ?? requestConfig.params ?? {}) };
-    if (imageMode === "layout" && config.layout) {
+    // `layout` is the node's own word, not a mode the server has: it means "a text-to-image run whose prompt
+    // carries a MOSS layout", and the server renders it into the prompt (`internal/prompt/layout.go`). So it is
+    // read from the node's choice, while the mode beside it is the one the model declares — reading the pseudo
+    // mode from the resolved one dropped the layout on every workflow without variants (#271).
+    if (config.imageMode === "layout" && config.layout) {
         requestParams.layout = config.layout;
         requestParams.layoutEnabled = true;
     }

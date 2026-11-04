@@ -24,7 +24,7 @@ vi.mock("@/lib/image-utils", () => ({
     dataUrlToFile: (image: { name?: string }) => new File([new Uint8Array([1, 2, 3])], image.name || "source.png", { type: "image/png" }),
 }));
 
-const { requestEdit, requestUpscale } = await import("@/services/api/image");
+const { requestEdit, requestGeneration, requestUpscale } = await import("@/services/api/image");
 
 // A run belongs to a canvas (#156): these cases post into one.
 const { setActiveCanvas } = await import("@/services/canvas-files");
@@ -195,6 +195,75 @@ describe("a step that takes words", () => {
         expect(body.workflow).toBe("image-qwen21-angle");
         expect(body.inputs).toEqual({ prompt: "keep the colours, turn the camera left", horizontalAngle: 30, pitchAngle: 5, cameraDistance: 4 });
         expect(body.media).toEqual({ image: [UPLOAD_ID] });
+    });
+});
+
+// `layout` is the node's own word, not a mode the server has: it means "a text-to-image run whose prompt
+// carries a MOSS layout". Reading it off the *resolved* mode dropped the layout on every workflow without
+// variants — the case that actually works — while sending nothing (docs/decisions.md #271).
+describe("a layout run", () => {
+    const layout = { rows: [{ cells: [{ nodeId: "image-1", w: 1, h: 1 }] }] };
+    const moss = () =>
+        ({
+            ...server(),
+            imageMode: "layout",
+            layout,
+            channels: [
+                {
+                    id: "local",
+                    name: "local",
+                    baseUrl: "http://127.0.0.1:8190/v1",
+                    models: [{ name: "image-moss-sft-8step", capability: "image", workflowId: "image-moss-sft-8step", hasPrompt: true }],
+                },
+            ],
+            model: "local::image-moss-sft-8step",
+            imageModel: "local::image-moss-sft-8step",
+        }) as unknown as Config;
+
+    it("carries the layout, and sends no mode the workflow does not have", async () => {
+        const { calls } = stubServer();
+
+        await requestGeneration(moss(), "a poster in four panels");
+
+        const body = runBody(calls);
+        expect(body.inputs.layout).toEqual(layout);
+        expect(body.inputs.layoutEnabled).toBe(true);
+        // A workflow with no variants is sent no `mode` at all, exactly as before.
+        expect(body.inputs.mode).toBeUndefined();
+    });
+
+    it("pins a declared mode when the family has one, and still carries the layout", async () => {
+        const { calls } = stubServer();
+        const family = {
+            ...moss(),
+            channels: [
+                {
+                    id: "local",
+                    name: "local",
+                    baseUrl: "http://127.0.0.1:8190/v1",
+                    models: [
+                        {
+                            name: "image-family",
+                            capability: "image",
+                            workflowId: "image-family",
+                            hasPrompt: true,
+                            variantModes: ["edit", "t2i"],
+                            contracts: { edit: { accepts: { images: { min: 1, max: 4 } } }, t2i: { accepts: { images: { max: 0 } } } },
+                        },
+                    ],
+                },
+            ],
+            model: "local::image-family",
+            imageModel: "local::image-family",
+        } as unknown as Config;
+
+        await requestGeneration(family, "a poster in four panels");
+
+        const body = runBody(calls);
+        // `layout` is not a mode this family declares, so the run pins the mode that asks least — and the
+        // layout, which is what the node asked for, is still attached.
+        expect(body.inputs.mode).toBe("t2i");
+        expect(body.inputs.layout).toEqual(layout);
     });
 });
 
