@@ -441,6 +441,12 @@ That list is also edited from the canvas, and still by the agent: the preference
 and adding, changing or removing one sends `model_sync` — the same command, with the server completing the
 entries the page was not shown (decisions #201). Nothing here parses `model.conf`.
 
+The form covers the entry rather than a corner of it (#249): the name, the model id, the address, the
+protocol, the key, `context_limit`, `max_tokens`, `reasoning_field`, `serial_tool_calls` and the three
+reasoning blocks, each written as the JSON it is. A block that will not parse keeps the form from saving, and
+the merge refuses one that is not an object — the blocks are merged into a request body as they stand. A
+cleared block is sent as `null`, which removes it; a field the page says nothing about is kept as it was.
+
 ## Architecture
 
 ```
