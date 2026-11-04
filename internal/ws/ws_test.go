@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"comfyloft/internal/agent"
 	"comfyloft/internal/comfy"
 )
 
@@ -111,5 +112,15 @@ func TestSocketReportsTheClientGoingAway(t *testing.T) {
 	defer cancel()
 	if _, err := conn.ReadMessage(ctx); err == nil {
 		t.Fatal("a closed connection still reads")
+	}
+}
+
+// TestMaxMessageIsTheAgentFrameBound holds the two bounds together. A tool answer is one message here and
+// one frame there, so a message this side accepts and the agent's reader refuses would be a size that works
+// everywhere except the last hop — and the failure would be the socket dying rather than a sentence saying
+// what is too large.
+func TestMaxMessageIsTheAgentFrameBound(t *testing.T) {
+	if maxMessage != agent.MaxFrameSize {
+		t.Fatalf("maxMessage = %d, agent.MaxFrameSize = %d: the socket carries the agent's frames", maxMessage, agent.MaxFrameSize)
 	}
 }

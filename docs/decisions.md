@@ -10415,3 +10415,34 @@ from each, 186 modules), `npm run build` 558.77 kB, `make check` (deadcode 506),
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/pages/canvas/hooks/use-generation-runs.ts`,
 `frontend/src/services/api/agent.ts`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
 `internal/server/{routes_mcp.go,agent_instructions.go}`, `docs/server.md`.
+
+## 279. A tool answer is one frame, and the socket admits as much
+
+**Decision** `internal/ws.maxMessage` is the agent's frame bound (`agent.MaxFrameSize`, 64 MiB) rather than a
+number of its own, and a test holds the two equal. `MAX_INLINE_MEDIA_BASE64` in `canvas-agent-tools.ts` follows
+it: 40 MiB of base64, about 30 MB of file, instead of 5 MiB.
+
+**Why** A tool answer is one message on the agent socket and one frame on the agent's stdin. Those two hops had
+unrelated bounds — 8 MiB and 64 MiB — so a picture that the agent would have accepted was refused, and refused
+badly: `ws.ReadMessage` fails, the socket dies and the turn with it, and the page shows 请求失败. The number
+that was supposed to produce a sentence (`MAX_INLINE_MEDIA_BASE64`, checked in the page) sat in front of a wall
+it did not know about, with no relation to it: 5 MiB base64 into an 8 MiB message, 2.3× of headroom, chosen once
+by nobody in particular.
+
+Nothing was protected by the smaller number. 64 MiB is already the size the agent's own reader permits one hop
+later, so the only thing the 8 MiB bought was an inconsistent refusal — and a tool answer is not a dangerous
+message: it is the page the user is looking at answering a call that page made.
+
+**Why not scale the picture here** AlayaCore already scales what it hands a model, so doing it in the page would
+be a second answer to the same question and a worse one (it would also mean deciding what a picture is for — a
+look, a detail, a colour). What this side owes is the bytes on the wire, and to say so when they do not fit.
+
+**Cost** One WebSocket message may now allocate 64 MiB on each side, where it used to be capped at 8. That is the
+same allocation the agent's frame reader already allows, so it is not a new class of failure — and a tool answer
+over 40 MiB of base64 is still refused with a sentence that says how to look at the file instead.
+
+**Tested** `go test ./internal/ws/` (the new test fails if the two bounds drift; it is the reason the number can
+be stated in one place and read in two), `go test ./...`, `make check` (deadcode 506), `npx tsc --noEmit`,
+`npm run check`, `npx vitest run` (378), `npm run build` (558.77 kB).
+
+**Where** `internal/ws/ws.go`, `internal/ws/ws_test.go`, `frontend/src/lib/canvas/canvas-agent-tools.ts`.

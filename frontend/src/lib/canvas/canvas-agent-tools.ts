@@ -470,7 +470,15 @@ function readSize(args: Record<string, unknown>): { width: number; height?: numb
  * conversation, with the agent's next question unanswered and nothing to say why. Above this bound the tool
  * answers with the file's size instead of its bytes — the file is not lost, it is on the canvas.
  */
-const MAX_INLINE_MEDIA_BASE64 = 5 * 1024 * 1024;
+/**
+ * How much base64 one media answer may carry: 40 MiB, which is about 30 MB of file.
+ *
+ * Not a taste: a tool answer is one WebSocket message, and its bound is the agent's frame bound
+ * (`internal/agent.MaxFrameSize` — `internal/ws.maxMessage` is pinned to the same number, and base64 costs
+ * a third on top). The limit is a wire budget, so the only honest refusal is "bigger than one frame", which
+ * no picture is: scaling a picture down for the model is AlayaCore's business, not this file's.
+ */
+const MAX_INLINE_MEDIA_BASE64 = 40 * 1024 * 1024;
 
 /** The block a node's media travels in — or nothing, for a node that holds no media. */
 async function mediaOf(node: CanvasNodeData): Promise<ToolContent | undefined> {

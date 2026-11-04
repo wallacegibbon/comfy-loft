@@ -25,9 +25,12 @@ import (
 	"time"
 )
 
-// maxMessage bounds one reassembled message. The socket carries text — prompts and frames — and a
-// prompt may carry reference images as data URLs, so the bound is generous on purpose.
-const maxMessage = 8 << 20
+// maxMessage bounds one reassembled message, and it is the agent's own frame bound rather than a number of
+// its own: what travels on this socket is the frames the agent reads and writes, so a message here is one
+// frame there (`agent.MaxFrameSize`, asserted by a test). It was 8 MiB on its own authority, which meant the
+// hop that carries a tool answer accepted less than the hop that received it — a picture over the limit
+// killed the socket and the turn with it, instead of being refused with a sentence.
+const maxMessage = 64 << 20
 
 // pingInterval is how often the server pokes the client. A canvas tab that has been asleep for hours
 // holds a connection whose state nothing on this side can see, and a dead peer is only discovered by
