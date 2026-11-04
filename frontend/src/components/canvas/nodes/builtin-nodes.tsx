@@ -30,8 +30,8 @@ const iconClass = "size-4";
 
 const BUILTIN_DEFINITIONS: CanvasNodeDefinition[] = [
     { type: CanvasNodeType.Text, title: i18n.t("canvas.nodeTypes.text"), icon: <FileText className={iconClass} />, minimapColor: undefined, resource: builtinResource },
-    { type: CanvasNodeType.Image, title: i18n.t("canvas.nodeTypes.image"), icon: <ImageIcon className={iconClass} />, minimapColor: "#10b981", keepAspectRatio: (node: CanvasNodeData) => !node.metadata?.freeResize, resource: builtinResource },
-    { type: CanvasNodeType.Video, title: i18n.t("canvas.nodeTypes.video"), icon: <Video className={iconClass} />, minimapColor: "#f97316", keepAspectRatio: () => true, resource: builtinResource },
+    { type: CanvasNodeType.Image, title: i18n.t("canvas.nodeTypes.image"), icon: <ImageIcon className={iconClass} />, minimapColor: "#10b981", keepsAspectRatio: true, resource: builtinResource },
+    { type: CanvasNodeType.Video, title: i18n.t("canvas.nodeTypes.video"), icon: <Video className={iconClass} />, minimapColor: "#f97316", keepsAspectRatio: true, resource: builtinResource },
     { type: CanvasNodeType.Audio, title: i18n.t("canvas.nodeTypes.audio"), icon: <Music2 className={iconClass} />, minimapColor: "#a855f7", resource: builtinResource },
     {
         // A LoRA is a choice about the model, so it is its own card: one card wired into two nodes is how a

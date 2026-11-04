@@ -24,7 +24,8 @@ export type CanvasNodeDefinition = {
     minimapColor?: string;
     insertBefore?: boolean; // Created upstream: the creation menu connects it into the node being referenced.
     autoOpenPanel?: boolean; // Opens the node's panel on click.
-    keepAspectRatio?: (node: CanvasNodeData) => boolean;
+    /** A card that frames a picture or a film is that content's shape: dragging a corner scales it, and only these types say so. */
+    keepsAspectRatio?: boolean;
     resource?: (node: CanvasNodeData) => CanvasNodeResource | null;
 };
 

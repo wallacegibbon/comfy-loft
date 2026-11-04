@@ -1,14 +1,13 @@
 import type { ReactNode } from "react";
-import { Brush, Camera, Copy, FileText, Grid2x2, Lock, LockOpen, Maximize2, Scissors, Sparkles, ZoomIn } from "lucide-react";
+import { Brush, Camera, Copy, FileText, Grid2x2, Maximize2, Scissors, Sparkles, ZoomIn } from "lucide-react";
 
 import type { CanvasNodeData } from "@/types/canvas";
 import i18n from "@/i18n";
 
-type ImageNodeActionToolId = "copyPrompt" | "reversePrompt" | "resize" | "maskEdit" | "crop" | "split" | "upscale" | "superResolve" | "angle" | "view";
+type ImageNodeActionToolId = "copyPrompt" | "reversePrompt" | "maskEdit" | "crop" | "split" | "upscale" | "superResolve" | "angle" | "view";
 export type ImageQuickToolId = "info" | "delete" | "download" | ImageNodeActionToolId;
 
 type ImageToolHandlers = {
-    onToggleFreeResize: (node: CanvasNodeData) => void;
     onMaskEdit: (node: CanvasNodeData) => void;
     onCrop: (node: CanvasNodeData) => void;
     onSplit: (node: CanvasNodeData) => void;
@@ -55,15 +54,6 @@ const imageToolDefinitions: ImageToolDefinition[] = [
         title: () => i18n.t("canvas.imageTools.reversePromptTitle"),
         icon: () => <FileText className="size-4" />,
         run: (node, handlers) => handlers.onReversePrompt(node),
-    },
-    {
-        id: "resize",
-        defaultVisible: false,
-        label: (node) => i18n.t(node.metadata?.freeResize ? "canvas.imageTools.free" : "canvas.imageTools.locked"),
-        title: (node) => i18n.t(node.metadata?.freeResize ? "canvas.imageTools.lockTitle" : "canvas.imageTools.freeTitle"),
-        icon: (node) => (node.metadata?.freeResize ? <LockOpen className="size-4" /> : <Lock className="size-4" />),
-        active: (node) => Boolean(node.metadata?.freeResize),
-        run: (node, handlers) => handlers.onToggleFreeResize(node),
     },
     {
         id: "maskEdit",

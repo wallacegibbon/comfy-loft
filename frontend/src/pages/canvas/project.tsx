@@ -1758,19 +1758,6 @@ function InfiniteCanvasPage() {
     }, []);
     const handleNodeResizeEnd = useCallback(() => setIsNodeResizing(false), []);
 
-    const toggleNodeFreeResize = useCallback((nodeId: string) => {
-        setNodes((prev) =>
-            prev.map((node) => {
-                if (node.id !== nodeId) return node;
-                const freeResize = !node.metadata?.freeResize;
-                if (freeResize || node.type !== CanvasNodeType.Image) return { ...node, metadata: { ...node.metadata, freeResize } };
-                const ratio = (node.metadata?.naturalWidth || node.width) / (node.metadata?.naturalHeight || node.height || 1);
-                const height = node.width / ratio;
-                return { ...node, height, position: { x: node.position.x, y: node.position.y + node.height / 2 - height / 2 }, metadata: { ...node.metadata, freeResize } };
-            }),
-        );
-    }, []);
-
     const handleNodeContentChange = useCallback((nodeId: string, content: string) => {
         setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, content, texts: node.metadata?.texts?.map((text) => (text.id === node.metadata?.primaryTextId ? { ...text, content } : text)) } } : node)));
     }, []);
@@ -2412,7 +2399,6 @@ function InfiniteCanvasPage() {
                     onAngle={(node) => openNodeTool("angle", node.id)}
                     onViewImage={handleNodeViewImage}
                     onReversePrompt={createImageReversePromptNodes}
-                    onToggleFreeResize={(node) => toggleNodeFreeResize(node.id)}
                     onDelete={(node) => deleteNodes(new Set([node.id]))}
                     onUngroup={(node) => ungroupSelection(new Set([node.id]))}
                 />

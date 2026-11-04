@@ -129,7 +129,6 @@ export type CanvasNodeMetadata = {
     mask?: { storageKey: string; mimeType?: string };
     naturalWidth?: number;
     naturalHeight?: number;
-    freeResize?: boolean;
     storageKey?: string;
     mimeType?: string;
     bytes?: number;

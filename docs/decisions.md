@@ -9792,3 +9792,53 @@ prompt), `tests/api-image-upscale.test.ts` (an upscaler submits `{upscale_model}
 `frontend/src/components/canvas/{canvas-tool-node-panel,canvas-node-prompt-panel}.tsx`,
 `frontend/src/components/{model-picker.tsx,settings/preferences-dialog.tsx}`,
 `frontend/src/pages/canvas/{project.tsx,hooks/*.ts}`, `frontend/scripts/check-i18n.cjs`.
+
+## 264. A card that frames a picture is the picture's shape
+
+**Decision** The image node's free-resize toggle is gone. `keepRatio` is now one read of the node
+definition — `Boolean(definition?.keepsAspectRatio)` — with the image definition saying `true` exactly as
+the video one already did, and the picture is drawn `object-contain` with no branch. Three things went with
+it: the three clauses that used to answer "may this card change shape" (an `Image && !freeResize` test, a
+bare `Video` test, and the definition), the field itself, and the function shape of the flag — it was a
+`(node) => boolean` only because the answer once depended on the node, and now that it does not,
+`keepsAspectRatio?: boolean` says the same thing without an argument nothing reads.
+
+**Why** No one decided it. `freeResize` came in with the initial import (`ccfe94b`) and no entry in this
+file ever mentioned it — searching `freeResize`, "Lock ratio" and "free resize" found nothing, which is the
+same diagnosis #228 made of the per-node `replace`: inherited, not decided. Three pieces of
+evidence say the same thing. It was hidden from the first day — `defaultVisible: false`, the only one of
+twelve image quick tools a user had to go into the toolbar config to find. It was implemented as
+`object-fill`, which stretches the photograph, and this app spends crop, outpaint and mask exactly to avoid
+distorting a picture; if the need was "fill this slot", `object-cover` was the mechanism and it was never
+the one built. And its own code already treated the picture's shape as the truth: switching the lock back
+on recomputed the height from `naturalWidth/naturalHeight` and kept the centre, so free resize was
+implemented as a temporary deviation, not a mode.
+
+**The rule that replaces it** A card whose content is a picture or a film is that content's shape: drag its
+corner and it scales. A card whose content is words is a reading choice — wide for one line, narrow for a
+column — and a group's dashed rect is a layout statement; both are free, as they always were, because
+neither has a shape to keep. That is why only the two media types carry `keepsAspectRatio` at all.
+
+**Cost** None that has to be paid, and this is the reason to do it now rather than later. The project is
+unreleased, so there is no document outside development that could carry `freeResize`: `grep` over `data/`
+and `canvases/` finds none, and nothing has to be migrated or tolerated. A document written by a build
+before this one would render its node `object-contain` and snap its next corner drag back to the picture's
+ratio, which is the behaviour this entry is asking for anyway. Doing it after the first canvas is saved
+would have meant either a migration or a field nobody reads.
+
+**What it simplifies downstream** The agent's `resize_node` (not built yet) loses a branch: there is no
+"was this node unlocked?" question, so a card that frames a picture has one degree of freedom and states
+one number, and text/audio/group state two. A video never had an escape hatch; now an image does not either,
+and the two types read the same everywhere.
+
+**Tested** `npx tsc --noEmit` (deleting the field made every reader a compile error, which is the mechanical
+proof that the list was complete), `npm run check` (the i18n check found the four now-dead keys and nothing
+else: 866/852 keys, 182 modules, prettier clean), `npx vitest run` (40 files, 374 tests), `npm run build`
+(569.02 kB, 1.3 kB smaller). No test pins the drag's ratio: the component's pointer math has no harness, and
+the rule it now follows is a field on the definition rather than arithmetic in this file.
+
+**Where** `frontend/src/types/{canvas,canvas-node}.ts`, `frontend/src/components/canvas/canvas-node.tsx`,
+`frontend/src/components/canvas/nodes/builtin-nodes.tsx`,
+`frontend/src/components/canvas/canvas-image-toolbar-tools.tsx`,
+`frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`, `frontend/src/pages/canvas/project.tsx`,
+`frontend/src/i18n/locales/{en-US,zh-CN}.ts`.

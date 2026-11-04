@@ -260,7 +260,9 @@ export const CanvasNode = React.memo(function CanvasNode({
             startTop: data.position.y,
             startWidth: data.width,
             startHeight: data.height,
-            keepRatio: (data.type === CanvasNodeType.Image && !data.metadata?.freeResize) || data.type === CanvasNodeType.Video || Boolean(definition?.keepAspectRatio?.(data)),
+            // Whether a card may change shape is the node type's word, not this file's: a card that frames
+            // a picture is the picture's shape, and the definition says so (`keepsAspectRatio`).
+            keepRatio: Boolean(definition?.keepsAspectRatio),
             ratio: (data.metadata?.naturalWidth || data.width) / (data.metadata?.naturalHeight || data.height || 1),
         };
         window.addEventListener("mousemove", handleResizeMove);
@@ -774,11 +776,7 @@ function ImageContent({ node, scale, onDownload }: { node: CanvasNodeData; scale
 
     return (
         <div className="relative h-full w-full overflow-hidden rounded-3xl">
-            {content ? (
-                <img src={source} alt={node.title} draggable={false} onDragStart={(event) => event.preventDefault()} className={`pointer-events-none block h-full w-full select-none ${node.metadata?.freeResize ? "object-fill" : "object-contain"}`} />
-            ) : (
-                <ImageSlotStatus node={node} />
-            )}
+            {content ? <img src={source} alt={node.title} draggable={false} onDragStart={(event) => event.preventDefault()} className="pointer-events-none block h-full w-full select-none object-contain" /> : <ImageSlotStatus node={node} />}
             {content ? (
                 <button
                     type="button"
