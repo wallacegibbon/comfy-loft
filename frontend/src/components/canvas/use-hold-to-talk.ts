@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { isSpeakable } from "@/lib/canvas/agent-dictation";
+import { isSpeakable, MAX_SPEECH_SECONDS } from "@/lib/canvas/agent-dictation";
 import { canOpenMicrophone, startPcmRecording, type PcmRecording } from "@/lib/pcm-recorder";
 
 /**
@@ -22,8 +22,9 @@ import { canOpenMicrophone, startPcmRecording, type PcmRecording } from "@/lib/p
  *
  * **The lost keyup.** Switching windows mid-sentence means the key comes up on a page that is not listening,
  * and a microphone that is never told to stop is the one failure worth code: the window losing focus ends the
- * recording. Nothing else here defends against a gesture that ended oddly — a press too short to be speech is
- * dropped silently rather than being reported as a broken microphone (#239).
+ * recording. What no event can cover — a pointer capture that never releases, a key the window never hears come
+ * up — is what the length cap is for: the recording ends itself at a minute and says so (#251). A gesture too
+ * short to be speech is dropped silently rather than being reported as a broken microphone (#239).
  */
 
 type DictationPhase = "idle" | "listening" | "transcribing";
@@ -39,6 +40,8 @@ type HoldToTalk = {
     phase: DictationPhase;
     /** The sentence to show for the last attempt that failed, or "". */
     error: string;
+    /** The sentence to show for an attempt that ended for a reason that is not a failure, or "". */
+    notice: string;
     start: () => void;
     stop: () => void;
 };
@@ -47,12 +50,22 @@ export function useHoldToTalk({ transcribe, onWords }: Options): HoldToTalk {
     const { t } = useTranslation();
     const [phase, setPhase] = useState<DictationPhase>("idle");
     const [error, setError] = useState("");
+    const [notice, setNotice] = useState("");
 
     const recordingRef = useRef<PcmRecording | null>(null);
     /** A gesture is held down. It can outlive `start()`: the microphone is opened asynchronously. */
     const heldRef = useRef(false);
     /** A recording is on its way to the server, and a second gesture would race it. */
     const busyRef = useRef(false);
+    /** The last gesture ended at the length cap rather than at the user's release. */
+    const limitedRef = useRef(false);
+    /**
+     * `stop`, reachable from the recorder's own callback.
+     *
+     * The cap fires from inside the audio callback, which can be before `start`'s promise resolves, so it
+     * cannot close over one render's `stop` — the ref is assigned every render and read whenever it fires.
+     */
+    const stopRef = useRef<() => void>(() => {});
 
     // The callbacks are read through refs so the listeners can be attached once: `transcribe` closes over a
     // config object that is rebuilt on every render of the panel.
@@ -71,12 +84,22 @@ export function useHoldToTalk({ transcribe, onWords }: Options): HoldToTalk {
             return;
         }
         heldRef.current = true;
+        limitedRef.current = false;
         setError("");
+        setNotice("");
         setPhase("listening");
         void (async () => {
             let recording: PcmRecording;
             try {
-                recording = await startPcmRecording();
+                recording = await startPcmRecording({
+                    maxSeconds: MAX_SPEECH_SECONDS,
+                    // Ended by its own length: the same path a release takes, so the words still land — with a
+                    // sentence saying why the microphone stopped without anybody letting go.
+                    onLimit: () => {
+                        limitedRef.current = true;
+                        stopRef.current();
+                    },
+                });
             } catch (failure) {
                 heldRef.current = false;
                 setPhase("idle");
@@ -97,6 +120,10 @@ export function useHoldToTalk({ transcribe, onWords }: Options): HoldToTalk {
     const stop = useCallback(() => {
         if (!heldRef.current) return;
         heldRef.current = false;
+        if (limitedRef.current) {
+            limitedRef.current = false;
+            setNotice(t("canvas.agent.dictationLimit"));
+        }
         const recording = recordingRef.current;
         recordingRef.current = null;
         // Still opening: the start path sees the released gesture and throws the stream away.
@@ -119,7 +146,9 @@ export function useHoldToTalk({ transcribe, onWords }: Options): HoldToTalk {
                 setPhase("idle");
             }
         })();
-    }, []);
+    }, [t]);
+
+    stopRef.current = stop;
 
     useEffect(() => {
         const isTalkKey = (event: KeyboardEvent) => (event.ctrlKey || event.metaKey) && (event.code === "Quote" || event.key === "'");
@@ -152,5 +181,5 @@ export function useHoldToTalk({ transcribe, onWords }: Options): HoldToTalk {
         [],
     );
 
-    return { phase, error, start, stop };
+    return { phase, error, notice, start, stop };
 }

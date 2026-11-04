@@ -705,6 +705,7 @@ export default {
             microphoneUnavailable:
                 "No microphone on this address: browsers only allow recording over https or on localhost. Either allow this origin in chrome://flags/#unsafely-treat-insecure-origin-as-secure, or open the canvas over https / from 127.0.0.1.",
             dictating: "Listening… release to finish",
+            dictationLimit: "Recording stopped itself at the 1 minute limit",
             transcribing: "Transcribing…",
             close: "Close",
             thinking: "Thinking…",

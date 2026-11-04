@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { insertSpoken, isSpeakable, MIN_SPEECH_SECONDS } from "@/lib/canvas/agent-dictation";
+import { atSpeechLimit, insertSpoken, isSpeakable, MAX_SPEECH_SECONDS, MIN_SPEECH_SECONDS } from "@/lib/canvas/agent-dictation";
 
 /**
  * Where the words land.
@@ -49,5 +49,36 @@ describe("isSpeakable", () => {
         expect(isSpeakable(0, 16_000)).toBe(false);
         expect(isSpeakable(100, 16_000)).toBe(false);
         expect(isSpeakable(16_000, 0)).toBe(false);
+    });
+});
+
+/**
+ * The cap, and why it is not a preference.
+ *
+ * The gesture is held, so nothing but a length stops a capture whose release never arrives — a stuck pointer,
+ * a key the window never hears come up. The number matters only at the boundary: a sample short of the minute
+ * is still recording, and the minute itself ends it (#251).
+ */
+describe("atSpeechLimit", () => {
+    it("keeps recording right up to the minute", () => {
+        expect(atSpeechLimit(16_000 * (MAX_SPEECH_SECONDS - 1), 16_000)).toBe(false);
+        expect(atSpeechLimit(16_000 * MAX_SPEECH_SECONDS - 1, 16_000)).toBe(false);
+    });
+
+    it("ends the recording at the minute, whatever rate the graph ran at", () => {
+        expect(atSpeechLimit(16_000 * MAX_SPEECH_SECONDS, 16_000)).toBe(true);
+        expect(atSpeechLimit(48_000 * MAX_SPEECH_SECONDS, 48_000)).toBe(true);
+        // A browser that ignored the requested rate is still a minute of audio.
+        expect(atSpeechLimit(44_100 * (MAX_SPEECH_SECONDS + 5), 44_100)).toBe(true);
+        expect(atSpeechLimit(44_100 * (MAX_SPEECH_SECONDS - 5), 44_100)).toBe(false);
+    });
+
+    it("says nothing about a recording that has no rate to divide by", () => {
+        expect(atSpeechLimit(1_000_000, 0)).toBe(false);
+    });
+
+    it("is far longer than the gesture it is a safety net for", () => {
+        expect(MAX_SPEECH_SECONDS).toBeGreaterThan(10);
+        expect(MAX_SPEECH_SECONDS).toBeLessThanOrEqual(120);
     });
 });

@@ -9168,3 +9168,39 @@ alive. The test double dropped the `quit` answer it had gained in #248, since no
 and the package's tests went from 3.9 s to 1.5 s with it.
 
 **Where** `internal/agent/spawn.go` (+`release_test.go`, `session_test.go`), `docs/decisions.md` #248.
+
+## 251. A dictation gesture stops itself at a minute
+
+**Decision** One recording may hold `MAX_SPEECH_SECONDS` (60 s) of sound. At the cap the recorder ends itself,
+hands what it has to the hook, and the words still land at the caret; the panel says why the microphone
+stopped, in the quiet line rather than the red one, because nothing failed.
+
+**Why a cap at all** The gesture is *held*, so its length is the user's and the window's at once: a pointer
+capture that never releases, a key whose keyup the window never hears, a person who walks away mid-sentence.
+Today that records until the tab closes and uploads the lot on release — a minute of someone's room in memory
+and on the wire. Nothing else enforces this: the server bounds the *upload* (`MaxUploadBytes`, 50 MB ≈ 26
+minutes of this format) because that is its business, and it would transcribe a longer file happily. The cap is
+about how long a person may hold the button, which only this side knows.
+
+**Why a minute** It is already far longer than a dictated prompt — the gesture is one breath of text, and this
+is a paragraph — and it is where the wait stops being free. Measured against the server this build was built
+for (rtf ≈ 0.12 on `refine`, 0.04 on `stream`): 30 s → 3.6 s, 60 s → 7.2 s, 120 s → 14.4 s, 300 s → 36 s of
+transcription, at 32 kB/s of audio. Seven seconds is a wait a person will sit through after speaking a minute;
+fifteen is one they will not, and the failure mode of a lost keyup would then be a long wait for a long
+recording nobody asked for.
+
+**Ended, not discarded** The cap is a stop, not a refusal: `finish()` in the recorder remembers its result, so
+the cap ends the recording and the later release reads the same samples (a second, empty recording is exactly
+the bug this shape avoids). The hook marks the gesture as ended-by-length and the notice is set on the way
+through, so the transcript arrives with an explanation next to it.
+
+**Tested** `frontend/tests/agent-dictation.test.ts`: a sample short of the minute is still recording, the
+minute ends it at 16/44.1/48 kHz, a zero rate says nothing, and the constant stays in a range a person would
+recognise. `npx vitest run` 334, `npm run check` (853 zh / 839 en, 178 modules), `npm run build`. The recorder
+itself needs a browser and a microphone, so what is tested is the rule, not the capture — the same line #239
+drew.
+
+**Where** `frontend/src/lib/canvas/agent-dictation.ts`, `frontend/src/lib/pcm-recorder.ts`,
+`frontend/src/components/canvas/use-hold-to-talk.ts`,
+`frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
+`frontend/tests/agent-dictation.test.ts`.

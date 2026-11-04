@@ -708,6 +708,7 @@ export default {
             holdToTalk: "按住说话（Ctrl / Cmd + '），说的话插入到光标处",
             microphoneUnavailable: "这个地址用不了麦克风：浏览器只在 https 或 localhost 下允许录音。可以给当前地址开启 chrome://flags/#unsafely-treat-insecure-origin-as-secure，或者用 https / 127.0.0.1 打开画布。",
             dictating: "正在听…松开就结束",
+            dictationLimit: "录音到了 1 分钟上限，已经自动停止",
             transcribing: "正在识别…",
             close: "关闭",
             thinking: "思考中…",

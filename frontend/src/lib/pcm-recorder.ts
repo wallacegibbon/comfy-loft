@@ -17,12 +17,27 @@
  * before the stream arrived as nothing at all rather than as a recording.
  */
 
+import { atSpeechLimit } from "@/lib/canvas/agent-dictation";
 import { mergeSamples } from "@/lib/wav";
 
 /** One recording in progress. */
 export type PcmRecording = {
-    /** End the recording and hand back everything captured, as one array. */
+    /**
+     * End the recording and hand back everything captured, as one array.
+     *
+     * Answers the same thing however often it is called: a recording that ended at the length cap has already
+     * been handed over (`onLimit`), and a `stop` that arrives afterwards — the key coming up a moment later —
+     * must not read as a second, empty recording.
+     */
     stop: () => { samples: Float32Array; sampleRate: number };
+};
+
+/** What the recorder needs to know beyond the microphone. */
+type RecordingOptions = {
+    /** Stop on its own at this many seconds, handing what it has to `onLimit`. */
+    maxSeconds: number;
+    /** The recording ended itself at the cap. */
+    onLimit: (result: { samples: Float32Array; sampleRate: number }) => void;
 };
 
 /**
@@ -42,7 +57,7 @@ export function canOpenMicrophone(): boolean {
  * Start recording. The promise resolves when the microphone is open, so a caller can await it inside the
  * gesture that asked for it.
  */
-export async function startPcmRecording(): Promise<PcmRecording> {
+export async function startPcmRecording(options: RecordingOptions): Promise<PcmRecording> {
     if (!canOpenMicrophone()) throw new Error("the microphone is not available on this origin");
 
     // Asked for by name because a speech model reads 16 kHz mono: every browser that honours it resamples
@@ -60,29 +75,38 @@ export async function startPcmRecording(): Promise<PcmRecording> {
     if (context.state === "suspended") await context.resume();
 
     const chunks: Float32Array[] = [];
+    let captured: { samples: Float32Array; sampleRate: number } | null = null;
     const source = context.createMediaStreamSource(stream);
     const processor = context.createScriptProcessor(4096, 1, 1);
+
+    // Ends the recording and remembers its result, so the cap and the release can both call it and only one
+    // of them gets the samples.
+    const finish = () => {
+        if (captured) return captured;
+        processor.onaudioprocess = null;
+        source.disconnect();
+        processor.disconnect();
+        for (const track of stream.getTracks()) track.stop();
+        void context.close();
+        captured = { samples: mergeSamples(chunks), sampleRate: context.sampleRate };
+        return captured;
+    };
+
+    let count = 0;
     processor.onaudioprocess = (event) => {
+        if (captured) return;
         // The graph is mono, but a browser is free to hand over both channels; the first is what a
         // microphone's mono mixdown would keep and saves an averaging pass over every frame.
-        chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+        const frame = new Float32Array(event.inputBuffer.getChannelData(0));
+        chunks.push(frame);
+        count += frame.length;
+        // A held gesture has no other ending: the pointer may never come up, and this is what keeps a stuck
+        // capture — or a key nobody released — from recording until the window closes.
+        if (atSpeechLimit(count, context.sampleRate)) options.onLimit(finish());
     };
     source.connect(processor);
     // A `ScriptProcessorNode` only runs while it is connected to a destination.
     processor.connect(context.destination);
 
-    let stopped = false;
-    return {
-        stop: () => {
-            const sampleRate = context.sampleRate;
-            if (stopped) return { samples: new Float32Array(0), sampleRate };
-            stopped = true;
-            processor.onaudioprocess = null;
-            source.disconnect();
-            processor.disconnect();
-            for (const track of stream.getTracks()) track.stop();
-            void context.close();
-            return { samples: mergeSamples(chunks), sampleRate };
-        },
-    };
+    return { stop: finish };
 }

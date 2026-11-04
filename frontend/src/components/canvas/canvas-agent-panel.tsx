@@ -612,6 +612,9 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                         {speech.error}
                     </p>
                 ) : null}
+                {/* Not a failure: the microphone stopped because the gesture reached its length. The words it
+                    caught are on their way, which is why this is not the red line above. */}
+                {speech.notice ? <p className="px-1 pb-1 text-[11px] leading-4 opacity-60">{speech.notice}</p> : null}
                 <textarea
                     ref={inputRef}
                     value={draft}

@@ -26,6 +26,26 @@ export function isSpeakable(samples: number, sampleRate: number): boolean {
     return sampleRate > 0 && samples / sampleRate >= MIN_SPEECH_SECONDS;
 }
 
+/**
+ * How much speech one gesture may hold: a minute.
+ *
+ * The gesture is *held*, so this is the length of a paragraph spoken without pausing — already far more than
+ * a prompt, and the point past which the wait stops being free: at the measured rtf of the server this build
+ * was built against (0.12), a minute of audio is about seven seconds of transcription, and two minutes would
+ * be fourteen. It is also the safety net for the failure the gesture has no other answer to: a pointer capture
+ * or a key that never comes up records forever and uploads on release, and a cap turns that into a minute
+ * rather than however long the window was left open (#251).
+ *
+ * Nothing else enforces this. The server bounds the upload (`MaxUploadBytes`) and would transcribe a longer
+ * file happily; the cap is about how long a *person* may hold the button, which only this side knows.
+ */
+export const MAX_SPEECH_SECONDS = 60;
+
+/** Whether a gesture has reached the cap and must be ended. */
+export function atSpeechLimit(samples: number, sampleRate: number): boolean {
+    return sampleRate > 0 && samples / sampleRate >= MAX_SPEECH_SECONDS;
+}
+
 /** Where the words go: the selection the box had, which may be a caret (start === end). */
 type DraftSelection = { start: number; end: number };
 
