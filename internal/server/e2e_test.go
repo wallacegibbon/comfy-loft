@@ -229,6 +229,15 @@ func newTestServerWith(t *testing.T, fake *fakeComfy, graphFile string, graph, e
 	if _, err := srv.Setup().Scan(); err != nil {
 		t.Fatalf("setup scan: %v", err)
 	}
+	// A server starts what it owns: the task pump, the cleanup ticker, the MCP bridge. Those goroutines
+	// write into the directories above, and the test's temp dirs are removed as soon as the test body
+	// returns — which is why a run queued by an assertion used to fail the cleanup with "directory not
+	// empty" instead of failing an expectation. Closing here is what makes the temp tree go away in the
+	// right order; `Close` on both is idempotent, so a test may close them earlier too.
+	t.Cleanup(func() {
+		srv.Close()
+		srv.Tasks().Close()
+	})
 	return srv
 }
 

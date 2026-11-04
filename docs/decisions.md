@@ -10296,3 +10296,31 @@ Z-Image, ESREGAN, the angle workflow, the four H3 ones, RIFE or the music one.
 
 **Where** `internal/workflow/inputs.go`, `internal/workflow/shipped_negative_test.go`.
 
+## 276. A server built in a test is closed in that test
+
+**Decision** `newTestServerWith` registers `t.Cleanup` that calls `srv.Close()` and then `srv.Tasks().Close()`.
+Nothing in production changed; only the fixture.
+
+**Why** A server starts what it owns — the task pump, the cleanup ticker, the MCP bridge — and those goroutines
+write into the directories the test just made. `t.TempDir()` removes its tree as soon as the test body returns,
+so a run that an assertion had queued was still being persisted while the removal walked the same tree:
+
+```
+--- FAIL: TestRunValidatesTypedInputs (0.01s)
+    testing.go:1464: TempDir RemoveAll cleanup: unlinkat /tmp/TestRunValidatesTypedInputs…/001/data: directory not empty
+```
+
+It is not a rare interleaving: the test failed four runs in five on an otherwise clean tree (`git stash` of the
+change under test reproduced it), and passed or failed depending only on whether the pump finished first. A gate
+that reports a different answer for the same code is worse than a gate that reports a failure, because the
+failure gets re-run until it is green and the real one gets re-run with it.
+
+**Cost** Every test server now waits for its store to drain (up to `Store.Close`'s two-second bound) at the end
+of its test, and its MCP bridge stops there rather than with the process. Both closes are idempotent, so a test
+that already closed them is unaffected. The server package takes ~31s for three runs afterwards, unchanged.
+
+**Tested** `go test -count=1 -run TestRunValidatesTypedInputs ./internal/server/` eight times in a row (was 4/5
+failing, now 8/8 passing), `go test -count=3 ./internal/server/` (green), `go test ./...`, `make check`
+(deadcode 506).
+
+**Where** `internal/server/e2e_test.go`.
