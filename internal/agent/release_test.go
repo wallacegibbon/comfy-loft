@@ -4,22 +4,18 @@ import (
 	"bufio"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 	"testing"
 	"time"
 )
 
 /**
- * Ending a process, and what happens when it will not end.
+ * Ending a process: end of input, and a kill if that does not take.
  *
  * `Release` sits on two paths where getting it wrong is invisible until it hurts: the `DELETE` of a session
- * (an HTTP request that answers from it) and shutdown (a server that stops, or does not). Both used to close
- * stdin and then wait for as long as the process lived; now the agent is asked to quit, asked again with end of
- * input, and then left alone.
- *
- * Nothing here asserts that a signal was sent, because nothing sends one: these tests are about the frame that
- * goes in (the agent's own `quit`), the agent that answers it, and the agent that does not.
+ * (an HTTP request that answers from it) and shutdown (a server that stops, or does not). The rules these
+ * tests pin are the whole of the decision (#250): an agent that ends when its input closes is never killed,
+ * one that does not is killed after `releasePatience`, and neither path waits longer than that.
  */
 
 // manual builds a Process around a running command without going through `Spawn`, which knows about
@@ -43,7 +39,7 @@ func manual(t *testing.T, script string) (*Process, *exec.Cmd) {
 	return &Process{Cmd: cmd, Stdin: bufio.NewWriter(stdin), stdinFile: stdin.(*os.File), startedAt: time.Now()}, cmd
 }
 
-// aShortPatience keeps the tests that outlive their agent from taking ten seconds each.
+// aShortPatience keeps the tests that outlive their agent from taking two seconds each.
 func aShortPatience(t *testing.T) {
 	t.Helper()
 	previous := releasePatience
@@ -51,69 +47,56 @@ func aShortPatience(t *testing.T) {
 	t.Cleanup(func() { releasePatience = previous })
 }
 
-// The agent's own way out: one `CI` frame naming `quit`, in the shape its protocol documents, and a clean exit
-// when it is answered.
-func TestReleaseAsksTheAgentToQuit(t *testing.T) {
-	record := t.TempDir() + "/frames"
-	process, cmd := manual(t, `while IFS= read -r line; do printf '%s\n' "$line" >> "`+record+`"; case "$line" in CI*quit*) exit 0;; esac; done`)
-	aShortPatience(t)
-
-	process.Release()
-
-	// `Release` reaped it, so `Wait` here would fail on a second call: the state is the answer.
-	if cmd.ProcessState == nil {
-		t.Fatal("the agent was never reaped")
-	}
-	if !cmd.ProcessState.Success() {
-		t.Errorf("the agent exited with %v, want a clean end", cmd.ProcessState)
-	}
-	frames, err := os.ReadFile(record)
-	if err != nil {
-		t.Fatalf("the agent recorded nothing: %v", err)
-	}
-	if got := strings.TrimSpace(string(frames)); got != `CI{"command_id":"quit","name":"quit","args":""}` {
-		t.Errorf("sent %q, want the quit command frame", got)
-	}
+// killed reports whether the child was signalled rather than ending on its own.
+func killed(cmd *exec.Cmd) bool {
+	status, ok := cmd.ProcessState.Sys().(syscall.WaitStatus)
+	return ok && status.Signaled()
 }
 
-// End of input is the second request, for an agent that did not answer the first: still not a signal.
-func TestReleaseFallsBackToEndOfInput(t *testing.T) {
+// An agent that ends when its input closes is not killed, and the release returns as soon as it ends.
+func TestReleaseEndsAnAgentWithEndOfInput(t *testing.T) {
 	process, cmd := manual(t, `cat >/dev/null`)
 	aShortPatience(t)
 
 	start := time.Now()
 	process.Release()
 
-	if elapsed := time.Since(start); elapsed > 3*releasePatience {
-		t.Errorf("Release took %s, want it to return once the input ended", elapsed)
+	if elapsed := time.Since(start); elapsed > releasePatience {
+		t.Errorf("Release took %s, want it to return as soon as the agent ended", elapsed)
 	}
 	if cmd.ProcessState == nil {
-		t.Error("the agent was never reaped, though it had exited")
+		t.Fatal("the agent was never reaped")
+	}
+	if killed(cmd) {
+		t.Error("the agent was killed; it ended on end of input by itself")
 	}
 }
 
-// The one thing this must never do: kill an agent that is busy. It is left to finish its task, and the release
-// returns on time regardless.
-func TestReleaseLeavesAnAgentThatDoesNotAnswerAloneAndReturns(t *testing.T) {
-	// Reads nothing, so neither `quit` nor end of input reaches it: the description of a wedged agent.
-	process, cmd := manual(t, `trap "" TERM HUP; while :; do sleep 1; done`)
+// An agent that never reads its input — a task that will not finish, which is exactly the case `quit` cannot
+// help with — is killed, and the release still returns on time.
+func TestReleaseKillsAnAgentThatDoesNotEndOnItsOwn(t *testing.T) {
+	// Reads nothing, so end of input never reaches it: the description of a wedged agent.
+	process, cmd := manual(t, `while :; do sleep 1; done`)
 	aShortPatience(t)
 
 	start := time.Now()
 	process.Release()
 	elapsed := time.Since(start)
 
-	if elapsed < 2*releasePatience {
-		t.Errorf("Release returned in %s, want it to have given the agent both waits", elapsed)
+	if elapsed < releasePatience {
+		t.Errorf("Release returned in %s, want it to have waited %s first", elapsed, releasePatience)
 	}
 	if elapsed > 4*releasePatience {
-		t.Errorf("Release took %s, want it bounded by two waits", elapsed)
+		t.Errorf("Release took %s, want it bounded by the wait plus a kill", elapsed)
 	}
-	if cmd.ProcessState != nil {
-		t.Fatal("the agent exited; this test needs one that ignores both requests")
+	if cmd.ProcessState == nil {
+		t.Fatal("the agent was never reaped")
 	}
-	if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
-		t.Errorf("the agent was ended after all: %v", err)
+	if !killed(cmd) {
+		t.Errorf("the agent ended %v, want it killed", cmd.ProcessState)
+	}
+	if err := cmd.Process.Signal(syscall.Signal(0)); err == nil {
+		t.Errorf("pid %d is still alive after Release", cmd.Process.Pid)
 	}
 }
 

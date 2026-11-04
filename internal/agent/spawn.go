@@ -33,7 +33,7 @@ type Process struct {
 	stdinFile *os.File
 
 	// writeMu keeps one frame's bytes together: a write and its flush are two calls, and two writers (a
-	// prompt from the canvas, a `quit` from a closing socket) would otherwise interleave halves.
+	// prompt from the canvas, a tool answer, a command) would otherwise interleave halves.
 	writeMu sync.Mutex
 
 	waitOnce sync.Once
@@ -166,9 +166,9 @@ func Spawn(o SpawnOptions) (*Process, error) {
 // Write sends one frame and flushes it. A frame that was never flushed reads as the agent going
 // quiet, so every write here is followed by one.
 //
-// The lock is what keeps a frame whole: a write and its flush are two calls, and a `quit` that arrived while
-// the canvas was sending a prompt would otherwise interleave two half-frames on the agent's stdin. The
-// session has a lock of its own for sequences that must stay in order; this one is about the bytes.
+// The lock is what keeps a frame whole: a write and its flush are two calls, so a command that arrived while
+// the canvas was sending a prompt would otherwise interleave two half-frames on the agent's stdin. The session
+// has a lock of its own for sequences that must stay in order; this one is about the bytes.
 func (p *Process) Write(tag, value string) error {
 	p.writeMu.Lock()
 	defer p.writeMu.Unlock()
@@ -235,46 +235,32 @@ func (p *Process) Wait() error {
 	return p.waitErr
 }
 
-// quitFrame is how a rawio client ends a session: a `CI` command named `quit`.
-//
-// The command vocabulary is AlayaCore's (`docs/commands.md` in its tree, `:quit`), and the frame is the one
-// the protocol defines for it — `{"command_id":…,"name":…,"args":…}`. A task that is already running is
-// allowed to finish first, which is exactly what this server wants when a socket closes mid-turn: the work
-// the canvas asked for is the work the agent should finish. The id is fixed because a session has one end.
-const quitFrame = `{"command_id":"quit","name":"quit","args":""}`
-
-// releasePatience is how long the agent is given after each request to end: one wait after `quit`, one after
-// end of input. Nothing is killed at the end of it — see `Release` — and it is short because an agent with
-// nothing in flight exits in milliseconds: this is the bound on how long a caller waits, not a deadline for an
-// agent's task.
+// releasePatience is how long the agent is given to end once its input is closed, before it is killed. It is
+// short on purpose: end of input is answered in about a second (measured, idle and mid-turn alike), so this is
+// the bound on how long a caller waits rather than a deadline for an agent's task.
 var releasePatience = 2 * time.Second
 
-// Release ends the process the way its own protocol says to: ask it to quit.
+// Release ends the process: end of input first, and a kill if that does not take.
 //
-// **Only ever asked.** `quit` is the agent's documented exit, and the frame below is the whole of it; the
-// process is never signalled, let alone killed, because a session that is killed mid-turn loses the work the
-// canvas is waiting for and writes nothing about it. End of input is the second thing it understands (and the
-// only thing that worked before this existed), so it follows if `quit` did not take.
+// **Why end of input and not `quit`.** `quit` is AlayaCore's documented exit, and its semantics are "a task
+// that is already running is allowed to finish first" — which makes it useless for the one case that matters,
+// a task that never finishes. The terminal interface completes the pair by asking a person whether to `cancel`
+// first, and there is no person here. End of input needs no answer: a rawio session whose stdin closes ends,
+// writing `SM session closed` on the way out, and the conversation file already holds what it wrote.
 //
-// **Nothing waits forever.** `Release` sits on the request path — a `DELETE` of a session answers from it —
-// and on the shutdown path, where an agent that never answers would be a server that never stops. So each
-// request gets `releasePatience` and then the release returns, leaving the process to end when its task does.
-// That is the trade this makes: a server that stops on time, and an agent that may outlive it by one turn
-// rather than being killed in the middle of one.
+// **Why a kill at all.** `Release` sits on the request path — a `DELETE` of a session answers from it — and on
+// the shutdown path, where an agent that will not end is a server that will not stop. So after
+// `releasePatience` the process is killed, and that is the trade this makes (#250): the tail of a turn in
+// flight is what it can cost, and a release that always ends is what it buys. A conversation is a short thing
+// here, and the alternative — waiting forever on an agent that may be looping — is not a trade at all.
 func (p *Process) Release() {
-	_ = p.Write("CI", quitFrame)
-	ending := "quit"
+	if p.stdinFile != nil {
+		_ = p.stdinFile.Close()
+	}
+	killed := false
 	if !p.exitedWithin(releasePatience) {
-		ending = "quit and end of input"
-		if p.stdinFile != nil {
-			_ = p.stdinFile.Close()
-		}
-		if !p.exitedWithin(releasePatience) {
-			if p.Log != nil {
-				p.Log.Warn("agent: pid=%d has not exited after quit; it ends when its task does", p.Cmd.Process.Pid)
-			}
-			return
-		}
+		killed = true
+		_ = p.Cmd.Process.Kill()
 	}
 	err := p.Wait()
 	if p.Log != nil {
@@ -282,7 +268,10 @@ func (p *Process) Release() {
 		if tail := p.Stderr.Last(); tail != "" {
 			p.Log.Warn("agent: stderr %s", truncateFrame(tail))
 		}
-		p.Log.Info("agent: exit pid=%d err=%v lived=%dms (%s)", p.Cmd.Process.Pid, err, time.Since(p.startedAt).Milliseconds(), ending)
+		if killed {
+			p.Log.Warn("agent: pid=%d did not end on end of input; killed", p.Cmd.Process.Pid)
+		}
+		p.Log.Info("agent: exit pid=%d err=%v lived=%dms", p.Cmd.Process.Pid, err, time.Since(p.startedAt).Milliseconds())
 	}
 }
 

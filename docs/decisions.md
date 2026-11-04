@@ -9073,6 +9073,9 @@ stopping the server: the agent exits on the frame, logging a clean `exit pid=…
 **Where** `internal/agent/{spawn.go,sessions.go}` (+`release_test.go`, `session_test.go`'s `fakeAgent`),
 `internal/server/server.go`, `docs/known-issues.md`.
 
+**Superseded in part by #250**: the release is end of input and then a kill, and `quit` is not on that path.
+`CloseAll` and the per-frame write lock are what remains of this entry, and both stand.
+
 ## 249. The model form has every field of the entry, and the reasoning blocks are JSON the user types
 
 **Decision** A model's `model.conf` entry is editable in full from the preferences window. The page is shown
@@ -9132,3 +9135,36 @@ run` 330, `npm run check` (853 zh / 839 en), `npm run build` 560.88 kB.
 `frontend/src/lib/agent-models.ts`, `frontend/src/components/settings/agent-model-dialog.tsx`,
 `frontend/tests/agent-models.test.ts`, `frontend/scripts/check-i18n.cjs` (two hand-resolved keys),
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`.
+
+## 250. A release ends input, waits two seconds, and then kills; `quit` is not on that path
+
+**Decision** Ending an agent is two steps: close its stdin, wait `releasePatience` (2 s), and kill it if it is
+still there. The `quit` frame #248 sent first is gone from this path. `Sessions.CloseAll` on shutdown and the
+per-frame write lock stay as #248 left them.
+
+**Why `quit` had to go** Its semantics are the problem, not its implementation: AlayaCore's `:quit` is "a task
+that is already running is allowed to finish first". For an agent with nothing in flight, end of input ends it
+in a second and `quit` buys nothing. For an agent with something in flight, `quit` defers to that task — and
+the case where a release is *needed* is the case where the task does not finish: a loop, a wedged provider
+call, a tool that never returns. So the one command that exists could only help where it was not needed. Its
+terminal interface completes the pair by asking a person whether to `cancel` first; there is no person here.
+
+**What end of input is** Measured on the real binary before writing this: a `--rawio` session whose stdin
+closes ends by itself — it finishes the current step, writes `SM{"type":"session","data":{"state":"closed"}}`
+and exits. Mid-turn and idle alike, about a second. So the first step is not a signal and not a negotiation; it
+is the agent's own end of input, and the kill is only for the process that does not take it.
+
+**The trade, said plainly** A kill can cost the tail of a turn in flight, and nothing else: the conversation
+file already holds what was written, and the sessions here are short. In exchange a release always ends —
+which matters because it is on the request path (`DELETE /api/agent/session/{session}` answers from it) and on
+the way out, where an agent that will not end is a server that will not stop. The earlier shape of this — close
+stdin and wait forever (#248's predecessor) — had no bound at all; #248's — ask, then leave it running — had a
+bound but no ending. This has both, and gives up the tail of one turn to get them.
+
+**Tested** `internal/agent/release_test.go`: an agent that ends on end of input is **not killed** (its exit
+status is not a signal) and `Release` returns as soon as it goes; an agent that never reads its input is killed
+and `Release` returns within the wait plus the kill; `CloseAll` releases both of two sessions and leaves none
+alive. The test double dropped the `quit` answer it had gained in #248, since nothing sends that frame now —
+and the package's tests went from 3.9 s to 1.5 s with it.
+
+**Where** `internal/agent/spawn.go` (+`release_test.go`, `session_test.go`), `docs/decisions.md` #248.
