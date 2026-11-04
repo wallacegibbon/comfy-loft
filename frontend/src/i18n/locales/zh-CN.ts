@@ -614,7 +614,6 @@ export default {
             maskFailed: "局部修改失败",
             generationFailed: "生成失败",
             partialFailed: "部分图片生成失败",
-            allFailed: "全部图片生成失败",
             nothingToSend: "没有可发送的内容：写点提示词，或者连接一个已经有内容的节点",
             connectionHoldsNothing: "{{name}} 还没有内容，这条连线传不过去：先把它填上，或者断开这条线",
             untitledCanvas: "未命名画布",

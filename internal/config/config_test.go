@@ -50,9 +50,14 @@ func TestDefaults(t *testing.T) {
 	if cfg.RequestTimeoutMs != 10*60*1000 {
 		t.Errorf("RequestTimeoutMs = %d", cfg.RequestTimeoutMs)
 	}
-	// VIDEO_TIMEOUT_MS defaults to 0, meaning "no timeout" for long renders.
-	if cfg.VideoTimeoutMs != 0 {
-		t.Errorf("VideoTimeoutMs = %d, want 0", cfg.VideoTimeoutMs)
+	// Video and audio are long, and they are not endless: a run nobody can end is a conversation that waits
+	// for a message forever (#285). The default is hours, well past anything a card renders, and `0` still
+	// means "no limit" for whoever says so on purpose.
+	if cfg.VideoTimeoutMs != 3*60*60*1000 {
+		t.Errorf("VideoTimeoutMs = %d, want three hours", cfg.VideoTimeoutMs)
+	}
+	if cfg.AudioTimeoutMs != 30*60*1000 {
+		t.Errorf("AudioTimeoutMs = %d, want thirty minutes", cfg.AudioTimeoutMs)
 	}
 	for _, dir := range []string{cfg.WorkflowDir, cfg.DataDir, cfg.CanvasRoot} {
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {

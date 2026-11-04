@@ -61,7 +61,16 @@ type Runner struct {
 	logger         *logx.Logger
 	timeoutMs      int
 	pollIntervalMs int
+	// unreachableBudget is how long a run may go without a word from ComfyUI before the watch gives up. A
+	// poll that could not be made is not an answer (#234), but a ComfyUI that is gone is not a render that is
+	// coming: without this, a machine that never comes back leaves the task running until a ceiling hours
+	// away, and the agent waiting on it hears nothing in the meantime (#285).
+	unreachableBudget time.Duration
 }
+
+// defaultUnreachableBudget is the silence a run forgives: longer than a restart, a redeploy or a dropped
+// network takes, shorter than a person's patience.
+const defaultUnreachableBudget = 5 * time.Minute
 
 // NewRunner builds a runner. Defaults mirror the configuration defaults.
 func NewRunner(client *comfy.Client, hub *Hub, logger *logx.Logger, timeoutMs, pollIntervalMs int) *Runner {
@@ -71,7 +80,7 @@ func NewRunner(client *comfy.Client, hub *Hub, logger *logx.Logger, timeoutMs, p
 	if pollIntervalMs <= 0 {
 		pollIntervalMs = 750
 	}
-	return &Runner{comfy: client, hub: hub, logger: logger, timeoutMs: timeoutMs, pollIntervalMs: pollIntervalMs}
+	return &Runner{comfy: client, hub: hub, logger: logger, timeoutMs: timeoutMs, pollIntervalMs: pollIntervalMs, unreachableBudget: defaultUnreachableBudget}
 }
 
 // RunWorkflow parameterizes the graph, submits it, and waits for the outputs.
@@ -245,6 +254,7 @@ func (r *Runner) waitForHistory(ctx context.Context, promptID string, timeoutMs,
 	}
 	poll := time.Duration(pollIntervalMs) * time.Millisecond
 	var unreachable error
+	var goneSince time.Time
 
 	for {
 		if ctx.Err() != nil {
@@ -262,6 +272,16 @@ func (r *Runner) waitForHistory(ctx context.Context, promptID string, timeoutMs,
 				Message: message,
 			}
 		}
+		// Silence with a reason: the run is over, and the agent waiting on it is told so instead of holding a
+		// turn open until a timeout hours away. The prompt is left alone — ComfyUI may still be rendering it,
+		// and a machine that comes back can finish what nobody is watching.
+		if !goneSince.IsZero() && time.Since(goneSince) > r.unreachableBudget {
+			return nil, &httpx.Error{
+				Status:  http.StatusBadGateway,
+				Code:    "comfy_unreachable",
+				Message: fmt.Sprintf("ComfyUI could not be reached for %s, so this run cannot be watched to its end: %v", r.unreachableBudget.Round(time.Second), unreachable),
+			}
+		}
 
 		history, err := r.comfy.History(ctx, promptID)
 		if err != nil {
@@ -273,6 +293,7 @@ func (r *Runner) waitForHistory(ctx context.Context, promptID string, timeoutMs,
 			}
 			if unreachable == nil {
 				r.logger.Warn("comfyui could not be asked about prompt %s, still trying: %s", promptID, err)
+				goneSince = time.Now()
 			}
 			unreachable = err
 			select {
@@ -283,6 +304,7 @@ func (r *Runner) waitForHistory(ctx context.Context, promptID string, timeoutMs,
 			continue
 		}
 		unreachable = nil
+		goneSince = time.Time{}
 		if failure := historyError(history); failure != "" {
 			return nil, executionFailure(failure)
 		}

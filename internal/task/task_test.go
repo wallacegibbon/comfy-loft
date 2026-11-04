@@ -129,6 +129,70 @@ func TestTaskCompletesAndPersists(t *testing.T) {
 	}
 }
 
+// A notice nobody heard is owed, not spent (#285).
+//
+// The end of a run is delivered by telling a session, and the session may be gone: a panel closed while a
+// picture rendered, an agent process that ended with the page, a server restarting between the two. None of
+// those is a reason for the conversation to stop where it stands, so the debt rides on the record — which
+// is also why it survives the reload below.
+func TestANoticeNobodyHeardIsOwedUntilItIsPaid(t *testing.T) {
+	store := newStore(t)
+	ask := &Ask{Session: "canvas:40e8afb47f10", Node: "n12"}
+	run := store.Create(testCanvas, ObjectImage, "image-test", nil, ask)
+	store.Enqueue(run, func(_ *Task, _ func(Update), _ context.Context) (*Result, error) {
+		return &Result{Outputs: []ResultFile{{Buffer: []byte("PNG"), Ext: "png", MimeType: "image/png"}}}, nil
+	})
+	waitFor(t, "the run to end", func() bool { return store.Get(run.ID).Status == "completed" })
+
+	owed := store.OwedTo(ask.Session)
+	if len(owed) != 1 || owed[0].ID != run.ID {
+		t.Fatalf("owed to the asker = %v, want the run that just ended", owed)
+	}
+	if got := store.OwedTo("canvas:somebody-else"); len(got) != 0 {
+		t.Errorf("owed to another session = %v, want nothing", got)
+	}
+
+	// A reloaded store still owes it: the flag is part of the record, or a restart would lose the answer.
+	reloaded, err := New(Options{
+		DataDir:       store.dataDir,
+		FilesDirFor:   func(string) (string, error) { return filepath.Join(store.dataDir, "files"), nil },
+		PublicBaseURL: "http://127.0.0.1:8190",
+		Logger:        logx.NewWithWriter("test", os.Stderr),
+	})
+	if err != nil {
+		t.Fatalf("reload New: %v", err)
+	}
+	t.Cleanup(reloaded.Close)
+	reloaded.Load()
+	if got := reloaded.OwedTo(ask.Session); len(got) != 1 {
+		t.Fatalf("owed after a reload = %v, want the same run", got)
+	}
+
+	reloaded.MarkNotified(run.ID)
+	if got := reloaded.OwedTo(ask.Session); len(got) != 0 {
+		t.Errorf("owed after being paid = %v, want nothing", got)
+	}
+	// The writer is debounced, and a restart in that window costs a second notice rather than a lost one —
+	// which is the direction that matters. Flushed here as Close would flush it.
+	reloaded.PersistNow()
+
+	// And paying it once is paying it: a second open of the same conversation hears nothing.
+	again, err := New(Options{
+		DataDir:       store.dataDir,
+		FilesDirFor:   func(string) (string, error) { return filepath.Join(store.dataDir, "files"), nil },
+		PublicBaseURL: "http://127.0.0.1:8190",
+		Logger:        logx.NewWithWriter("test", os.Stderr),
+	})
+	if err != nil {
+		t.Fatalf("second reload New: %v", err)
+	}
+	t.Cleanup(again.Close)
+	again.Load()
+	if got := again.OwedTo(ask.Session); len(got) != 0 {
+		t.Errorf("owed after a restart = %v, want nothing: the notice was paid", got)
+	}
+}
+
 func TestTaskFailureIsRecorded(t *testing.T) {
 	store := newStore(t)
 	created := store.Create(testCanvas, ObjectVideo, "video-test", nil, nil)

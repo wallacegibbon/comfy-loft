@@ -37,6 +37,14 @@ export type CanvasHands = {
     moveNode: (nodeId: string, position: Position) => void;
     /** Give one card a new size, the way the end of a corner drag does: the top-left corner stays put. */
     resizeNode: (nodeId: string, width: number, height: number) => void;
+    /**
+     * Say one thing to a conversation, as a message from the user.
+     *
+     * The page's own word, for the one outcome the server cannot report: a press that never became a run.
+     * A run has a record and the server finishes it, so the notice about it comes from there (#225); a press
+     * with no run has no record and nothing to finish, and the page is the only witness left.
+     */
+    tellAgent: (session: string, text: string) => void;
 };
 
 /** One tool's result: the content blocks the agent reads, and whether it failed rather than did something. */
@@ -268,18 +276,33 @@ async function pressGenerate(hands: CanvasHands, args: unknown, session: string)
  *
  * The wait is bounded because the agent is holding a turn open on this answer, and because a press that is
  * slow to report is not the same thing as a press that failed (`generateAnswer` says so in its own words).
+ *
+ * The wait is bounded, the press is not: a press that answers after the tool has already spoken is the case
+ * this exists for. "No run reported yet" is only honest if something follows it, so a late refusal is said
+ * to the agent here, as a message from the page. A late *run* needs nothing from this side — the server has
+ * the record and tells the same session when it ends (#284's neighbour, docs/decisions.md #285).
  */
 function pressAndWait(hands: CanvasHands, nodeId: string, mode: CanvasGenerationMode, words: string, session: string): Promise<GenerateStart | undefined> {
     return new Promise((resolve) => {
-        let settled = false;
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const finish = (start: GenerateStart | undefined) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            resolve(start);
+        let answered = false;
+        const finish = (start: GenerateStart) => {
+            if (!answered) {
+                answered = true;
+                clearTimeout(timer);
+                resolve(start);
+                return;
+            }
+            // The tool has already spoken, so this is the late word about a press it called unfinished. A
+            // late run needs nothing from here (the server has the record and tells this session when it
+            // ends); a late refusal is the silence the answer promised was not coming.
+            if (!start.started) hands.tellAgent(session, `[comfyloft] the ${mode} generation on ${nodeId} you asked for did not start: ${start.reason}. Nothing is running, so there is nothing to wait for — fix that and press it again.`);
         };
-        timer = setTimeout(() => finish(undefined), GENERATE_START_WAIT_MS);
+        // The wait ending is not the press ending: the answer says so, and the press carries on behind it.
+        const timer = setTimeout(() => {
+            if (answered) return;
+            answered = true;
+            resolve(undefined);
+        }, GENERATE_START_WAIT_MS);
         // A press that fails on its way to a run is a refusal with the page's own reason; a promise the
         // page rejects is the same thing, and silence would leave the agent waiting.
         void hands.generateNode(nodeId, mode, words, { askedBy: { session, node: nodeId }, onStart: finish }).catch((error: unknown) => finish({ started: false, reason: error instanceof Error ? error.message : String(error) }));

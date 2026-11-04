@@ -579,7 +579,6 @@ export default {
             maskFailed: "Local edit failed",
             generationFailed: "Generation failed",
             partialFailed: "Some images failed to generate",
-            allFailed: "All images failed to generate",
             nothingToSend: "There is nothing to send: write a prompt, or connect a node that holds something",
             connectionHoldsNothing: "{{name}} holds nothing yet, so this connection carries nothing: fill it in, or remove the connection",
             untitledCanvas: "Untitled canvas",

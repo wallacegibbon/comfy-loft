@@ -119,6 +119,11 @@ type Task struct {
 	// `generate`, and the node it asked about. Nil for a run the user started: nobody has to be told
 	// about their own button (docs/decisions.md #225).
 	Ask *Ask `json:"ask,omitempty"`
+	// Notified records that the question above has been answered, and it is written down because the answer
+	// is owed until it is paid: a run can end while nobody is listening — the panel is closed, the server is
+	// restarting — and the session it names is exactly the thing that comes back later (docs/decisions.md
+	// #285). Absent on runs nobody asked about.
+	Notified bool `json:"notified,omitempty"`
 	// Structured failure, kept alongside the human-readable message so a caller can
 	// react to a code instead of parsing text. Absent on success.
 	ErrorCode    *string `json:"errorCode,omitempty"`
@@ -128,9 +133,10 @@ type Task struct {
 	// Cancellation plumbing, never serialized.
 	cancelled  bool
 	cancelFunc context.CancelFunc
-	// notified records that the finish hook has been fired for this task. Never serialized: it guards
-	// one run against being reported twice, and a record reloaded from disk has nobody to report to.
-	notified bool
+	// reported records that the finish hook has been fired for this task. Never serialized: it guards one
+	// run against being *handed to the hook* twice, which is a different thing from being delivered
+	// (`Notified`) — a hook that found nobody to tell leaves the answer owed.
+	reported bool
 }
 
 // Ask is the agent that asked for a run: the session to tell, and the node it asked about.
@@ -370,21 +376,57 @@ func (s *Store) Enqueue(task *Task, run RunFunc) {
 // It is set once, before the server serves anything, and it is called at most once per run: from the
 // worker that unwound it, or from the cancel that took it out of the queue or stopped it mid-flight —
 // whichever reached a terminal status first. A run the server finds already finished at startup is not
-// reported: nobody is left from the moment it was asked for.
+// handed to the hook, because there is nobody to call: its notice is owed instead, and the session it
+// names collects it when it opens (`OwedTo`, docs/decisions.md #285).
 func (s *Store) SetOnFinish(fn func(*Task)) {
 	s.mu.Lock()
 	s.onFinish = fn
 	s.mu.Unlock()
 }
 
-// finishedLocked marks one task as reported and answers with the snapshot to hand over, or nil when it
-// was already reported. Called with the lock held, at every place a task leaves the queue for good.
+// finishedLocked marks one task as handed to the hook and answers with the snapshot to hand over, or nil
+// when it was already handed over. Called with the lock held, at every place a task leaves the queue.
 func (s *Store) finishedLocked(task *Task) *Task {
-	if task.notified {
+	if task.reported {
 		return nil
 	}
-	task.notified = true
+	task.reported = true
 	return task.snapshot()
+}
+
+// MarkNotified records that the agent waiting on this run has been told how it went.
+//
+// It is the last step of the notice and the only place the debt is cleared, so a `Tell` that found nobody
+// listening (`onRunFinished` logs it) leaves the run owed, and the session it names collects it the next
+// time it is open (docs/decisions.md #285).
+func (s *Store) MarkNotified(id string) {
+	s.mu.Lock()
+	task, ok := s.tasks[id]
+	if !ok || task.Notified {
+		s.mu.Unlock()
+		return
+	}
+	task.Notified = true
+	s.mu.Unlock()
+	s.schedulePersist()
+}
+
+// OwedTo answers with the finished runs whose agent has not been told yet, oldest first.
+//
+// The order is the order they ended, because two notices about one turn read as a story in that order and
+// as a riddle in any other.
+func (s *Store) OwedTo(session string) []*Task {
+	s.mu.RLock()
+	owed := make([]*Task, 0)
+	for _, task := range s.tasks {
+		if task.Ask == nil || task.Ask.Session != session || task.Notified || !terminalStatuses[task.Status] {
+			continue
+		}
+		owed = append(owed, task.snapshot())
+	}
+	s.mu.RUnlock()
+	sort.SliceStable(owed, func(i, j int) bool { return owed[i].CreatedAt < owed[j].CreatedAt })
+	return owed
 }
 
 // finish hands one finished task to the hook, outside the lock and off the worker: telling an agent

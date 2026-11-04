@@ -772,7 +772,9 @@ function InfiniteCanvasPage() {
         // `nanoid()`, not a timestamp: the agent wires several nodes in one batch, so three connections can
         // be made inside one millisecond — and a shared id is not a cosmetic problem, since selecting or
         // deleting a connection goes by id (#205).
-        if (!exists) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId, toNodeId }]);
+        if (!exists) {
+            setConnections((prev) => [...prev, { id: nanoid(), fromNodeId, toNodeId }]);
+        }
         return true;
     }, []);
 
@@ -1922,9 +1924,18 @@ function InfiniteCanvasPage() {
             const runController = startGenerationRequest(nodeId, nodeId, nodeId);
             // The prompt is the prompt: regenerating asks the same question again, and refining the
             // picture means editing the question.
-            const generationContext = await hydrateNodeGenerationContext(buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, prompt));
+            let generationContext = await hydrateNodeGenerationContext(buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, prompt));
+            let effectivePrompt = generationContext.prompt.trim();
+            // A press can arrive before the connect that gives it words: the calls of one turn do not always
+            // reach the page in the order they were made — measured, twice, when three nodes were wired to one
+            // card and generated in the same breath (#285). So an empty prompt is read twice more before it is
+            // believed, two beats that cost nothing to a press that has words and turn a race into a run.
+            for (let beat = 0; !effectivePrompt && beat < 2; beat++) {
+                await new Promise((done) => setTimeout(done, 30));
+                generationContext = await hydrateNodeGenerationContext(buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, prompt));
+                effectivePrompt = generationContext.prompt.trim();
+            }
             if (generationContext.loras.length) generationConfig.params = { ...(generationConfig.params || {}), loras: generationContext.loras };
-            const effectivePrompt = generationContext.prompt.trim();
             if (runController.signal.aborted) {
                 finishGenerationRequest(nodeId, runController);
                 setRunningNodeId(null);

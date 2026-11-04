@@ -41,19 +41,43 @@ func askedBy(body map[string]any) *task.Ask {
 //
 // It runs once per run, off the queue's worker (see task.Store.SetOnFinish). A session that is no longer
 // open is not an error worth raising: its panel was closed and the agent went with it, and the result is
-// on the node for whoever comes back.
+// on the node for whoever comes back. What it is not is the end of the conversation's side of it — the
+// notice stays owed, and `flushRunNotices` pays it when that session is next open (docs/decisions.md #285).
 func (s *Server) onRunFinished(stored *task.Task) {
 	if stored == nil || stored.Ask == nil || stored.Ask.Session == "" {
 		return
 	}
 	if err := s.agentSessions.Tell(stored.Ask.Session, runNotice(stored)); err != nil {
 		if s.logger != nil {
-			s.logger.Info("agent: run %s ended with nobody to tell (%s: %s)", stored.ID, stored.Ask.Session, err)
+			s.logger.Info("agent: run %s ended with nobody to tell (%s: %s), and the notice is owed", stored.ID, stored.Ask.Session, err)
 		}
 		return
 	}
+	s.tasks.MarkNotified(stored.ID)
 	if s.logger != nil {
 		s.logger.Info("agent: told %s that run %s %s", stored.Ask.Session, stored.ID, stored.Status)
+	}
+}
+
+// flushRunNotices pays the notices one session is owed.
+//
+// Called when a conversation opens: the runs that ended while its panel was closed, while the server was
+// restarting, or while its agent process was gone are all the same debt, and this is the first moment any
+// of them can be paid. Oldest first, so a turn that asked for three pictures hears about them in the order
+// it asked.
+func (s *Server) flushRunNotices(session string) {
+	for _, stored := range s.tasks.OwedTo(session) {
+		if err := s.agentSessions.Tell(session, runNotice(stored)); err != nil {
+			if s.logger != nil {
+				s.logger.Info("agent: run %s is still owed to %s (%s)", stored.ID, session, err)
+			}
+			// The session answered nothing for this one, so it will answer nothing for the rest either.
+			return
+		}
+		s.tasks.MarkNotified(stored.ID)
+		if s.logger != nil {
+			s.logger.Info("agent: told %s, late, that run %s %s", session, stored.ID, stored.Status)
+		}
 	}
 }
 

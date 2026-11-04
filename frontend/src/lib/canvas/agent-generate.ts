@@ -40,10 +40,16 @@ export type GenerateOptions = {
  * `start` is absent when nothing was reported in time: a press that is still setting up is neither of the
  * other two, and claiming either would be a guess in the direction that costs the most — "started" leaves
  * the agent waiting on a message that may never come, "did not start" abandons a run that is about to.
+ *
+ * What the missing case may not do is promise nothing, which is what it said until #285: "if it does not,
+ * nothing was produced" told the agent a silence was possible, and a turn that is waiting for a message
+ * has no way to end. Every press is now closed exactly once — a run ends and the server tells the session,
+ * or there is no run and the page says so itself (`pressAndWait` hands the late word to the agent) — so the
+ * sentence above is a promise the canvas keeps rather than a hope.
  */
 export function generateAnswer(nodeId: string, mode: string, start: GenerateStart | undefined): string {
     if (!start) {
-        return `pressed generate on ${nodeId} (${mode}), but no run was reported within ${Math.round(GENERATE_START_WAIT_MS / 1000)}s — it may still be setting up. If it starts you will be sent a message when it finishes; if it does not, nothing was produced.`;
+        return `pressed generate on ${nodeId} (${mode}), and no run was reported within ${Math.round(GENERATE_START_WAIT_MS / 1000)}s — it is still setting up. You will be sent one message when it is over, whether it worked or failed, so do not wait for it and do not press it again.`;
     }
     if (!start.started) {
         return `generate on ${nodeId} (${mode}) did not start: ${start.reason}. Nothing was queued, so there is nothing to wait for — fix that and press it again.`;

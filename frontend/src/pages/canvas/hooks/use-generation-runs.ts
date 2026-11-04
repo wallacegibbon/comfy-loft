@@ -269,6 +269,11 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                 hasFailure = true;
                 runEndedHere = failedWatch(error, t("canvas.runtime.generationFailed")).ended;
                 failImage(nodeId, errorDetails);
+                // The tool's answer is waiting on this word, and a failure here can be before any run exists
+                // — a refused request, an empty prompt, a model with no settings. Nothing will ever finish,
+                // so nothing will ever be notified: the page is the only one who can say what happened, and
+                // it says it now, in the press's own answer (#285).
+                run.start({ started: false, reason: errorDetails });
             } finally {
                 setRunStepProgress(nodeId, undefined);
             }
@@ -284,7 +289,11 @@ export function useGenerationRuns(deps: GenerationRunDeps) {
                               metadata: {
                                   ...node.metadata,
                                   status: hasSuccess ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR,
-                                  errorDetails: hasSuccess ? undefined : t("canvas.runtime.allFailed"),
+                                  // The reason, not a summary of it: "All images failed to generate" said
+                                  // nothing a reader could act on, and it replaced what the page already knew
+                                  // — an unreachable ComfyUI, a refused prompt — with a sentence about how
+                                  // many pictures there were (#285).
+                                  errorDetails: hasSuccess ? undefined : firstError || t("canvas.runtime.generationFailed"),
                                   // The id goes only when the run itself ended. A watch that could not ask
                                   // leaves it, so a reload picks the run up instead of paying for a second
                                   // one (#235).

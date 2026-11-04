@@ -1,6 +1,7 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { runTool, type CanvasHands } from "../src/lib/canvas/canvas-agent-tools";
+import { GENERATE_START_WAIT_MS, type GenerateStart } from "../src/lib/canvas/agent-generate";
 import { registerBuiltinNodes } from "../src/components/canvas/nodes/builtin-nodes";
 import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
 
@@ -29,6 +30,7 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [])
         generated: [] as Array<[string, string]>,
         created: [] as string[],
         resized: [] as Array<[string, number, number]>,
+        told: [] as Array<[string, string]>,
     };
     const hands: CanvasHands = {
         nodes: () => nodes,
@@ -48,6 +50,7 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [])
         focusNode: () => {},
         moveNode: () => {},
         resizeNode: (nodeId, width, height) => void written.resized.push([nodeId, width, height]),
+        tellAgent: (session, text) => void written.told.push([session, text]),
     };
     return { hands, written };
 }
@@ -133,6 +136,87 @@ describe("generate: pressing a node's button", () => {
         expect(written.generated).toEqual([]);
         expect(text).toContain("nothing generates them");
         expect(text).toContain("set_text");
+    });
+
+    /**
+     * One press, one word (#285).
+     *
+     * The rule the four cases below state from four sides: an agent that believes a run is out has to be
+     * told how that run ended, and an agent that was told "still setting up" has to be told too — a turn
+     * waiting on a message that never comes has no way to continue, and nobody is watching the canvas to
+     * notice. So the answer is either "a run exists" (the server will say how it went) or "it did not start"
+     * (said now), and the only case that leaves a promise open is the one that states the promise.
+     */
+    describe("one press, one word", () => {
+        const picture = () => node("image", { prompt: "a rabbit" });
+        /** Press a picture, and let the test decide when and how the page reports. */
+        const pressing = (report: (say: (start: GenerateStart) => void) => Promise<void>) => {
+            const { hands, written } = handsFor([picture()]);
+            hands.generateNode = async (nodeId, mode, prompt, options) => {
+                written.generated.push([nodeId, prompt]);
+                void mode;
+                await report((start) => options?.onStart?.(start));
+            };
+            return { hands, written };
+        };
+
+        test("a run reported in time is the answer, and nothing else is said", async () => {
+            const { hands, written } = pressing(async (say) => say({ started: true, runId: "task_6f2c" }));
+            const { answer, text } = await textOf(hands, "generate", { nodeId: "image-1" });
+            expect(answer.isError).not.toBe(true);
+            expect(text).toContain("task_6f2c");
+            expect(written.told).toEqual([]);
+        });
+
+        test("a refusal reported in time is the answer, with the page's own reason", async () => {
+            const { hands, written } = pressing(async (say) => say({ started: false, reason: "workflow image-z-image-turbo requires a non-empty prompt" }));
+            const { answer, text } = await textOf(hands, "generate", { nodeId: "image-1" });
+            expect(answer.isError).toBe(true);
+            expect(text).toContain("requires a non-empty prompt");
+            expect(text).toContain("did not start");
+            expect(written.told).toEqual([]);
+        });
+
+        test("a refusal that arrives after the answer is said as a message, once", async () => {
+            vi.useFakeTimers();
+            try {
+                const { hands, written } = pressing(
+                    (say) =>
+                        new Promise((resolve) =>
+                            // The press is still working when the tool gives up waiting on it, then fails.
+                            setTimeout(() => {
+                                say({ started: false, reason: "cannot reach ComfyUI" });
+                                resolve();
+                            }, GENERATE_START_WAIT_MS + 500),
+                        ),
+                );
+                const pending = runTool("generate", { nodeId: "image-1" }, hands, "canvas:chat");
+                await vi.advanceTimersByTimeAsync(GENERATE_START_WAIT_MS + 1);
+                const answer = await pending;
+                const text = (answer.content[0] as { text: string }).text;
+                expect(text).toContain("still setting up");
+                await vi.advanceTimersByTimeAsync(600);
+                expect(written.told).toEqual([["canvas:chat", expect.stringContaining("cannot reach ComfyUI")]]);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        test("a run that arrives after the answer needs no second word from the page", async () => {
+            vi.useFakeTimers();
+            try {
+                const { hands, written } = pressing((say) => new Promise((resolve) => setTimeout(() => (say({ started: true, runId: "task_7a" }), resolve()), GENERATE_START_WAIT_MS + 500)));
+                const pending = runTool("generate", { nodeId: "image-1" }, hands, "canvas:chat");
+                await vi.advanceTimersByTimeAsync(GENERATE_START_WAIT_MS + 1);
+                await pending;
+                await vi.advanceTimersByTimeAsync(600);
+                // The server holds the record and tells the session when the run ends: a message from here
+                // would be the same news twice.
+                expect(written.told).toEqual([]);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
     });
 });
 

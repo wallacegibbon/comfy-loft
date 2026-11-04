@@ -10663,3 +10663,83 @@ screenshots of the same turn: running, the bubble read
 
 **Where** `frontend/src/components/canvas/canvas-agent-panel.tsx` (the streaming-and-silent line),
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts` (`canvas.agent.working`, renamed from `canvas.agent.thinking`).
+
+## 285. A press that was accepted is answered, and a press that was not is answered too
+
+**Decision** What `canvas_generate` answers is the press's own word, and it is always one of two: a run exists
+(so the server will say how it went), or a run does not (so nothing will come, and here is why). The third state
+— "no run was reported within 15s, it may still be setting up" — now carries a promise instead of a shrug: the
+page keeps the press, and a refusal that arrives after the answer is sent to the agent as a message. On the other
+side, a finished run's notice is a debt: `Notified` is written down, `MarkNotified` is called only after `Tell`
+succeeded, and `flushRunNotices` pays whatever a session is owed when it opens. A run also always ends: video and
+audio have a default ceiling (three hours, thirty minutes) instead of "no limit", and a ComfyUI that has not
+answered for five minutes ends the watch with a sentence saying so.
+
+**Why** The conversation is the only way the agent has to continue, and it continues on the message a run
+promises. Measured on a real canvas (192.168.3.233, 03:32): one turn created three picture nodes, connected a
+text card into each, and pressed generate on each. The page processed the connects and the presses within 3 ms —
+before React had committed the new connections — so the run saw no card, sent an empty prompt, and the server
+answered 400 in 2 ms. `runImageGeneration` caught that, marked the node failed, and returned normally: the press
+reported nothing to the tool, which waited out its 15 s and answered "if it does not [start], nothing was
+produced". The three nodes then read `All images failed to generate` — the real reason had been overwritten a
+line later — and the agent, having been told a silence was possible, ended its turn and never heard another word.
+Nobody is watching the panel to notice that, and nobody should have to be.
+
+**Why the pieces are where they are**
+- *The page speaks for "no run".* The server can only report what it recorded. A refused request, a model with no
+  settings, a prompt the workflow will not take: none of those has a record, so none of them has a notice, and the
+  page is the only witness.
+- *The server speaks for a run.* It holds the record and it is what ends it, so a run's notice travels from there
+  — and only from there, which is what keeps one press from being answered twice.
+- *The debt is on the record, not in a page's memory.* The session a run names is a name (`canvas:<id>`) that
+  outlives the process that asked; a panel closed while a picture rendered, an agent released with the page, a
+  server restarted between the two are the same case, and the notice is paid when that conversation next opens.
+- *Every run must end.* A notice can only exist for a run that reached a terminal state, so "no limit" was a
+  promise to wait forever. The unreachable budget is the other half: a ComfyUI that is gone is not a render that
+  is coming.
+- *Tool calls are started in order with a render between them, and their answers are not held behind a slow
+  press.* The page's refs are written in a layout effect, so a call must wait one commit for the call before it —
+  the 3 ms above was the whole bug. And three presses at 15 s each would outlast the bridge's 30 s per-call
+  patience, so the answer is sent when it settles rather than inside the queue.
+
+**Cost** A notice can be sent twice if the process dies inside the writer's debounce window; that direction is
+chosen, because a duplicate is a sentence the agent reads and a loss is a conversation that stops. A late notice
+arrives as a message in a new turn, which is what it is. And the promise the page makes has one hole left: a page
+that dies inside the fifteen-second window before a run is created leaves nothing owed, because nothing was
+recorded — the agent is then holding a turn on a press the canvas no longer knows about. Closing that needs the
+press itself to be a record, which nothing has asked for yet.
+
+**Tested** On an isolated `:8191` with the real AlayaCore, against a real ComfyUI (192.168.3.233) and against a
+stub that accepts `/prompt` and never finishes:
+- *a press that never became a run*: `POST /api/canvases/…/runs 400` and the same second
+  `generate on image-… did not start: workflow image-z-image-turbo requires a non-empty prompt. Nothing was
+  queued, so there is nothing to wait for — fix that and press it again.` (isError), where the old build answered
+  nothing for fifteen seconds and then said nothing would come;
+- *a run nobody could be told about*: `agent: run task_535937ae… ended with nobody to tell (canvas:…: no agent
+  session … is open), and the notice is owed`, then, when the page opened 7 s later,
+  `agent: told canvas:…, late, that run task_535937ae… failed`, accepted by AlayaCore
+  (`agent << UX …"[comfyloft] … failed: generation timed out"`) and worked into a new turn;
+- *a run that never ends*: the stub accepted the prompt and never completed; six seconds later (the test's own
+  `REQUEST_TIMEOUT_MS`) `task … failed: generation timed out` and the notice;
+- *a real generation*: a picture was made on the real ComfyUI in 7 s, `agent: told … completed`, and two nodes
+  whose own prompt the agent had just cleared were generated from the connected card alone — both accepted (202);
+- *a batch that connects and presses in one turn*, three times over: the page's console showed the press reading
+  `connections 17/18` while the connects were still arriving, and one of the two presses per turn still went 400.
+  The frames settle the question — the calls of one turn are not delivered in the order they were made, so no
+  amount of page-side ordering fixes it. Two changes together do: every hand that changes the canvas is wrapped
+  in `flushSync` (the ref it wrote is the ref the next call reads, before the call returns), and a press that finds
+  no words reads the canvas twice more 30 ms apart before believing it. After both, the same three turns went
+  202/202 with no 400 at all, and the two runs were told `completed`;
+- `make check` (deadcode 508), `go test ./...`, `npx tsc --noEmit`, `npm run check` (i18n 860/827, exports 188
+  modules), `npx vitest run` (398), `npm run build` (560.75 kB): `TestANoticeNobodyHeardIsOwedUntilItIsPaid`,
+  `TestTheNoticeSurvivesASessionThatWasNotThere`, `TestWaitForHistoryGivesUpOnAComfyUIThatNeverComesBack`, the
+  four "one press, one word" cases, and the rewritten "neither claims nor denies" answer.
+
+**Where** `internal/task/task.go` (`Notified`, `reported`, `MarkNotified`, `OwedTo`), `internal/server/run_notice.go`
+(`onRunFinished`, `flushRunNotices`), `internal/server/routes_agent.go`, `internal/generate/runner.go`
+(`unreachableBudget`), `internal/config/config.go` (`millisOrDefault`), `frontend/src/lib/canvas/agent-generate.ts`,
+`frontend/src/lib/canvas/canvas-agent-tools.ts` (`CanvasHands.tellAgent`, `pressAndWait`),
+`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts` (`committed`, `committedAnswer`),
+`frontend/src/pages/canvas/project.tsx` (the empty-prompt beats),
+`frontend/src/pages/canvas/hooks/use-generation-runs.ts`, `docs/server.md`, `tests/agent-generate.test.ts`,
+`tests/canvas-agent-tools.test.ts`.

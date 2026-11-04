@@ -35,6 +35,33 @@ func TestAskedByReadsTheRequest(t *testing.T) {
 	}
 }
 
+// A run that ends while its conversation is not open is owed, not lost (#285).
+//
+// The notice leaves with `Tell`, and `Tell` needs a session that is open: a panel closed while a picture
+// rendered, an agent process that went with the page, a server restarting between the two. None of that is
+// a reason for the conversation to stop where it stands, so the run stays owed to the session it named, and
+// `flushRunNotices` pays it when that session opens. A different session is owed nothing.
+func TestTheNoticeSurvivesASessionThatWasNotThere(t *testing.T) {
+	server := newTestServer(t, newFakeComfy(t))
+
+	ask := &task.Ask{Session: "canvas:closed", Node: "n9"}
+	stored := server.tasks.Create("canvas-owed", task.ObjectImage, "image-test", nil, ask)
+	cancelled := server.tasks.Cancel(stored.ID)
+	if cancelled == nil || cancelled.Status != "cancelled" {
+		t.Fatalf("cancelled run = %+v, want a terminal record", cancelled)
+	}
+
+	// The hook runs when a run ends, and it is the only place the debt can be paid.
+	server.onRunFinished(cancelled)
+
+	if got := server.tasks.OwedTo(ask.Session); len(got) != 1 || got[0].ID != stored.ID {
+		t.Fatalf("owed to %s = %v, want the run nobody could be told about", ask.Session, got)
+	}
+	if got := server.tasks.OwedTo("canvas:somewhere-else"); len(got) != 0 {
+		t.Errorf("owed to another session = %v, want nothing", got)
+	}
+}
+
 // What the agent is told: which node, what happened, and where the result is. An agent that is told only
 // "the run ended" cannot carry on, and one that is told nothing waits forever.
 func TestRunNoticeNamesTheNodeAndWhatHappened(t *testing.T) {

@@ -31,14 +31,17 @@ describe("the answer to generate", () => {
         expect(answer).not.toContain("you will be sent a message");
     });
 
-    it("neither claims nor denies a run it never heard about", () => {
+    it("neither claims nor denies a run it never heard about, and promises the one word that closes it", () => {
         const answer = generateAnswer("n12", "image", undefined);
 
         expect(answer).toContain("no run was reported within");
         expect(answer).toContain(String(Math.round(GENERATE_START_WAIT_MS / 1000)));
-        // Both outcomes are named, because at that moment neither is known.
-        expect(answer).toContain("If it starts");
-        expect(answer).toContain("if it does not");
+        // At that moment neither outcome is known, so the sentence is the promise instead: exactly one
+        // message, whatever happens, which is what lets the agent stop waiting and carry on (#285). It used
+        // to say "if it does not, nothing was produced" — a silence the agent had no way to survive.
+        expect(answer).toContain("You will be sent one message");
+        expect(answer).toContain("whether it worked or failed");
+        expect(answer).not.toContain("nothing was produced");
     });
 
     it("is a refusal only for a refusal, which is what makes the tool call fail", () => {

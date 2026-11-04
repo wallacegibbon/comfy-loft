@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"comfyloft/internal/comfy"
 	"comfyloft/internal/httpx"
@@ -278,6 +279,33 @@ func TestWaitForHistoryOutlivesAnOutage(t *testing.T) {
 	}
 	if calls.Load() < 3 {
 		t.Fatalf("asked %d times, want at least 3: the outage was not waited through", calls.Load())
+	}
+}
+
+// A ComfyUI that is gone is not a render that is coming: the watch waits out a blip, and then says so.
+//
+// Without this the task stays running until a ceiling hours away, and an agent that pressed generate holds
+// its turn open for a message that will not come until then (#285).
+func TestWaitForHistoryGivesUpOnAComfyUIThatNeverComesBack(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	t.Cleanup(server.Close)
+
+	client := newComfyClient(t, server.URL)
+	runner := NewRunner(client, nil, logx.NewWithWriter("test", io.Discard), 600_000, 1)
+	runner.unreachableBudget = 20 * time.Millisecond
+
+	_, err := runner.waitForHistory(t.Context(), "p1", 600_000, 1)
+	if err == nil {
+		t.Fatal("waitForHistory: want an error for a ComfyUI that never answered, got nil")
+	}
+	if !strings.Contains(err.Error(), "could not be reached") || !strings.Contains(err.Error(), "cannot be watched to its end") {
+		t.Fatalf("error = %v, want the silence named as the reason", err)
+	}
+	// The run's own timeout is ten minutes away: the budget is what ended this, not the ceiling.
+	if strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("error = %v, want the unreachable budget rather than the timeout", err)
 	}
 }
 

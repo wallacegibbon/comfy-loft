@@ -115,8 +115,8 @@ authentication; there is no configuration in this server that makes an untrusted
 | `COMFY_RETRY_DELAY_MS` | `500` | Base delay between those retries; it grows linearly with the attempt number. |
 | `CLEANUP_INTERVAL_MS` | `3600000` | How often finished **run records** are pruned. Only runs when `TASK_RETENTION_DAYS` or `MAX_STORED_TASKS` is set. Deleting a record never deletes an artifact: the files belong to the canvas, and its own sweep collects the ones no document refers to. |
 | `MAX_WORKFLOW_BYTES` | `5242880` | How large one file under `workflows/` may be; a bigger graph is refused at scan time. |
-| `VIDEO_TIMEOUT_MS` | `0` | Video timeout; `0` means no limit. |
-| `AUDIO_TIMEOUT_MS` | `0` | Audio/music timeout; `0` means no limit. A song is the same order of work as a short video, so it gets the same default. |
+| `VIDEO_TIMEOUT_MS` | `10800000` | Video timeout, three hours. A render nobody ends never reports back, so this is a ceiling and not a limit on the work; `0` means no limit, for an operator who means it. |
+| `AUDIO_TIMEOUT_MS` | `1800000` | Audio/music timeout, thirty minutes; `0` means no limit. A song is the same order of work as a short video, so it is bounded the same way. |
 | `POLL_INTERVAL_MS` | `750` | ComfyUI history poll interval. |
 | `SCAN_ON_START` | `1` | Scan ComfyUI for nodes and models at boot. |
 | `TASK_RETENTION_DAYS` | `0` | Prune finished run records older than this; `0` keeps everything. Artifacts are not yours to prune here — they belong to a canvas. |

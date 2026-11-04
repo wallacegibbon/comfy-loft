@@ -163,9 +163,12 @@ func Load(opts ...Option) (*Config, error) {
 		PublicBaseURLSet: strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")) != "",
 		CorsOrigins: listValue(os.Getenv("CORS_ORIGINS"),
 			"http://localhost:3000,http://127.0.0.1:3000,http://localhost:8188,http://127.0.0.1:8188"),
-		RequestTimeoutMs:    intValue(os.Getenv("REQUEST_TIMEOUT_MS"), 10*60*1000),
-		VideoTimeoutMs:      intOrZero(os.Getenv("VIDEO_TIMEOUT_MS")),
-		AudioTimeoutMs:      intOrZero(os.Getenv("AUDIO_TIMEOUT_MS")),
+		RequestTimeoutMs: intValue(os.Getenv("REQUEST_TIMEOUT_MS"), 10*60*1000),
+		// A long render, not an endless one: a run that never ends is a conversation that waits for a message
+		// that never comes, and the ceiling is the only thing that ends a job ComfyUI is still "working on"
+		// (#285). Unset takes the default; an explicit `0` still means no limit, said on purpose.
+		VideoTimeoutMs:      millisOrDefault(os.Getenv("VIDEO_TIMEOUT_MS"), 3*60*60*1000),
+		AudioTimeoutMs:      millisOrDefault(os.Getenv("AUDIO_TIMEOUT_MS"), 30*60*1000),
 		PollIntervalMs:      intValue(os.Getenv("POLL_INTERVAL_MS"), 750),
 		ComfyRetryAttempts:  intValue(os.Getenv("COMFY_RETRY_ATTEMPTS"), 3),
 		ComfyRetryDelayMs:   intValue(os.Getenv("COMFY_RETRY_DELAY_MS"), 500),
@@ -372,6 +375,17 @@ func intOrZero(value string) int {
 		return 0
 	}
 	return parsed
+}
+
+// millisOrDefault reads a millisecond budget that may be unset (the default), a number, or an explicit `0`
+// for "no limit". A render's ceiling is the one timeout where zero is a real answer and "unset" is not the
+// same as zero: video and audio have a default because a run nobody ends never reports back (#285), and an
+// operator who wants the old unbounded wait says so.
+func millisOrDefault(value string, fallback int) int {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return intOrZero(value)
 }
 
 // countValue mirrors the old count(): zero is valid.

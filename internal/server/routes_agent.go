@@ -186,6 +186,10 @@ func (s *Server) handleAgentSocket(ctx *httpx.Ctx) error {
 	if err := send(agent.Event{Type: "history", History: connected.History}); err != nil {
 		return nil
 	}
+	// Then what this conversation is owed: runs it asked about that ended while nobody could be told
+	// (docs/decisions.md #285). Off the read loop, because telling the agent is a write into its process and
+	// the conversation must not wait on it.
+	go s.flushRunNotices(session.ID)
 
 	// One goroutine, and it is the reading half of the conversation: what the agent says reaches this
 	// socket through the pump, and what the user says is applied here until the socket ends.
