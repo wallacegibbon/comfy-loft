@@ -10250,3 +10250,49 @@ upscaler, `multiplier` only on the interpolation, `transition_step` only on the 
 **Where** `internal/workflow/{inputs,render,render_test}.go`, `frontend/src/services/api/{workflows,image,video}.ts`,
 `frontend/src/lib/server-models.ts`, `frontend/src/stores/use-config-store.ts`,
 `frontend/tests/{server-models,model-selection,api-image-upscale}.test.ts`.
+
+## 275. `negative` is a key only a graph with a negative text encoder can take
+
+**Decision** `InputSpecs` now adds `negative` only when a binding reads that field — a `negative` binding with
+no `from`, or one that names `negative` explicitly. Every other request key is still added for every workflow.
+The helper is `negativeBound`; the rule is one `if` in the one function that both the wire projection and the
+validator already share.
+
+**Why** `/api/workflows` declared `negative` for all thirteen shipped workflows, and nine of them could not
+have used it: Z-Image and the four H3 video workflows wire `ConditioningZeroOut(positive)` as their negative
+(there is no second text encoder to write to), ESREGAN has no text at all, `image-qwen21-angle` has the negative
+string baked into the graph with no binding, and the music workflow has no text encoder either. A run carrying
+the key was accepted and dropped — the same lie #274 removed from the other direction, where the client sent a
+key the server refused. A key the contract offers is a key a client may build a control for, and a control that
+provably does nothing is worse than no control.
+
+**Why the control is not what was added** Nothing in the UI needed this. Measured on the real server: at `cfg 1`
+the negative branch is not evaluated at all (ComfyUI's cfg-1 skip), so two different negative strings give
+byte-identical pictures on MOSS and Qwen-Image and identical 22-frame video on H3, while `cfg 2` changes the
+whole image. Every shipped image graph runs `cfg 1` and the H3 sampler's own default of 5 is overridden to 1, so
+a negative box would be a box that changes nothing until cfg is raised — and raising cfg is exactly what these
+distilled models are not trained for (the node's declared parameter range is 1..10, the graphs pin 1). When a
+non-distilled model arrives, `negative` and `cfg` are one decision made together; today `negative` is silently
+inert and must not be advertised as if it worked.
+
+**Cost** Nine workflows lose a key from their `inputs`: a caller that used to send `negative` there and see no
+effect now gets `unknown_input` naming the key. That is the intended trade — the answer changed from "yes, and
+nothing happened" to "no". A workflow that gains a negative text encoder later must bind it by name, which is
+the rule every other knob already follows.
+
+**Not closed here** Other request keys are still offered to workflows that ignore them: `size` to the upscaler,
+`seconds` to an image workflow, `layout` to anything but MOSS. Closing that class is the same shape of fix, but
+it needs the client to stop sending those keys first — `services/api/image.ts` sends `size` and `background`
+unconditionally — so it is its own change. It is written down where the list lives, in `semanticInputs`.
+
+**Tested** `go test ./...` (`TestShippedNegativeIsAcceptedOnlyWhereItIsRead`: the four entries and four Qwen
+modes that bind it accept `negative` and are not refused; the nine that cannot refuse it with the ordinary
+unknown-key message; `TestNegativeIsAnInputOnlyWhenABindingReadsThatField`: a `from`-less binding makes the key
+real, a binding that reads `params.other` does not, and a workflow with no negative binding does not advertise
+it), `make check` (deadcode 506), `npx tsc --noEmit`, `npm run check` (189 modules), `npx vitest run` (391),
+`npm run build` (574.04 kB). On an isolated copy (`/tmp/verify`, port 8191) `GET /api/workflows` reports
+`negative` only for `image-qwen21` (all four variant contracts) and the three MOSS workflows, and for none of
+Z-Image, ESREGAN, the angle workflow, the four H3 ones, RIFE or the music one.
+
+**Where** `internal/workflow/inputs.go`, `internal/workflow/shipped_negative_test.go`.
+
