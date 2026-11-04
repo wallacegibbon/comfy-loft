@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUp, Bot, ChevronRight, CircleCheck, CircleDashed, CircleX, Eraser, Info, LoaderCircle, Mic, Square, Wrench, X } from "lucide-react";
+import { ArrowUp, Bot, ChevronRight, CircleCheck, CircleDashed, CircleX, Eraser, Info, LoaderCircle, Mic, Square, X } from "lucide-react";
 
 import { citationLabel, mentionResolver, referenceBlock, referenceLine, type Citation, type MentionSegment } from "@/lib/canvas/agent-references";
 import { insertSpoken } from "@/lib/canvas/agent-dictation";
@@ -8,6 +8,7 @@ import { textOf, transcriptEvent, transcriptWindow, type ToolStep, type Transcri
 import { contextSegment, speedSegment } from "@/lib/canvas/agent-usage";
 import { nodeTitle } from "@/lib/canvas/node-title";
 import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
+import { toolSubjectOf } from "@/lib/canvas/tool-argument";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { Button } from "@/components/kit/button";
 import { Dialog } from "@/components/kit/dialog";
@@ -756,37 +757,44 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
 }
 
 /**
- * One tool call, drawn where it happened, with the answer to "did it work?" beside it.
+ * One tool call, drawn where it happened, with the answer to "did it work?" in front of it.
  *
  * The call is a frame that arrives while the tool runs, and the result is a second frame that says
- * nothing new except how it went — so the step is drawn once and the symbol answers it: a spinner while
- * the call is out, a tick when it came back, a cross when it came back as a failure. A turn that ended
- * before the result arrived leaves a dash: nothing is known about that call, and a tick or a cross would
- * both be a claim the agent never made.
+ * nothing new except how it went — so the step is drawn once and one mark answers it, in the place a
+ * tool's icon used to stand: a ball turning while the call is out, a tick when it came back, a cross when
+ * it came back as a failure. The state comes first because it is the question the line is read for; which
+ * tool it was matters less than whether it is still going. A turn that ended before the result arrived
+ * leaves a dash: nothing is known about that call, and a tick or a cross would both be a claim the agent
+ * never made.
  */
 function ToolStepLine({ step, live }: { step: ToolStep; live: boolean }) {
     const { t } = useTranslation();
+    const theme = useCanvasTheme();
+    const running = step.state === "running";
+    const stateLabel = !running ? (step.state === "ok" ? t("canvas.agent.toolOk") : t("canvas.agent.toolFailed")) : live ? t("canvas.agent.toolRunning") : t("canvas.agent.toolUnsettled");
+    const { subject, range } = toolSubjectOf(step.name, step.input);
     return (
         <div className="flex items-center gap-1 text-[11px] opacity-70">
-            <Wrench className="size-3 shrink-0" />
-            <span className="truncate">{t("canvas.agent.tool", { name: step.name })}</span>
-            {step.state === "running" && live ? (
-                <span className="flex shrink-0 items-center" title={t("canvas.agent.toolRunning")} aria-label={t("canvas.agent.toolRunning")}>
-                    <LoaderCircle className="size-3 animate-spin" />
-                </span>
-            ) : step.state === "running" ? (
-                <span className="flex shrink-0 items-center" title={t("canvas.agent.toolUnsettled")} aria-label={t("canvas.agent.toolUnsettled")}>
-                    <CircleDashed className="size-3 opacity-60" />
-                </span>
-            ) : step.state === "ok" ? (
-                <span className="flex shrink-0 items-center" title={t("canvas.agent.toolOk")} aria-label={t("canvas.agent.toolOk")}>
+            <span className="flex size-3 shrink-0 items-center justify-center" title={stateLabel} aria-label={stateLabel}>
+                {running ? (
+                    live ? (
+                        // A ball lit from one side, turning: at rest it is the same shape, and what says the
+                        // call is still out is the highlight going round. It turns for as long as the call does.
+                        <span className="size-3 animate-spin rounded-full" style={{ background: `radial-gradient(circle at 32% 28%, rgba(255,255,255,.95), rgba(255,255,255,0) 45%), ${theme.node.muted}` }} />
+                    ) : (
+                        <CircleDashed className="size-3 opacity-60" />
+                    )
+                ) : step.state === "ok" ? (
                     <CircleCheck className="size-3" style={{ color: TOOL_OK }} />
-                </span>
-            ) : (
-                <span className="flex shrink-0 items-center" title={t("canvas.agent.toolFailed")} aria-label={t("canvas.agent.toolFailed")}>
+                ) : (
                     <CircleX className="size-3" style={{ color: TOOL_FAILED }} />
-                </span>
-            )}
+                )}
+            </span>
+            {/* The tool says what kind of thing it was; what it was about is the argument that names it, and
+                that is the half that gets cut — a file name is long, a tool's name and a line range are not. */}
+            <span className="shrink-0">{t("canvas.agent.tool", { name: step.name })}</span>
+            {subject ? <span className="min-w-0 truncate">{subject}</span> : null}
+            {range ? <span className="shrink-0">{range}</span> : null}
         </div>
     );
 }

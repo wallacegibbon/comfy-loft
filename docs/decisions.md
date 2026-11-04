@@ -10484,3 +10484,54 @@ written.
 `internal/agent/sessions.go` (a comment that named the wrong caller of `List`),
 `frontend/src/services/api/agent.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`,
 `internal/server/agent_e2e_test.go`, `docs/decisions.md` (#104).
+
+## 281. A tool line leads with how it went, and names what it was about
+
+**Decision** A tool call in the agent panel is one line: the state mark, then `calling <tool>`, then the argument
+that names what the call was about, then — for a file read — the part of the file it asked for. The mark stands
+where the wrench icon stood — a ball turning while the call is out, a green tick when it came back, a red cross
+when it came back as a failure, a dashed circle when the turn ended before the call did. The subject comes from
+`toolSubjectOf` (`lib/canvas/tool-argument.ts`), a table of the built-in tools' identifying arguments read out of
+the call's own JSON — `read_file`/`edit_file`/`write_file` → `path`, `execute_command` → `command`,
+`search_content` → `pattern` — plus, for `read_file`, `start_line`/`num_lines` as `start=12, count=40`. The tool's
+name and that range never shrink; the subject is the half that gets an ellipsis when the line runs out of room.
+
+**Why the mark first** The question the line is read for is "did it work, or is it still going". A line answers
+left to right, so an answer at the right-hand end is the last thing found — and once a path is on the line it is
+the first thing an overflow takes. A tool icon was also the one glyph on the line that said the same thing every
+time: that a tool ran. The mark says the part that differs.
+
+**Why the range is its own half of the line** Which file is one question and where in it is another, and the
+answer to the second is two numbers wide. Drawn at the end of one truncating span, `start=12, count=40` is the
+first thing a long path eats — the reader would get a file name and no idea which part of it was read. So the path
+gives way and the numbers do not. `start_line: 0` and `num_lines: 0` are AlayaCore's "from the top" and "to the
+end", so they are left out rather than drawn as a place in the file.
+
+**Why the argument, and only for these tools** "calling read_file" ten times over is ten identical lines; the file
+is what tells them apart. The table stops at the tools whose arguments name a subject in words: the canvas's own
+tools take node ids, which a reader cannot follow and which the panel beside them already shows, and a call whose
+arguments have not arrived yet — the name frame comes first (#221) — has no subject at all, so the line is what it
+was.
+
+**Why a ball** One mark, four forms, and only one of them moves: at 11px a turning outline and a settled success
+read too much alike, and a solid disc is unmistakably not a tick. It is `theme.node.muted` with a white specular
+highlight off centre, so the rotation is a highlight going round rather than a whole dot rotating invisibly — in
+both palettes, since it wears the theme's own colours rather than the two the tick and cross need to mean what
+they mean.
+
+**Cost** The table knows AlayaCore's field names, so a built-in added upstream shows no subject until the table
+learns it — nothing is guessed from an argument's shape, because "the first string in the JSON" is the sort of
+guess that shows a node id to a reader. The wrench icon is gone from the panel's imports.
+
+**Tested** `tests/tool-argument.test.ts` (each built-in, each shape of a line range, a range with nothing to
+narrow, an unknown tool, arguments that have not arrived, are not JSON, or hold an empty or non-string field, and a
+command folded onto one line). The states and the truncation were rendered in a throwaway harness at 1× and 4× in
+both palettes — a long path cut to `frontend/src/components/c…` with `start=12, count=40` whole beside it — and
+two screenshots of the turning ball differ only around the marks, so it turns. End to end on an isolated `:8191`
+with the real AlayaCore: a `read_file` call drew `✓ calling read_file frontend/src/main.tsx` in the panel, and a
+`canvas_read_node` call was caught while `[aria-label="The call is running"]` was set. `make check` (deadcode
+506), `go test ./...`, `npx tsc --noEmit`, `npm run check` (i18n 861/828, exports 187 modules), `npx vitest run`
+(387), `npm run build` (559.28 kB).
+
+**Where** `frontend/src/components/canvas/canvas-agent-panel.tsx` (`ToolStepLine`),
+`frontend/src/lib/canvas/tool-argument.ts`, `frontend/tests/tool-argument.test.ts`.
