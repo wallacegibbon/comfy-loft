@@ -1,4 +1,5 @@
 import { NODE_STATUS_ERROR, NODE_STATUS_LOADING } from "@/lib/canvas/canvas-node-status";
+import type { ModelAccepts } from "@/stores/use-config-store";
 import type { CanvasNodeMetadata } from "@/types/canvas";
 
 /**
@@ -105,3 +106,76 @@ function settingsClause(metadata: CanvasNodeMetadata | undefined) {
  * the new picture's confidence (#227).
  */
 export const NO_MAKER: Partial<CanvasNodeMetadata> = { workflow: undefined, generatedAt: undefined };
+
+/** What a node's workflow takes, one count per kind, as the page sees what is wired into the node. */
+export type MediaCounts = { image: number; video: number; audio: number };
+
+/**
+ * What a node's run needs, and what it has — the third clause `read_prompt` carries.
+ *
+ * The prompt is only half of a press. A workflow that re-renders a picture from a new angle, swaps a character
+ * in a clip, or inpaints a mask takes media the prompt cannot replace, and a caller who does not know that
+ * presses a node that can only be refused. The counts are the workflow's own declaration (#313) and the state
+ * is the wiring in front of it, so the answer is the same one the server's refusal would give — said before the
+ * call rather than after it.
+ *
+ * Nothing is claimed for a workflow that publishes no media contract: an older config, or a model the server did
+ * not describe.
+ */
+export function requiresClause(accepts: ModelAccepts | undefined, counts: MediaCounts) {
+    const need = describeNeed(accepts);
+    if (!need) return "";
+    const state = describeCounts(counts);
+    // A press is refused for either side of a declared bound — the minimum a run needs, and the maximum it takes.
+    return `it takes ${need}; ${state}${meetsMedia(accepts!, counts) ? "" : ", so a press would be refused"}`;
+}
+
+/**
+ * The media a run *needs*, in the order a node's own panel names them.
+ *
+ * What is required comes first: a kind a run cannot do without (`min > 0`) is the answer to "may I press this
+ * yet". Only where nothing is required does a maximum get said at all — as "up to 1 clip", which is a permission
+ * rather than a demand, and the difference between the two is exactly the press.
+ */
+function describeNeed(accepts: ModelAccepts | undefined) {
+    if (!accepts) return "";
+    const kinds = [
+        { limit: accepts.images, one: "image", many: "images" },
+        { limit: accepts.videos, one: "clip", many: "clips" },
+        { limit: accepts.audios, one: "sound", many: "sounds" },
+    ];
+    const required = kinds.flatMap(({ limit, one, many }) => (limit?.min ? [limit.min === limit.max ? `${limit.min} ${limit.min === 1 ? one : many}` : `${limit.min}-${limit.max} ${many}`] : []));
+    const total = accepts.minTotal || 0;
+    // A minimum across kinds is not the sum of the mins: a workflow can take an image *or* a clip and still need
+    // one of them. Said only where it adds something the per-kind lines do not already require.
+    const perKind = (accepts.images?.min || 0) + (accepts.videos?.min || 0) + (accepts.audios?.min || 0);
+    if (total > perKind) required.push(`at least ${total} media item${total === 1 ? "" : "s"} in all`);
+    if (required.length) return required.join(" and ");
+    const allowed = kinds.flatMap(({ limit, one, many }) => (limit?.max ? [`up to ${limit.max} ${limit.max === 1 ? one : many}`] : []));
+    return allowed.length ? allowed.join(" and ") : "words only";
+}
+
+/** What is wired into the node now, in the same words. */
+function describeCounts(counts: MediaCounts) {
+    const parts: string[] = [];
+    if (counts.image) parts.push(`${counts.image} image${counts.image === 1 ? "" : "s"}`);
+    if (counts.video) parts.push(`${counts.video} clip${counts.video === 1 ? "" : "s"}`);
+    if (counts.audio) parts.push(`${counts.audio} sound${counts.audio === 1 ? "" : "s"}`);
+    return parts.length ? `${parts.join(" and ")} connected` : "nothing connected";
+}
+
+/** Whether the wiring satisfies the declaration, both ways round. */
+function meetsMedia(accepts: ModelAccepts, counts: MediaCounts) {
+    const pairs: Array<[keyof MediaCounts, { min: number; max: number } | undefined]> = [
+        ["image", accepts.images],
+        ["video", accepts.videos],
+        ["audio", accepts.audios],
+    ];
+    for (const [kind, limit] of pairs) {
+        if (!limit) continue;
+        if (counts[kind] < limit.min) return false;
+        if (limit.max && counts[kind] > limit.max) return false;
+    }
+    const total = counts.image + counts.video + counts.audio;
+    return total >= (accepts.minTotal || 0);
+}

@@ -11400,3 +11400,58 @@ modules), `make frontend`, `make build`. Not checked in a browser: the page on `
 `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`, `internal/server/routes_mcp.go`,
 `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`,
 `frontend/tests/{node-model,canvas-agent-tools,node-generation-facts}.test.ts`.
+
+## 313. A workflow's special requirement is its own declaration, said before the press
+
+**Decision** Two surfaces, both reading data that was already published:
+- `list_models` says what each **mode** takes (`t2i (words only)`, `edit (1-4 images)`, `inpaint (2 images)`,
+  `outpaint (1 image)`), read from `variantContracts[mode].accepts` — and a step's line carries the knobs it
+  declares (`image-qwen21-angle · 1 image · knobs horizontalAngle, pitchAngle, cameraDistance`), read from
+  `parameters`.
+- `read_prompt` appends what the node's run needs and what is wired into it: `it takes 1 image; nothing connected,
+  so a press would be refused`. Read from the same `accepts` the panel and the server's `PlanMedia` use, plus the
+  connections the tool can see.
+
+`SettingsContract` grew `media` (`ModelAccepts`), because a node's workflow publishes one projection and the
+tools read it through one hand.
+
+**Why** Two workflows in this install are shaped like this and nothing in the agent's vocabulary said so: the angle
+re-render and the character swap take a picture or a clip, and a prompt cannot replace it. The information existed
+twice already — the registry's `accepts` (with a hand-written `note`) and the server's refusal, which appends that
+note (`hint(note)`) — but the only way an agent ever met it was by pressing a node that could not run and reading
+the 400. A caller choosing a workflow could not tell inpaint (needs a source *and* a mask) from t2i (needs
+nothing), because the listing said only `1-4 images` for the whole family.
+
+**Rejected** Three things, all of which looked like the obvious fix and are not:
+- **Carrying `note` (and `parameters[].description`) into the client and showing it in the panel.** `#66` decided
+  the opposite for a reason: the registry is written in English and the UI's copy comes from `i18n` keyed by
+  workflow id. Re-introducing English prose would either break the Chinese UI or demand a dictionary entry per
+  workflow — the table of ids this build keeps deleting (#267, #294). The note already reaches the agent where it
+  belongs: in the server's refusal.
+- **A media gate in the client before submitting.** `PlanMedia` is the server's, it is authoritative (modes,
+  frame modes, `minTotal`, per-mode variants), it answers in milliseconds, and it carries the note. A second copy
+  in the page is the first thing that drifts, and the panel's own `ready` only ever disabled the *step* panel's
+  button — so the "人 and agent disagree" premise was wrong for every other kind of node.
+- **Enforcing parameter ranges in `set_node_settings`.** `ValidateInputs` already rejects an out-of-range value at
+  submission with the declared bound in the message, so the gap was a nicer sentence and not a failed run.
+
+**Cost** The listing is longer: four modes with their media is one long line, and a step gets a line of its own
+instead of appearing in a comma list. `read_prompt` is a line longer for every node whose workflow declares media
+— and it is silent for a model the server did not describe, which is the three-state rule everywhere else.
+
+**Tested** `npx vitest run` (509 — fifteen new). `node-model.test.ts`: a step is named on its own line with its
+knobs and is not among the generators (asserted on the text *above* the steps' heading, so the old
+"does not contain" could not pass by accident); each mode says what it takes. `node-generation-facts.test.ts`:
+`requiresClause` for a source picture (present and missing), words-only, too many of an optional kind, the
+character swap's picture-and-clip, and the silence of an unpublished contract — the formatter's own first
+version said "up to 1 clips" and counted a permission ("up to 2 sounds") as a requirement, both caught here.
+`canvas-agent-tools.test.ts`: `read_prompt` with nothing wired and with a picture wired. `go test ./...`,
+`make check` (503 exports), `npx tsc --noEmit`, `npm run check` (832/799, 187 modules), `make frontend`,
+`make build`. Not checked in a browser: the page on `:8190` predates this commit.
+
+**Where** `frontend/src/lib/canvas/node-model.ts` (`modeMedia`, `knobs`, `describeModel`),
+`frontend/src/lib/canvas/node-generation-facts.ts` (`requiresClause`),
+`frontend/src/lib/canvas/node-settings.ts` (`SettingsContract.media`),
+`frontend/src/lib/canvas/canvas-agent-tools.ts` (`readPrompt`, `connectedMedia`),
+`frontend/src/pages/canvas/project.tsx` (`modelCatalog`, `nodeContract`),
+`frontend/tests/{node-model,node-generation-facts,canvas-agent-tools}.test.ts`.

@@ -40,6 +40,8 @@ type ModelOption = {
     mode: string;
     /** The modes the family offers, and the ones whose own nodes are missing. */
     modes: string[];
+    /** What a run of each mode takes, in three words — a mode is a different graph, so it takes a different mix. */
+    modeMedia: Record<string, string>;
     blocked: string[];
     /**
      * Whether this is a *step* rather than a generator: it takes a picture or a clip and a knob, and nothing is
@@ -49,6 +51,8 @@ type ModelOption = {
     step: boolean;
     /** What the workflow takes as media, in three words: "1 image", "1-4 images", "words only". */
     takes: string;
+    /** The knobs a step declares, by the key a caller sets — an upscaler's file, an angle's three numbers. */
+    knobs: string[];
 };
 
 /** What the page lends the decision: the choices, and the contract answer for each (#304). */
@@ -203,7 +207,13 @@ export function describeModelCatalogs(catalogs: ModelCatalogs): string {
         for (const option of generators) lines.push(`  ${describeModel(option)}`);
         // Named together rather than one per line: a step has no modes worth reading, and the point of the line
         // is that they are not part of the number above.
-        if (steps.length) lines.push(`  steps (they take a picture or a clip and a knob, and nothing is asked of them): ${steps.map((option) => option.workflowId).join(", ")}`);
+        if (steps.length) {
+            lines.push("  steps (they take media and a knob, and nothing is asked of them in words):");
+            for (const step of steps) {
+                const parts = [step.takes, step.knobs.length ? `knobs ${step.knobs.join(", ")}` : ""].filter(Boolean);
+                lines.push(`  - ${step.workflowId}${parts.length ? ` · ${parts.join(" · ")}` : ""}`);
+            }
+        }
     }
     lines.push("");
     lines.push(
@@ -227,7 +237,13 @@ function modesOf(option: ModelOption) {
     const modes: string[] = [];
     if (option.mode) modes.push(`mode ${option.mode}`);
     if (option.modes.length) {
-        const offered = option.modes.map((mode) => (option.blocked.includes(mode) ? `${mode} (blocked: its node pack is missing)` : mode));
+        // Each mode with what a run of it takes: a family's modes are different graphs, and the one that needs a
+        // mask looks exactly like the one that needs nothing until this says so (#313).
+        const offered = option.modes.map((mode) => {
+            const media = option.modeMedia?.[mode];
+            if (option.blocked.includes(mode)) return `${mode} (blocked: its node pack is missing)`;
+            return media ? `${mode} (${media})` : mode;
+        });
         modes.push(`modes ${offered.join(", ")}`);
     }
     return modes;

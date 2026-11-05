@@ -1,4 +1,5 @@
 import { audioFormatOptions } from "@/lib/audio-generation";
+import type { ModelAccepts } from "@/stores/use-config-store";
 import { computeVideoSize, inferVideoRatio, parseVideoResolution, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions } from "@/lib/media-size";
 import { planImageSize } from "@/services/api/image";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata } from "@/types/canvas";
@@ -36,10 +37,18 @@ export type NodeSettings = {
     params?: unknown;
 };
 
-/** What the node's model publishes: the keys a run accepts, and the length bound a sound declares. */
+/**
+ * What the node's model publishes about its next run — every fact the tools read off a node's workflow.
+ *
+ * One hand for all of them, because they come from one projection: the keys a run accepts (`set_node_settings`
+ * refuses a key outside it), the media it takes (`read_prompt` states what is connected against it), a sound's
+ * declared length, and a film's quality tier.
+ */
 export type SettingsContract = {
-    /** The contract's `inputs`, or undefined when the model publishes none (nothing is claimed). */
+    /** The contract's `inputs`: the keys a run may carry, or undefined when the model publishes none. */
     accepts?: string[];
+    /** How much media a run of this node's mode takes. */
+    media?: ModelAccepts;
     /** A sound's declared length, the bound `clampAudioSeconds` clamps to. */
     duration?: { min: number; max: number };
     /** The quality tier a film is made at: a film's pixels are *derived* from this and its shape. */

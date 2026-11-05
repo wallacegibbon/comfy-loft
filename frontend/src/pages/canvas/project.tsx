@@ -2112,8 +2112,10 @@ function InfiniteCanvasPage() {
             const mode: CanvasNodeGenerationMode = node.type === CanvasNodeType.Video ? "video" : node.type === CanvasNodeType.Audio ? "audio" : "image";
             const config = buildGenerationConfig(effectiveConfig, node, mode);
             const contractMode = mode === "image" ? imageModeFor(config, config.model) : node.metadata?.videoMode || "";
+            const contract = modelContractOf(effectiveConfig, config.model, contractMode);
             return {
-                accepts: modelContractOf(effectiveConfig, config.model, contractMode)?.inputs,
+                accepts: contract?.inputs,
+                media: contract?.accepts,
                 duration: channelModelOf(effectiveConfig, config.model)?.model.duration,
                 // A film's pixels are derived from this tier and the shape, so `set_node_settings` judges a
                 // stated size against the tier the run will use — the node's own, or the canvas's default.
@@ -2143,6 +2145,13 @@ function InfiniteCanvasPage() {
                         workflowId: model.workflowId || model.name,
                         mode: model.mode || "",
                         modes: model.variantModes || [],
+                        modeMedia: Object.fromEntries(
+                            (model.variantModes || []).flatMap((mode) => {
+                                const media = mediaSummary(model.contracts?.[mode]?.accepts ?? model.accepts);
+                                return media ? [[mode, media] as const] : [];
+                            }),
+                        ),
+                        knobs: (model.parameters || []).map((parameter) => parameter.key),
                         blocked: model.blockedModes || [],
                         // A step is offered by the pickers (a node can be one) and is not what a prompt makes.
                         step: model.tool === true || model.hasPrompt === false,

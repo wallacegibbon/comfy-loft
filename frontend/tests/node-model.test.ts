@@ -15,16 +15,18 @@ import type { CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
 const node = (type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData => ({ id: `${type}-1`, type, title: `${type}-1`, position: { x: 0, y: 0 }, width: 320, height: 240, metadata });
 
 /** One picker entry, as the page builds it: the fields the decision reads, and nothing else. */
-type Entry = { value: string; workflowId: string } & Partial<{ names: string[]; label: string; mode: string; modes: string[]; blocked: string[]; step: boolean; takes: string }>;
+type Entry = { value: string; workflowId: string } & Partial<{ names: string[]; label: string; mode: string; modes: string[]; modeMedia: Record<string, string>; blocked: string[]; step: boolean; takes: string; knobs: string[] }>;
 
-const option = (over: Entry): Entry & Required<Pick<Entry, "names" | "label" | "mode" | "modes" | "blocked" | "step" | "takes">> => ({
+const option = (over: Entry): Entry & Required<Pick<Entry, "names" | "label" | "mode" | "modes" | "modeMedia" | "blocked" | "step" | "takes" | "knobs">> => ({
     names: [over.workflowId],
     label: over.workflowId,
     mode: "",
     modes: [],
+    modeMedia: {},
     blocked: [],
     step: false,
     takes: "",
+    knobs: [],
     ...over,
 });
 
@@ -185,9 +187,16 @@ describe("describeModelCatalogs: what this canvas can run", () => {
     const catalogs = (over: Partial<Record<"image" | "video" | "audio", ModelCatalog>> = {}) => ({
         image: {
             options: [
-                option({ value: "default::image-qwen21", workflowId: "image-qwen21", label: "Qwen Image 2.1", modes: ["t2i", "edit", "inpaint", "outpaint"], blocked: ["outpaint"], takes: "1-4 images" }),
+                option({
+                    value: "default::image-qwen21",
+                    workflowId: "image-qwen21",
+                    label: "Qwen Image 2.1",
+                    modes: ["t2i", "edit", "inpaint", "outpaint"],
+                    modeMedia: { t2i: "words only", edit: "1-4 images", inpaint: "2 images", outpaint: "1 image" },
+                    blocked: ["outpaint"],
+                }),
                 option({ value: "default::image-z-image-turbo", workflowId: "image-z-image-turbo", takes: "words only" }),
-                option({ value: "default::image-esrgan-upscale", workflowId: "image-esrgan-upscale", step: true, takes: "1 image" }),
+                option({ value: "default::image-esrgan-upscale", workflowId: "image-esrgan-upscale", step: true, takes: "1 image", knobs: ["upscale_model"] }),
             ],
             accepts: () => undefined,
         },
@@ -207,12 +216,21 @@ describe("describeModelCatalogs: what this canvas can run", () => {
         expect(text).toContain("audio: none configured on this canvas");
     });
 
-    test("a step is named on its own line, so it cannot be counted as a model that draws", () => {
+    test("a step is named on its own line, with its knobs, and is not among the generators", () => {
         const text = describeModelCatalogs(catalogs());
-        expect(text).toContain("steps (they take a picture or a clip and a knob");
-        expect(text).toContain("image-esrgan-upscale");
-        // …and it is not in the generators' lines.
-        expect(text).not.toContain("- image-esrgan-upscale ·");
+        expect(text).toContain("steps (they take media and a knob, and nothing is asked of them in words):");
+        expect(text).toContain("- image-esrgan-upscale · 1 image · knobs upscale_model");
+        // Everything above the steps' heading is a generator, and the upscaler is not one of them.
+        const generators = text.split("  steps (")[0];
+        expect(generators).not.toContain("image-esrgan-upscale");
+    });
+
+    test("a family's modes each say what that mode takes", () => {
+        // The one that needs a mask looks exactly like the one that needs nothing until this says so.
+        const text = describeModelCatalogs(catalogs());
+        expect(text).toContain("edit (1-4 images)");
+        expect(text).toContain("inpaint (2 images)");
+        expect(text).toContain("t2i (words only)");
     });
 
     test("a mode whose node pack is missing is marked where the mode is offered", () => {
@@ -221,7 +239,7 @@ describe("describeModelCatalogs: what this canvas can run", () => {
 
     test("the workflow is named by the id a caller can pass, with what it takes beside it", () => {
         const text = describeModelCatalogs(catalogs());
-        expect(text).toContain("- image-qwen21 · Qwen Image 2.1 · 1-4 images · modes t2i, edit, inpaint");
+        expect(text).toContain("- image-qwen21 · Qwen Image 2.1 · modes t2i (words only), edit (1-4 images), inpaint (2 images), outpaint (blocked: its node pack is missing)");
         expect(text).toContain("- video-h3-t2v · words only · mode text");
     });
 

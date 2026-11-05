@@ -8,7 +8,7 @@ import { imageToDataUrl } from "@/services/image-storage";
 import type { ToolContent } from "@/services/api/agent";
 import { generateAnswer, type GenerateOptions, type GenerateStart } from "@/lib/canvas/agent-generate";
 import { describeCanvas } from "@/lib/canvas/canvas-agent-view";
-import { configuredClause, generationClause, runClause } from "@/lib/canvas/node-generation-facts";
+import { configuredClause, generationClause, requiresClause, runClause, type MediaCounts } from "@/lib/canvas/node-generation-facts";
 import { nodeContentOf, nodePromptOf } from "@/lib/canvas/node-prompt-field";
 import { planNodeSettings, type NodeSettings, type SettingsContract } from "@/lib/canvas/node-settings";
 import { describeModelCatalogs, MODEL_CAPABILITIES, planNodeModel, type ModelCapability, type ModelCatalog, type ModelCatalogs, type ModelChoice } from "@/lib/canvas/node-model";
@@ -526,11 +526,26 @@ function readPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
         return { content: [textBlock(`${node.id} (text) has no prompt: it holds words, and nothing asks it anything. What it says is its content, which read_node answers with, and set_text writes.`)], isError: false };
     }
 
+    // The prompt is half of a press: what the workflow takes and what is wired into it is the other half, and a
+    // node missing a source picture can only be refused (docs/decisions.md #313).
+    const requirement = requiresClause(hands.nodeContract(node.id).media, connectedMedia(node.id, hands));
+    const needs = requirement ? `\n${node.id} ${requirement}.` : "";
     const words = nodePromptOf(node);
     const configured = configuredClause(node.metadata);
     const setting = configured ? `\n${node.id} is ${configured}.` : "";
-    if (!words.trim()) return { content: [textBlock(`${node.id} (${node.type}) has no prompt: nothing has been asked of it yet`)], isError: false };
-    return { content: [textBlock(words + setting)], isError: false };
+    if (!words.trim()) return { content: [textBlock(`${node.id} (${node.type}) has no prompt: nothing has been asked of it yet${needs}`)], isError: false };
+    return { content: [textBlock(words + setting + needs)], isError: false };
+}
+
+/** What is wired into one node, one count per kind — the state a run's media requirement is read against. */
+function connectedMedia(nodeId: string, hands: CanvasHands): MediaCounts {
+    const counts: MediaCounts = { image: 0, video: 0, audio: 0 };
+    for (const connection of hands.connections()) {
+        if (connection.toNodeId !== nodeId) continue;
+        const source = hands.nodes().find((candidate) => candidate.id === connection.fromNodeId);
+        if (source && source.type in counts) counts[source.type as keyof MediaCounts] += 1;
+    }
+    return counts;
 }
 
 /**

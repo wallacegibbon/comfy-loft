@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { configuredClause, generationClause } from "../src/lib/canvas/node-generation-facts";
+import { configuredClause, generationClause, requiresClause } from "../src/lib/canvas/node-generation-facts";
 
 /**
  * What a tool says about how a node's content was made.
@@ -82,5 +82,43 @@ describe("generationClause", () => {
         expect(generationClause({ prompt: "a cat" })).toBe("");
         expect(generationClause(undefined)).toBe("");
         expect(generationClause({ workflow: "  ", generatedAt: "" })).toBe("");
+    });
+});
+
+/**
+ * What a node's run needs, and what it has.
+ *
+ * The second half of `read_prompt`: a workflow that re-renders a picture from a new angle, swaps a character in
+ * a clip, or inpaints a mask takes media a prompt cannot replace. The counts are the workflow's own declaration
+ * and the state is the wiring in front of it, so the sentence is the one the server's refusal would give — said
+ * before the call (docs/decisions.md #313).
+ */
+describe("requiresClause", () => {
+    const nothing = { image: 0, video: 0, audio: 0 };
+
+    test("a workflow that takes a source picture says how many, and how many there are", () => {
+        expect(requiresClause({ images: { min: 1, max: 1 }, videos: { min: 0, max: 0 }, audios: { min: 0, max: 0 }, minTotal: 0 }, { ...nothing, image: 1 })).toBe("it takes 1 image; 1 image connected");
+    });
+
+    test("a press that would be refused says so, rather than leaving the caller to find out", () => {
+        // The angle re-render and the character swap are this case: the picture is not a nicety.
+        expect(requiresClause({ images: { min: 1, max: 1 }, videos: { min: 0, max: 0 }, audios: { min: 0, max: 0 }, minTotal: 0 }, nothing)).toBe("it takes 1 image; nothing connected, so a press would be refused");
+    });
+
+    test("a workflow that takes no media says words only, and too much is refused too", () => {
+        const t2v = { images: { min: 0, max: 0 }, videos: { min: 0, max: 0 }, audios: { min: 0, max: 0 }, minTotal: 0 };
+        expect(requiresClause(t2v, nothing)).toBe("it takes words only; nothing connected");
+        expect(requiresClause({ ...t2v, videos: { min: 0, max: 1 } }, { ...nothing, video: 2 })).toBe("it takes up to 1 clip; 2 clips connected, so a press would be refused");
+    });
+
+    test("a clip and a picture together, which is the character swap's shape", () => {
+        const swap = { images: { min: 1, max: 6 }, videos: { min: 1, max: 1 }, audios: { min: 0, max: 2 }, minTotal: 2 };
+        expect(requiresClause(swap, { image: 1, video: 1, audio: 0 })).toBe("it takes 1-6 images and 1 clip; 1 image and 1 clip connected");
+        expect(requiresClause(swap, { image: 0, video: 1, audio: 0 })).toBe("it takes 1-6 images and 1 clip; 1 clip connected, so a press would be refused");
+    });
+
+    test("says nothing for a workflow that publishes no media contract", () => {
+        // Nothing is claimed about a model the server did not describe, which is the three-state rule everywhere.
+        expect(requiresClause(undefined, nothing)).toBe("");
     });
 });

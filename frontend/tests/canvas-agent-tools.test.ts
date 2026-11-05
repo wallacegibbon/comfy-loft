@@ -329,6 +329,22 @@ describe("read_prompt: the question behind a node", () => {
         expect(text).toContain("read_node");
     });
 
+    // #313: the prompt is half of a press. A workflow that re-renders a picture from a new angle can only be
+    // refused while nothing is wired into it, and this is the answer to "why".
+    test("says what the run needs and what is wired in — before the press, not after the refusal", async () => {
+        const angle = placed("image-1", "image", { prompt: "turn it to the left" });
+        const { hands } = handsFor([angle], [], { media: { images: { min: 1, max: 1 }, videos: { min: 0, max: 0 }, audios: { min: 0, max: 0 }, minTotal: 0 } });
+        const short = await textOf(hands, "read_prompt", { nodeId: "image-1" });
+        expect(short.text).toContain("it takes 1 image; nothing connected, so a press would be refused");
+
+        const wired = handsFor([placed("source", "image", { content: "/api/canvases/c/files/a.png" }), angle], [{ id: "c1", fromNodeId: "source", toNodeId: "image-1" }], {
+            media: { images: { min: 1, max: 1 }, videos: { min: 0, max: 0 }, audios: { min: 0, max: 0 }, minTotal: 0 },
+        });
+        const ready = await textOf(wired.hands, "read_prompt", { nodeId: "image-1" });
+        expect(ready.text).toContain("it takes 1 image; 1 image connected");
+        expect(ready.text).not.toContain("would be refused");
+    });
+
     test("says so when nothing has been asked of a picture", async () => {
         const { hands } = handsFor([node("image", { content: "/api/canvases/c/files/a.png" })]);
         const { answer, text } = await textOf(hands, "read_prompt", { nodeId: "image-1" });
@@ -433,7 +449,7 @@ describe("resize_node: the card's box, not a zoom", () => {
  */
 describe("set_model: which run this node is", () => {
     const catalogWith = (accepts: string[]): ModelCatalog => ({
-        options: [{ value: "default::image-qwen21", names: ["image-qwen21"], label: "Qwen Image 2.1", workflowId: "image-qwen21", mode: "", modes: ["t2i", "edit"], blocked: [], step: false, takes: "words only" }],
+        options: [{ value: "default::image-qwen21", names: ["image-qwen21"], label: "Qwen Image 2.1", workflowId: "image-qwen21", mode: "", modes: ["t2i", "edit"], blocked: [], step: false, takes: "words only", modeMedia: {}, knobs: [] }],
         accepts: (_value, _mode, key) => accepts.includes(key),
     });
 
@@ -486,7 +502,8 @@ describe("set_model: which run this node is", () => {
 describe("list_models: what this canvas can run", () => {
     const asked: string[] = [];
     const catalogFor = (capability: string) => ({
-        options: capability === "image" ? [{ value: "default::image-qwen21", names: ["image-qwen21"], label: "Qwen Image 2.1", workflowId: "image-qwen21", mode: "", modes: [], blocked: [], step: false, takes: "words only" }] : [],
+        options:
+            capability === "image" ? [{ value: "default::image-qwen21", names: ["image-qwen21"], label: "Qwen Image 2.1", workflowId: "image-qwen21", mode: "", modes: [], blocked: [], step: false, takes: "words only", modeMedia: {}, knobs: [] }] : [],
         accepts: () => undefined,
     });
     const hands = (): CanvasHands => {
