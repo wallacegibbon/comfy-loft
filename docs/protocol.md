@@ -228,6 +228,12 @@ Rules worth knowing:
   (`outputs.formats`), and requesting another one is a `400` at submission — not a run that fails in
   ComfyUI a minute later. The quality value the selected container requires is filled in from the
   same declaration.
+- **The server does not bound a `size`.** It checks the shape — a `size` input is a string `util.ParseSize`
+  reads, nothing more — and that the workflow reads the key at all; the ceiling a canvas applies (3840 px on the
+  longest side, at most 3:1, 655360–8294400 pixels in total, both sides aligned to 16) is that client's policy,
+  not this protocol's. So a caller that is not the canvas may ask for more, and what happens then is the graph's
+  and the encoder's business rather than a number this server invented (decisions #306: the limits live in
+  `frontend/src/services/api/image.ts`, where the control that promises them is).
 - **A workflow may be a step, not a model.** `video-rife` has no prompt: it takes a clip and a
   multiplier. The server does not care — it runs any registered workflow — but it also does not
   pretend such a step is a model a client picks from a list.

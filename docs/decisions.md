@@ -11146,6 +11146,12 @@ back **512×512**, so the VAE floors to 16. 1360×768, which is a preset value a
 1360×768. The probe also showed something worth knowing: the shipped graph takes its latent from the text encoder
 (node 5, sized by `resolution`), so `size: auto` is a `resolution²` run and only an explicit size repoints it.
 
+**Measured again, at the top of the range** 3840×2160 asked → **3840×2160** file (`comfyloft-probe_00006_.png`),
+with the same two lines the binding writes. The numbers above established *where* the floor is; this is the size
+that matters most, because the ceiling is exactly where the old 32-step arithmetic went over the canvas's own
+8,294,400-pixel bound (3840×2176). The probe was run after the fact rather than as part of the change, which is
+why it was recorded as optional; it confirms rather than discovers.
+
 **Rejected** Retuning `imageSizePresets` so that every preset is a multiple of 32. That was the first plan, and it
 rested on an assumption: eight presets would have moved — 4k 16:9 would have become 3584×2016 — to satisfy a
 constraint the graph does not have. A display bent around an unverified limitation is its own kind of lie.
