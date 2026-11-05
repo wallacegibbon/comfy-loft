@@ -12,7 +12,7 @@ import { type CanvasTheme } from "@/lib/canvas-theme";
 import { imageModeFor } from "@/lib/canvas/image-mode";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { serverVariantLabel } from "@/lib/server-labels";
-import { channelModelOf } from "@/stores/use-config-store";
+import { acceptsInput, channelModelOf } from "@/stores/use-config-store";
 import type { AiConfig } from "@/stores/use-config-store";
 
 type CanvasImageSettingsPopoverProps = {
@@ -201,6 +201,11 @@ function ImageSettingsPortal({
     };
     const refResolution = String((config.params as Record<string, unknown> | undefined)?.resolution ?? 1024);
     const editCanvasRatio = canvasRatioOf(String((config.params as Record<string, unknown> | undefined)?.editCanvasSize || ""), refResolution);
+    // The ratio pills write `editCanvasSize` and the switch writes `background`; these are the request's keys, so
+    // the block they live in exists where the contract lists them — the same rule the panel applies to its rows,
+    // asked of the mode this window is showing (#304).
+    const canvasRatioAccepted = acceptsInput(config, config.model, "editCanvasSize", qwenMode) !== false;
+    const transparentAccepted = acceptsInput(config, config.model, "background", qwenMode) !== false;
     const width = 356;
     const gap = 8;
     const margin = 12;
@@ -257,22 +262,24 @@ function ImageSettingsPortal({
                             <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" />
                         ) : qwenMode === "edit" ? (
                             <div className="space-y-3">
-                                <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: theme.node.stroke }}>
-                                    <SettingTitle color={theme.node.muted}>{t("canvas.imagePopover.canvasRatio")}</SettingTitle>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        <OptionPill selected={editCanvasRatio === "auto"} theme={theme} onClick={() => onParamsChange?.({ editCanvasSize: "" })}>
-                                            {t("canvas.imagePopover.followFirst")}
-                                        </OptionPill>
-                                        {editRatioOptions.map((ratio) => (
-                                            <OptionPill key={ratio} selected={editCanvasRatio === ratio} theme={theme} onClick={() => onParamsChange?.({ editCanvasSize: qwenCanvasSize(refResolution, ratio) })}>
-                                                {ratio}
+                                {canvasRatioAccepted ? (
+                                    <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: theme.node.stroke }}>
+                                        <SettingTitle color={theme.node.muted}>{t("canvas.imagePopover.canvasRatio")}</SettingTitle>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <OptionPill selected={editCanvasRatio === "auto"} theme={theme} onClick={() => onParamsChange?.({ editCanvasSize: "" })}>
+                                                {t("canvas.imagePopover.followFirst")}
                                             </OptionPill>
-                                        ))}
+                                            {editRatioOptions.map((ratio) => (
+                                                <OptionPill key={ratio} selected={editCanvasRatio === ratio} theme={theme} onClick={() => onParamsChange?.({ editCanvasSize: qwenCanvasSize(refResolution, ratio) })}>
+                                                    {ratio}
+                                                </OptionPill>
+                                            ))}
+                                        </div>
+                                        <div className="text-xs leading-4" style={{ color: theme.node.muted }}>
+                                            {t("canvas.imagePopover.editRatioHint")}
+                                        </div>
                                     </div>
-                                    <div className="text-xs leading-4" style={{ color: theme.node.muted }}>
-                                        {t("canvas.imagePopover.editRatioHint")}
-                                    </div>
-                                </div>
+                                ) : null}
                                 <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: theme.node.stroke }}>
                                     <SettingTitle color={theme.node.muted}>{t("canvas.imagePopover.referenceResolution")}</SettingTitle>
                                     <div className="grid grid-cols-4 gap-2">
@@ -298,7 +305,7 @@ function ImageSettingsPortal({
                                 </div>
                                 <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" showSize={false} />
                             </div>
-                        ) : (
+                        ) : transparentAccepted ? (
                             <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: theme.node.stroke }}>
                                 <div className="flex items-center justify-between gap-3">
                                     <SettingTitle color={theme.node.muted}>{t("canvas.imagePopover.transparent")}</SettingTitle>
@@ -308,7 +315,7 @@ function ImageSettingsPortal({
                                     {t("canvas.imagePopover.transparentHint")}
                                 </div>
                             </div>
-                        )}
+                        ) : null}
                     </div>
                 </div>
             ) : (

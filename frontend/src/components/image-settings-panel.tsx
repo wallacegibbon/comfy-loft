@@ -4,8 +4,9 @@ import { useTranslation } from "react-i18next";
 import { Switch } from "@/components/kit/choice";
 import i18n from "@/i18n";
 import { type CanvasTheme } from "@/lib/canvas-theme";
+import { imageModeFor } from "@/lib/canvas/image-mode";
 import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaRatioOptions, mediaScaleOptions, readMediaDimensions } from "@/lib/media-size";
-import type { AiConfig } from "@/stores/use-config-store";
+import { acceptsInput, type AiConfig } from "@/stores/use-config-store";
 
 const DIMENSION_STEP = 16;
 
@@ -28,6 +29,18 @@ type ImageSettingsPanelProps = {
 export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = true, showSize = true, showTransparent = true, showSeed = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5" }: ImageSettingsPanelProps) {
     const { t } = useTranslation();
     const [snapDimensionToStep, setSnapDimensionToStep] = useState(true);
+    // A row exists where the run reads what it writes. `size`, `background` and `seed` are the request's own
+    // keys, and the contract lists them per workflow and per mode: on a Qwen edit the size row changes nothing
+    // (the picture follows its reference), and no workflow but Qwen's declares a background prompt, so the
+    // transparent switch was a lie on every Z-Image and MOSS node. This is the send-side rule (#302) asked
+    // before the user types instead of after, so a control cannot move a value the run drops (#304).
+    const mode = imageModeFor(config, config.model);
+    const showSizeRow = showSize && acceptsInput(config, config.model, "size", mode) !== false;
+    const showBackgroundRow = showTransparent && acceptsInput(config, config.model, "background", mode) !== false;
+    const showSeedRow = showSeed && acceptsInput(config, config.model, "seed", mode) !== false;
+    // Nothing to offer is not a panel with a title in it: an upscaler declares none of the three, and a heading
+    // over an empty box is the same lie the hidden rows were.
+    if (!showSizeRow && !showBackgroundRow && !showSeedRow) return null;
     const activeSize = config.size || "auto";
     const transparentBackground = config.background === "transparent";
     const selectedScale = inferMediaScale(activeSize);
@@ -55,7 +68,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 }}
             >
                 {showTitle ? <div className="text-lg font-semibold">{t("settingsPanels.image.title")}</div> : null}
-                {showSize ? (
+                {showSizeRow ? (
                     <>
                         <div className="space-y-2.5">
                             <div className="flex items-center justify-between gap-3">
@@ -105,7 +118,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                         </div>
                     </>
                 ) : null}
-                {showTransparent ? (
+                {showBackgroundRow ? (
                     <div className="flex items-center justify-between gap-3">
                         <div className="space-y-0.5">
                             <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.transparent")}</SettingTitle>
@@ -118,7 +131,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                         </span>
                     </div>
                 ) : null}
-                {showSeed ? <SeedSetting fixed={config.seedFixed === "true"} seed={config.seed || ""} theme={theme} onChange={onConfigChange} /> : null}
+                {showSeedRow ? <SeedSetting fixed={config.seedFixed === "true"} seed={config.seed || ""} theme={theme} onChange={onConfigChange} /> : null}
             </div>
         </>
     );

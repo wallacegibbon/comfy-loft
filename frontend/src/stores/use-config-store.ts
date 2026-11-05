@@ -307,6 +307,21 @@ export function modelContractOf(config: AiConfig, value: string, mode?: string):
 }
 
 /**
+ * Whether a run of this model may carry `key` — the three-state answer a control needs.
+ *
+ * `undefined` means the workflow listed no inputs at all (a model the server did not describe, or an older
+ * stored config), and nothing is claimed: the control stays where it was. `false` means the contract does not
+ * list the key, so a control that writes it would set a value the run never reads — the "点了没反应" failure,
+ * seen from the other end. This is `acceptedInputs` asked one step earlier, of one key, so a control and the
+ * request cannot disagree (#304).
+ */
+export function acceptsInput(config: AiConfig, value: string, key: string, mode?: string) {
+    const inputs = modelContractOf(config, value, mode)?.inputs;
+    if (!inputs) return undefined;
+    return inputs.includes(key);
+}
+
+/**
  * A request's keys, minus the ones the workflow that will run it does not read.
  *
  * This covers every key a run carries, not only `params`: `size`, `quality`, `seconds`, `mode` and the rest are

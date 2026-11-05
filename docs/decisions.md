@@ -11046,3 +11046,43 @@ there is one now.
 
 **Where** `internal/workflow/registry.go` (`mergeVariant`), `internal/workflow/loaders.go`,
 `internal/workflow/render.go` (`contractOf`), `internal/workflow/{render,inputs}_test.go`.
+
+## 304. A control exists where the key it writes is read
+
+**Decision** The image settings panel and the Qwen window ask the workflow's contract which rows they have:
+`size`, `background` and `seed` in `ImageSettingsPanel`, `editCanvasSize` for the canvas-ratio pills, `background`
+for the window's own switch. A key the contract does not list means the row is not rendered; a contract that lists
+no inputs at all — a model the server did not describe — means nothing is claimed and the row stays. A panel with
+no rows left renders nothing, title included.
+
+**Why** #302 made the request carry only the keys the workflow reads, which closed the hole at the server and left
+it open on screen. The size picker still appeared on Qwen's `edit`, `inpaint` and `outpaint` (the picture follows
+the reference; `size` is not theirs), and the transparent switch still appeared on every Z-Image and MOSS node
+although only Qwen declares a `backgroundPrompt`. The run then dropped what the user had chosen without saying so —
+the "点了没反应" of the accepted-and-ignored keys, one layer up, and the worse version of it, because the control
+is the only thing the user sees. One predicate answers both questions, so a control and the request cannot
+disagree.
+
+**Rejected** A list of which workflow gets which control. It would be a second copy of the contract, drifting from
+the first the day a graph changes — the shape #275/#302 kept having to delete. Deriving it costs one
+`inputs.includes(key)`.
+
+**Cost** 透明背景 leaves Z-Image and the three MOSS workflows; 尺寸 leaves Qwen's `edit`, `inpaint` and `outpaint`.
+That is today's graphs read honestly: nothing in those pictures is transparent — `qwen-rgba` is a prompt the server
+wraps around the words, and no other entry has one — and their size follows the reference. The rule is derived, so
+a graph that gains a `backgroundPrompt` or a `fromSize` output size brings its control back with no code change.
+
+**Still open** Qwen's `edit`, `inpaint` and `outpaint` now have no size control to offer, because they have no
+`outputSize` to write one into (see the correction in #302). Giving them one is graph authoring plus a decision
+about which sizes the model may be asked for; its own entry.
+
+**Tested** `frontend/tests/contract-controls.test.ts`: the three states (listed / not listed / not described),
+`size` on Qwen's `t2i` but not on its `edit`, `background` absent on a workflow with no `backgroundPrompt`, an
+upscaler naming none of the three, and a table asserting `acceptsInput` and `acceptedInputs` answer the same
+question for every key and every mode. `npx tsc --noEmit`, `npm run check`, `npx vitest run` (433), `make check`,
+`make frontend`.
+
+**Where** `frontend/src/stores/use-config-store.ts` (`acceptsInput`),
+`frontend/src/components/image-settings-panel.tsx`,
+`frontend/src/components/canvas/canvas-image-settings-popover.tsx`,
+`frontend/tests/contract-controls.test.ts`, `docs/decisions.md` (#302's correction).
