@@ -149,8 +149,6 @@ type WorkflowDependency struct {
 	ID            string            `json:"id"`
 	Label         string            `json:"label"`
 	Available     bool              `json:"available"`
-	Enabled       bool              `json:"enabled"`
-	ModelVisible  bool              `json:"modelVisible"`
 	VariantLabels map[string]string `json:"variantLabels"`
 	Problems      []setup.Problem   `json:"problems"`
 	// ModeProblems are the gaps of a mode the workflow offers but does not open with (Qwen's inpaint
@@ -253,7 +251,6 @@ type Manager struct {
 	cfg        *config.Config
 	setup      *setup.Manager
 	registry   *workflow.Registry
-	visibility *store.Visibility
 	mainModels *store.MainModels
 	logger     *logx.Logger
 
@@ -282,7 +279,6 @@ type Options struct {
 	Config     *config.Config
 	Setup      *setup.Manager
 	Registry   *workflow.Registry
-	Visibility *store.Visibility
 	MainModels *store.MainModels
 	Logger     *logx.Logger
 }
@@ -293,7 +289,6 @@ func New(opts Options) *Manager {
 		cfg:            opts.Config,
 		setup:          opts.Setup,
 		registry:       opts.Registry,
-		visibility:     opts.Visibility,
 		mainModels:     opts.MainModels,
 		logger:         opts.Logger,
 		indexPath:      filepath.Join(opts.Config.RootDir, "resources.json"),

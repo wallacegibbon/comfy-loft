@@ -1,6 +1,5 @@
-// Package store holds the server's small JSON-backed state: the two user preference files
-// (workflow visibility, main models). Nothing here runs anything; it remembers what the user
-// chose.
+// Package store holds the server's small JSON-backed state: the main-model override file. Nothing
+// here runs anything; it remembers what the user chose.
 package store
 
 import (
@@ -13,94 +12,6 @@ import (
 	"comfyloft/internal/logx"
 	"comfyloft/internal/util"
 )
-
-// Visibility records which workflows the user hid from the canvas.
-type Visibility struct {
-	mu     sync.Mutex
-	file   string
-	logger *logx.Logger
-	hidden map[string]bool
-}
-
-// NewVisibility builds the visibility store.
-func NewVisibility(dataDir string, logger *logx.Logger) *Visibility {
-	return &Visibility{
-		file:   filepath.Join(dataDir, "workflow-visibility.json"),
-		logger: logger,
-		hidden: map[string]bool{},
-	}
-}
-
-// Load reads the hidden set.
-func (v *Visibility) Load() {
-	data, err := os.ReadFile(v.file)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			v.logger.Warn("failed to read workflow visibility: %s", err)
-		}
-		return
-	}
-	var document struct {
-		Hidden []string `json:"hidden"`
-	}
-	if err := json.Unmarshal(stripBOM(data), &document); err != nil {
-		v.logger.Warn("failed to read workflow visibility: %s", err)
-		return
-	}
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	for _, id := range document.Hidden {
-		if trimmed := strings.TrimSpace(id); trimmed != "" {
-			v.hidden[trimmed] = true
-		}
-	}
-}
-
-// IsHidden reports whether a workflow was hidden by the user.
-func (v *Visibility) IsHidden(id string) bool {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	return v.hidden[strings.TrimSpace(id)]
-}
-
-// List returns the hidden workflow ids.
-func (v *Visibility) List() []string {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	return v.listLocked()
-}
-
-func (v *Visibility) listLocked() []string {
-	out := make([]string, 0, len(v.hidden))
-	for id := range v.hidden {
-		out = append(out, id)
-	}
-	return out
-}
-
-// SetHidden updates one workflow's visibility.
-func (v *Visibility) SetHidden(id string, hidden bool) error {
-	key := strings.TrimSpace(id)
-	if key == "" {
-		return &InvalidIDError{Message: "missing workflow id", ErrorCode: "missing_workflow_id"}
-	}
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if hidden {
-		v.hidden[key] = true
-	} else {
-		delete(v.hidden, key)
-	}
-	payload, err := json.MarshalIndent(map[string]any{
-		"version":   1,
-		"hidden":    v.listLocked(),
-		"updatedAt": util.NowIso(),
-	}, "", "  ")
-	if err != nil {
-		return err
-	}
-	return util.WriteFileAtomic(v.file, append(payload, '\n'))
-}
 
 // MainModels records the per-workflow main-model override.
 //

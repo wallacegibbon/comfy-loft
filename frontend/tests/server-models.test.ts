@@ -17,7 +17,6 @@ const workflow = (overrides: Partial<Workflow> = {}): Workflow => ({
     name: "image-z-image-turbo",
     type: "image",
     label: "Z-Image Turbo",
-    enabled: true,
     availability: { available: true },
     models: [{ id: "image-z-image-turbo", label: "Z-Image Turbo", baseModel: null, baseModelLabel: null, imageInputs: 0 }],
     ...overrides,
@@ -48,10 +47,6 @@ describe("modelsOf", () => {
 
     it("drops a type the canvas cannot render", () => {
         expect(modelsOf(workflow({ type: "text", models: [{ id: "text-some-flow" }] }))).toEqual([]);
-    });
-
-    it("leaves out a workflow the user disabled", () => {
-        expect(modelsOf(workflow({ enabled: false }))).toEqual([]);
     });
 
     it("leaves out a workflow ComfyUI cannot run", () => {

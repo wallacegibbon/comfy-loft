@@ -10645,3 +10645,48 @@ gone, the empty box remained. `npx tsc --noEmit`, `npx vitest run` (422), `go te
 `applyUngroupSelection`), `frontend/src/lib/canvas/canvas-agent-tools.ts` (`CREATE_TYPES`, `createNode`),
 `internal/server/routes_mcp.go` (`create_node`, `group_nodes`), `frontend/tests/canvas-node-geometry.test.ts`,
 `frontend/tests/canvas-agent-tools.test.ts`.
+
+## 295. The workflow visibility switch is gone, not fixed
+
+**Decision** `store.Visibility` and its file (`data/workflow-visibility.json`), `POST
+/api/workflows/{id}/visibility`, `enabled` on a `/api/workflows` row, `Enabled` and `ModelVisible` on a
+resource row, the resource centre's 启用 checkbox and its "Hidden from picker" tag, the client-side filter in
+`modelsOf`, and the four strings that explained them are all gone.
+
+**Why** It was a switch that could not keep its promise, and the promise had a stronger twin.
+
+1. **One of its entry points honoured it.** `modelsOf` dropped a hidden workflow from the model picker. The
+   upscale dialog's pool filtered by `category` only, a run submitted by workflow id was never refused, and the
+   availability totals had stopped reading it in #64. Hide it, and it left the dropdown and still ran.
+2. **"Hidden" already had a real mechanism.** A workflow whose pack is not installed reports `available: false`
+   or contributes no models, so it is not in the picker either. The checkbox was a weaker second way to say the
+   same thing.
+3. **A preference that is always on is not free.** It cost a store, a file, a route, a field on two API rows, a
+   checkbox, four strings and a filter — to hide one row in a dropdown whose entries are already split by kind
+   and number fewer than ten.
+
+`ModelVisible` went with it: its only writer set it to `true` unconditionally (`internal/resource/status.go`),
+so the "Canvas entry" tag it gated could not render.
+
+**Rejected** Making it real — every entry point reading `enabled`, `POST /api/runs` refusing a hidden workflow,
+the agent honouring it too. That is a policy ("this workflow is unavailable in this workspace") with a
+server-side meaning, and nothing needs it: one user's board, and the way to not have a workflow is not to
+install it. #64 kept this switch while deleting the registry's `hidden` flag, on the grounds that `hidden` was
+deciding for the user; the ground was right and the conclusion was not, because a switch that decides nothing
+is worse than no switch.
+
+**Cost** A workflow that is installed and runnable can no longer be kept out of the model picker. If that ever
+becomes a requirement, the honest shape is a server-side policy whose refusal reaches the run — not a
+client-side filter that only edits a list. An install's `data/workflow-visibility.json` is left on disk and
+read by nothing; deleting a user's file on upgrade is not this change's business.
+
+**Tested** `go test ./...` — the store's two visibility tests and the route's end-to-end test are deleted with
+it, and `TestWorkflowsReportTheirModelIds` no longer asserts an `enabled` field. `frontend/tests/server-models.test.ts`:
+"leaves out a workflow the user disabled" is gone, "leaves out a workflow ComfyUI cannot run" stays. Plus
+`npx tsc --noEmit`, `npm run check`, `npx vitest run` (426), `make check` (502 exported declarations, every one
+reachable), `make build`, `make frontend`. The running server needs a restart to stop serving the deleted route.
+
+**Where** `internal/store/preferences.go`, `internal/server/server.go`, `internal/server/routes_admin.go`,
+`internal/resource/{resource.go,status.go}`, `frontend/src/lib/server-models.ts`,
+`frontend/src/services/api/resources.ts`, `frontend/src/components/settings/resource-center-panel.tsx`,
+`frontend/src/services/api/workflows.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `docs/server.md`.

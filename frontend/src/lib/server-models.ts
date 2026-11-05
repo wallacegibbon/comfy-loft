@@ -102,7 +102,7 @@ function parametersOf(workflow: ServerWorkflow) {
 export function modelsOf(workflow: ServerWorkflow): ChannelModel[] {
     const capability = workflow.type as ModelCapability;
     if (!CAPABILITIES.includes(capability)) return [];
-    if (workflow.enabled === false || workflow.availability?.available === false) return [];
+    if (workflow.availability?.available === false) return [];
     const duration = durationOf(workflow);
     const contracts = workflow.variantContracts
         ? Object.fromEntries(Object.entries(workflow.variantContracts).map(([mode, contract]) => [mode, { accepts: acceptsOf(contract?.accepts), mode: contract?.mode, inputs: inputsOf(contract?.inputs) }]))

@@ -353,7 +353,6 @@ Metadata and management:
 | `POST` | `/api/resources/refresh` | The only rescan: reloads the resource index, re-scans ComfyUI (nodes, models, availability, new workflow graphs) and returns the resource status. This is the panel's refresh button.                                                                                       |
 | `GET`  | `/api/system/stats`      | VRAM and RAM **of the machine running ComfyUI** (read from ComfyUI's own `/system_stats`), plus the last OOM. `available: false` when ComfyUI does not report its devices — the panel then shows nothing, because the server host's own memory is somebody else's machine. |
 | `GET`  | `/api/workflows/{id}/schema` | The typed inputs, media roles and outputs of one workflow — the contract a run is validated against. |
-| `POST` | `/api/workflows/{id}/visibility` | Show or hide a workflow in the canvas's model picker. |
 | `GET`  | `/api/resources/jobs/{id}` | One install job: what it is downloading and how far it has got. |
 | `POST` | `/api/resources/jobs/{id}/cancel` | Stop that job. Files already written stay. |
 | `POST` | `/api/resources/pick-replacement` | Open the operator's file dialog on a model directory, and answer with the file chosen. |
@@ -503,7 +502,7 @@ internal/upload          uploaded media: bytes on disk, index, cached ComfyUI re
 internal/resource        resources.json, install jobs, main-model override
 internal/canvas          the canvas directory: documents, revisions, files, import
 internal/prompt          Qwen's `图片N` renumbering, MOSS layout prompts
-internal/store           workflow visibility, main-model overrides, speech profiles
+internal/store           main-model overrides, speech profiles
 internal/settings        the preferences document, opaque to the server
 internal/sysinfo         ComfyUI's /system_stats, as the panel's units
 internal/agent           spawning AlayaCore, its event whitelist, models, notices

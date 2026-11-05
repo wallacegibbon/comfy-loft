@@ -12,43 +12,6 @@ import (
 
 func quietLogger() *logx.Logger { return logx.NewWithWriter("test", os.Stderr) }
 
-func TestVisibilityPersists(t *testing.T) {
-	dir := t.TempDir()
-	visibility := NewVisibility(dir, quietLogger())
-	visibility.Load()
-
-	if err := visibility.SetHidden("image-a", true); err != nil {
-		t.Fatalf("SetHidden: %v", err)
-	}
-	if !visibility.IsHidden("image-a") {
-		t.Error("image-a should be hidden")
-	}
-	if visibility.IsHidden("image-b") {
-		t.Error("image-b should not be hidden")
-	}
-
-	// Re-read from disk: the canvas restarts more often than the server.
-	reloaded := NewVisibility(dir, quietLogger())
-	reloaded.Load()
-	if !reloaded.IsHidden("image-a") {
-		t.Error("hidden state did not survive a reload")
-	}
-
-	if err := reloaded.SetHidden("image-a", false); err != nil {
-		t.Fatalf("SetHidden(false): %v", err)
-	}
-	if reloaded.IsHidden("image-a") {
-		t.Error("image-a should be visible again")
-	}
-}
-
-func TestVisibilityRejectsEmptyID(t *testing.T) {
-	visibility := NewVisibility(t.TempDir(), quietLogger())
-	if err := visibility.SetHidden("", true); err == nil {
-		t.Fatal("expected an error for an empty workflow id")
-	}
-}
-
 func TestMainModelsPerPackAndWorkflow(t *testing.T) {
 	dir := t.TempDir()
 	models := NewMainModels(dir, quietLogger())

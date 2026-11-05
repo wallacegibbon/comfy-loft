@@ -48,7 +48,6 @@ func (s *Server) routesAdmin(mux *http.ServeMux) {
 
 	s.route(mux, "GET /api/workflows", s.handleWorkflows)
 	s.route(mux, "GET /api/workflows/{id}/schema", s.handleWorkflowSchema)
-	s.route(mux, "POST /api/workflows/{id}/visibility", s.handleWorkflowVisibility)
 
 	s.route(mux, "GET /api/loras", s.handleLoras)
 
@@ -195,7 +194,6 @@ func (s *Server) handleWorkflows(ctx *httpx.Ctx) error {
 
 	type row struct {
 		workflow.PublicEntry
-		Enabled      bool             `json:"enabled"`
 		Availability interface{}      `json:"availability"`
 		Models       []map[string]any `json:"models"`
 	}
@@ -208,7 +206,6 @@ func (s *Server) handleWorkflows(ctx *httpx.Ctx) error {
 		entry.Parameters = s.enrichParameters(entry.Parameters)
 		rows = append(rows, row{
 			PublicEntry:  entry,
-			Enabled:      !s.visibility.IsHidden(entry.ID),
 			Availability: s.setup.WorkflowStatus(entry.ID),
 			Models:       models[entry.ID],
 		})
@@ -253,28 +250,6 @@ func (s *Server) handleWorkflowSchema(ctx *httpx.Ctx) error {
 	schema := s.registry.Schema(found.Entry)
 	schema.Parameters = s.enrichParameters(schema.Parameters)
 	httpx.OK(ctx.W, map[string]any{"schema": schema})
-	return nil
-}
-
-// handleWorkflowVisibility implements POST /api/workflows/{id}/visibility.
-func (s *Server) handleWorkflowVisibility(ctx *httpx.Ctx) error {
-	body, err := bodyOrEmpty(ctx)
-	if err != nil {
-		return err
-	}
-	entry := s.registry.Resolve(ctx.R.PathValue("id"))
-	if entry == nil {
-		return httpx.NotFound("workflow_not_found", "workflow not found")
-	}
-	enabled := true
-	if value, ok := body["enabled"].(bool); ok && !value {
-		enabled = false
-	}
-	if err := s.visibility.SetHidden(entry.ID, !enabled); err != nil {
-		return err
-	}
-	s.logger.Info("workflow visibility %s -> %s", entry.ID, map[bool]string{true: "enabled", false: "hidden"}[enabled])
-	okJSON(ctx.W, map[string]any{"id": entry.ID, "enabled": enabled})
 	return nil
 }
 

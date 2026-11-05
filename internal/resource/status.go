@@ -826,7 +826,6 @@ func (m *Manager) workflowDependencies(pack *Pack, providers *providerIndex, byI
 		availability := m.workflowStatus(workflowID)
 		label := workflowID
 		variantLabels := map[string]string{}
-		modelVisible := true
 		if entry != nil {
 			label = defaultString(entry.Label, entry.Name)
 			variantLabels = entry.VariantLabelsMap()
@@ -846,8 +845,6 @@ func (m *Manager) workflowDependencies(pack *Pack, providers *providerIndex, byI
 			ID:            workflowID,
 			Label:         label,
 			Available:     availability.Available,
-			Enabled:       !m.visibility.IsHidden(workflowID),
-			ModelVisible:  modelVisible,
 			VariantLabels: variantLabels,
 			Problems:      nonNilProblems(availability.Problems),
 			ModeProblems:  availability.ModeProblems,

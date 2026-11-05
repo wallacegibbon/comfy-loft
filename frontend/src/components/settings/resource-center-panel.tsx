@@ -18,7 +18,6 @@ import {
     pickResourceReplacement,
     refreshResourceStatus,
     setResourceReplacement,
-    setWorkflowVisibility,
     type ResourceItem,
     type ResourceJob,
     type ResourcePack,
@@ -490,26 +489,6 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
         });
     };
 
-    const toggleWorkflowEnabled = async (id: string, enabled: boolean) => {
-        try {
-            await setWorkflowVisibility(id, enabled);
-            setStatus((current) =>
-                current
-                    ? {
-                          ...current,
-                          packs: current.packs.map((pack) => ({
-                              ...pack,
-                              workflowDependencies: pack.workflowDependencies?.map((workflow) => (workflow.id === id ? { ...workflow, enabled } : workflow)),
-                          })),
-                      }
-                    : current,
-            );
-            window.dispatchEvent(new Event("local-server-refresh-models"));
-        } catch (toggleError) {
-            showError(toggleError);
-        }
-    };
-
     const replaceResource = async (item: ResourceItem) => {
         if (replacementSaving) return;
         setReplacementSaving(item.id);
@@ -886,13 +865,11 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
                                                         )
                                                         .join("；");
                                                     return (
-                                                        <div key={workflow.id} className={`rounded-lg transition-colors ${workflow.enabled === false ? "bg-stone-50/60 dark:bg-white/[.01]" : "bg-emerald-50/40 dark:bg-emerald-950/40"}`}>
+                                                        <div key={workflow.id} className="rounded-lg bg-emerald-50/40 transition-colors dark:bg-emerald-950/40">
                                                             <div className="flex items-start gap-2 p-2">
                                                                 <button type="button" className="min-w-0 flex-1 text-left" onClick={() => toggleWorkflow(workflow.id)} aria-expanded={workflowExpanded}>
                                                                     <div className="flex flex-wrap items-center gap-2">
-                                                                        <span className={`text-xs font-medium ${workflow.enabled === false ? "text-stone-400 dark:text-stone-500" : "text-stone-800 dark:text-stone-100"}`}>
-                                                                            {serverModelLabel(workflow.id, workflow.label)}
-                                                                        </span>
+                                                                        <span className="text-xs font-medium text-stone-800 dark:text-stone-100">{serverModelLabel(workflow.id, workflow.label)}</span>
                                                                         {workflow.recommended ? (
                                                                             <Tag color="blue" className="m-0">
                                                                                 {copy.recommended}
@@ -901,7 +878,7 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
                                                                         {workflow.missingSize ? <span className="text-[10px] text-stone-400 dark:text-stone-500">{formatBytes(workflow.missingSize)}</span> : null}
                                                                         {workflowTag}
                                                                     </div>
-                                                                    <div className={`truncate text-[10px] ${workflow.enabled === false ? "text-stone-400 dark:text-stone-500" : "text-emerald-700/70 dark:text-emerald-300/60"}`}>{workflow.id}</div>
+                                                                    <div className="truncate text-[10px] text-emerald-700/70 dark:text-emerald-300/60">{workflow.id}</div>
                                                                     {Object.values(workflow.variantLabels || {}).length ? (
                                                                         <div className="mt-0.5 truncate text-[10px] text-stone-400 dark:text-stone-500">
                                                                             {Object.entries(workflow.variantLabels || {})
@@ -910,24 +887,6 @@ export function ResourceCenterPanel({ compact = false, footer }: { compact?: boo
                                                                         </div>
                                                                     ) : null}
                                                                 </button>
-                                                                {workflow.modelVisible === false ? (
-                                                                    <Tag className="m-0 mt-1 shrink-0">{copy.canvasEntry}</Tag>
-                                                                ) : (
-                                                                    <Tooltip title={copy.visibilityHint}>
-                                                                        <span
-                                                                            className="mt-1 flex shrink-0 cursor-pointer select-none items-center gap-1.5"
-                                                                            onClick={(event) => {
-                                                                                event.stopPropagation();
-                                                                                void toggleWorkflowEnabled(workflow.id, workflow.enabled === false);
-                                                                            }}
-                                                                        >
-                                                                            <Checkbox checked={workflow.enabled !== false} onClick={(event) => event.stopPropagation()} onChange={(event) => void toggleWorkflowEnabled(workflow.id, event.target.checked)} />
-                                                                            <span className={`min-w-8 text-[10px] ${workflow.enabled === false ? "text-stone-400 dark:text-stone-500" : "text-emerald-600 dark:text-emerald-400"}`}>
-                                                                                {workflow.enabled === false ? copy.workflowDisabled : copy.workflowEnabled}
-                                                                            </span>
-                                                                        </span>
-                                                                    </Tooltip>
-                                                                )}
                                                                 <button
                                                                     type="button"
                                                                     className="mt-1 rounded-lg p-1 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600 dark:text-stone-500 dark:hover:bg-white/5 dark:hover:text-stone-300"

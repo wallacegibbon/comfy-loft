@@ -77,8 +77,6 @@ type WorkflowDependency = {
     id: string;
     label: string;
     available: boolean;
-    enabled?: boolean;
-    modelVisible?: boolean;
     variantLabels?: Record<string, string>;
     recommended?: boolean;
     problems: Array<{ type?: string; message?: string; classType?: string; input?: string; value?: string; candidates?: string[] }>;
@@ -270,16 +268,6 @@ export async function setResourceReplacement(resourceId: string, file: string): 
     const data = await readJson(response);
     if (!response.ok || data.ok === false) throw new Error(errorMessage(data, apiText("resourceReplacementSaveFailed", { status: response.status })));
     return data.status as ResourceStatus;
-}
-
-export async function setWorkflowVisibility(id: string, enabled: boolean): Promise<void> {
-    const response = await serverFetch(`${serverBase}/api/workflows/${encodeURIComponent(id)}/visibility`, {
-        method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-    });
-    const data = await readJson(response);
-    if (!response.ok || data.ok === false) throw new Error(errorMessage(data, apiText("resourceVisibilityFailed", { status: response.status })));
 }
 
 export async function cancelResourceJob(id: string): Promise<ResourceJob> {

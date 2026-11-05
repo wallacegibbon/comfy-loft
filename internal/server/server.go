@@ -36,7 +36,6 @@ type Server struct {
 	comfy      *comfy.Client
 	hub        *generate.Hub
 	runner     *generate.Runner
-	visibility *store.Visibility
 	mainModels *store.MainModels
 	// speechProfiles is the list of speech servers, which one dictation uses, and their credentials: server-side
 	// only, never in the preferences document (that one is handed to every browser), never sent back to a page
@@ -121,9 +120,6 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 		return nil, err
 	}
 
-	visibility := store.NewVisibility(cfg.DataDir, logger)
-	visibility.Load()
-
 	speechProfiles := store.NewSpeechProfiles(cfg.DataDir, logger)
 	speechProfiles.Load()
 
@@ -139,7 +135,6 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 		Config:     cfg,
 		Setup:      setupManager,
 		Registry:   registry,
-		Visibility: visibility,
 		MainModels: mainModels,
 		Logger:     logger,
 	})
@@ -153,7 +148,6 @@ func New(cfg *config.Config, logger *logx.Logger) (*Server, error) {
 		comfy:          comfyClient,
 		hub:            hub,
 		runner:         generate.NewRunner(comfyClient, hub, logger, cfg.RequestTimeoutMs, cfg.PollIntervalMs),
-		visibility:     visibility,
 		mainModels:     mainModels,
 		speechProfiles: speechProfiles,
 		registry:       registry,

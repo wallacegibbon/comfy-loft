@@ -83,7 +83,6 @@ export type ServerWorkflow = {
     category?: string | null;
     parameters?: WorkflowParameter[];
     availability?: WorkflowAvailability;
-    enabled?: boolean;
     /** The variant modes an image workflow offers (`t2i`, `edit`, `inpaint`, `outpaint`). */
     variantModes?: string[];
     variantLabels?: Record<string, string>;

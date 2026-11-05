@@ -357,9 +357,6 @@ func TestWorkflowsReportTheirModelIds(t *testing.T) {
 	if row["id"] != "image-test" {
 		t.Errorf("id = %v", row["id"])
 	}
-	if enabled, _ := row["enabled"].(bool); !enabled {
-		t.Error("a workflow with no visibility record must report enabled")
-	}
 	availability, _ := row["availability"].(map[string]any)
 	if available, _ := availability["available"].(bool); !available {
 		t.Errorf("expected the workflow to be available: %v", availability)
@@ -429,30 +426,5 @@ func TestWorkflowsReportOneIdPerBaseModel(t *testing.T) {
 	}
 	if seen["image-test__zit-int8"] != "z_image_int8.safetensors" {
 		t.Errorf("ids = %v", seen)
-	}
-}
-
-func TestWorkflowVisibilityToggles(t *testing.T) {
-	fake := newFakeComfy(t)
-	srv := newTestServer(t, fake)
-	server := httptest.NewServer(srv.Handler())
-	defer server.Close()
-
-	status, _ := doJSON(t, server.Client(), http.MethodPost, server.URL+"/api/workflows/image-test/visibility",
-		map[string]any{"enabled": false})
-	if status != http.StatusOK {
-		t.Fatalf("visibility status = %d", status)
-	}
-
-	// The server reports the fact; dropping a hidden workflow from a model list is the client's
-	// decision. The row stays, with `enabled: false`.
-	_, payload := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/workflows", nil)
-	rows, _ := payload["workflows"].([]any)
-	if len(rows) != 1 {
-		t.Fatalf("workflows = %v", rows)
-	}
-	row, _ := rows[0].(map[string]any)
-	if enabled, _ := row["enabled"].(bool); enabled {
-		t.Error("a hidden workflow must report enabled: false")
 	}
 }
