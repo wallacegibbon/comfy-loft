@@ -11,7 +11,7 @@ import { describeCanvas } from "@/lib/canvas/canvas-agent-view";
 import { configuredClause, generationClause, runClause } from "@/lib/canvas/node-generation-facts";
 import { nodeContentOf, nodePromptOf } from "@/lib/canvas/node-prompt-field";
 import { planNodeSettings, type NodeSettings, type SettingsContract } from "@/lib/canvas/node-settings";
-import { planNodeModel, type ModelChoice, type ModelCatalog } from "@/lib/canvas/node-model";
+import { describeModelCatalogs, MODEL_CAPABILITIES, planNodeModel, type ModelCapability, type ModelCatalog, type ModelCatalogs, type ModelChoice } from "@/lib/canvas/node-model";
 import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type Position } from "@/types/canvas";
 
 /**
@@ -72,12 +72,13 @@ export type CanvasHands = {
     /** Write the fields a call settles on — a setting, or which model runs — the way the panel writes them. */
     writeMetadata: (nodeId: string, patch: CanvasNodeMetadata) => void;
     /**
-     * The models this node may be set to, in the picker's own order, and whether a run of one reads a key.
+     * The models one kind of node may be set to, in the picker's own order, and whether a run of one reads a key.
      *
      * Built from the same `workflowModelOptions` the pickers offer, so a model the panel would not show is not
-     * a model a caller can name — and the contract answer is the panel's own three-state one (#304).
+     * a model a caller can name — and the contract answer is the panel's own three-state one (#304). Asked by
+     * kind rather than by node, because a question about models does not name a node.
      */
-    modelCatalog: (nodeId: string) => ModelCatalog;
+    modelCatalog: (capability: ModelCapability) => ModelCatalog;
 };
 
 /** What stopping one node's run did, in the page's own words. */
@@ -120,6 +121,8 @@ export async function runTool(name: string, args: unknown, hands: CanvasHands, s
             return setNodeSettings(hands, args);
         case "set_model":
             return setModel(hands, args);
+        case "list_models":
+            return listModels(hands, args);
         case "generate":
             return pressGenerate(hands, args, session);
         case "stop_node":
@@ -376,7 +379,7 @@ function setModel(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
     if (!node) return noSuchNode(args);
     const { nodeId: _named, ...choice } = argsOf(args);
-    const plan = planNodeModel(node, choice as ModelChoice, hands.modelCatalog(node.id));
+    const plan = planNodeModel(node, choice as ModelChoice, hands.modelCatalog(node.type as ModelCapability));
     if (!plan.ok) return { content: [textBlock(plan.reason)], isError: true };
 
     hands.writeMetadata(node.id, plan.patch);
@@ -386,6 +389,30 @@ function setModel(hands: CanvasHands, args: unknown): ToolAnswer {
     // told rather than left to discover it when a number stops mattering.
     const dropped = plan.stale.length ? `; this run no longer reads ${plan.stale.join(", ")}, and ${plan.stale.length === 1 ? "it is" : "they are"} still on the node — the request leaves ${plan.stale.length === 1 ? "it" : "them"} out` : "";
     return { content: [textBlock(`${node.id} now runs ${ran}${clause ? ` — ${clause}` : ""}${dropped}`)], isError: false };
+}
+
+/**
+ * What this canvas can run, by kind — the question no tool could answer.
+ *
+ * Every model name an agent had seen came from a node that already had one, so "how many image models are
+ * there" was answered by reciting the canvas: an upscaler counted among the generators, two workflows missing
+ * because nothing on screen used them, and an honest admission that the list was not complete. The list is
+ * data the page already holds (the pickers' own), and this is it said once, grouped by what a workflow makes,
+ * with steps on their own line because they are not what a prompt makes.
+ *
+ * `capability` narrows it to one kind; without it the answer is all three, which is the shape a question about
+ * "models" usually has.
+ */
+function listModels(hands: CanvasHands, args: unknown): ToolAnswer {
+    const asked = argsOf(args).capability;
+    if (asked !== undefined && typeof asked !== "string") return { content: [textBlock("capability needs one of image, video, audio — or leave it out for all three")], isError: true };
+    const wanted = typeof asked === "string" ? asked.trim().toLowerCase() : "";
+    if (wanted && !MODEL_CAPABILITIES.includes(wanted as ModelCapability)) {
+        return { content: [textBlock(`${wanted} is not a kind of content this canvas makes: ${MODEL_CAPABILITIES.join(", ")}`)], isError: true };
+    }
+    const catalogs = {} as ModelCatalogs;
+    for (const capability of wanted ? [wanted as ModelCapability] : MODEL_CAPABILITIES) catalogs[capability] = hands.modelCatalog(capability);
+    return { content: [textBlock(describeModelCatalogs(catalogs))], isError: false };
 }
 
 /**

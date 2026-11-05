@@ -23,6 +23,9 @@ import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata } from "@/
 /** The kinds of node that run a model. A text card holds words, a group holds nodes, a LoRA a stack. */
 const MODEL_KINDS: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio];
 
+/** The three kinds of content a workflow can make. A text card makes none of them. */
+export type ModelCapability = "image" | "video" | "audio";
+
 /** One model a node of this kind may be set to, as the pickers describe it. */
 type ModelOption = {
     /** The value the node stores, as the pickers write it (`default::image-qwen21`). */
@@ -38,6 +41,14 @@ type ModelOption = {
     /** The modes the family offers, and the ones whose own nodes are missing. */
     modes: string[];
     blocked: string[];
+    /**
+     * Whether this is a *step* rather than a generator: it takes a picture or a clip and a knob, and nothing is
+     * asked of it in words. The pickers show these (a node can be one), so a listing has to say which they are
+     * — "how many image models" has a different answer once the upscaler stops counting (docs/decisions.md #312).
+     */
+    step: boolean;
+    /** What the workflow takes as media, in three words: "1 image", "1-4 images", "words only". */
+    takes: string;
 };
 
 /** What the page lends the decision: the choices, and the contract answer for each (#304). */
@@ -46,6 +57,9 @@ export type ModelCatalog = {
     /** Whether a run of `value` in `mode` reads `key`: true, false, or undefined when nothing is published. */
     accepts: (value: string, mode: string, key: string) => boolean | undefined;
 };
+
+/** Every kind's catalog, for the question "what models does this canvas have at all". */
+export type ModelCatalogs = Record<ModelCapability, ModelCatalog>;
 
 type ModelPlan = { ok: true; patch: CanvasNodeMetadata; model: ModelOption; mode: string; stale: string[] } | { ok: false; reason: string };
 
@@ -151,4 +165,74 @@ function modesIn(catalog: ModelCatalog) {
 
 function currentName(current: { option: ModelOption } | { reason: string } | undefined) {
     return current && "option" in current ? current.option.workflowId : "its model";
+}
+
+/** The kinds a listing covers, in the order a reader thinks of them. */
+export const MODEL_CAPABILITIES: ModelCapability[] = ["image", "video", "audio"];
+
+/**
+ * What this canvas can run, as one answer — the question the tools could not answer at all.
+ *
+ * Every model name an agent had ever seen came from a node that already had one: `read_prompt` says "set to run
+ * image-qwen21" and `read_node` says "made with image-z-image-turbo", and neither is a list. Asked how many
+ * models there were, an agent recited the names it had scraped off the canvas, counted an upscaler among the
+ * image generators, and said it could not get the complete list. It was right — nothing offered one.
+ *
+ * So the listing is grouped by what the workflow makes, and **steps are their own line**: an upscaler or an
+ * interpolation is offered by the pickers, because a node can be one, but it is not something a prompt makes,
+ * and counting it as a picture model is how the wrong number gets said out loud. What each workflow *reads* is
+ * not here: that is the contract of the node it runs on, and `set_node_settings` refuses a key outside it.
+ */
+export function describeModelCatalogs(catalogs: ModelCatalogs): string {
+    const lines: string[] = [];
+    const total = new Set<string>();
+    for (const capability of MODEL_CAPABILITIES) {
+        // A kind nobody asked about is not a kind with nothing: a narrowed call answers about one, and claiming
+        // the others are empty would be the same lie as reciting a list from the nodes on screen.
+        const catalog = catalogs[capability];
+        if (!catalog) continue;
+        const options = catalog.options || [];
+        if (!options.length) {
+            lines.push(`${capability}: none configured on this canvas`);
+            continue;
+        }
+        const generators = options.filter((option) => !option.step);
+        const steps = options.filter((option) => option.step);
+        for (const option of options) total.add(option.workflowId || option.value);
+        lines.push(`${capability} — ${count(generators.length, "workflow")} to generate with${steps.length ? `, ${count(steps.length, "step")}` : ""}`);
+        for (const option of generators) lines.push(`  ${describeModel(option)}`);
+        // Named together rather than one per line: a step has no modes worth reading, and the point of the line
+        // is that they are not part of the number above.
+        if (steps.length) lines.push(`  steps (they take a picture or a clip and a knob, and nothing is asked of them): ${steps.map((option) => option.workflowId).join(", ")}`);
+    }
+    lines.push("");
+    lines.push(
+        `${count(total.size, "workflow")} in all, each one of them something a node can be set to with set_model. What a workflow reads is the contract of the node that runs it — set_node_settings refuses a key it does not read. A base model is a file inside a family, not a workflow: each family is pointed at one of the files its own picker lists.`,
+    );
+    return lines.join("\n");
+}
+
+/** One model, as a line: the name to use, what it is called, what it takes, and the modes it offers. */
+function describeModel(option: ModelOption) {
+    const name = option.workflowId || option.names[0] || option.value;
+    const parts: string[] = [];
+    if (option.label && option.label !== name) parts.push(option.label);
+    if (option.takes) parts.push(option.takes);
+    parts.push(...modesOf(option));
+    return `- ${name}${parts.length ? ` · ${parts.join(" · ")}` : ""}`;
+}
+
+/** A family's modes, with the blocked one marked — a mode offered and refused is the one to name. */
+function modesOf(option: ModelOption) {
+    const modes: string[] = [];
+    if (option.mode) modes.push(`mode ${option.mode}`);
+    if (option.modes.length) {
+        const offered = option.modes.map((mode) => (option.blocked.includes(mode) ? `${mode} (blocked: its node pack is missing)` : mode));
+        modes.push(`modes ${offered.join(", ")}`);
+    }
+    return modes;
+}
+
+function count(number: number, noun: string) {
+    return `${number} ${noun}${number === 1 ? "" : "s"}`;
 }

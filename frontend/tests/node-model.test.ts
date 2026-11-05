@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { planNodeModel, type ModelCatalog } from "../src/lib/canvas/node-model";
+import { describeModelCatalogs, planNodeModel, type ModelCatalog } from "../src/lib/canvas/node-model";
 import type { CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
 
 /**
@@ -15,14 +15,16 @@ import type { CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
 const node = (type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData => ({ id: `${type}-1`, type, title: `${type}-1`, position: { x: 0, y: 0 }, width: 320, height: 240, metadata });
 
 /** One picker entry, as the page builds it: the fields the decision reads, and nothing else. */
-type Entry = { value: string; workflowId: string } & Partial<{ names: string[]; label: string; mode: string; modes: string[]; blocked: string[] }>;
+type Entry = { value: string; workflowId: string } & Partial<{ names: string[]; label: string; mode: string; modes: string[]; blocked: string[]; step: boolean; takes: string }>;
 
-const option = (over: Entry): Entry & Required<Pick<Entry, "names" | "label" | "mode" | "modes" | "blocked">> => ({
+const option = (over: Entry): Entry & Required<Pick<Entry, "names" | "label" | "mode" | "modes" | "blocked" | "step" | "takes">> => ({
     names: [over.workflowId],
     label: over.workflowId,
     mode: "",
     modes: [],
     blocked: [],
+    step: false,
+    takes: "",
     ...over,
 });
 
@@ -169,5 +171,66 @@ describe("what has no run to choose", () => {
     test("a mode alone on a node that runs no model names the model it needs", () => {
         const plan = planNodeModel(node("image"), { mode: "edit" }, catalog());
         expect(!plan.ok && plan.reason).toContain("name the model too");
+    });
+});
+
+/**
+ * The listing: what this canvas can run, said once.
+ *
+ * The question it exists for is "how many image models are there", and the two things that made the old answer
+ * wrong are pinned here: **steps are not generators** (an upscaler counted among the image models is the wrong
+ * number), and a workflow nothing on the canvas uses is still on the list (docs/decisions.md #312).
+ */
+describe("describeModelCatalogs: what this canvas can run", () => {
+    const catalogs = (over: Partial<Record<"image" | "video" | "audio", ModelCatalog>> = {}) => ({
+        image: {
+            options: [
+                option({ value: "default::image-qwen21", workflowId: "image-qwen21", label: "Qwen Image 2.1", modes: ["t2i", "edit", "inpaint", "outpaint"], blocked: ["outpaint"], takes: "1-4 images" }),
+                option({ value: "default::image-z-image-turbo", workflowId: "image-z-image-turbo", takes: "words only" }),
+                option({ value: "default::image-esrgan-upscale", workflowId: "image-esrgan-upscale", step: true, takes: "1 image" }),
+            ],
+            accepts: () => undefined,
+        },
+        video: {
+            options: [option({ value: "default::video-h3-t2v", workflowId: "video-h3-t2v", mode: "text", takes: "words only" })],
+            accepts: () => undefined,
+        },
+        audio: { options: [], accepts: () => undefined },
+        ...over,
+    });
+
+    test("groups by what a workflow makes, and counts only generators in the heading", () => {
+        const text = describeModelCatalogs(catalogs());
+        expect(text).toContain("image — 2 workflows to generate with, 1 step");
+        expect(text).toContain("video — 1 workflow to generate with");
+        // A kind with nothing configured says so rather than going missing.
+        expect(text).toContain("audio: none configured on this canvas");
+    });
+
+    test("a step is named on its own line, so it cannot be counted as a model that draws", () => {
+        const text = describeModelCatalogs(catalogs());
+        expect(text).toContain("steps (they take a picture or a clip and a knob");
+        expect(text).toContain("image-esrgan-upscale");
+        // …and it is not in the generators' lines.
+        expect(text).not.toContain("- image-esrgan-upscale ·");
+    });
+
+    test("a mode whose node pack is missing is marked where the mode is offered", () => {
+        expect(describeModelCatalogs(catalogs())).toContain("outpaint (blocked: its node pack is missing)");
+    });
+
+    test("the workflow is named by the id a caller can pass, with what it takes beside it", () => {
+        const text = describeModelCatalogs(catalogs());
+        expect(text).toContain("- image-qwen21 · Qwen Image 2.1 · 1-4 images · modes t2i, edit, inpaint");
+        expect(text).toContain("- video-h3-t2v · words only · mode text");
+    });
+
+    test("the total counts workflows, not channels, and points at the two things left out", () => {
+        const doubled = catalogs({ image: { options: [option({ value: "a::image-qwen21", workflowId: "image-qwen21" }), option({ value: "b::image-qwen21", workflowId: "image-qwen21" })], accepts: () => undefined } });
+        const text = describeModelCatalogs(doubled);
+        // Two channels' copies are one workflow: the count is of workflows, not of entries.
+        expect(text).toContain("2 workflows in all");
+        expect(text).toContain("A base model is a file inside a family");
+        expect(text).toContain("set_node_settings refuses a key it does not read");
     });
 });

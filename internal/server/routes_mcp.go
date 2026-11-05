@@ -201,6 +201,16 @@ func (s *Server) mcpTools() []mcpTool {
 			"additionalProperties": false
 		}`),
 	}, {
+		Name:        "list_models",
+		Description: "What this canvas can run, grouped by the kind of content, with the ones that are steps named apart. Ask this before answering any question about models: the names an agent has seen are the ones on nodes it happened to read, and reciting those is how a canvas with five image generators answers \"four\", counts an upscaler among them, and misses the workflow nothing on screen uses. A name here is what set_model takes, and what a run reports itself as. Each entry also says what the workflow takes (words, or how many pictures or clips) and the modes a family offers — including any whose own node pack is missing, which a run would be refused for. What each workflow reads is not here: that is the contract of the node it runs on, where set_node_settings refuses a key it does not read. A base model is a file inside a family rather than a workflow, and the node's own picker lists those.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"capability": {"type": "string", "enum": ["image", "video", "audio"], "description": "One kind of content to list. Leave it out for all three, which is the shape a question about models usually has."}
+			},
+			"additionalProperties": false
+		}`),
+	}, {
 		Name:        "set_model",
 		Description: "Change which run this node is: the workflow it generates with, and — for a family that offers several — the mode it is asked in. This is the one tool that changes what a picture is rather than how it is made, so reach for it when the user names a model or asks for a mode, not to make a prompt fit. Both of a model's names work: the workflow this canvas reports (`image-qwen21`) and the picker's own value (`default::image-qwen21`). A mode is resolved the way the panel resolves it — a film's workflow *is* its mode, so naming a film mode names the workflow — and a mode whose node pack is missing is refused here rather than queued to fail inside ComfyUI. The answer names what the node now runs and, if the new workflow no longer reads a setting the node is holding, which one: the value stays on the node and the request leaves it out. Setting a model on a node that holds material is how it becomes a generator again.",
 		InputSchema: json.RawMessage(`{

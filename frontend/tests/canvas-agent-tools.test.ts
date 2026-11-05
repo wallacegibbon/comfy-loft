@@ -433,7 +433,7 @@ describe("resize_node: the card's box, not a zoom", () => {
  */
 describe("set_model: which run this node is", () => {
     const catalogWith = (accepts: string[]): ModelCatalog => ({
-        options: [{ value: "default::image-qwen21", names: ["image-qwen21"], label: "Qwen Image 2.1", workflowId: "image-qwen21", mode: "", modes: ["t2i", "edit"], blocked: [] }],
+        options: [{ value: "default::image-qwen21", names: ["image-qwen21"], label: "Qwen Image 2.1", workflowId: "image-qwen21", mode: "", modes: ["t2i", "edit"], blocked: [], step: false, takes: "words only" }],
         accepts: (_value, _mode, key) => accepts.includes(key),
     });
 
@@ -473,6 +473,53 @@ describe("set_model: which run this node is", () => {
         const words = await textOf(hands, "set_model", { nodeId: "text-1", model: "image-qwen21" });
         expect(words.answer.isError).toBe(true);
         expect(words.text).toContain("holds words");
+    });
+});
+
+/**
+ * The question no tool could answer: what models does this canvas have.
+ *
+ * The listing itself is `describeModelCatalogs`'s, tested where it lives (#312); what is checked here is the
+ * wiring — one catalog per kind asked of the page, all three unless the call names one, and a kind that is not
+ * one of them refused rather than silently ignored.
+ */
+describe("list_models: what this canvas can run", () => {
+    const asked: string[] = [];
+    const catalogFor = (capability: string) => ({
+        options: capability === "image" ? [{ value: "default::image-qwen21", names: ["image-qwen21"], label: "Qwen Image 2.1", workflowId: "image-qwen21", mode: "", modes: [], blocked: [], step: false, takes: "words only" }] : [],
+        accepts: () => undefined,
+    });
+    const hands = (): CanvasHands => {
+        const base = handsFor([placed("image-1", "image")]).hands;
+        return {
+            ...base,
+            modelCatalog: (capability) => {
+                asked.push(capability);
+                return catalogFor(capability);
+            },
+        };
+    };
+
+    test("asks every kind unless the call names one, and lists what it found", async () => {
+        asked.length = 0;
+        const { text } = await textOf(hands(), "list_models", {});
+        expect(asked).toEqual(["image", "video", "audio"]);
+        expect(text).toContain("image — 1 workflow to generate with");
+        expect(text).toContain("video: none configured on this canvas");
+    });
+
+    test("a kind named narrows it to that one", async () => {
+        asked.length = 0;
+        const { text } = await textOf(hands(), "list_models", { capability: "image" });
+        expect(asked).toEqual(["image"]);
+        expect(text).toContain("image-qwen21");
+        expect(text).not.toContain("audio");
+    });
+
+    test("a kind this canvas does not make is refused, with the three it does", async () => {
+        const { answer, text } = await textOf(hands(), "list_models", { capability: "text" });
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("image, video, audio");
     });
 });
 

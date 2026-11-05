@@ -13,7 +13,7 @@ import type { GenerateOptions, GenerateStart } from "@/lib/canvas/agent-generate
 import type { StopOutcome } from "@/lib/canvas/canvas-agent-tools";
 import type { ModelCatalog } from "@/lib/canvas/node-model";
 import { createVideoGenerationTask, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
-import { acceptsInput, channelModelOf, modelContractOf, modelOptionLabel, useConfigStore, useEffectiveConfig, workflowModelOptions, type ModelCapability } from "@/stores/use-config-store";
+import { acceptsInput, channelModelOf, modelContractOf, modelOptionLabel, useConfigStore, useEffectiveConfig, workflowModelOptions, type ModelAccepts, type ModelCapability } from "@/stores/use-config-store";
 import { imageModeFor } from "@/lib/canvas/image-mode";
 import { uploadImage } from "@/services/image-storage";
 import { nanoid } from "nanoid";
@@ -2131,9 +2131,7 @@ function InfiniteCanvasPage() {
      * because those are what `list_nodes` and `read_prompt` report and what a caller will therefore type.
      */
     const modelCatalog = useCallback(
-        (nodeId: string): ModelCatalog => {
-            const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
-            const capability: ModelCapability = node?.type === CanvasNodeType.Video ? "video" : node?.type === CanvasNodeType.Audio ? "audio" : "image";
+        (capability: ModelCapability): ModelCatalog => {
             const options = workflowModelOptions(effectiveConfig, capability).flatMap((value) => {
                 const model = channelModelOf(effectiveConfig, value)?.model;
                 if (!model) return [];
@@ -2146,6 +2144,9 @@ function InfiniteCanvasPage() {
                         mode: model.mode || "",
                         modes: model.variantModes || [],
                         blocked: model.blockedModes || [],
+                        // A step is offered by the pickers (a node can be one) and is not what a prompt makes.
+                        step: model.tool === true || model.hasPrompt === false,
+                        takes: mediaSummary(model.accepts),
                     },
                 ];
             });
@@ -2153,6 +2154,28 @@ function InfiniteCanvasPage() {
         },
         [effectiveConfig],
     );
+
+    /**
+     * What a workflow takes as media, in three words, for the model listing.
+     *
+     * `1-4 images` and `words only` are the difference between a workflow that edits a picture and one that
+     * draws from words, which is the first thing a caller wants to know after the name. A workflow that
+     * declares nothing says nothing.
+     */
+    function mediaSummary(accepts: ModelAccepts | undefined) {
+        if (!accepts) return "";
+        const parts: string[] = [];
+        for (const [kind, label] of [
+            ["images", "image"],
+            ["videos", "clip"],
+            ["audios", "sound"],
+        ] as const) {
+            const range = accepts[kind];
+            if (!range?.max) continue;
+            parts.push(range.min === range.max ? `${range.min} ${label}` : `${range.min}-${range.max} ${label}s`);
+        }
+        return parts.length ? parts.join(" + ") : "words only";
+    }
 
     // The agent's hands are the same functions the buttons press.
     useCanvasAgentTools({
