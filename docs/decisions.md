@@ -8381,13 +8381,15 @@ arrive as the next prompt (`delivered`, which the panel already uses to clear th
 
 ## 239. Speech is a hop: the gateway carries one file to the address the page names
 
-**Decision** The agent's prompt can be filled by talking: holding `Ctrl`/`⌘` + `'`, or holding the panel's
-microphone button, records while held and puts the transcript **at the caret** on release. The server speaks
+**Decision** The agent's prompt can be filled by talking: holding `Ctrl`/`⌘` + `'` (or the backquote above
+Tab, #314), or holding the panel's microphone button, records while held and puts the transcript **at the caret**
+on release. The server speaks
 OpenAI-compatible `POST /v1/audio/transcriptions` (a WAV in, `{"text": …}` out).
 
-**Amended by #246 and #252** The address stopped being the only setting: the model name is a setting, the credential
-lives on the server, and both now come from the active profile in `data/speech.json` rather than travelling in the
-request. The hop, the WAV, the gesture and the caret are unchanged.
+**Amended by #246, #252 and #314** The address stopped being the only setting: the model name is a setting, the
+credential lives on the server, and both now come from the active profile in `data/speech.json` rather than
+travelling in the request. The hop, the WAV, the gesture and the caret are unchanged; #314 added a second key to
+the gesture — the backquote, matched in `agent-dictation.ts` — without changing what the gesture does.
 
 **Why the browser cannot make that request** Measured against the server this was built on (audio.cpp, `model=refine`,
 Qwen3-ASR-0.6B): it answers **no CORS headers** — `OPTIONS` is a 404 and a `POST` comes back without
@@ -11461,3 +11463,45 @@ version said "up to 1 clips" and counted a permission ("up to 2 sounds") as a re
 `frontend/src/lib/canvas/canvas-agent-tools.ts` (`readPrompt`, `connectedMedia`),
 `frontend/src/pages/canvas/project.tsx` (`modelCatalog`, `nodeContract`),
 `frontend/tests/{node-model,node-generation-facts,canvas-agent-tools}.test.ts`.
+
+## 314. Two keys, one gesture: the backquote holds the microphone too
+
+**Decision** `Ctrl`/`⌘` + `'` and `Ctrl`/`⌘` + the backquote above Tab start and end dictation through one
+predicate pair (`isTalkChord`, `isTalkKey` in `agent-dictation.ts`) and one handler in the hook, so the
+microphone, the length cap, the release path and the caret are the same code whichever key was held. The
+matching that used to live inline in `use-hold-to-talk.ts` moved into the pure module, where "the two keys are
+one gesture" is a fact with tests rather than two lines to compare by eye.
+
+**Why** The user's reason, in their words: it is easier to press and asks less of a keyboard (更好按，更不挑键盘).
+The backquote sits on the home row, one key from where the hand already rests for the modifier, and it is not a
+character whose position moves around a layout's punctuation block. Nothing else here binds it: the canvas reads
+`modifier + letter`, `Space` is the temporary tool, `Shift` and `Ctrl` alone are additive selection and the
+temporary tool, and neither key types anything under the chord nor is bound by a browser (`⌘+'` is Firefox's
+quick-find and `⌘` with the backquote cycles an app's windows — both on macOS, which is why the documents still
+say `Ctrl` first).
+
+**Rejected** A second listener, or a second constant, on the "it is only one more line" argument: two handlers
+with the same body is how two keys stop being identical the first time one of them is fixed, and the release
+path is the one that would be forgotten — it carries the two extra cases (`Control`, `Meta`) that make letting
+go work from either half of the chord. Also rejected: matching only `event.key` (a layout can report a different
+character at the same physical key) and only `event.code` (an event may carry none — and the old code already
+accepted the character, which is why the pair reads both).
+
+**Cost** Two more literals in a list, six test cases, and two pieces of copy that now name a second key: the
+microphone button's tooltip (「Ctrl / Cmd + ' 或 `」) and the shortcut dialog's row, whose key chip reads
+`' / ` and a backquote. On some keyboards `Ctrl` + backquote reopens a console in another application —
+nothing this build runs binds it, and `preventDefault()` is only reached while the agent panel is mounted and
+the chord really is the chord.
+
+**Tested** `npx vitest run` (515 — six new in `tests/agent-dictation.test.ts`): every question asked of both keys
+and answered the same way, with `Ctrl` and with `⌘`; a bare `'` and a bare backquote are keystrokes, not gestures;
+`Ctrl+A`, `Ctrl+Z`, `Ctrl` and `⌘` alone are not the chord; a layout's different character at the physical
+backquote still is, and an event with neither the position nor the character is not; the release is recognised
+from either key and from neither `Control`, `Meta` nor `Shift` (those stay the hook's own cases). `npx tsc
+--noEmit`, `npm run check` (832/799, 187 modules), `go test ./...`, `make check` (503 exports), `make frontend`,
+`make build`. Not tried in a browser: the page running on `:8190` predates this commit.
+
+**Where** `frontend/src/lib/canvas/agent-dictation.ts` (`TALK_CHARS`, `TALK_CODES`, `isTalkKey`, `isTalkChord`),
+`frontend/src/components/canvas/use-hold-to-talk.ts`, `frontend/src/components/canvas/canvas-top-bar.tsx`,
+`frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
+`frontend/tests/agent-dictation.test.ts`.

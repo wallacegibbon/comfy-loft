@@ -10,7 +10,43 @@
  * textarea keeps its selection while it is not focused, which is the whole trick — the gesture starts on the
  * canvas and the box has no focus at all by the time the words arrive), and this decides what the new draft
  * is. It can be tested without a DOM, which is the only way to test it at all.
+ *
+ * The gesture's first half is here for the same reason: which keys start it is a question about a key event,
+ * and there are two of them (#314). Everything after the key — the microphone, the cap, the words, the caret —
+ * is the same code from either.
  */
+
+/**
+ * The two keys a gesture starts with — both, because they are one gesture.
+ *
+ * `'` is what a person reaches for to quote what they say; the backquote above Tab is the same chord on the
+ * home row, and the reason it was asked for was that it is easier to hold and asks less of a keyboard. So the
+ * keys are matched here, once: the microphone, the length cap and the caret never learn which was pressed,
+ * and there is no second handler to drift from the first.
+ *
+ * Matched on `code` *or* `key`: the physical position survives a layout that types a different character
+ * there, and `key` covers an event that reports no `code` at all.
+ */
+const TALK_CHARS = ["'", "`"];
+const TALK_CODES = ["Quote", "Backquote"];
+
+/** The part of a key event a chord is read from. Structural, so the pairing is testable without a DOM. */
+type ChordEvent = { key: string; code?: string; ctrlKey?: boolean; metaKey?: boolean };
+
+/** Whether this is the gesture's own key, either one of them. */
+export function isTalkKey(event: Pick<ChordEvent, "key" | "code">): boolean {
+    return TALK_CHARS.includes(event.key) || TALK_CODES.includes(event.code ?? "");
+}
+
+/**
+ * Whether this press begins a gesture: a modifier and the key.
+ *
+ * The modifier is what makes it one. A bare `'` is a quote and a bare backquote is a character, and both are
+ * things someone may be typing into the box this gesture types into.
+ */
+export function isTalkChord(event: ChordEvent): boolean {
+    return Boolean(event.ctrlKey || event.metaKey) && isTalkKey(event);
+}
 
 /**
  * How much sound is worth a request.

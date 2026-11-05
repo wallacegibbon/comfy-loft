@@ -387,7 +387,8 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
     };
 
     /**
-     * Hold `Ctrl`/`⌘` and `'`, or hold the microphone button: the words land in the box at the caret.
+     * Hold `Ctrl`/`⌘` and `'` or the backquote above Tab, or hold the microphone button: the words land in
+     * the box at the caret.
      *
      * The sound's language follows the one the interface is written in, which is a hint and not a
      * constraint — the model answers in the language it hears either way (`services/api/speech.ts`).

@@ -101,7 +101,7 @@ export function CanvasTopBar({
                     <Shortcut keys={[t("canvas.shortcut.dropMedia")]} value={t("canvas.shortcut.upload")} />
                     {/* Not a canvas gesture, but this is the only place the app lists its keys, and a
                         hold-to-talk nobody can discover is a feature nobody has. */}
-                    <Shortcut keys={["Ctrl / Cmd", "'"]} value={t("canvas.shortcut.talk")} />
+                    <Shortcut keys={["Ctrl / Cmd", "' / `"]} value={t("canvas.shortcut.talk")} />
                 </div>
             </Dialog>
         </>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { atSpeechLimit, insertSpoken, isSpeakable, MAX_SPEECH_SECONDS, MIN_SPEECH_SECONDS } from "@/lib/canvas/agent-dictation";
+import { atSpeechLimit, insertSpoken, isSpeakable, isTalkChord, isTalkKey, MAX_SPEECH_SECONDS, MIN_SPEECH_SECONDS } from "@/lib/canvas/agent-dictation";
 
 /**
  * Where the words land.
@@ -80,5 +80,74 @@ describe("atSpeechLimit", () => {
     it("is far longer than the gesture it is a safety net for", () => {
         expect(MAX_SPEECH_SECONDS).toBeGreaterThan(10);
         expect(MAX_SPEECH_SECONDS).toBeLessThanOrEqual(120);
+    });
+});
+
+/**
+ * The two keys, and why a test says so twice.
+ *
+ * `Ctrl + '` and `Ctrl + the backquote above Tab` are meant to be *the same gesture*, not two features that
+ * happen to be near each other (#314): one predicate pair decides both, so the cases below ask each question
+ * of each key and expect the same answer. A future edit that gives one of them its own path fails here.
+ */
+describe("isTalkChord", () => {
+    const TALK_KEYS = [
+        { key: "'", code: "Quote" },
+        { key: "`", code: "Backquote" },
+    ];
+
+    it("starts a gesture from either key, with either modifier", () => {
+        for (const talk of TALK_KEYS) {
+            expect(isTalkChord({ ...talk, ctrlKey: true })).toBe(true);
+            expect(isTalkChord({ ...talk, metaKey: true })).toBe(true);
+        }
+    });
+
+    // Both are characters someone types into the very box the gesture types into: without a modifier a press
+    // has to be a keystroke, or the prompt could not contain a quote or a backtick.
+    it("is typing when no modifier is held", () => {
+        for (const talk of TALK_KEYS) {
+            expect(isTalkChord(talk)).toBe(false);
+            expect(isTalkChord({ ...talk, ctrlKey: false, metaKey: false })).toBe(false);
+        }
+    });
+
+    it("leaves every other chord alone", () => {
+        expect(isTalkChord({ key: "a", code: "KeyA", ctrlKey: true })).toBe(false);
+        expect(isTalkChord({ key: "z", code: "KeyZ", metaKey: true })).toBe(false);
+        expect(isTalkChord({ key: "Control", code: "ControlLeft", ctrlKey: true })).toBe(false);
+        expect(isTalkChord({ key: "Meta", code: "MetaLeft", metaKey: true })).toBe(false);
+    });
+
+    // The physical key is what a held gesture is made of: a layout that types something else there still means
+    // this chord, and an event that reports no `code` at all is still matched on the character.
+    it("reads the key by position or by character", () => {
+        expect(isTalkChord({ key: "^", code: "Backquote", ctrlKey: true })).toBe(true);
+        expect(isTalkChord({ key: "'", ctrlKey: true })).toBe(true);
+        expect(isTalkChord({ key: "`", ctrlKey: true })).toBe(true);
+        expect(isTalkChord({ key: "^", code: "", ctrlKey: true })).toBe(false);
+    });
+});
+
+/**
+ * Letting go.
+ *
+ * Either half of the chord ends the sentence — the key first is "I am done", the modifier first is "oops" —
+ * so the release has to be recognised from both keys as well. `Control` and `Meta` are the hook's own case and
+ * are checked here only so that this stays about the keys.
+ */
+describe("isTalkKey", () => {
+    it("recognises the release of either key", () => {
+        expect(isTalkKey({ key: "'", code: "Quote" })).toBe(true);
+        expect(isTalkKey({ key: "`", code: "Backquote" })).toBe(true);
+        expect(isTalkKey({ key: "'" })).toBe(true);
+        expect(isTalkKey({ key: "`" })).toBe(true);
+    });
+
+    it("is not the release of anything else", () => {
+        expect(isTalkKey({ key: "a", code: "KeyA" })).toBe(false);
+        expect(isTalkKey({ key: "Control", code: "ControlLeft" })).toBe(false);
+        expect(isTalkKey({ key: "Meta", code: "MetaLeft" })).toBe(false);
+        expect(isTalkKey({ key: "Shift", code: "ShiftLeft" })).toBe(false);
     });
 });

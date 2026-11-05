@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { isSpeakable, MAX_SPEECH_SECONDS } from "@/lib/canvas/agent-dictation";
+import { isSpeakable, isTalkChord, isTalkKey, MAX_SPEECH_SECONDS } from "@/lib/canvas/agent-dictation";
 import { canOpenMicrophone, startPcmRecording, type PcmRecording } from "@/lib/pcm-recorder";
 
 /**
  * Hold a key, say a sentence, let go: the words come back.
  *
- * The gesture is the whole interface — `Ctrl`/`⌘` plus `'`, or a button held down with a pointer — and what
- * it produces is text handed to the caller, which puts it where the caret was. It deliberately does not know
- * where that is: this hook is about the sound, and the panel is about the draft.
+ * The gesture is the whole interface — `Ctrl`/`⌘` plus `'` or plus the backquote above Tab, or a button held
+ * down with a pointer — and what it produces is text handed to the caller, which puts it where the caret was.
+ * It deliberately does not know where that is: this hook is about the sound, and the panel is about the draft.
  *
- * **The key.** `Ctrl + '` because a quote is what a person uses to quote speech, and because it collides with
- * nothing here: `Space` is the canvas's temporary tool, `Shift` and `Ctrl` on their own are selection and the
- * temporary tool, and the keys the canvas reads are all of the form "modifier + letter". A chord with a
- * printable in it also cannot be started by accident the way a held modifier can — and `Ctrl+'` types nothing
- * and is bound by no browser (`⌘+'` is Firefox's quick-find on macOS, which is why `Ctrl` is said first).
+ * **The keys.** `Ctrl + '` and `Ctrl + the backquote above Tab` are one gesture, matched once in
+ * `agent-dictation.ts` so that the microphone, the cap and the caret never learn which was held (#314). The
+ * quote because quoting is what a person does with speech; the backquote because it sits on the home row and
+ * asks less of a keyboard. Neither collides with anything here: `Space` is the canvas's temporary tool,
+ * `Shift` and `Ctrl` on their own are additive selection and the temporary tool, and every key the canvas
+ * reads is "modifier + letter". A chord with a printable in it also cannot be started by accident the way a
+ * held modifier can, and neither types anything nor is bound by a browser (`⌘+'` is Firefox's quick-find and
+ * `⌘` with the backquote cycles a window — both on macOS, which is why `Ctrl` is said first).
  *
  * **Repeat.** A modifier held down does not repeat; a printable key does, dozens of times a second, so the
  * repeats are dropped rather than treated as "press again".
@@ -151,16 +154,15 @@ export function useHoldToTalk({ transcribe, onWords }: Options): HoldToTalk {
     stopRef.current = stop;
 
     useEffect(() => {
-        const isTalkKey = (event: KeyboardEvent) => (event.ctrlKey || event.metaKey) && (event.code === "Quote" || event.key === "'");
         const onKeyDown = (event: KeyboardEvent) => {
-            if (!isTalkKey(event)) return;
+            if (!isTalkChord(event)) return;
             event.preventDefault();
             if (event.repeat) return;
             start();
         };
-        // Either half of the chord ends it: the quote first is "I am done", the modifier first is "oops".
+        // Either half of the chord ends it: the key first is "I am done", the modifier first is "oops".
         const onKeyUp = (event: KeyboardEvent) => {
-            if (event.code === "Quote" || event.key === "'" || event.key === "Control" || event.key === "Meta") stop();
+            if (isTalkKey(event) || event.key === "Control" || event.key === "Meta") stop();
         };
         const onBlur = () => stop();
         window.addEventListener("keydown", onKeyDown);
