@@ -58,9 +58,8 @@ type ToolAnswer = { content: ToolContent[]; isError?: boolean };
 
 const textBlock = (text: string): ToolContent => ({ type: "text", text });
 
-/** The node types a tool may make. A group is structure, not content: it is made by `group_nodes` from what
- *  is already on the canvas, never out of nothing. */
-const CREATE_TYPES: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text];
+/** The node types a tool may make: the four that hold content, and the one that holds nodes. */
+const CREATE_TYPES: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text, CanvasNodeType.Group];
 
 export async function runTool(name: string, args: unknown, hands: CanvasHands, session: string): Promise<ToolAnswer> {
     switch (name) {
@@ -151,6 +150,14 @@ function createNode(hands: CanvasHands, args: unknown): ToolAnswer {
     if (!CREATE_TYPES.includes(type)) return { content: [textBlock(`no node type "${type}": this canvas makes ${CREATE_TYPES.join(", ")}`)], isError: true };
 
     const prompt = typeof input.prompt === "string" ? input.prompt : "";
+    // A group holds nodes, not words: a prompt on one has no field behind it, so the call is refused rather
+    // than quietly answered with a node that is not what was asked for.
+    if (type === CanvasNodeType.Group && prompt) {
+        return {
+            content: [textBlock("a group is a container: it holds nodes, not words, so there is nothing to ask it. Make it without a prompt, or wrap the nodes that exist in one with group_nodes")],
+            isError: true,
+        };
+    }
     // A text node holds its words in `content`; every other node holds a prompt, which its own panel edits.
     const patch: CanvasNodeMetadata | undefined = prompt ? (type === CanvasNodeType.Text ? { content: prompt } : { prompt }) : undefined;
     const corner = readPosition(input.position);

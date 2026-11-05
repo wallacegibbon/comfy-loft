@@ -117,7 +117,7 @@ func (s *Server) mcpTools() []mcpTool {
 		InputSchema: noArguments,
 	}, {
 		Name:        "create_node",
-		Description: "Make one node on the canvas, the way the user's own button makes one: it appears where the view is looking, selected, with its panel open when that is what pressing the button does. Answers with the new node's id and position. Make one only when the canvas holds nothing that would do: reusing what is there is a connection, not a copy.",
+		Description: "Make one node on the canvas, the way the user's own button makes one: it appears where the view is looking, selected, with its panel open when that is what pressing the button does. Answers with the new node's id and position. Make one only when the canvas holds nothing that would do: reusing what is there is a connection, not a copy. A group is the one type that holds nodes rather than content: it is made empty and nothing can be asked of it, and wrapping nodes that already exist is one call with group_nodes.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -245,7 +245,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "group_nodes",
-		Description: "Wrap nodes in one group, the way the Group button does: a card is drawn around them, they stay exactly where they are and keep their prompts and results, and moving the group moves them. Name at least two. A group named among the ids is absorbed into the new one, so two groups become one by naming both. A group is structure, not content: nothing generates it, it cannot be connected, and create_node will not make one — a group exists to hold what is already on the canvas.",
+		Description: "Wrap nodes in one group, the way the Group button does: a card is drawn around them, they stay exactly where they are and keep their prompts and results, and moving the group moves them. Name at least two. A group named among the ids is absorbed into the new one, so two groups become one by naming both. A group is structure, not content: nothing generates it and it cannot be connected, so it exists to hold nodes — this fills one in a single call, which is the state the canvas keeps, and is the tool for wrapping or merging.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {

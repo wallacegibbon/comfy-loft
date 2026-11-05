@@ -204,14 +204,28 @@ describe("create_node: what this canvas can make", () => {
 
     test("refuses a node it cannot fill in, naming what it does make", async () => {
         // A LoRA node needs a file picked in its own panel, which no argument here can supply: the tool used
-        // to advertise `lora` and refuse it.
-        for (const type of ["lora", "group"]) {
-            const { hands, written } = handsFor([]);
-            const answer = await runTool("create_node", { type }, hands, "canvas:test");
-            expect(answer.isError).toBe(true);
-            expect((answer.content[0] as { text: string }).text).toContain("this canvas makes image, video, audio, text");
-            expect(written.created).toEqual([]);
-        }
+        // to advertise `lora` and refuse it. A group is no longer refused this way — it holds nodes rather
+        // than content, and the menu makes one too (#292).
+        const { hands, written } = handsFor([]);
+        const answer = await runTool("create_node", { type: "lora" }, hands, "canvas:test");
+        expect(answer.isError).toBe(true);
+        expect((answer.content[0] as { text: string }).text).toContain("this canvas makes image, video, audio, text, group");
+        expect(written.created).toEqual([]);
+    });
+
+    test("makes a group, and refuses to put words in it", async () => {
+        // The container the menu can make: empty, and asking it anything is a call with no field behind it.
+        const empty = handsFor([]);
+        const made = await runTool("create_node", { type: "group" }, empty.hands, "canvas:test");
+        expect(made.isError).not.toBe(true);
+        expect(empty.written.created).toEqual(["group"]);
+
+        const asked = handsFor([]);
+        const refused = await textOf(asked.hands, "create_node", { type: "group", prompt: card });
+        expect(refused.answer.isError).toBe(true);
+        expect(refused.text).toContain("a group is a container");
+        expect(refused.text).toContain("group_nodes");
+        expect(asked.written.created).toEqual([]);
     });
 
     test("a text node's starting words are its body, not its prompt", async () => {

@@ -10550,8 +10550,9 @@ and a group named in `group_nodes` brings its members and is absorbed, which is 
 
 **Rejected** Letting `create_node` make a `group`. A group holds nodes that already exist, so an empty one is a
 card whose only purpose is to be filled by the next call, which could have been the first. The refusal and its
-test stay; a group is made from what is on the canvas. **Amended by #291**: that reason is a preference and not
-the fact — the fact is that an empty group is swept away by the next grouping or ungrouping.
+test stay; a group is made from what is on the canvas. **Amended by #291** (that reason is a preference, and the
+fact is that an empty group was swept away by the next grouping) and **superseded by #292**, which stopped that
+sweep and opened `create_node` to `group`.
 
 **Cost** Two entries in the advertised table (`routes_mcp.go`, and `mcp_test.go`'s list of names), two branches in
 `runTool`, two hands on `CanvasHands`, one clause on every member line (two tokens per member), and the two
@@ -10580,6 +10581,8 @@ their members; `ungroup_nodes` on the merged group released them and removed the
 
 ## 291. A group is not made out of nothing, and the reason is not the one #290 gave
 
+**Superseded by #292** — a press no longer deletes boxes it did not empty, so the refusal this entry argued for is gone.
+
 **Decision** `create_node` still refuses `group`, but #290's reason for it — "an empty group's only purpose is
 to be filled by a later call" — was a preference dressed as a fact. The fact is that an empty group is transient
 canvas state, and that is the reason that stands.
@@ -10606,3 +10609,39 @@ throwaway vitest case.
 `frontend/src/lib/canvas/canvas-agent-tools.ts` (`CREATE_TYPES`),
 `frontend/src/components/canvas/nodes/builtin-nodes.tsx`,
 `frontend/src/components/canvas/canvas-create-menus.tsx`.
+
+## 292. An empty group is a box, not litter
+
+**Decision** Grouping and ungrouping delete the group shells *they themselves emptied*, and nothing else:
+`emptyGroupIds(nodes, keepId)` — which removed every memberless group after any grouping or ungrouping — became
+`emptiedGroupIds(before, after)`, the groups that had members before the press and have none after it. And
+`create_node` may make a `group`: a container holds nodes rather than content, an empty one is a legitimate card,
+a prompt on one is refused, and `group_nodes` stays the tool for wrapping nodes that already exist.
+
+**Why** The sweep came in with the initial import (`ccfe94b`) and was decided nowhere — the log had no entry about
+groups at all until #290. What it did was delete cards the press had not emptied: a box somebody made to fill
+later, or a group whose members had been deleted, disappeared because two unrelated nodes were grouped in another
+corner of the canvas. The half that is defensible is kept: a press that takes every member of `g1` into another
+group leaves `g1` holding nothing, and that shell is debris the press itself made.
+
+**Rejected** Deleting the sweep outright. It is the only thing that removes the shell a merge leaves behind, and
+merging — take these two groups and make one — would otherwise leave an empty card every time.
+
+**Cost** A group whose members are all deleted now stays as an empty box until someone deletes it, like any other
+node. That is the price of not deleting other people's cards on an unrelated press. `create_node`'s vocabulary
+grew by one type; a group has no prompt, and a call that carries one is refused rather than answered with a node
+that is not what was asked for.
+
+**Tested** `frontend/tests/canvas-node-geometry.test.ts` (new, 9): wrapping, a pre-existing empty group left alone,
+the shell a press emptied removed, a selected group absorbed, dissolving on ungroup, a group kept for the members
+that stay, a box removed when its last member leaves, an already-empty box left alone.
+`canvas-agent-tools.test.ts`: a group can be created, and a prompt on one is refused. Browser, end to end through
+the MCP endpoint against a real page (isolated `:8191`): made a group (`members: none`), grouped two other nodes —
+the empty box was still there afterwards — then took a group's last member into a third group: that shell was
+gone, the empty box remained. `npx tsc --noEmit`, `npx vitest run` (422), `go test ./...`, `make check`,
+`npm run build` (564.00 kB).
+
+**Where** `frontend/src/lib/canvas/canvas-node-geometry.ts` (`emptiedGroupIds`, `applyGroupSelection`,
+`applyUngroupSelection`), `frontend/src/lib/canvas/canvas-agent-tools.ts` (`CREATE_TYPES`, `createNode`),
+`internal/server/routes_mcp.go` (`create_node`, `group_nodes`), `frontend/tests/canvas-node-geometry.test.ts`,
+`frontend/tests/canvas-agent-tools.test.ts`.

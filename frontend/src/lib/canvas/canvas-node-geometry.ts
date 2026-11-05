@@ -81,9 +81,21 @@ export function canUngroupSelectedNodes(selectedIds: Set<string>, nodes: CanvasN
     return nodes.some((node) => selectedIds.has(node.id) && (node.type === CanvasNodeType.Group || Boolean(node.metadata?.groupId)));
 }
 
-function emptyGroupIds(nodes: CanvasNodeData[], keepId?: string) {
-    const used = new Set(nodes.flatMap((node) => (node.type !== CanvasNodeType.Group && node.metadata?.groupId ? [node.metadata.groupId] : [])));
-    return new Set(nodes.filter((node) => node.type === CanvasNodeType.Group && node.id !== keepId && !used.has(node.id)).map((node) => node.id));
+/**
+ * The groups this operation left empty — a box whose members all went somewhere else in the same press.
+ *
+ * The shell is debris: it held nodes, this call moved them into another group, and what is left is a card
+ * with nothing in it that the press itself created. The rule is "emptied by this call", and the before/after
+ * comparison is what makes it that rule: a group that was *already* empty before the press is not this
+ * call's debris, it is something the person made — a box waiting to be filled — and deleting it because
+ * something unrelated was grouped elsewhere on the canvas was never the intent.
+ */
+function emptiedGroupIds(before: CanvasNodeData[], after: CanvasNodeData[]): Set<string> {
+    const held = (nodes: CanvasNodeData[]) => new Set(nodes.filter((node) => node.type !== CanvasNodeType.Group && node.metadata?.groupId).map((node) => node.metadata?.groupId as string));
+    const was = held(before);
+    const now = held(after);
+    const boxes = new Set(after.filter((node) => node.type === CanvasNodeType.Group).map((node) => node.id));
+    return new Set([...was].filter((groupId) => !now.has(groupId) && boxes.has(groupId)));
 }
 
 function withoutRemoved(nodes: CanvasNodeData[], connections: CanvasConnection[], removedIds: Set<string>) {
@@ -101,7 +113,7 @@ export function applyGroupSelection(selectedIds: Set<string>, nodes: CanvasNodeD
     const updated = nodes.filter((node) => !flattenedGroupIds.has(node.id)).map((node) => (memberIds.has(node.id) ? { ...node, metadata: { ...node.metadata, groupId: group.id } } : node));
     const insertAt = updated.findIndex((node) => memberIds.has(node.id));
     const withGroup = insertAt < 0 ? [...updated, group] : [...updated.slice(0, insertAt), group, ...updated.slice(insertAt)];
-    const next = withoutRemoved(withGroup, connections, new Set([...flattenedGroupIds, ...emptyGroupIds(withGroup, group.id)]));
+    const next = withoutRemoved(withGroup, connections, new Set([...flattenedGroupIds, ...emptiedGroupIds(nodes, withGroup)]));
     return { ...next, selectedIds: [group.id] };
 }
 
@@ -118,7 +130,7 @@ export function applyUngroupSelection(selectedIds: Set<string>, nodes: CanvasNod
             releasedIds.add(node.id);
             return { ...node, metadata: { ...node.metadata, groupId: undefined } };
         });
-    const next = withoutRemoved(updated, connections, new Set([...flattenedGroupIds, ...emptyGroupIds(updated)]));
+    const next = withoutRemoved(updated, connections, new Set([...flattenedGroupIds, ...emptiedGroupIds(nodes, updated)]));
     return { ...next, selectedIds: next.nodes.filter((node) => selectedIds.has(node.id) || releasedIds.has(node.id)).map((node) => node.id) };
 }
 
