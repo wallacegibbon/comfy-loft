@@ -2128,10 +2128,13 @@ registry still validating. `frontend/tests/api-video-runs.test.ts` pins the canv
 is one run with `{multiplier}` and `media.video`, and a generation run no longer carries an
 `interpolation` input.
 
-**Still open** RIFE's node pack and `rife49.pth` are not declared in `resources/index.json`, so a
-clean machine can now _report_ the missing node (it is a registered workflow) but cannot install it
-from the panel. Declaring them is the follow-up, and it needs the real folder name the node pack
-reports.
+**Resolved** The catalogue caught up. `resources.json` declares the `interp` pack (optional, `video-rife`) and the
+node `frame_interpolation_node`: `custom_nodes/ComfyUI-Frame-Interpolation`, upstream Fannovel16, a pinned commit
+and the archive for it, `provides: ["RIFE VFI"]`. The checkpoint gets no entry of its own, and must not: the pack
+downloads `rife49.pth` into its own `ckpts/` on first run, not into `models/`, which is what that entry's note says
+and what a machine running this workflow reports (the node installed, `rife49.pth` the default of its `ckpt_name`).
+A clean machine can both report and install this workflow now, so the folder name this paragraph was waiting for is
+the one written there.
 
 **Where** `workflows/video-rife.json`, `workflows/registry.json`, `internal/workflow/bindings.go`,
 `internal/workflow/loaders.go`, `internal/server/routes_video.go`, `internal/server/routes_runs.go`,
