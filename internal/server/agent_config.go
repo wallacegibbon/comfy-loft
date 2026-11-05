@@ -2,10 +2,12 @@ package server
 
 // The agent's configuration, and the one file the server writes into it.
 //
-// There is one configuration directory per host, shared by every session: `<UserConfigDir>/comfyloft-server/
-// <host>/alayacore/`. The operator's `model.conf` lives there and so does the `mcp.conf` this server
-// writes at startup; the host in the path exists because the URL in `mcp.conf` is the address an agent
-// dials, and a machine reachable at two addresses needs two answers.
+// There is one configuration directory, shared by every session: `<UserConfigDir>/comfyloft-server/
+// alayacore/`. The operator's `model.conf` lives there and so does the `mcp.conf` this server writes at
+// startup. It used to carry the bind address, then the machine name, and both cost the operator their
+// models whenever that one string changed — the models are the operator's, and one operator has one set of
+// keys (#245). Two servers sharing one home directory are told apart with AGENT_CONFIG_PATH, in the unit
+// file, which is where an operator already looks.
 //
 // The session is not in the path any more. It arrives in the spawned process's environment
 // (`COMFYLOFT_SESSION`), which AlayaCore hands to the bridge it starts from the static `mcp.conf`. That

@@ -2499,7 +2499,7 @@ the settings hold.
 suffix. Nothing in this build talks to such an endpoint: the gateway and the prompt API are configured
 separately.
 
-**Tested** `make check`, `npm run check`, `npx vitest run` (117). In the browser, with a cleared config:
+**Tested** `make check`, `npm run check`, `npx vitest run`. In the browser, with a cleared config:
 17 models sync from `http://127.0.0.1:8190`, the stored channel address has no `/v1`, and a recorded
 network capture shows every gateway request on `/api/...` with no `/v1` path anywhere.
 
@@ -2546,9 +2546,9 @@ which sends the user to the prompt-API tab, and the config node's empty "pick a 
 endpoint's model instead: the only model that answers.
 
 **Tested** `make check`, `make test-race`, `npm run check` (lint, types, i18n, exports), `npx vitest
-run` (124). New: `internal/server/prompt_chat_e2e_test.go` (the configured endpoint and the one user
+run`. New: `internal/server/prompt_chat_e2e_test.go` (the configured endpoint and the one user
 turn, system plus image parts, unconfigured settings, the endpoint's own error, an empty prompt),
-three `Optimizer.Complete` cases, `tests/api-prompts.test.ts` (7) for the form the canvas builds. In
+three `Optimizer.Complete` cases, `tests/api-prompts.test.ts` for the form the canvas builds. In
 the browser, against a real model (`qwen3.8-27b` on `172.16.9.7:9999`, configured through the settings
 UI): a text node holding "写一句关于海边灯塔的诗，不超过二十个字" produced "灯塔守夜，潮声吻着星光"; the
 gateway log shows `POST /api/prompts/chat 200` and one `POST /v1/chat/completions` to the model server,
@@ -2680,7 +2680,7 @@ AlayaCore can follow: the request (`command`, `args`, the prompt's head, how man
 it lived), and a closing count per event type. `api_key` values are redacted: `SM model_list` carries
 every key from `model.conf`, and a transcript is worth having without them.
 
-**Tested** `make check` (14 packages), `npx vitest run` (121), `npm run check`. Against the real agent:
+**Tested** `make check` (14 packages), `npx vitest run`, `npm run check`. Against the real agent:
 a prompt streamed `models`/`reasoning`/`delta`/`done` with the frame log, a command-only request changed
 the reasoning level and logged its `CI`/`CO` pair, and the browser generated text, switched models and
 optimised an image prompt through the one route.
@@ -2716,7 +2716,7 @@ in that panel.
 first, or make the new node before generating. This is the trade the decision buys: the button does one
 thing, and the thing it does is visible in the node you pressed.
 
-**Tested** `npm run check` (i18n 1049/1031, no dead keys, exports clean), `npx vitest run` (124). In the
+**Tested** `npm run check` (i18n 1049/1031, no dead keys, exports clean), `npx vitest run`. In the
 browser against `:8191`: an image node with content and no references showed only the add button in
 参考内容 (the "原图" chip is gone), pressing 生成 kept the node count at 26 and replaced that node's image
 through `image-z-image-turbo` — a plain generation, no edit workflow, so no source image was sent — and
@@ -4981,8 +4981,9 @@ logs no console errors.
 JSON-RPC on stdin/stdout and forwards each call to the server on a **loopback-only** listener. The session is in no
 address: the server spawns AlayaCore with `COMFYLOFT_MCP` and `COMFYLOFT_SESSION` in its environment, AlayaCore hands
 that environment to the bridge it starts, and the bridge puts the session in `X-Comfyloft-Session`. `mcp.conf` is one
-static file for every session, and the agent's configuration lives in one directory per host,
-`~/.config/comfyloft-server/<host>/alayacore/`.
+static file for every session, and the agent's configuration lives in one directory,
+`~/.config/comfyloft-server/alayacore/` — **amended by #245**, which dropped the `<host>` segment this entry
+put there.
 
 **Why the names are one word** `COMFYLOFT_*` and `X-Comfyloft-*`, not `COMFY_LOFT_*`: an environment variable cannot
 contain a hyphen, so the hyphenated spelling would force three words with one of them wrong (#146's argument, and
@@ -5007,11 +5008,12 @@ old "one self-contained binary" rule is retired: it was never true of the *relea
 bridge sends `X-Comfyloft-Bridge` and the server refuses a version it does not speak, naming which half to rebuild.
 What the rule was protecting still holds: both are static, cgo-free, and need no runtime.
 
-**One config directory, per host** `mcp.conf` names the address the agent dials, so a machine reachable at two
-addresses needs two answers and `<host>` is that address (a wildcard bind means loopback, as it always did). Inside
-it, nothing is per session: `model.conf` is the operator's, and `mcp.conf` is written on every start — its `command`
-is an absolute path that moves with the release directory, and a stale one fails as `handshake: EOF`, which names the
-symptom and not the cause.
+**One config directory** (written here as per host — #245 removed the `<host>` segment for the reason it removed the
+bind address: the models are the operator's, and the path is not identity). `mcp.conf` names the address the agent
+dials, and a machine reachable at two addresses gets its answer from `AGENT_CONFIG_PATH` in the unit file instead of
+from the path. Inside it, nothing is per session: `model.conf` is the operator's, and `mcp.conf` is written on every
+start — its `command` is an absolute path that moves with the release directory, and a stale one fails as
+`handshake: EOF`, which names the symptom and not the cause.
 
 **Where** `cmd/comfyloft-mcp/`, `internal/mcpstdio/`, `internal/server/{mcp_server.go,agent_config.go}`,
 `internal/agent/spawn.go`.
@@ -5709,7 +5711,7 @@ to that name.
 **Tested** `frontend/tests/agent-references.test.ts`: `citationLabel` numbering, two citations that read the same
 resolving to two ids, a legacy transcript with identical tokens, a citation beating a node of the same name,
 the longest label winning (`图片 10` before `图片 1`), and an `@` that names nothing staying text. Gates:
-`npx vitest run` (137), `npm run check`, `make check`, `make frontend`.
+`npx vitest run`, `npm run check`, `make check`, `make frontend`.
 
 **In the browser** A canvas with two text nodes, both called `文本`. `@` → pick the first → draft reads
 `@文本`; `@` → pick the second → the draft reads `@文本 @文本 2`, and the block sent with it has two lines with
@@ -5754,7 +5756,7 @@ the session" being the only rule; the alternative was a refusal, which #160 alre
 
 **Tested** `TestTheReplacedSocketDoesNotTakeTheAgentWithIt` (Go, e2e): two sockets, the first closed, the
 second still answered by the same process — it fails without the fix with EOF on the second socket.
-`TestTheNewestSocketTakesTheSessionOver` still passes. Frontend gates: `npx vitest run` (138), `npm run check`.
+`TestTheNewestSocketTakesTheSessionOver` still passes. Frontend gates: `npx vitest run`, `npm run check`.
 
 **In the browser** Two tabs on one canvas, both open the panel. Tab B becomes the reader (the gateway logs
 `spawned=false`, so it is the same process) and tab A shows "未连接" with its transcript intact. Sending from
@@ -5931,7 +5933,7 @@ something this route can do, and is not something the canvas offers.
 `TestAFileCanBeWrittenUnderANameTheDocumentUses` (route: write, read back the same bytes, second write 409,
 escaping name 400, unknown canvas 404). Frontend: `frontend/tests/canvas-document.test.ts` — media named by reference,
 nodes without metadata untouched, and only the five document fields in the result. Gates: `make check`,
-`go test -race`, `npm run check`, `npx vitest run` (149).
+`go test -race`, `npm run check`, `npx vitest run`.
 
 **In the browser** Exported a canvas holding an image, deleted it, imported the zip: the canvas came back with
 the same node, the file in `files/` kept the name the document names (`files/import-test.png`, no `up-` copy),
@@ -5987,7 +5989,7 @@ rules above, no symlinks and no modes taken from the archive.
 `TestAnArchiveThatIsNotOneCanvasIsRefused` (old format, no document, `..` entry, not a zip — and no canvas left
 behind), `TestAnImportPastTheLimitIsRefusedAndLeavesNothing` (413 with a 32-byte ceiling). Frontend:
 `frontend/tests/canvas-document.test.ts` still pins the document that goes into `canvas.json`. Gates: `make check`,
-`go test -race`, `npm run check`, `npx vitest run` (149).
+`go test -race`, `npm run check`, `npx vitest run`.
 
 **In the browser** Exported a canvas holding an image: the zip holds `manifest.json`, `canvas.json`,
 `files/import-test.png`. Deleted the canvas, imported the zip: one request, the canvas came back with the same
@@ -6036,7 +6038,7 @@ rather than a short one. Nothing renames files, which is the point.
 **Tested** `frontend/tests/api-runs.test.ts` (a run's outputs become the document's names and the gateway's URLs),
 `frontend/tests/api-image-upscale.test.ts` (an upscale run's artifact is referenced, not fetched — the call list stops
 at the run's status), `frontend/tests/api-video-runs.test.ts` (a clip's reference carries its size and duration, and the
-artifact is never fetched). Gates: `npm run check`, `npx vitest run` (147).
+artifact is never fetched). Gates: `npm run check`, `npx vitest run`.
 
 **In the browser** Generated three 1024×1024 images from the canvas: `canvases/<id>/files/` held exactly three
 `task_*.png` files and no `up-*`; the document referenced `files/task_*.png` in order with real dimensions and
@@ -6078,7 +6080,7 @@ missing.
 
 **Tested** `frontend/tests/api-image-upscale.test.ts`: a source with a `storageKey` produces exactly two calls (submit,
 poll) and `media: {image: ["up-abcdef12.png"]}`, while a source with none still uploads first. Gates:
-`npm run check`, `npx vitest run` (148).
+`npm run check`, `npx vitest run`.
 
 **In the browser** Generated one picture, then upscaled it from the image toolbar: the canvas grew by one file
 (the upscale's own output) and no `up-*` copy of the source appeared — the run's record shows
@@ -6105,7 +6107,7 @@ paint the node red. The agent path was already wrong in a second way: an aborted
 neither is load-bearing for control flow now.
 
 **Tested** `frontend/tests/api-runs.test.ts`, `frontend/tests/api-video-runs.test.ts` and the generation hooks' own cases all
-assert on `name === "AbortError"` paths; `npm run check` and `npx vitest run` (150).
+assert on `name === "AbortError"` paths; `npm run check` and `npx vitest run`.
 
 **Where** `frontend/src/services/api/http.ts` (`throwIfCanceled`), `frontend/src/services/api/{image,video,audio,runs,agent}.ts`,
 `frontend/src/lib/canvas/canvas-generation-helpers.ts`.
@@ -6237,7 +6239,7 @@ startup collector sweeps them after its grace window.
 
 **Tested** `make check` (the removal reaches `inputs_test.go`, `bindings_test.go`, `config_test.go`,
 `runs_e2e_test.go`: `TestRunImageProducesOnePicture` asserts one output named `<run>.png`), `CGO_ENABLED=1
-go test -race`, `npm run check` (i18n 893/879 keys — 11 dead keys removed), `npx vitest run` (151). In the
+go test -race`, `npm run check` (i18n 893/879 keys — 11 dead keys removed), `npx vitest run`. In the
 browser: a fresh canvas, an image node generated once, no group badge, no count control anywhere.
 
 **Where** `internal/workflow/{inputs,bindings}.go`, `internal/generate/runner.go`, `internal/config/config.go`,
@@ -6411,7 +6413,7 @@ for. The conversation is gone for good: no archive, no undo. A canvas that is ne
 and one that is cleared leaves nothing behind to explain the nodes it made — the nodes are still there, and
 that is the half that survives.
 
-**Tested** `npm run check` (i18n 897/883: four new keys, none dead), `npx vitest run` (156), `make check`.
+**Tested** `npm run check` (i18n 897/883: four new keys, none dead), `npx vitest run`, `make check`.
 In the browser (a `/tmp/verify` copy, its own `AGENT_CONFIG_PATH`, the real agent): one exchange
 (`X`→`ok`) left `canvas.json` and a 715-byte `session.alaya` next to it; pressing the button, confirming,
 answered `DELETE /api/agent/session/canvas%3A…` 200, released the old process (`pid=374053`) and spawned a
@@ -6440,7 +6442,7 @@ second tab, a reload, or a stale page would each have their own; the process's t
 message in the transcript rather than a silent no-op, and the canvas-deletion path still closes its socket
 either way (the directory is going away, so the process must not outlive it).
 
-**Tested** `make check`, `go test -race`, `npm run check` (i18n 898/884), `npx vitest run` (156).
+**Tested** `make check`, `go test -race`, `npm run check` (i18n 898/884), `npx vitest run`.
 `TestDeletingABusySessionIsRefused`: a prompt the fake agent answers slowly, `DELETE` 300 ms in answers
 `409 agent_busy`, the session file and the process are both untouched, and the same request after `done`
 answers 200 and removes the file. In the browser (a `/tmp/verify` copy, the real agent): idle the header
@@ -6611,8 +6613,8 @@ handle on its right edge resizes the whole column. `useCanvasChromeWidth()` hand
 and the bar on the right shrinks them together instead of squeezing one. The drag starts from the width on
 screen rather than the stored one, so the clamp cannot leave a dead zone under the cursor.
 
-`CANVAS_CHROME_GUTTER` (12), `CANVAS_CHROME_GAP` (8), `CANVAS_ZOOM_DOCK_HEIGHT` (56) and
-`CANVAS_TOP_BAR_ROW` (64) live in the same module as that hook, because the panel's bottom is the dock's
+`CANVAS_CHROME_GUTTER`, `CANVAS_CHROME_GAP`, `CANVAS_ZOOM_DOCK_HEIGHT` and
+`CANVAS_TOP_BAR_ROW` live in the same module as that hook, because the panel's bottom is the dock's
 height plus two gaps: a panel that guessed would overlap the dock or leave a hole that moves with the
 window.
 
@@ -6637,7 +6639,7 @@ wide: at 480 the bar has slack and the dock's slider stretches, and the minimap 
 than a map-sized square. Below `100vw - 300px` the column stops shrinking the way it was dragged: the boxes
 stay equal, but they are narrower than the stored number until the window grows or the panel is dragged in.
 
-**Tested** `npm run check`, `npx vitest run` (155), `make check`. In the browser (`/tmp/verify`, 8191/3001),
+**Tested** `npm run check`, `npx vitest run`, `make check`. In the browser (`/tmp/verify`, 8191/3001),
 measured with `getBoundingClientRect`, three window sizes: 573px viewport with 348 stored — bar, panel and
 dock all 12 → 285 (273 wide, clamped), right bar 297 → 561 inside the window; 709px viewport with 480
 stored — all three 12 → 421 (409 wide, clamped), right bar intact; a 740px viewport at 348 — all three
@@ -6935,7 +6937,7 @@ raise the number in one place, which is also the point.
 the elements list's visible header row is 32px and its search box sits at y=154 in all three states — before
 pressing Select, in select mode with the "All" box gone, and after cancelling — and the canvases list's header is
 also 32px at y=111, so switching tabs no longer moves the list either. The "All" box itself measures 28px, which
-is the four-pixel difference the report was seeing. `npm run check`, `npx vitest run` (156), `npm run build`.
+is the four-pixel difference the report was seeing. `npm run check`, `npx vitest run`, `npm run build`.
 
 **Where** `frontend/src/components/canvas/canvas-side-panel-parts.tsx`,
 `frontend/src/components/canvas/canvas-side-panel-elements.tsx`,
@@ -6977,7 +6979,7 @@ typing "Discard me" and clicking the cross leaves `Gamma` and writes nothing; cl
 `button "Confirm rename" [disabled]`; Enter from the field still commits (`Gamma two`) and Escape still leaves.
 The list holds still: the current row measured 65 device pixels at ratio 1.25 — 52 CSS px — both before the
 editor opened and while another row was in it (it was 44px, 55 device pixels, with the editor open before this
-change). `npm run check` (zh 825 / en 811 keys), `npx vitest run` (156), `npm run build`.
+change). `npm run check` (zh 825 / en 811 keys), `npx vitest run`, `npm run build`.
 
 **Where** `frontend/src/components/canvas/canvas-side-panel-canvases.tsx`,
 `frontend/src/i18n/locales/zh-CN.ts`, `frontend/src/i18n/locales/en-US.ts`.
@@ -7424,7 +7426,7 @@ data" was true only if comments counted as data.
 The source now has 60 Chinese lines in six files, every one of them a value: the catalogue map, the agent's
 instructions, the MOSS prefix, `MARKERS`, the `PromptOptimizeMode` union, one endonym.
 
-**Tested** `npm run check` (tsc, i18n, exports, prettier), `npx vitest run` (175), `npm run build`. A scan for
+**Tested** `npm run check` (tsc, i18n, exports, prettier), `npx vitest run`, `npm run build`. A scan for
 CJK in `frontend/src` outside the two dictionaries reports those 60 lines and nothing else.
 
 **Where** `frontend/src/lib/canvas/agent-references.ts`, `node-title.ts`,
@@ -7484,7 +7486,7 @@ document that carries no host, port or canvas id — still holds. A file with no
 reference, which is no worse than before.
 
 **Tested** `frontend/tests/canvas-node-metadata.test.ts` (the URL in `content`, the reference back in the
-document, the fallback for a file without a URL), `npm run check`, `npx vitest run` (179), `npm run build`.
+document, the fallback for a file without a URL), `npm run check`, `npx vitest run`, `npm run build`.
 
 **Where** `frontend/src/lib/canvas/canvas-node-factory.ts`, `frontend/src/lib/canvas/canvas-document.ts`.
 
@@ -7521,7 +7523,7 @@ of its two blockers is already gone: nothing is written into the bundle any more
 JSON, no bundle means the old 404, and no request serves a file outside the bundle), the two first-paint
 tests (an address when `PUBLIC_BASE_URL` names one, none when the gateway serves the canvas),
 `frontend/tests/gateway-origin.test.ts` (the page's origin is the answer in a browser, a named address
-wins over it, loopback outside one), `go test ./internal/...`, `npm run check`, `npx vitest run` (184),
+wins over it, loopback outside one), `go test ./internal/...`, `npm run check`, `npx vitest run`,
 `npm run build`. Smoke-tested by hand: the gateway
 served the built bundle on a spare port and answered `/`, `/canvas/<id>`, `/assets/*`, `/config.js` and
 `/api/nope` as above; `npm run dev` proxied `/api/canvases` through vite to a gateway. Not exercised in a
@@ -7565,7 +7567,7 @@ that.
 a save visible on the next request with no file involved), the assignment the frontend expects, the
 address only when named, `ETag`/`304` and a new `ETag` after a save, and the opt-in file written only when
 asked — plus nothing appearing in `WEB_DIR`. `internal/server/web_test.go` holds the route against the
-template in the bundle. `go test ./internal/...`, `make check`, `npm run check`, `npx vitest run` (184),
+template in the bundle. `go test ./internal/...`, `make check`, `npm run check`, `npx vitest run`,
 `npm run build`, `make build`.
 
 **Where** `internal/server/runtime_config.go`, `internal/server/routes_admin.go`,
@@ -7600,13 +7602,13 @@ later words written above them. A message can now be several paragraphs, so each
 mentions on its own — two citations with the same label on either side of a call resolve to the first of them
 twice, which is the fallback a transcript written before labels were unique already got (#163).
 
-**Tested** `frontend/tests/agent-transcript.test.ts` (14): a call keeps its place between two sentences; the
+**Tested** `frontend/tests/agent-transcript.test.ts`: a call keeps its place between two sentences; the
 order of several calls and the sentences between them; ids unique and sorting in arrival order; one step for
 the two frames of a call; a message echoed mid-answer taken at the end with the answer continuing below it;
 history replacing rather than appending; a frame that says nothing opening nothing. Replayed through the
 reducer, the session file above produced `user → [reasoning, tool, tool, reasoning, text] → user →
 [reasoning, tool, tool, reasoning, text]`, where the panel had drawn `[tool, tool, text]` with both reasonings
-dropped. `npx vitest run` (198), `npm run check`, `npm run build`.
+dropped. `npx vitest run`, `npm run check`, `npm run build`.
 
 **Where** `frontend/src/lib/canvas/agent-transcript.ts`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/tests/agent-transcript.test.ts`.
@@ -7652,8 +7654,7 @@ calls, results) is replayed and drawn as it was (#223).
 `is_error: true` and a task that ends — the socket relays all three, the failure with `isError`. On the
 frontend, `frontend/tests/agent-transcript.test.ts` covers the state of a call that worked, one that failed,
 one never answered, and a notice arriving mid-answer. In the browser: not exercised — the marks were checked
-by rendering a replayed transcript, not against a live AlayaCore. `go test ./internal/...`, `npx vitest run`
-(198), `npm run check`, `npm run build`.
+by rendering a replayed transcript, not against a live AlayaCore. `go test ./internal/...`, `npx vitest run`, `npm run check`, `npm run build`.
 
 **Where** `internal/agent/events.go` (`IsError`, `systemNotice`), `internal/agent/run.go` (`notify`),
 `internal/server/agent_e2e_test.go`, `frontend/src/services/api/agent.ts`,
@@ -7689,7 +7690,7 @@ writes a turn to its session file — reasoning, a call with arguments, the resu
 dropped, and the next connection replays `user, reasoning, tool_call, tool_result, delta` in that order, with
 the call's arguments intact. `frontend/tests/agent-transcript.test.ts` folds the same list and gets one user
 message and one answer carrying its reasoning and its finished call. `go test ./internal/...`, `npx vitest
-run` (198), `npm run check`, `npm run build`.
+run`, `npm run check`, `npm run build`.
 
 **Where** `internal/agent/events.go` (`Event.History`, `replayed`), `internal/agent/sessions.go`
 (`Connected.History`), `internal/server/routes_agent.go`, `internal/server/agent_e2e_test.go`,
@@ -7728,11 +7729,10 @@ at odds over the same number.
 **Tested** `internal/agent/session_test.go`'s `TestSessionRelaysTheContextAndTheStepSpeed`: the count the
 agent restored rides on the startup broadcast (and carries no step figures), a step frame mid-turn is relayed
 as `12.5 tok/s` with a 1200 ms first token, the frame that ends the turn is relayed *before* `done`, and a
-step that has counted nothing (`context_tokens: 0`) is not drawn as a zero. `frontend/tests/agent-usage.test.ts`
-(6): the token-count format in both units, the share, the count alone when the limit is unknown, the speed
+step that has counted nothing (`context_tokens: 0`) is not drawn as a zero. `frontend/tests/agent-usage.test.ts`: the token-count format in both units, the share, the count alone when the limit is unknown, the speed
 with and without a first-token time, the blank for a step with no output, and the whole line. In the browser:
 not exercised against a live AlayaCore — the row was read off a replayed transcript. `go test
-./internal/...`, `npx vitest run` (206), `npm run check`, `npm run build`.
+./internal/...`, `npx vitest run`, `npm run check`, `npm run build`.
 
 **Where** `internal/agent/events.go` (`usage`, `taskUsage`, `ContextTokens`/`StepTps`/`TtftMs`),
 `internal/agent/run.go` (`task`), `internal/agent/session_test.go`,
@@ -8084,7 +8084,7 @@ branch nothing takes reads like a feature that exists.
 node card renders the same background, border and pointer events; the creation menus list the same entries;
 a click opens the same panel.
 
-**Tested** `make check`; `npx vitest run` (261); `npm run check`; `npm run build`; and one look at a real
+**Tested** `make check`; `npx vitest run`; `npm run check`; `npm run build`; and one look at a real
 canvas in the browser — cards, borders, the two creation menus, clicking a node to open its panel.
 
 **Where** `frontend/src/types/{canvas,canvas-node}.ts`,
@@ -9286,7 +9286,7 @@ copy in the preferences is a second answer to where audio goes.)
 **Cost** A future speech workflow has no voice control to inherit; it will get one from its own declaration, the way
 the duration control in #259 does. Undo is `git revert`.
 
-**Tested** `npx vitest run` (368). `npm run check`'s export checker is what forced the helpers out rather than leaving
+**Tested** `npx vitest run`. `npm run check`'s export checker is what forced the helpers out rather than leaving
 them orphaned (180 modules, none without a caller).
 
 **Where** `frontend/src/lib/audio-generation.ts`, `frontend/src/components/audio-settings-panel.tsx`,
@@ -9337,7 +9337,7 @@ what `!max-w-*` asked for. Buttons with an element child that is meant to poke o
 none exists (checked: no `absolute` child inside a `Button`).
 
 **Tested** The headless-Chrome measurement above (throwaway, `/tmp/pill.html`), and `Button` is on every screen in the
-app: `npx vitest run` (368), `npm run check` (863/849 keys, 180 modules, prettier, tsc), `npm run build` 561.61 kB,
+app: `npx vitest run`, `npm run check` (863/849 keys, 180 modules, prettier, tsc), `npm run build` 561.61 kB,
 `make check` (20 packages, 504 exports) all pass afterwards.
 
 **Where** `frontend/src/components/kit/button.tsx`,
@@ -9484,7 +9484,7 @@ carried forever and would have taught the next reader that the id means somethin
 
 **Tested** `npx tsc --noEmit` (removing the only `channelModelOf` use in the picker left an unused import,
 which the compiler refuses), `npm run check` (866/852 keys, 182 modules, prettier clean), `npx vitest run`
-(40 files, 374 tests), `npm run build` (568.88 kB).
+(40 files, 374 tests), `npm run build`.
 
 **Where** `frontend/src/components/model-picker.tsx`,
 `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.
@@ -9534,7 +9534,7 @@ read was being sent on every run.
 **Tested** `npx tsc --noEmit` (removing the id tests left `videoWorkflowId` used only inside its own file, which
 the export check then refused), `npm run check` (867/853 keys, 182 modules, prettier clean), `npx vitest run`
 (40 files, 377 tests — three new: `bindsSeconds` both ways, `selfLift` only where the knob is declared, a mode
-finding its model while an unlisted model claims nothing), `npm run build` (569.25 kB), `make check` (deadcode
+finding its model while an unlisted model claims nothing), `npm run build`, `make check` (deadcode
 505). Not checked in a browser: the composer needs a server with the new registry on the other side of it, and
 what changed is which branch a control takes, with the shipped registry's declarations unchanged.
 
@@ -9588,13 +9588,13 @@ gets a plain text-to-image run instead of a refusal. That is a silent substituti
 one — a request that cannot mean what it says is worse than one that means what the panel has been showing all
 along.
 
-**Tested** `go test ./...`, `make check` (deadcode 505) — `TestShippedAngleWorkflowAcceptsItsKnobs` pins the
+**Tested** `go test ./...`, `make check` — `TestShippedAngleWorkflowAcceptsItsKnobs` pins the
 declaration from both sides: the three names are accepted, the binding's own key (`horizontal`) is still
 refused because nothing reads it, and a word is refused where a number belongs. Frontend: `npx tsc --noEmit`,
 `npm run check` (867/853 keys, 183 modules), `npx vitest run` (40 files, 380 tests — `modelIsStep` covering a
 tool that takes words, a tool that does not, a composer model and an unlisted one; `imageModeFor` covering a
 declared mode, a stale one, an empty one and a workflow with no modes; and an angle step's request carrying the
-prompt beside its knobs), `npm run build` (569.95 kB).
+prompt beside its knobs), `npm run build`.
 
 **Where** `internal/workflow/shipped_angle_test.go`, `workflows/registry.json`,
 `frontend/src/lib/canvas/image-mode.ts`, `frontend/src/stores/use-config-store.ts`,
@@ -9619,7 +9619,7 @@ there: the mode that needs nothing is the mode a request cannot be refused for.
 the server's ordering rather than by meaning. A `defaultMode` field in the registry would say it outright; it
 is not worth a wire field until a family actually has two equally-cheap modes and the wrong one matters.
 
-**Tested** `npx vitest run` (380): the Qwen family still resolves a stale mode to `t2i` because that is what
+**Tested** `npx vitest run`: the Qwen family still resolves a stale mode to `t2i` because that is what
 its contract says (`images.max: 0`), and a two-mode family whose cheapest is `beta` resolves to `beta` — the
 second case is the proof that no mode's name is left in the code.
 
@@ -9649,7 +9649,7 @@ data rather than something the source names — #8's cost, now paid by knobs as 
 unchanged, since `chinese()` answers only when the reader's language is zh-CN.
 
 **Tested** `npm run check` (886 zh keys against 853 en, still "the two agree": the block is zh-only by design,
-as declared), `npx tsc --noEmit`, `npx vitest run` (380), `npm run build` (570.69 kB). Not checked in a
+as declared), `npx tsc --noEmit`, `npx vitest run`, `npm run build`. Not checked in a
 browser: the labels are text in two components, and what could break is a missing entry, which shows the
 registry's English exactly as before.
 
@@ -9694,12 +9694,12 @@ node's centre, so its group membership can be stale afterwards without the box b
 same gap, and closing it in one path only would make the tool and the gesture disagree about what a resize
 leaves behind.
 
-**Tested** `make check` (deadcode 505), `go test ./...`,
+**Tested** `make check`, `go test ./...`,
 `TestMCPHandshakeIsEnoughToDiscoverTheTools` (thirteen names, in order), `npx tsc --noEmit`,
 `npm run check` (886/853, 183 modules), `npx vitest run` (386 — six new: the width-only resize on a 3:2 card,
 the refused contradictory pair, a text card taking both numbers and keeping its height when given one, the
 floor refused and named from both sides, a call with no size, and an id the canvas does not hold), `npm run
-build` (572.72 kB). The tool tests register the real node definitions, so `keepsAspectRatio` is the real rule
+build`. The tool tests register the real node definitions, so `keepsAspectRatio` is the real rule
 rather than a stub. Not checked in a browser: the page on `:8190` is a build that does not advertise these
 tools, and what changed is a tool's decision plus one line of `list_nodes`.
 
@@ -9734,7 +9734,7 @@ keeps the layout, which is one more reason the pseudo mode cannot be read from t
 **Tested** `npx vitest run` (388, two new): a MOSS-shaped workflow sends `layout` + `layoutEnabled` and no
 `mode` at all; a family with declared modes sends `mode: "t2i"` (the mode that asks least) and still carries the
 layout. The first of those fails against #267's line, which is what makes it a regression test rather than a
-description. `npx tsc --noEmit`, `npm run check` (886/853, 183 modules), `npm run build` (572.73 kB).
+description. `npx tsc --noEmit`, `npm run check` (886/853, 183 modules), `npm run build`.
 
 **Where** `frontend/src/services/api/image.ts`, `frontend/tests/api-image-upscale.test.ts`.
 
@@ -9814,7 +9814,7 @@ object, so a kind that needs two fields still takes a bag of twelve; that is del
 types are worse) and it is the part most likely to drift.
 
 **Tested** `npx tsc --noEmit`, `npm run check` (189 modules, 886/853 keys, prettier clean), `npx vitest run`
-(40 files, 388 tests), `npm run build` (573.31 kB). In the browser, on an isolated copy of the workspace
+(40 files, 388 tests), `npm run build`. In the browser, on an isolated copy of the workspace
 (`/tmp/verify`, port 8191, its own canvas root): a text node's panel shows its agent cluster; an image node's
 shows the workflow picker, the base-model picker and its settings popover (Size, Aspect ratio); a video node's
 shows the workflow picker and its popover (Resolution, Seconds, Refine, Mode) — and picking `Quality` wrote
@@ -9866,12 +9866,12 @@ loudly — which is the same outcome seen from the other side, since the server 
 anyway; what changed is that the run now happens.
 
 **Tested** `go test ./...` (`TestPublicProjectionCarriesTheKeysARunMayTake`: the entry's keys, the variant's own,
-and that a key the projection offers is one `ValidateInputs` accepts), `make check` (deadcode 506),
+and that a key the projection offers is one `ValidateInputs` accepts), `make check`,
 `npx tsc --noEmit`, `npm run check` (189 modules, 886/853 keys), `npx vitest run` (391: the picker entry carries
 the list per workflow and per mode, an empty list normalises to absent, `paramsAcceptedBy` keeps an accepted
 knob and `editCanvasSize`, drops the stale one, returns nothing when nothing is left, and passes everything
 through for a model it knows nothing about; and one request-shaped test whose body is exactly
-`{prompt, seed, size}` where `upscale_model` used to be), `npm run build` (574.04 kB). On an isolated copy
+`{prompt, seed, size}` where `upscale_model` used to be), `npm run build`. On an isolated copy
 (`/tmp/verify`, port 8191): all thirteen shipped workflows report their keys, `upscale_model` only on the
 upscaler, `multiplier` only on the interpolation, `transition_step` only on the four H3 ones, and
 `image-qwen21/outpaint` adds exactly the eight padding keys its siblings do not have.
@@ -9923,8 +9923,8 @@ unconditionally — so it is its own change. It is written down where the list l
 modes that bind it accept `negative` and are not refused; the nine that cannot refuse it with the ordinary
 unknown-key message; `TestNegativeIsAnInputOnlyWhenABindingReadsThatField`: a `from`-less binding makes the key
 real, a binding that reads `params.other` does not, and a workflow with no negative binding does not advertise
-it), `make check` (deadcode 506), `npx tsc --noEmit`, `npm run check` (189 modules), `npx vitest run` (391),
-`npm run build` (574.04 kB). On an isolated copy (`/tmp/verify`, port 8191) `GET /api/workflows` reports
+it), `make check`, `npx tsc --noEmit`, `npm run check` (189 modules), `npx vitest run`,
+`npm run build`. On an isolated copy (`/tmp/verify`, port 8191) `GET /api/workflows` reports
 `negative` only for `image-qwen21` (all four variant contracts) and the three MOSS workflows, and for none of
 Z-Image, ESREGAN, the angle workflow, the four H3 ones, RIFE or the music one.
 
@@ -9955,8 +9955,7 @@ of its test, and its MCP bridge stops there rather than with the process. Both c
 that already closed them is unaffected. The server package takes ~31s for three runs afterwards, unchanged.
 
 **Tested** `go test -count=1 -run TestRunValidatesTypedInputs ./internal/server/` eight times in a row (was 4/5
-failing, now 8/8 passing), `go test -count=3 ./internal/server/` (green), `go test ./...`, `make check`
-(deadcode 506).
+failing, now 8/8 passing), `go test -count=3 ./internal/server/` (green), `go test ./...`, `make check`.
 
 **Where** `internal/server/e2e_test.go`.
 
@@ -9994,8 +9993,7 @@ a paused clip leaves `paused=true, controls=false, currentTime=0` and selects th
 open; the play button takes it to `paused=false, controls=true` and the button disappears; `pause()` and reaching
 the end both bring the still frame and the button back; shift-click plus "Play together" plays both clips muted
 from 0 as before; a wheel over a paused clip moves the canvas zoom 100% → 112%. Photographed at both states.
-`npx tsc --noEmit`, `npm run check` (887/854 keys, 189 modules), `npx vitest run` (391), `npm run build`
-(574.92 kB), `go test ./...`, `make check` (deadcode 506).
+`npx tsc --noEmit`, `npm run check` (887/854 keys, 189 modules), `npx vitest run`, `npm run build`, `go test ./...`, `make check`.
 
 **Where** `frontend/src/components/canvas/canvas-node.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
 
@@ -10042,7 +10040,7 @@ unchanged (model picker, 1:1, Generate, sent-prompt disclosure — and no 反推
 hover toolbar lists info/remove/download/copy prompt/mask/crop/split/upscale/super-resolve/angle/view/configure
 with no 反推, as does the quick-tools window. `npx vitest run` (378 in 39 files — `api-prompts.test.ts` went with
 its subject, the rest rewritten for the new answers), `npm run check` (862 zh keys, 829 en, 25 dead keys removed
-from each, 186 modules), `npm run build` 558.77 kB, `make check` (deadcode 506), `go test ./...`.
+from each, 186 modules), `npm run build` 558.77 kB, `make check`, `go test ./...`.
 
 **Where** `frontend/src/types/canvas.ts`, `frontend/src/lib/canvas/node-prompt-field.ts`,
 `frontend/src/lib/canvas/canvas-agent-tools.ts`, `frontend/src/components/canvas/canvas-node.tsx`,
@@ -10080,8 +10078,8 @@ same allocation the agent's frame reader already allows, so it is not a new clas
 over 40 MiB of base64 is still refused with a sentence that says how to look at the file instead.
 
 **Tested** `go test ./internal/ws/` (the new test fails if the two bounds drift; it is the reason the number can
-be stated in one place and read in two), `go test ./...`, `make check` (deadcode 506), `npx tsc --noEmit`,
-`npm run check`, `npx vitest run` (378), `npm run build` (558.77 kB).
+be stated in one place and read in two), `go test ./...`, `make check`, `npx tsc --noEmit`,
+`npm run check`, `npx vitest run`, `npm run build`.
 
 **Where** `internal/ws/ws.go`, `internal/ws/ws_test.go`, `frontend/src/lib/canvas/canvas-agent-tools.ts`.
 
@@ -10111,8 +10109,7 @@ with a home, not a flag. The models editor keeps its session, because it cannot 
 to send it to. What a canvas gains is that it cannot forget its conversation any more.
 
 **Tested** `TestTheNameDecidesWhetherTheConversationIsKept` (a canvas is spawned with a file inside its own
-directory, `settings` with none, and a missing canvas is still an error), `go test ./...`, `make check`
-(deadcode 506), `npx tsc --noEmit`, `npm run check`, `npx vitest run` (378), `npm run build` (558.72 kB). The
+directory, `settings` with none, and a missing canvas is still an error), `go test ./...`, `make check`, `npx tsc --noEmit`, `npm run check`, `npx vitest run`, `npm run build`. The
 probe above ran against a copy of the real `model.conf` in `/tmp/probeconf`, so nothing the user owns was
 written.
 
@@ -10167,8 +10164,7 @@ both palettes — a long path cut to `frontend/src/components/c…` with `start=
 two screenshots of the turning ball differ only around the marks, so it turns. End to end on an isolated `:8191`
 with the real AlayaCore: a `read_file` call drew `✓ calling read_file frontend/src/main.tsx` in the panel, and a
 `canvas_read_node` call was caught while `[aria-label="The call is running"]` was set. `make check` (deadcode
-506), `go test ./...`, `npx tsc --noEmit`, `npm run check` (i18n 861/828, exports 187 modules), `npx vitest run`
-(387), `npm run build` (559.28 kB).
+506), `go test ./...`, `npx tsc --noEmit`, `npm run check` (i18n 861/828, exports 187 modules), `npx vitest run`, `npm run build`.
 
 **Where** `frontend/src/components/canvas/canvas-agent-panel.tsx` (`ToolStepLine`),
 `frontend/src/lib/canvas/tool-argument.ts`, `frontend/tests/tool-argument.test.ts`.
@@ -10221,9 +10217,8 @@ on an isolated `:8191`, at 520px and at 408px: the folded rows read
 and, narrowed,
 `Thinking 用户希望把几个图片节⌷ … height 会根据图片形状自动计算。` — one ellipsis in the middle either way, the
 end whole either way. Opening a row hides the preview and draws the whole thought, and no element in the transcript
-overflows horizontally once the button has a width. `make check` (deadcode 506), `go test ./...`,
-`npx tsc --noEmit`, `npm run check` (i18n 861/828, exports 188 modules), `npx vitest run` (394), `npm run build`
-(560.20 kB).
+overflows horizontally once the button has a width. `make check`, `go test ./...`,
+`npx tsc --noEmit`, `npm run check` (i18n 861/828, exports 188 modules), `npx vitest run`, `npm run build`.
 
 **Where** `frontend/src/components/canvas/canvas-agent-panel.tsx` (`ReasoningBlock`),
 `frontend/src/lib/canvas/reasoning-preview.ts`, `frontend/tests/reasoning-preview.test.ts`.
@@ -10263,7 +10258,7 @@ to start with `startup failed: AGENT_AUTO_SUMMARIZE must be 0 (off) or 1-100 (a 
 `=65` the spawned process's `/proc/<pid>/cmdline` read
 `alayacore --rawio --builtin-tools=read_file --auto-summarize=65 --config-path …` and the session connected
 (`models=3`), so the agent accepts the flag it was given; with the variable unset the same line has no
-`--auto-summarize` in it at all. `make check` (deadcode 506), `go test ./...`.
+`--auto-summarize` in it at all. `make check`, `go test ./...`.
 
 **Where** `internal/config/config.go` (`AgentAutoSummarize`, `autoSummarizeValue`), `internal/config/config_test.go`,
 `internal/agent/spawn.go` (`SpawnOptions.AutoSummarize`, `args`), `internal/agent/args_test.go`,
