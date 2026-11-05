@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { generateAnswer, GENERATE_START_WAIT_MS, type GenerateStart } from "@/lib/canvas/agent-generate";
+import { generateAnswer, type GenerateStart } from "@/lib/canvas/agent-generate";
 
 /**
  * What `generate` tells the agent, which is the tool's whole contract with the model.
@@ -31,17 +31,16 @@ describe("the answer to generate", () => {
         expect(answer).not.toContain("you will be sent a message");
     });
 
-    it("neither claims nor denies a run it never heard about, and promises the one word that closes it", () => {
-        const answer = generateAnswer("n12", "image", undefined);
-
-        expect(answer).toContain("no run was reported within");
-        expect(answer).toContain(String(Math.round(GENERATE_START_WAIT_MS / 1000)));
-        // At that moment neither outcome is known, so the sentence is the promise instead: exactly one
-        // message, whatever happens, which is what lets the agent stop waiting and carry on (#285). It used
-        // to say "if it does not, nothing was produced" — a silence the agent had no way to survive.
-        expect(answer).toContain("You will be sent one message");
-        expect(answer).toContain("whether it worked or failed");
-        expect(answer).not.toContain("nothing was produced");
+    it("is never a promise about a run that has not been reported", () => {
+        // Two answers, and both are facts: a run is out, or nothing started and here is why. There used to be a
+        // third for "no news yet" which promised a message either way, and keeping that promise needed a keeper,
+        // a late message and a ledger (#285). A press now answers when the page answers; a page that never
+        // answers is answered by the bridge, and the agent reads the node to see whether a run took hold.
+        const refused: GenerateStart = { started: false, reason: "workflow image-z-image-turbo requires a non-empty prompt" };
+        expect(generateAnswer("n1", "image", refused)).toContain("Nothing was queued");
+        expect(generateAnswer("n1", "image", refused)).not.toContain("will be sent");
+        const started: GenerateStart = { started: true, runId: "task_1" };
+        expect(generateAnswer("n1", "image", started)).toContain("you will be sent a message");
     });
 
     it("is a refusal only for a refusal, which is what makes the tool call fail", () => {

@@ -10664,57 +10664,60 @@ screenshots of the same turn: running, the bubble read
 **Where** `frontend/src/components/canvas/canvas-agent-panel.tsx` (the streaming-and-silent line),
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts` (`canvas.agent.working`, renamed from `canvas.agent.thinking`).
 
-## 285. A press that was accepted is answered, and a press that was not is answered too
+## 285. One press, one answer
 
-**Decision** What `canvas_generate` answers is the press's own word, and it is always one of two: a run exists
-(so the server will say how it went), or a run does not (so nothing will come, and here is why). The third state
-— "no run was reported within 15s, it may still be setting up" — now carries a promise instead of a shrug: the
-page keeps the press, and a refusal that arrives after the answer is sent to the agent as a message. On the other
-side, a finished run's notice is a debt: `Notified` is written down, `MarkNotified` is called only after `Tell`
-succeeded, and `flushRunNotices` pays whatever a session is owed when it opens. A run also always ends: video and
-audio have a default ceiling (three hours, thirty minutes) instead of "no limit", and a ComfyUI that has not
-answered for five minutes ends the watch with a sentence saying so.
+**Decision** A press of `canvas_generate` has exactly two answers, and both are facts: a run is out (its id, and
+the server will say how it ended), or it did not start and here is why. A press answers when the page answers; the
+bound on it is the bridge's own 30 s, after which the agent is told "the canvas did not answer" — not a promise, an
+unknown, and nothing was recorded. A finished run's notice is a debt: `Notified` is written down, `MarkNotified` is
+called only after `Tell` succeeded, and `flushRunNotices` pays whatever a session is owed when it opens. Every run
+ends: video and audio have a default ceiling (three hours, thirty minutes), and a ComfyUI that has not answered for
+five minutes ends the watch with a sentence saying so. And a node says whether anything is happening in it —
+`list_nodes` and `read_node` print "generating now" or "last run failed: …" — because that is the question a press
+with no answer leaves open.
 
-**Why** The conversation is the only way the agent has to continue, and it continues on the message a run
-promises. Measured on a real canvas (192.168.3.233, 03:32): one turn created three picture nodes, connected a
-text card into each, and pressed generate on each. The page processed the connects and the presses within 3 ms —
-before React had committed the new connections — so the run saw no card, sent an empty prompt, and the server
+**Why** The conversation continues on what a press promises, and the whole of the promise is "a run exists, and you
+will be told how it ended". Measured on a real canvas (192.168.3.233, 03:32): one turn created three picture nodes,
+connected a text card into each, and pressed generate on each. The page processed the connects and the presses within
+3 ms — before React had committed the new connections — so the run saw no card, sent an empty prompt, and the server
 answered 400 in 2 ms. `runImageGeneration` caught that, marked the node failed, and returned normally: the press
-reported nothing to the tool, which waited out its 15 s and answered "if it does not [start], nothing was
-produced". The three nodes then read `All images failed to generate` — the real reason had been overwritten a
-line later — and the agent, having been told a silence was possible, ended its turn and never heard another word.
-Nobody is watching the panel to notice that, and nobody should have to be.
+reported nothing to the tool, which waited out its own 15 s clock and answered "if it does not [start], nothing was
+produced". The three nodes then read `All images failed to generate` — the reason had been overwritten a line later
+— and the agent, told that silence was possible, ended its turn and never heard another word.
 
-**Why the pieces are where they are**
-- *The page speaks for "no run".* The server can only report what it recorded. A refused request, a model with no
-  settings, a prompt the workflow will not take: none of those has a record, so none of them has a notice, and the
-  page is the only witness.
-- *The server speaks for a run.* It holds the record and it is what ends it, so a run's notice travels from there
-  — and only from there, which is what keeps one press from being answered twice.
-- *The debt is on the record, not in a page's memory.* The session a run names is a name (`canvas:<id>`) that
-  outlives the process that asked; a panel closed while a picture rendered, an agent released with the page, a
-  server restarted between the two are the same case, and the notice is paid when that conversation next opens.
-- *Every run must end.* A notice can only exist for a run that reached a terminal state, so "no limit" was a
-  promise to wait forever. The unreachable budget is the other half: a ComfyUI that is gone is not a render that
-  is coming.
-- *Tool calls are started in order with a render between them, and their answers are not held behind a slow
-  press.* The page's refs are written in a layout effect, so a call must wait one commit for the call before it —
-  the 3 ms above was the whole bug. And three presses at 15 s each would outlast the bridge's 30 s per-call
-  patience, so the answer is sent when it settles rather than inside the queue.
+**Why not the version with the promise, and the ledger it needed** The first attempt at this kept the third answer
+("no run reported yet") and made it a promise: the page would keep the press and say a late refusal, and a ledger
+would have made the promise true across a page that died. It worked, and it was scaffolding: a clock deciding what a
+sentence means, two reporters for one press, a state machine to patch the one case the clock could not cover, and a
+30 ms guess in the page when the calls of one turn turned out to arrive out of the order they were made. All of it
+existed to make a *page's silence* trustworthy. Deleting the promise deleted the scaffolding instead: a page that is
+slow is waited for, a page that is gone is answered by the bridge, and a run that took hold is covered by the notice
+that the server owes anyway. A tool call is answered once, by the side that actually knows.
 
-**Cost** A notice can be sent twice if the process dies inside the writer's debounce window; that direction is
-chosen, because a duplicate is a sentence the agent reads and a loss is a conversation that stops. A late notice
-arrives as a message in a new turn, which is what it is. And the promise the page makes has one hole left: a page
-that dies inside the fifteen-second window before a run is created leaves nothing owed, because nothing was
-recorded — the agent is then holding a turn on a press the canvas no longer knows about. Closing that needs the
-press itself to be a record, which nothing has asked for yet.
+**Why the ordering is a prompt rule and not a mechanism** The calls of one turn do not reach the page in the order
+the agent made them — measured, with the page's own console: a press read `connections 17` while the connect that
+mattered was still arriving, and a second press went 400 with the connect answered 16 ms later. No page-side ordering
+can fix an order it does not control, and serialising the server's publication (the one structural fix available)
+couples every call's latency to every earlier one, and lets a queued call time out before it is even published and
+then be executed anyway. So the system prompt says what is true of the transport: press only after the canvas has
+answered your connections. What a press that breaks it gets is a loud refusal with the reason, which is what the
+agent then repaired by itself, twice, in front of me.
 
-**Tested** On an isolated `:8191` with the real AlayaCore, against a real ComfyUI (192.168.3.233) and against a
-stub that accepts `/prompt` and never finishes:
+**What is left in the page** Every hand that changes the canvas is wrapped in `flushSync`, so "it returned" and "the
+canvas has it" are the same moment — which is what makes the prompt rule above worth its sentence. Everything else
+the page once had for this (a settle-and-retry beat, a promise channel, a queue) is gone.
+
+**Cost** A press is now answered only when the page answers, so a slow press holds the agent's turn for as long as
+it takes (bounded by the bridge's 30 s, which is the only clock left). A notice can be delivered twice if the
+process dies inside the writer's debounce window; that direction is chosen, because a duplicate is a sentence the
+agent reads and a loss is a conversation that stops.
+
+**Tested** On an isolated `:8191` with the real AlayaCore, against a real ComfyUI (192.168.3.233) and against a stub
+that accepts `/prompt` and never finishes:
 - *a press that never became a run*: `POST /api/canvases/…/runs 400` and the same second
   `generate on image-… did not start: workflow image-z-image-turbo requires a non-empty prompt. Nothing was
-  queued, so there is nothing to wait for — fix that and press it again.` (isError), where the old build answered
-  nothing for fifteen seconds and then said nothing would come;
+  queued, so there is nothing to wait for — fix that and press it again.` (isError), where the build with the
+  promise answered nothing for fifteen seconds and then said nothing would come;
 - *a run nobody could be told about*: `agent: run task_535937ae… ended with nobody to tell (canvas:…: no agent
   session … is open), and the notice is owed`, then, when the page opened 7 s later,
   `agent: told canvas:…, late, that run task_535937ae… failed`, accepted by AlayaCore
@@ -10722,27 +10725,20 @@ stub that accepts `/prompt` and never finishes:
 - *a run that never ends*: the stub accepted the prompt and never completed; six seconds later (the test's own
   `REQUEST_TIMEOUT_MS`) `task … failed: generation timed out` and the notice;
 - *a real generation*: a picture was made on the real ComfyUI in 7 s, `agent: told … completed`, and two nodes
-  whose own prompt the agent had just cleared were generated from the connected card alone — both accepted (202);
-- *a batch that connects and presses in one turn*, three times over: the page's console showed the press reading
-  `connections 17/18` while the connects were still arriving, and one of the two presses per turn still went 400.
-  The frames settle the question — the calls of one turn are not delivered in the order they were made, so no
-  amount of page-side ordering fixes it. Two changes together do: every hand that changes the canvas is wrapped
-  in `flushSync` (the ref it wrote is the ref the next call reads, before the call returns), and a press that finds
-  no words reads the canvas twice more 30 ms apart before believing it. After both, the same three turns went
-  202/202 with no 400 at all, and the two runs were told `completed`;
+  whose own prompt was empty were generated from the connected card alone — both accepted, 202;
 - `make check` (deadcode 508), `go test ./...`, `npx tsc --noEmit`, `npm run check` (i18n 860/827, exports 188
-  modules), `npx vitest run` (398), `npm run build` (560.75 kB): `TestANoticeNobodyHeardIsOwedUntilItIsPaid`,
-  `TestTheNoticeSurvivesASessionThatWasNotThere`, `TestWaitForHistoryGivesUpOnAComfyUIThatNeverComesBack`, the
-  four "one press, one word" cases, and the rewritten "neither claims nor denies" answer.
+  modules), `npx vitest run` (397), `npm run build` (561 kB): `TestANoticeNobodyHeardIsOwedUntilItIsPaid`,
+  `TestTheNoticeSurvivesASessionThatWasNotThere`, `TestWaitForHistoryGivesUpOnAComfyUIThatNeverComesBack`,
+  "a node says whether anything is happening in it", and the two "one press, one answer" cases.
 
 **Where** `internal/task/task.go` (`Notified`, `reported`, `MarkNotified`, `OwedTo`), `internal/server/run_notice.go`
 (`onRunFinished`, `flushRunNotices`), `internal/server/routes_agent.go`, `internal/generate/runner.go`
-(`unreachableBudget`), `internal/config/config.go` (`millisOrDefault`), `frontend/src/lib/canvas/agent-generate.ts`,
-`frontend/src/lib/canvas/canvas-agent-tools.ts` (`CanvasHands.tellAgent`, `pressAndWait`),
-`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts` (`committed`, `committedAnswer`),
-`frontend/src/pages/canvas/project.tsx` (the empty-prompt beats),
+(`unreachableBudget`), `internal/config/config.go` (`millisOrDefault`), `frontend/src/lib/canvas/agent-generate.ts`
+(two answers), `frontend/src/lib/canvas/canvas-agent-tools.ts` (`press`, and the run state in `read_node`),
+`frontend/src/lib/canvas/node-generation-facts.ts` (`runClause`), `frontend/src/lib/canvas/canvas-agent-view.ts`,
+`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts` (`committed`),
 `frontend/src/pages/canvas/hooks/use-generation-runs.ts`, `docs/server.md`, `tests/agent-generate.test.ts`,
-`tests/canvas-agent-tools.test.ts`.
+`tests/canvas-agent-tools.test.ts`, `tests/canvas-agent-view.test.ts`.
 
 ## 286. The rules that tell the agent how this canvas is meant to be used
 
@@ -10750,8 +10746,10 @@ stub that accepts `/prompt` and never finishes:
 write words gained a sentence each:
 - *Candidates are one card.* "When the user wants several pictures of the same thing to choose from, make one text
   node holding the words, make the picture nodes, and connect the card into each of them with canvas_connect —
-  leave their own prompts empty — then press each one with canvas_generate." Editing the card and pressing again is
-  a new set from the new words; another candidate is a new node, because pressing replaces what a node holds.
+  leave their own prompts empty — then press each one with canvas_generate — and press only after the canvas has
+  answered your connections: the calls of one turn do not always arrive in the order you made them." Editing the
+  card and pressing again is a new set from the new words; another candidate is a new node, because pressing
+  replaces what a node holds.
 - *Nothing about negations.* A rule saying "write only what should be there, never a negation, never a row of NOs"
   was written, measured, and **removed**: the prompt does not mention negatives at all — not to forbid them, not to
   define them, and not to quote them. `set_text` and `set_prompt` say nothing about them either.

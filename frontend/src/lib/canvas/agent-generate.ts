@@ -14,15 +14,6 @@
 
 import type { RunRequest } from "@/services/api/runs";
 
-/**
- * How long a press may take to report a run before the tool answers anyway.
- *
- * A press is synchronous up to the first `await`, and what follows is local work — hydrating the node's
- * context, uploading a reference that is not a canvas file yet — so a second is a slow press. The bound
- * exists because the agent is holding a turn open on this answer and the MCP call itself gives up at 30 s.
- */
-export const GENERATE_START_WAIT_MS = 15_000;
-
 /** The outcome of a press: a run exists, or nothing was started and why. */
 export type GenerateStart = { started: true; runId: string } | { started: false; reason: string };
 
@@ -35,22 +26,18 @@ export type GenerateOptions = {
 };
 
 /**
- * The tool's answer, from what the page reported.
+ * The tool's answer: there are two things a press can turn out to be, and it is always one of them.
  *
- * `start` is absent when nothing was reported in time: a press that is still setting up is neither of the
- * other two, and claiming either would be a guess in the direction that costs the most — "started" leaves
- * the agent waiting on a message that may never come, "did not start" abandons a run that is about to.
+ * A run exists, so the server owes the agent one message when it ends — delivered even if nobody is listening
+ * at the time (`flushRunNotices`). Or no run exists, so the reason is the answer and nothing else is coming.
  *
- * What the missing case may not do is promise nothing, which is what it said until #285: "if it does not,
- * nothing was produced" told the agent a silence was possible, and a turn that is waiting for a message
- * has no way to end. Every press is now closed exactly once — a run ends and the server tells the session,
- * or there is no run and the page says so itself (`pressAndWait` hands the late word to the agent) — so the
- * sentence above is a promise the canvas keeps rather than a hope.
+ * There used to be a third sentence for "the page has not reported anything yet", which promised a message
+ * either way and therefore needed a promise-keeper, a late message and a ledger to be true (#285). It was all
+ * scaffolding around that promise. A press now answers when the page answers; a page that never answers is
+ * answered by the bridge's own "the canvas did not answer", and the agent reads the node to see whether a run
+ * took hold.
  */
-export function generateAnswer(nodeId: string, mode: string, start: GenerateStart | undefined): string {
-    if (!start) {
-        return `pressed generate on ${nodeId} (${mode}), and no run was reported within ${Math.round(GENERATE_START_WAIT_MS / 1000)}s — it is still setting up. You will be sent one message when it is over, whether it worked or failed, so do not wait for it and do not press it again.`;
-    }
+export function generateAnswer(nodeId: string, mode: string, start: GenerateStart): string {
     if (!start.started) {
         return `generate on ${nodeId} (${mode}) did not start: ${start.reason}. Nothing was queued, so there is nothing to wait for — fix that and press it again.`;
     }

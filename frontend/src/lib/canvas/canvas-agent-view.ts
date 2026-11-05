@@ -1,4 +1,4 @@
-import { generationClause } from "@/lib/canvas/node-generation-facts";
+import { generationClause, runClause } from "@/lib/canvas/node-generation-facts";
 import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import type { CanvasConnection, CanvasNodeData } from "@/types/canvas";
 
@@ -22,8 +22,9 @@ export function describeCanvas(nodes: CanvasNodeData[], connections: CanvasConne
         const at = ` at (${Math.round(node.position.x)}, ${Math.round(node.position.y)}), ${Math.round(node.width)}×${Math.round(node.height)}`;
         const picture = pictureClause(node);
         const made = generationClause(node.metadata);
+        const running = runClause(node.metadata);
         const content = oneLine(nodeContentOf(node));
-        lines.push(`- ${node.id} (${node.type})${title}${at}${picture}${made ? ` ${made}` : ""}${content ? ` content: ${content}` : ""}`);
+        lines.push(`- ${node.id} (${node.type})${title}${at}${picture}${running ? ` [${running}]` : ""}${made ? ` ${made}` : ""}${content ? ` content: ${content}` : ""}`);
     }
     if (connections.length) lines.push("connections:");
     for (const connection of connections) lines.push(`- ${connection.fromNodeId} -> ${connection.toNodeId}`);

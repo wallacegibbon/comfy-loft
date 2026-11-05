@@ -1,3 +1,4 @@
+import { NODE_STATUS_ERROR, NODE_STATUS_LOADING } from "@/lib/canvas/canvas-node-status";
 import type { CanvasNodeMetadata } from "@/types/canvas";
 
 /**
@@ -14,6 +15,23 @@ import type { CanvasNodeMetadata } from "@/types/canvas";
  * not necessarily where the server runs — a `toLocaleString` here would be a different string for every
  * reader of the same fact.
  */
+/**
+ * What a node's run is doing right now, or what its last one ended in: the answer to "is anything happening
+ * here?", which nothing on the canvas used to say.
+ *
+ * An agent told to check a node it just pressed (#285) can only do that if the node says so. A run in flight,
+ * a failure with the reason it gave, or nothing — an idle node is not news, and a line of "idle" on every node
+ * of a big canvas is noise.
+ */
+export function runClause(metadata: CanvasNodeMetadata | undefined): string {
+    if (metadata?.status === NODE_STATUS_LOADING) return "generating now";
+    if (metadata?.status === NODE_STATUS_ERROR) {
+        const reason = (metadata?.errorDetails || "").trim() || "no reason given";
+        return `last run failed: ${reason}`;
+    }
+    return "";
+}
+
 export function generationClause(metadata: CanvasNodeMetadata | undefined): string {
     const workflow = (metadata?.workflow || "").trim();
     const generatedAt = (metadata?.generatedAt || "").trim();

@@ -19,6 +19,17 @@ function node(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}, t
 const canvas = (nodes: CanvasNodeData[], connections: CanvasConnection[] = []) => describeCanvas(nodes, connections).split("\n");
 
 describe("the canvas as the agent reads it", () => {
+    test("a node says whether anything is happening in it, so a press with no answer can be checked", () => {
+        // A press that got no answer from the page leaves one question: did a run take hold? The node is where
+        // that is answered, and it used to say nothing about it (#285).
+        const lines = canvas([node("image", { status: "loading" }), node("image", { status: "error", errorDetails: "cannot reach ComfyUI" }), node("image", {})]);
+        expect(lines[1]).toContain("[generating now]");
+        expect(lines[2]).toContain("[last run failed: cannot reach ComfyUI]");
+        // An idle node says nothing: a line of "idle" on every node of a big canvas is noise.
+        expect(lines[3]).not.toContain("generating");
+        expect(lines[3]).not.toContain("failed");
+    });
+
     test("a text node shows the text it says, and not the question standing behind it", () => {
         const lines = canvas([node("text", { content: "宫崎骏风格的森林。", composerContent: "改成无字幕的版本" }, "森林")]);
         expect(lines[0]).toBe("1 nodes, 0 connections");

@@ -62,7 +62,6 @@ export function useCanvasAgentTools({
         focusNode,
         moveNode,
         resizeNode,
-        tellAgent: () => {},
     });
     hands.current = {
         nodes: () => nodesRef.current || [],
@@ -76,9 +75,6 @@ export function useCanvasAgentTools({
         focusNode,
         moveNode: committed(moveNode),
         resizeNode: committed(resizeNode),
-        tellAgent: (session, text) => {
-            sendAgentMessage(session, { prompt: text });
-        },
     };
 
     useEffect(

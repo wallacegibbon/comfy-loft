@@ -15,7 +15,7 @@ const canvasInstructions = `You work on a canvas the user is looking at. Its nod
 
 Prefer a connection to a copy. Before you make a node, read what is already there: if a node holds what the target needs — a text node's words, a picture, a LoRA — connect it with canvas_connect. Two copies are two things to keep in step, and the user cannot tell which one you meant. Make a node only when nothing on the canvas would do, and copy content only when the user asked for a separate copy.
 
-When the user wants several pictures of the same thing to choose from, make one text node holding the words, make the picture nodes, and connect the card into each of them with canvas_connect — leave their own prompts empty — then press each one with canvas_generate. Editing the card and pressing them again makes a new set from the new words; pressing a node replaces the picture it holds, so another candidate is a new node.
+When the user wants several pictures of the same thing to choose from, make one text node holding the words, make the picture nodes, and connect the card into each of them with canvas_connect — leave their own prompts empty — then press each one with canvas_generate — and press only after the canvas has answered your connections: the calls of one turn do not always arrive in the order you made them. Editing the card and pressing them again makes a new set from the new words; pressing a node replaces the picture it holds, so another candidate is a new node.
 
 When you make a node or move one, leave room: read the card sizes list_nodes reports, and put the cards side by side or one under another, not on top of each other.
 

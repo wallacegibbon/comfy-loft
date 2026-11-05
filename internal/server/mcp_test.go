@@ -185,6 +185,7 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 		"several pictures of the same thing to choose from",
 		"leave their own prompts empty",
 		"press each one with canvas_generate",
+		"press only after the canvas has answered your connections",
 		"another candidate is a new node",
 		// #286: layout is checked against the sizes, not guessed.
 		"read the card sizes list_nodes reports",

@@ -5,9 +5,9 @@ import { describeEmptyInputs, inputsHoldingNothing, repeatedConnectedText } from
 import { resolveMediaUrl } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ToolContent } from "@/services/api/agent";
-import { generateAnswer, GENERATE_START_WAIT_MS, type GenerateOptions, type GenerateStart } from "@/lib/canvas/agent-generate";
+import { generateAnswer, type GenerateOptions, type GenerateStart } from "@/lib/canvas/agent-generate";
 import { describeCanvas } from "@/lib/canvas/canvas-agent-view";
-import { configuredClause, generationClause } from "@/lib/canvas/node-generation-facts";
+import { configuredClause, generationClause, runClause } from "@/lib/canvas/node-generation-facts";
 import { nodeContentOf, nodePromptOf } from "@/lib/canvas/node-prompt-field";
 import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type Position } from "@/types/canvas";
 
@@ -37,14 +37,6 @@ export type CanvasHands = {
     moveNode: (nodeId: string, position: Position) => void;
     /** Give one card a new size, the way the end of a corner drag does: the top-left corner stays put. */
     resizeNode: (nodeId: string, width: number, height: number) => void;
-    /**
-     * Say one thing to a conversation, as a message from the user.
-     *
-     * The page's own word, for the one outcome the server cannot report: a press that never became a run.
-     * A run has a record and the server finishes it, so the notice about it comes from there (#225); a press
-     * with no run has no record and nothing to finish, and the page is the only witness left.
-     */
-    tellAgent: (session: string, text: string) => void;
 };
 
 /** One tool's result: the content blocks the agent reads, and whether it failed rather than did something. */
@@ -265,47 +257,24 @@ async function pressGenerate(hands: CanvasHands, args: unknown, session: string)
     const blocked = inputsHoldingNothing(node.id, hands.nodes(), hands.connections());
     if (blocked.length) return { content: [textBlock(describeEmptyInputs(blocked))], isError: true };
 
-    const start = await pressAndWait(hands, node.id, mode as CanvasGenerationMode, nodePromptOf(node), session);
+    const start = await press(hands, node.id, mode as CanvasGenerationMode, nodePromptOf(node), session);
     // A refusal is a failed call: the agent asked for something that did not happen, and a quiet success
     // would leave it waiting for a message that will never come.
-    return { content: [textBlock(generateAnswer(node.id, mode, start))], isError: start?.started === false };
+    return { content: [textBlock(generateAnswer(node.id, mode, start))], isError: start.started === false };
 }
 
 /**
- * Press generate, and answer with the first word about the run — or with nothing, if it takes too long.
+ * Press generate, and answer with the press's own word: a run is out, or it did not start and why.
  *
- * The wait is bounded because the agent is holding a turn open on this answer, and because a press that is
- * slow to report is not the same thing as a press that failed (`generateAnswer` says so in its own words).
- *
- * The wait is bounded, the press is not: a press that answers after the tool has already spoken is the case
- * this exists for. "No run reported yet" is only honest if something follows it, so a late refusal is said
- * to the agent here, as a message from the page. A late *run* needs nothing from this side — the server has
- * the record and tells the same session when it ends (#284's neighbour, docs/decisions.md #285).
+ * No clock of its own. A press that is slow is a press the agent waits for, and a page that never answers at
+ * all is answered by the bridge's own timeout — a third sentence here, promising news either way, is what
+ * made a simple question need a promise, a keeper and a ledger (#285).
  */
-function pressAndWait(hands: CanvasHands, nodeId: string, mode: CanvasGenerationMode, words: string, session: string): Promise<GenerateStart | undefined> {
+function press(hands: CanvasHands, nodeId: string, mode: CanvasGenerationMode, words: string, session: string): Promise<GenerateStart> {
     return new Promise((resolve) => {
-        let answered = false;
-        const finish = (start: GenerateStart) => {
-            if (!answered) {
-                answered = true;
-                clearTimeout(timer);
-                resolve(start);
-                return;
-            }
-            // The tool has already spoken, so this is the late word about a press it called unfinished. A
-            // late run needs nothing from here (the server has the record and tells this session when it
-            // ends); a late refusal is the silence the answer promised was not coming.
-            if (!start.started) hands.tellAgent(session, `[comfyloft] the ${mode} generation on ${nodeId} you asked for did not start: ${start.reason}. Nothing is running, so there is nothing to wait for — fix that and press it again.`);
-        };
-        // The wait ending is not the press ending: the answer says so, and the press carries on behind it.
-        const timer = setTimeout(() => {
-            if (answered) return;
-            answered = true;
-            resolve(undefined);
-        }, GENERATE_START_WAIT_MS);
-        // A press that fails on its way to a run is a refusal with the page's own reason; a promise the
-        // page rejects is the same thing, and silence would leave the agent waiting.
-        void hands.generateNode(nodeId, mode, words, { askedBy: { session, node: nodeId }, onStart: finish }).catch((error: unknown) => finish({ started: false, reason: error instanceof Error ? error.message : String(error) }));
+        // A press that fails on its way to a run is a refusal with the page's own reason; a promise the page
+        // rejects is the same thing, and silence would leave the agent waiting.
+        void hands.generateNode(nodeId, mode, words, { askedBy: { session, node: nodeId }, onStart: resolve }).catch((error: unknown) => resolve({ started: false, reason: error instanceof Error ? error.message : String(error) }));
     });
 }
 
@@ -331,6 +300,10 @@ async function readNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> 
     // What the node holds. A text node holds words and that is the whole of it: the card is the content.
     const words = nodeContentOf(node);
     if (words) content.push(textBlock(words));
+    // Whether anything is happening here, before what it holds: it is the answer to "did my press take hold",
+    // which is the question this node is read for half the time (#285).
+    const running = runClause(node.metadata);
+    if (running) content.push(textBlock(running));
 
     const media = await mediaOf(node);
     if (media) content.push(media);
