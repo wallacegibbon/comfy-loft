@@ -10550,7 +10550,8 @@ and a group named in `group_nodes` brings its members and is absorbed, which is 
 
 **Rejected** Letting `create_node` make a `group`. A group holds nodes that already exist, so an empty one is a
 card whose only purpose is to be filled by the next call, which could have been the first. The refusal and its
-test stay; a group is made from what is on the canvas.
+test stay; a group is made from what is on the canvas. **Amended by #291**: that reason is a preference and not
+the fact — the fact is that an empty group is swept away by the next grouping or ungrouping.
 
 **Cost** Two entries in the advertised table (`routes_mcp.go`, and `mcp_test.go`'s list of names), two branches in
 `runTool`, two hands on `CanvasHands`, one clause on every member line (two tokens per member), and the two
@@ -10576,3 +10577,32 @@ their members; `ungroup_nodes` on the merged group released them and removed the
 `ungroupSelection`), `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
 `internal/server/routes_mcp.go`, `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`,
 `frontend/tests/{canvas-agent-view,canvas-agent-tools}.test.ts`.
+
+## 291. A group is not made out of nothing, and the reason is not the one #290 gave
+
+**Decision** `create_node` still refuses `group`, but #290's reason for it — "an empty group's only purpose is
+to be filled by a later call" — was a preference dressed as a fact. The fact is that an empty group is transient
+canvas state, and that is the reason that stands.
+
+**Why** `emptyGroupIds` collects every group with no members, and `applyGroupSelection` and `applyUngroupSelection`
+delete them. Measured: a canvas holding `g-empty` beside two text nodes, with those two grouped, keeps
+`g-new, a, b` — the empty group is gone. So a group a tool made out of nothing would survive only until the
+user's next tidying press, and nothing in the tool's answer could say so. `group_nodes` makes a card that is
+already filled, which is a state the canvas keeps.
+
+The asymmetry is real: `builtin-nodes` registers `group` as a definition and `NodeCreateMenu` lists every
+registered type, so a person can make an empty group by clicking. What makes that work is that a person fills it
+in the next breath; an agent cannot promise the next breath, and any grouping or ungrouping in between removes
+the thing it just made.
+
+**Cost** There is no way for the agent to make a container and fill it over several calls. If that is ever
+wanted, it is one line in `CREATE_TYPES` — but the description then has to carry "an empty group is removed by
+the next grouping or ungrouping", or the agent will build on state that evaporates between two of its own calls.
+
+**Tested** The sweep above, run once and thrown away: `applyGroupSelection` over `[g-empty, a, b]` as a
+throwaway vitest case.
+
+**Where** `frontend/src/lib/canvas/canvas-node-geometry.ts` (`emptyGroupIds`),
+`frontend/src/lib/canvas/canvas-agent-tools.ts` (`CREATE_TYPES`),
+`frontend/src/components/canvas/nodes/builtin-nodes.tsx`,
+`frontend/src/components/canvas/canvas-create-menus.tsx`.
