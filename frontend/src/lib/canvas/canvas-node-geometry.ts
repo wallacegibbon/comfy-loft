@@ -75,6 +75,31 @@ export function withGroupMembers(ids: Set<string>, nodes: CanvasNodeData[]) {
     return new Set(nodes.filter((node) => ids.has(node.id) || (node.metadata?.groupId != null && groups.has(node.metadata.groupId))).map((node) => node.id));
 }
 
+/**
+ * Who belongs to what after a move — the rule a drag leaves behind, for the drag and for `move_node`.
+ *
+ * A card that travels with its own group keeps that group, whatever it passes over. The box and the nodes
+ * inside it are one thing to move, so where the move puts them says nothing about who they belong to: two
+ * cards that overlap — the normal state of a canvas being tidied, since a card is drawn where its members
+ * already are and grouping moves nothing — must not hand a member to each other because the move carried it
+ * through the other's rectangle (#316).
+ *
+ * A node that moves *without* its group is judged by where it landed, and that is the person's own gesture:
+ * a member dragged out of its card leaves it, and a loose node dropped on a card joins it.
+ */
+export function settleMoveMembership(moved: CanvasNodeData[], movedIds: Set<string>) {
+    // The groups this move carries. A member of one of them needs no reading of geometry at all.
+    const carriedGroups = new Set(moved.filter((node) => node.type === CanvasNodeType.Group && movedIds.has(node.id)).map((node) => node.id));
+    return moved.map((node) => {
+        if (!movedIds.has(node.id) || node.type === CanvasNodeType.Group) return node;
+        const groupId = node.metadata?.groupId;
+        if (groupId && carriedGroups.has(groupId)) return node;
+        const containing = findContainingGroupId(node, moved);
+        if (containing === groupId) return node;
+        return { ...node, metadata: { ...node.metadata, groupId: containing } };
+    });
+}
+
 export function getGroupWrapRect(members: CanvasNodeData[]) {
     const bounds = nodeBounds(members);
     return {
@@ -149,7 +174,7 @@ export function applyUngroupSelection(selectedIds: Set<string>, nodes: CanvasNod
     return { ...next, selectedIds: next.nodes.filter((node) => selectedIds.has(node.id) || releasedIds.has(node.id)).map((node) => node.id) };
 }
 
-export function findContainingGroupId(node: CanvasNodeData, nodes: CanvasNodeData[]) {
+function findContainingGroupId(node: CanvasNodeData, nodes: CanvasNodeData[]) {
     // Called once per moved node when a drag ends, so avoid copying the node list each time.
     for (let index = nodes.length - 1; index >= 0; index -= 1) {
         const group = nodes[index];

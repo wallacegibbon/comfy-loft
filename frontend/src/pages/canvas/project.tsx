@@ -71,12 +71,12 @@ import {
     canGroupSelectedNodes,
     canUngroupSelectedNodes,
     collectGroupMemberNodes,
-    findContainingGroupId,
     findGroupDropTarget,
     focusViewportForNode,
     getConnectionTargetAnchor,
     getGroupWrapRect,
     normalizeConnection,
+    settleMoveMembership,
     snapNodesIntoGroup,
     withGroupMembers,
 } from "@/lib/canvas/canvas-node-geometry";
@@ -1077,9 +1077,10 @@ function InfiniteCanvasPage() {
      * Put one node's top-left corner where a tool says, the way the end of a drag does.
      *
      * The snap a drag performs while the pointer moves is not repeated here — the tool states a corner,
-     * so that corner is where the node goes. What is repeated is the part a drag leaves behind: a node
-     * whose centre now sits inside a group becomes a member of it, which is what makes moving a node onto
-     * a group mean the same thing either way.
+     * so that corner is where the node goes. What is repeated is the part a drag leaves behind: a node that
+     * moves on its own and whose centre now sits inside a group becomes a member of it, which is what makes
+     * moving a node onto a group mean the same thing either way. A card carried by its own group keeps that
+     * group, though — that is the move, not a regrouping (#316).
      */
     const moveNodesTo = useCallback((nodeId: string, position: Position) => {
         setNodes((prev) => {
@@ -1091,14 +1092,9 @@ function InfiniteCanvasPage() {
             // also what the drag uses, so "move this group" means the same thing to a tool and to a hand.
             const carrying = withGroupMembers(new Set([nodeId]), prev);
             const moved = prev.map((node) => (carrying.has(node.id) ? { ...node, position: { x: node.position.x + dx, y: node.position.y + dy } } : node));
-            return moved.map((node) => {
-                // What a drag leaves behind: a moved card whose centre now sits inside a group becomes a member
-                // of it. A group's own members keep theirs, because the card they are in travelled with them.
-                if (!carrying.has(node.id) || node.type === CanvasNodeType.Group) return node;
-                const groupId = findContainingGroupId(node, moved);
-                if (node.metadata?.groupId === groupId) return node;
-                return { ...node, metadata: { ...node.metadata, groupId } };
-            });
+            // What a drag leaves behind, from the one function that decides it (`settleMoveMembership`): a card
+            // that came with its group keeps it, and only a node that moved alone is placed by where it landed.
+            return settleMoveMembership(moved, carrying);
         });
     }, []);
 
@@ -1578,12 +1574,9 @@ function InfiniteCanvasPage() {
                 });
                 const targetGroup = findGroupDropTarget(movedIds, moved);
                 if (targetGroup) return snapNodesIntoGroup(movedIds, moved, targetGroup);
-                return moved.map((node) => {
-                    if (!movedIds.has(node.id) || node.type === CanvasNodeType.Group) return node;
-                    const groupId = findContainingGroupId(node, moved);
-                    if (node.metadata?.groupId === groupId) return node;
-                    return { ...node, metadata: { ...node.metadata, groupId } };
-                });
+                // The same rule the tool's move reads: a card that travelled with its group keeps it, and only
+                // a node that moved alone is placed by where it landed (`settleMoveMembership`, #316).
+                return settleMoveMembership(moved, movedIds);
             });
         }
 

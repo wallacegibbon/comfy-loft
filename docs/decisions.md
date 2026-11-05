@@ -11551,3 +11551,55 @@ queue. `npx tsc --noEmit`, `npm run check` (833/800, 187 modules), `go test ./..
 **Where** `frontend/src/lib/canvas/agent-transcript.ts` (`agentRunState`, `AgentRunState`),
 `frontend/src/components/canvas/canvas-agent-panel.tsx` (`turnLines`), `frontend/src/i18n/locales/{zh-CN,en-US}.ts`
 (`workingQueued`), `frontend/tests/agent-transcript.test.ts`.
+
+## 316. A card that travels with its group keeps it, wherever the move puts it
+
+**Decision** `settleMoveMembership(moved, movedIds)` (`canvas-node-geometry.ts`) is what a move leaves behind: a
+node carried by a group that is also moving keeps its `groupId` and is never read against a rectangle, and a node
+that moved *without* its group — a loose one, or a member dragged out on its own — is placed by
+`findContainingGroupId`, which is how a card is dragged out of a group and how a loose one dropped on a group joins
+it. `moveNodesTo` (the tool's hand) and `finishNodeDrag` (the mouse's) both call it, which is the one function, two
+callers shape this log keeps arriving at (#308). `findContainingGroupId` lost its export with its last outside
+caller.
+
+**Why** Both paths re-derived membership for *every* moved node from where it landed, including the members the
+group itself was carrying. Two cards that overlap is not an edge case, it is the state a canvas is in whenever
+anything has been grouped and then arranged — grouping moves nothing, so the cards sit where the members already
+were. On a real canvas (session of 2026-11-06) an agent tidied five groups by moving them: cards 688×316 spaced 300
+apart, so neighbours overlapped by 16 px. The fourth `move_node` lifted `group-…-pl0ta` (Qwen) from y=898 to 1100;
+its two images went to y=1152, their centres at 1272, which was inside `group-…-p88he`'s rectangle (1198–1514), and
+the re-read handed them to it. The fifth call then reported `and its 4 members` — the Z-Image card carrying the Qwen
+pictures — and the Qwen card stood at y=1100 empty while its pictures sat at 1404 inside the other group. The agent
+blamed `group_nodes` and wrote itself a rule about dissolving groups before making them; `group_nodes` was innocent
+and the trade it proposed would have made the mess slower. The same line existed at the end of a drag
+(`project.tsx`), so a person moving a group by hand got the same result.
+
+**Rejected** Better tie-breaks in `findContainingGroupId` — smallest area wins, topmost wins. Each swaps one
+accident for another: the gesture did not say "regroup", so any rule that reads rectangles to answer it invents an
+answer. Also rejected: dropping geometric adoption altogether. Dragging a loose card onto a group joining it is a
+gesture people use, and it is the only way to put a node in a group without the toolbar. Also rejected here (not
+refused): re-fitting a group's rectangle when a member leaves, and removing the shell a drag-out emptied — both are
+about stale rectangles and shell debris (#292), both are their own decision, and neither is needed to stop a move
+from rewriting who belongs to what.
+
+**Cost** A member of a moving group can no longer end up in another group by being dragged through its rectangle.
+That is the point — merging groups is `group_nodes` naming both cards, an explicit word — and it also means a
+member drawn outside its card (#290) now travels without being silently released. One predicate, five tests.
+
+**Tested** `frontend/tests/canvas-node-geometry.test.ts`, five new: a group moved over another card keeps its own
+members (the member's centre inside *both* rectangles, the second card later in the list, which is the case that
+returned `g2` before), a member outside its card keeps it, a loose node dropped on a card joins it, a member moved
+on its own out of its card leaves it, a member moved on its own into another card joins that one. With the predicate
+disabled, two of them fail; with it, all pass. In the browser, end to end, two bundles against isolated servers
+(`:8191` this one, `:8192` the same code with only that predicate turned off, `CANVAS_ROOT` and `WEB_DIR` in /tmp,
+headless Chrome driven over CDP) on a fixture of two 400×300 cards with two 150×120 text members each: dragging
+`g1` by its card onto `g2`'s exact position (both rects then `(100, 500)`, the members landing on top of `g2`'s)
+stored `m1, m2 in group g2` on the old bundle and `in group g1` on this one, with `g1`'s own members never released;
+dragging `m1` alone out of its card released it and left `g2` alone; dragging `m3` from `g2` into `g1`'s card
+joined `g1` and snapped it inside the card. `move_node` was not exercised in the browser — it reaches the same
+function through the same `setNodes` update. `npx vitest run` (524), `npx tsc --noEmit`, `npm run check`
+(187 modules, 833/800 keys).
+
+**Where** `frontend/src/lib/canvas/canvas-node-geometry.ts` (`settleMoveMembership`, `findContainingGroupId` now
+file-local), `frontend/src/pages/canvas/project.tsx` (`moveNodesTo`, `finishNodeDrag`, and the import it no longer
+needs), `frontend/tests/canvas-node-geometry.test.ts`.
