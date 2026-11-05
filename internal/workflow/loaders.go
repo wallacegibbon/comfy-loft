@@ -64,7 +64,7 @@ func ResolveMode(entry *Entry, mode string) *Entry {
 	if !ok || variant == nil {
 		return entry
 	}
-	return mergeVariant(entry, variant)
+	return mergeVariant(entry, mode, variant)
 }
 
 // ApplyModelAliases rewrites model file names through the alias resolver.

@@ -281,6 +281,11 @@ type Entry struct {
 	ImportedAt    string
 	Source        *Source
 
+	// resolvedMode marks a copy `mergeVariant` produced for one mode: its bindings and declarations are that
+	// mode's, so nothing about the request list may be unioned across the family any more (#307). Empty on an
+	// entry that is still the whole workflow — the object a model card is drawn from.
+	resolvedMode string
+
 	// Decoration applied when a base-model variant or a per-workflow main-model
 	// override is in play. Request-scoped copies, never persisted.
 	BaseModel       string

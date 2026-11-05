@@ -104,7 +104,7 @@ func PublicProjection(entry *Entry) PublicEntry {
 	if entry.Variants.Len() > 0 {
 		out.VariantContracts = make(map[string]VariantContract, entry.Variants.Len())
 		for _, mode := range entry.Variants.Keys {
-			out.VariantContracts[mode] = contractOf(mergeVariant(entry, entry.Variants.Values[mode]))
+			out.VariantContracts[mode] = contractOf(mergeVariant(entry, mode, entry.Variants.Values[mode]))
 		}
 	}
 	if entry.Category != "" {

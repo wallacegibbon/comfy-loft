@@ -413,7 +413,7 @@ func (r *Registry) ResolveForMode(entry *Entry, mode string) *Entry {
 	if !ok || variant == nil {
 		return entry
 	}
-	return mergeVariant(entry, variant)
+	return mergeVariant(entry, mode, variant)
 }
 
 // mergeVariant is the entry one mode runs: the parent with the variant's graph, bindings, defaults, output
@@ -426,8 +426,9 @@ func (r *Registry) ResolveForMode(entry *Entry, mode string) *Entry {
 // all) while `ValidateInputs` accepted them. Harmless while the canvas sent everything; after #302 the canvas
 // drops what the contract does not list, so Qwen's size picker and its canvas-ratio pills stopped reaching the
 // graph (#303).
-func mergeVariant(entry *Entry, variant *Variant) *Entry {
+func mergeVariant(entry *Entry, mode string, variant *Variant) *Entry {
 	merged := *entry
+	merged.resolvedMode = mode
 	if variant.Workflow != nil {
 		merged.Workflow = variant.Workflow
 	}

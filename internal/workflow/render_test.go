@@ -74,7 +74,7 @@ func TestPublicProjectionGivesEachVariantItsOwnContract(t *testing.T) {
 	}
 
 	// The run path resolves a mode through the same helper, so the panel and the 400 agree.
-	merged := mergeVariant(entry, entry.Variants.Values["t2i"])
+	merged := mergeVariant(entry, "t2i", entry.Variants.Values["t2i"])
 	if merged.Accepts.Images.Max != 0 {
 		t.Errorf("ResolveForMode kept the entry's accepts: %+v", merged.Accepts.Images)
 	}
@@ -159,7 +159,7 @@ func TestAModeContractIsTheEntryItsRunUses(t *testing.T) {
 
 	contracts := PublicProjection(entry).VariantContracts
 	for _, mode := range []string{"t2i", "edit"} {
-		want := mergeVariant(entry, entry.Variants.Values[mode]).AcceptedInputs()
+		want := mergeVariant(entry, mode, entry.Variants.Values[mode]).AcceptedInputs()
 		got := contracts[mode].Inputs
 		if strings.Join(sortedInputs(got), ",") != strings.Join(sortedInputs(want), ",") {
 			t.Errorf("%s publishes %v but a run of it accepts %v", mode, got, want)

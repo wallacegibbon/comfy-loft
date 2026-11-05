@@ -11042,12 +11042,10 @@ there is one now.
 **Cost** The wire payload grows by the keys the variants really take (`t2i` gains `size` and `editCanvasSize`,
 `edit` gains `editCanvasSize`). Nothing else changes: the same merges in the same order, minus the second copy.
 
-**Still open** The engine's own keys (`quality`, `seconds`, `layout`/`layoutEnabled`, `frameMode`) are still unioned
-across a family's modes, because `semanticSpecs` asks every variant what its bindings read. A family whose `t2i`
-takes a size and whose `edit` does not would publish `size` for both — accepted and dropped for the edit, which is
-the failure this entry closed for the keys a variant declares itself. No shipped workflow has that shape (only
-`image-qwen21` has modes, and none of them binds a semantic key a sibling does not); tightening it means making
-those keys mode-local, which is its own decision.
+**Resolved (#307)** The engine's keys were unioned at the time: `semanticSpecs` asked every variant what its bindings
+read, so a family whose modes disagreed about `size`, `quality`, `seconds` or `layout` would publish a key one of
+them drops. A mode now reads its own declarations, and only the unresolved entry — the object a model card is drawn
+from — still answers for the whole family.
 
 **Tested** `internal/workflow/render_test.go`: a mode's contract is the entry its run uses, byte for byte, and an
 `outputSize` with `fromSize` makes `size` readable while one without it publishes `editCanvasSize` and not `size`.
@@ -11164,3 +11162,31 @@ and the latent is repointed; 520×520 becomes 528×528; the native square is sti
 
 **Where** `internal/workflow/bindings.go` (`applyOutputSize`), `internal/workflow/inputs.go` (`semanticSpecs`),
 `internal/workflow/outputsize_test.go`, `internal/workflow/inputs_test.go`, `docs/decisions.md` (#302's correction).
+
+## 307. A mode publishes only what that mode reads
+
+**Decision** The engine's own keys — `size`, `quality`, `seconds`, `layout`/`layoutEnabled`, `frameMode` — are derived
+from a mode's own declarations once a mode is resolved. `mergeVariant` marks the entry it produces
+(`resolvedMode`), and `bindingsWithVariants`, `injectsLayout` and `frameModeDeclared` stop consulting the family when
+that mark is set: the merge has already folded the variant's own bindings, `PromptInject` and `FrameMode` in, so
+reading the entry is reading the mode. The unresolved entry — what a model card is drawn from — keeps the union,
+because a card has to answer for every mode it offers.
+
+**Why** A family's per-mode list was the union of all its modes' bindings, so every mode published the engine keys
+any sibling read: a `t2i` that sizes its canvas made its `edit` publish `size`, although that edit reads none. The
+consequences are all of the kinds this build keeps deleting — the canvas kept the key (#302 sent it), #304 drew the
+control that writes it, and the run dropped it. Nothing shipped was wrong yet: `image-qwen21` is the only family and
+none of its four modes binds `size`, `quality` or `seconds`. But the shape was one new variant away from being live,
+and a latent hole a later graph can open silently is the kind this project pays for twice.
+
+**Cost** One unexported field and three early returns. The card's list is no longer byte-identical to the modes'
+lists — it is their superset by construction, which is what it always meant to be.
+
+**Tested** `internal/workflow/inputs_test.go`: a family whose `t2i` reads `size` and `quality` and whose `edit` reads
+neither — the card covers both, `t2i` publishes both, `edit` publishes neither and still accepts `mode`. The shipped
+contracts are unchanged, which is the other half: this removed a latent hole, not a behaviour. `go test ./...`,
+`make check`.
+
+**Where** `internal/workflow/entry.go` (`resolvedMode`), `internal/workflow/registry.go` (`mergeVariant`),
+`internal/workflow/inputs.go` (`bindingsWithVariants`, `injectsLayout`, `frameModeDeclared`),
+`internal/workflow/inputs_test.go`, `docs/decisions.md` (#303's resolution).

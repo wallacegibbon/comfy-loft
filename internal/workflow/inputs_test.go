@@ -436,3 +436,55 @@ func TestAPublishedModeContractIsWhatItsRunAccepts(t *testing.T) {
 		t.Error("image-qwen21/t2i no longer reads `size`; its size picker would be a control that does nothing")
 	}
 }
+
+// A mode publishes the engine keys that mode reads — not the ones its siblings do.
+//
+// The list a family's card shows has to cover every mode, because that is what the card is for. A mode has one
+// graph and reads one set of keys, and reading the family's made every mode publish `size` and `quality` that only
+// a sibling consumed. The canvas then kept the value (#302), offered the control that writes it (#304), and the
+// run dropped it — the accepted-and-dropped failure, one layer below where it was being fixed (#307).
+func TestAModePublishesOnlyTheEngineKeysItReads(t *testing.T) {
+	entry := &Entry{
+		Name:        "family",
+		RawBindings: bindings("prompt", map[string]any{"node": "4", "input": "text"}),
+		Presets:     map[string]any{"quality": map[string]any{"low": map[string]any{}, "high": map[string]any{}}},
+		Variants: OrderedMap[*Variant]{
+			Keys: []string{"t2i", "edit"},
+			Values: map[string]*Variant{
+				"t2i": {File: "t2i.json", RawBindings: bindings(
+					"prompt", map[string]any{"node": "4", "input": "text"},
+					"width", map[string]any{"node": "13", "input": "width", "from": "size.width"},
+					"qualitySteps", map[string]any{"node": "8", "input": "steps", "from": "quality.steps", "default": 8},
+				)},
+				"edit": {File: "edit.json", RawBindings: bindings(
+					"prompt", map[string]any{"node": "4", "input": "text"},
+					"refs", map[string]any{"node": "5", "input": "images", "from": "image", "array": true},
+				)},
+			},
+		},
+	}
+
+	// The card answers "what can this workflow be asked", so it covers both modes; that is not a key a run of
+	// either mode may carry.
+	card := map[string]bool{}
+	for _, key := range entry.AcceptedInputs() {
+		card[key] = true
+	}
+	if !card["size"] || !card["quality"] {
+		t.Errorf("the card lost a key one of its modes reads: %v", entry.AcceptedInputs())
+	}
+
+	t2i := mergeVariant(entry, "t2i", entry.Variants.Values["t2i"])
+	if !hasInput(t2i, "size") || !hasInput(t2i, "quality") {
+		t.Errorf("the mode that reads them does not publish them: %v", t2i.AcceptedInputs())
+	}
+
+	edit := mergeVariant(entry, "edit", entry.Variants.Values["edit"])
+	if hasInput(edit, "size") || hasInput(edit, "quality") {
+		t.Errorf("a mode publishes a key only its sibling reads: %v", edit.AcceptedInputs())
+	}
+	// It is still a mode of a family, so a request may say which one it is.
+	if !hasInput(edit, "mode") || !hasInput(t2i, "mode") {
+		t.Errorf("a mode stopped accepting `mode`: t2i=%v edit=%v", t2i.AcceptedInputs(), edit.AcceptedInputs())
+	}
+}

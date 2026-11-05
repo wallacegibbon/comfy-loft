@@ -446,9 +446,17 @@ func (e *Entry) semanticSpecs(bindings map[string]*Binding) []InputSpec {
 	return specs
 }
 
-// bindingsWithVariants is every binding a workflow can run, its own and its modes'.
+// bindingsWithVariants is every binding this entry can run: its own, plus its modes' while it is still the whole
+// workflow.
+//
+// A mode resolved by `mergeVariant` carries its own bindings only. Reading the family's there made every mode
+// publish the engine keys any sibling reads — `size` on an edit that never sizes anything — which is a key the
+// canvas would then keep, offer a control for (#304) and see dropped (#307).
 func (e *Entry) bindingsWithVariants() []map[string]*Binding {
 	sets := []map[string]*Binding{e.Bindings()}
+	if e.resolvedMode != "" {
+		return sets
+	}
 	for _, mode := range e.VariantModes() {
 		if variant, ok := e.Variants.Get(mode); ok && variant != nil {
 			sets = append(sets, variant.Bindings())
@@ -462,6 +470,10 @@ func (e *Entry) injectsLayout() bool {
 	if e.PromptInject == PromptInjectLayout {
 		return true
 	}
+	if e.resolvedMode != "" {
+		// The mode's own declaration is already in `PromptInject`: `mergeVariant` folded it in.
+		return false
+	}
 	for _, mode := range e.VariantModes() {
 		if variant, ok := e.Variants.Get(mode); ok && variant != nil && variant.PromptInject == PromptInjectLayout {
 			return true
@@ -474,6 +486,9 @@ func (e *Entry) injectsLayout() bool {
 func (e *Entry) frameModeDeclared() bool {
 	if e.FrameMode != nil {
 		return true
+	}
+	if e.resolvedMode != "" {
+		return false
 	}
 	for _, mode := range e.VariantModes() {
 		if variant, ok := e.Variants.Get(mode); ok && variant != nil && variant.FrameMode != nil {
