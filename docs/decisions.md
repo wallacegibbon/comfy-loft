@@ -11038,6 +11038,13 @@ there is one now.
 **Cost** The wire payload grows by the keys the variants really take (`t2i` gains `size` and `editCanvasSize`,
 `edit` gains `editCanvasSize`). Nothing else changes: the same merges in the same order, minus the second copy.
 
+**Still open** The engine's own keys (`quality`, `seconds`, `layout`/`layoutEnabled`, `frameMode`) are still unioned
+across a family's modes, because `semanticSpecs` asks every variant what its bindings read. A family whose `t2i`
+takes a size and whose `edit` does not would publish `size` for both — accepted and dropped for the edit, which is
+the failure this entry closed for the keys a variant declares itself. No shipped workflow has that shape (only
+`image-qwen21` has modes, and none of them binds a semantic key a sibling does not); tightening it means making
+those keys mode-local, which is its own decision.
+
 **Tested** `internal/workflow/render_test.go`: a mode's contract is the entry its run uses, byte for byte, and an
 `outputSize` with `fromSize` makes `size` readable while one without it publishes `editCanvasSize` and not `size`.
 `internal/workflow/inputs_test.go`: every shipped workflow's every mode publishes exactly what

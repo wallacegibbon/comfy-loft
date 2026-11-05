@@ -209,9 +209,10 @@ restate it:
    of those keys: label, range, options, and the value a panel shows before anything is typed. They
    add no key of their own; a parameter that describes nothing (the audio workflow's length bound) is
    prose for the panel, not an input.
-4. The request-level inputs the server itself reads: `background`, `layout`/`layoutEnabled` (the
-   MOSS prompt), `loras` (applied by the engine), and — for video workflows — `frameMode` (which
-   frames a request supplies).
+
+A workflow with modes publishes one list per mode (`variantContracts`), read off the entry that mode runs rather
+than off its parent: a mode is a different graph, so the list a request names is the list it is validated against
+(decisions #303).
 
 Rules worth knowing:
 
