@@ -30,6 +30,7 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [])
         generated: [] as Array<[string, string]>,
         created: [] as string[],
         resized: [] as Array<[string, number, number]>,
+        moved: [] as Array<[string, { x: number; y: number }]>,
         grouped: [] as string[][],
         ungrouped: [] as string[][],
     };
@@ -49,7 +50,7 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [])
         connectNodes: () => false,
         deleteNodes: () => {},
         focusNode: () => {},
-        moveNode: () => {},
+        moveNode: (nodeId, position) => void written.moved.push([nodeId, position]),
         resizeNode: (nodeId, width, height) => void written.resized.push([nodeId, width, height]),
         // The real hands group through `applyGroupSelection`, which is the canvas's own rule and tested
         // where it lives; what these have to answer is only what the tool reports back.
@@ -409,6 +410,30 @@ describe("resize_node: the card's box, not a zoom", () => {
 /** A node with the id the test needs, since the group tools are about ids and relations between them. */
 const placed = (id: string, type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData => ({ ...node(type, metadata), id });
 
+/**
+ * Moving a group, which is a move of the card and of what it holds.
+ *
+ * The tool states one card, so a group's members came along only in the drag — an agent tidying a group
+ * scattered it instead, leaving the box behind and its members where they were. The answer says how many
+ * travelled, because that is the difference between moving a group and moving a box (docs/decisions.md #308).
+ */
+describe("move_node: what a move carries", () => {
+    test("a group's card takes its members with it, and the answer says how many", async () => {
+        const { hands, written } = handsFor([placed("group-1", "group"), placed("text-1", "text", { groupId: "group-1" }), placed("image-1", "image", { groupId: "group-1" }), placed("loose", "text")]);
+        const { answer, text } = await textOf(hands, "move_node", { nodeId: "group-1", position: { x: 640, y: 320 } });
+
+        expect(answer.isError).not.toBe(true);
+        // The corner is what the tool states; the members are the canvas's own rule, one call behind it.
+        expect(written.moved).toEqual([["group-1", { x: 640, y: 320 }]]);
+        expect(text).toBe("moved group-1 (group) and its 2 members to (640, 320)");
+    });
+
+    test("a plain node moves alone and says so", async () => {
+        const { hands } = handsFor([placed("text-1", "text", { groupId: "group-1" }), placed("group-1", "group")]);
+        const { text } = await textOf(hands, "move_node", { nodeId: "text-1", position: { x: 10, y: 20 } });
+        expect(text).toBe("moved text-1 (text) to (10, 20)");
+    });
+});
 /**
  * The two structure tools: a group holds nodes, so these describe a relation rather than a node.
  *

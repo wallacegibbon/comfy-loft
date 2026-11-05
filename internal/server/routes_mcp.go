@@ -227,7 +227,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "move_node",
-		Description: "Move one node so its top-left corner lands where you say, the way dragging it does: a node dropped on a group becomes one of its members. It changes nothing else about the node — moving is not running it, and the node keeps its prompt and its result.",
+		Description: "Move one node so its top-left corner lands where you say, the way dragging it does: a node dropped on a group becomes one of its members, and a group moves its members with it — the card and the nodes it is drawn around are one thing to move, and the answer says how many came along. It changes nothing else about the node — moving is not running it, and the node keeps its prompt and its result.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {

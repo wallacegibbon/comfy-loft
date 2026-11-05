@@ -401,11 +401,15 @@ function focusNode(hands: CanvasHands, args: unknown): ToolAnswer {
 }
 
 /**
- * Move one node so its top-left corner lands where the tool says, the way dragging it there does.
+ * Move one card so its top-left corner lands where the tool says, the way dragging it there does.
  *
  * It is the same space `list_nodes` and `create_node` speak: canvas coordinates, the corner, not the
  * centre. Nothing else about the node moves — not its prompt, not its result — so a node can be tidied
  * out of the way without being re-run.
+ *
+ * A group is a box drawn around nodes, so moving one carries its members: the card and what it holds are one
+ * thing to move, and a box that travelled alone would be drawn around nothing. The answer says how many came
+ * with it, because that is the difference between tidying a group and scattering one.
  */
 function moveNode(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
@@ -414,8 +418,10 @@ function moveNode(hands: CanvasHands, args: unknown): ToolAnswer {
     if (!position) return { content: [textBlock("move_node needs a position: {x, y} in canvas coordinates")], isError: true };
 
     const corner = { x: Math.round(position.x), y: Math.round(position.y) };
+    const members = node.type === CanvasNodeType.Group ? hands.nodes().filter((candidate) => candidate.metadata?.groupId === node.id) : [];
     hands.moveNode(node.id, corner);
-    return { content: [textBlock(`moved ${node.id} (${node.type}) to (${corner.x}, ${corner.y})`)], isError: false };
+    const carried = members.length ? ` and its ${members.length} member${members.length === 1 ? "" : "s"}` : "";
+    return { content: [textBlock(`moved ${node.id} (${node.type})${carried} to (${corner.x}, ${corner.y})`)], isError: false };
 }
 
 /**

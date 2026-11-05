@@ -75,6 +75,7 @@ import {
     getGroupWrapRect,
     normalizeConnection,
     snapNodesIntoGroup,
+    withGroupMembers,
 } from "@/lib/canvas/canvas-node-geometry";
 import { adoptLegacyRunIds, audioExtension, buildGenerationConfig, failedWatch, hasResumableRun, hydrateCanvasImages, imageExtension, isGenerationCanceled, resetInterruptedGeneration, runWatchEnded } from "@/lib/canvas/canvas-generation-helpers";
 import { videoRunMetadata } from "@/lib/canvas/video-run-metadata";
@@ -1034,12 +1035,22 @@ function InfiniteCanvasPage() {
      */
     const moveNodesTo = useCallback((nodeId: string, position: Position) => {
         setNodes((prev) => {
-            const moved = prev.map((node) => (node.id === nodeId ? { ...node, position } : node));
-            const node = moved.find((item) => item.id === nodeId);
-            if (!node || node.type === CanvasNodeType.Group) return moved;
-            const groupId = findContainingGroupId(node, moved);
-            if (node.metadata?.groupId === groupId) return moved;
-            return moved.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, groupId } } : item));
+            const named = prev.find((node) => node.id === nodeId);
+            if (!named) return prev;
+            const dx = position.x - named.position.x;
+            const dy = position.y - named.position.y;
+            // The cards this move carries: the named one, and a group's members — `withGroupMembers`, which is
+            // also what the drag uses, so "move this group" means the same thing to a tool and to a hand.
+            const carrying = withGroupMembers(new Set([nodeId]), prev);
+            const moved = prev.map((node) => (carrying.has(node.id) ? { ...node, position: { x: node.position.x + dx, y: node.position.y + dy } } : node));
+            return moved.map((node) => {
+                // What a drag leaves behind: a moved card whose centre now sits inside a group becomes a member
+                // of it. A group's own members keep theirs, because the card they are in travelled with them.
+                if (!carrying.has(node.id) || node.type === CanvasNodeType.Group) return node;
+                const groupId = findContainingGroupId(node, moved);
+                if (node.metadata?.groupId === groupId) return node;
+                return { ...node, metadata: { ...node.metadata, groupId } };
+            });
         });
     }, []);
 
@@ -1475,15 +1486,9 @@ function InfiniteCanvasPage() {
         const currentNodes = nodesRef.current;
         const nextSelected = pendingSelectionRef.current ?? selectNodeByEvent(event, nodeId).nextSelected;
         pendingSelectionRef.current = null;
-        const dragIds = new Set(nextSelected);
-        currentNodes.forEach((node) => {
-            if (!nextSelected.has(node.id)) return;
-            if (node.type === CanvasNodeType.Group) {
-                currentNodes.forEach((child) => {
-                    if (child.metadata?.groupId === node.id) dragIds.add(child.id);
-                });
-            }
-        });
+        // A group dragged by its card carries its members, which is the same rule a tool's `move_node` reads
+        // (`withGroupMembers`): the box and the nodes it is drawn around are one thing to move.
+        const dragIds = withGroupMembers(nextSelected, currentNodes);
         const initialSelectedNodes = new Map(currentNodes.filter((node) => dragIds.has(node.id)).map((node): [string, { x: number; y: number }] => [node.id, { x: node.position.x, y: node.position.y }]));
         dragRef.current = {
             isDraggingNode: true,

@@ -11190,3 +11190,38 @@ contracts are unchanged, which is the other half: this removed a latent hole, no
 **Where** `internal/workflow/entry.go` (`resolvedMode`), `internal/workflow/registry.go` (`mergeVariant`),
 `internal/workflow/inputs.go` (`bindingsWithVariants`, `injectsLayout`, `frameModeDeclared`),
 `internal/workflow/inputs_test.go`, `docs/decisions.md` (#303's resolution).
+
+## 308. A move carries the cards it is a move of, and a group is one thing
+
+**Decision** `withGroupMembers(ids, nodes)` — the cards a move carries: the ids named, plus the members of any group
+among them, found by `groupId` rather than by the box. The drag and the agent's `move_node` both ask it, and
+`moveNodesTo` now moves every card it names instead of only the one the tool stated. A group's move leaves no
+membership behind it (the card travels with them), and a plain node moved onto a group still joins it, which is what
+the drag does at the end of a move.
+
+**Why** The tool's description had promised since #184 that `move_node` was "the way dragging it does" — and the drag
+expanded a selected group into its members while the tool did not. So an agent asked to tidy a group moved the box
+and left every member where it was: a card drawn around nothing, and a user who then had to drag it back by hand. The
+interface was not too small on purpose; the two paths had simply grown a rule each, and only one of them had the
+group rule. One function, two callers, is the shape that cannot drift again.
+
+**Rejected** Telling the agent to move the group and then its members in separate calls. It is the same ambiguity
+one layer up — *which* members, read from a `list_nodes` that may be a render behind — and it makes one gesture into
+N+1 calls with a half-moved canvas if one of them fails. The tool states a card; a group *is* a card and its
+members, so one call is the honest size.
+
+**Cost** `move_node` on a group answers with more than it was asked to move ("and its 3 members"), which is the
+difference between moving a group and moving a box, and is exactly what a caller needs to know. Membership is still
+not geometry: moving a group whose member sits *outside* the card (#290) carries it too, and that is right — it is a
+member.
+
+**Tested** `npx vitest run`: `canvas-node-geometry.test.ts` pins the four cases of `withGroupMembers` (a group
+carries its members; a plain node carries itself; a selection naming both counts each once; a member named alone
+does not drag its siblings), and `canvas-agent-tools.test.ts` pins the two answers (`moved group-1 (group) and its 2
+members to (640, 320)`, and the plain `moved text-1 (text) to (10, 20)`). Not checked in a browser: the page on
+`:8190` predates these builds, and what changed is which ids a move names.
+
+**Where** `frontend/src/lib/canvas/canvas-node-geometry.ts` (`withGroupMembers`),
+`frontend/src/pages/canvas/project.tsx` (`moveNodesTo`, `handleNodeMouseDown`),
+`frontend/src/lib/canvas/canvas-agent-tools.ts` (`moveNode`), `internal/server/routes_mcp.go` (`move_node`),
+`frontend/tests/{canvas-node-geometry,canvas-agent-tools}.test.ts`.

@@ -60,6 +60,21 @@ export function collectGroupMemberNodes(selectedIds: Set<string>, nodes: CanvasN
     return nodes.filter((node) => node.type !== CanvasNodeType.Group && (selectedIds.has(node.id) || (node.metadata?.groupId != null && groups.has(node.metadata.groupId))));
 }
 
+/**
+ * The cards a move carries: the ones named, and — for every group among them — the nodes inside it.
+ *
+ * A group is a box drawn around nodes that stay where they are, so moving the box alone would leave its
+ * members behind and the card would be drawn around nothing. One function for both callers: a drag names the
+ * live selection, a tool names the one card it was given, and a group means the same thing to each of them.
+ *
+ * Members are found by `groupId`, not by geometry: a member may sit outside the card's box (#290), and it is
+ * still a member.
+ */
+export function withGroupMembers(ids: Set<string>, nodes: CanvasNodeData[]) {
+    const groups = new Set(nodes.filter((node) => node.type === CanvasNodeType.Group && ids.has(node.id)).map((node) => node.id));
+    return new Set(nodes.filter((node) => ids.has(node.id) || (node.metadata?.groupId != null && groups.has(node.metadata.groupId))).map((node) => node.id));
+}
+
 export function getGroupWrapRect(members: CanvasNodeData[]) {
     const bounds = nodeBounds(members);
     return {

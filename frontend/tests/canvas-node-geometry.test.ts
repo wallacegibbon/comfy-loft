@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { applyGroupSelection, applyUngroupSelection } from "../src/lib/canvas/canvas-node-geometry";
+import { applyGroupSelection, applyUngroupSelection, withGroupMembers } from "../src/lib/canvas/canvas-node-geometry";
 import type { CanvasNodeData } from "../src/types/canvas";
 
 /**
@@ -74,5 +74,33 @@ describe("ungrouping", () => {
 
     test("says nothing when there is nothing to release", () => {
         expect(applyUngroupSelection(new Set(["a"]), [node("a", "text")], [])).toBeNull();
+    });
+});
+
+/**
+ * What a move carries.
+ *
+ * A group is a box drawn around nodes; moving the box alone leaves its members standing where they were, and
+ * the card is then drawn around nothing. The drag and the agent's `move_node` both ask this one function, so
+ * the gesture and the tool cannot disagree about what "move this group" means (docs/decisions.md #308).
+ */
+describe("the cards a move carries", () => {
+    const canvas = [node("g1", "group"), node("m1", "text", "g1"), node("m2", "image", "g1"), node("loose", "text")];
+
+    test("a group brings its members, and nothing else", () => {
+        expect([...withGroupMembers(new Set(["g1"]), canvas)].sort()).toEqual(["g1", "m1", "m2"]);
+    });
+
+    test("a plain node brings only itself", () => {
+        expect([...withGroupMembers(new Set(["loose"]), canvas)]).toEqual(["loose"]);
+    });
+
+    test("a selection that holds both also names each once", () => {
+        expect([...withGroupMembers(new Set(["g1", "m1"]), canvas)].sort()).toEqual(["g1", "m1", "m2"]);
+    });
+
+    test("a member named on its own does not drag the group's other members", () => {
+        // Taking one card out of a group is a move of that card: the box stays where it is, for the others.
+        expect([...withGroupMembers(new Set(["m1"]), canvas)]).toEqual(["m1"]);
     });
 });
