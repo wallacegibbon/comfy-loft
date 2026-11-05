@@ -188,7 +188,8 @@ The list is assembled from three sources, so no workflow has to restate it:
 
 1. Request-level keys: `prompt` (required whenever the workflow has a prompt binding), `negative`,
    `size`, `quality`, `seconds`/`duration`, `mode`. There is **no batch key**: `count` and `n` are refused
-   with `unknown_input`, and N pictures are N runs. `negative` is added only for a workflow whose graph has a
+   with `unknown_input`, so N pictures are N runs. A graph that batches internally still returns one row per
+   artifact in `outputs`, which is why the list carries an `index`. `negative` is added only for a workflow whose graph has a
    negative text encoder (`image-qwen21`, `image-moss-*`) — nine of the thirteen shipped graphs wire
    `ConditioningZeroOut` or have no second encoder, and asking them for one is a `400` (decisions #275).
 2. The workflow's declared `parameters` (`seed`, `steps`, `cfg`, `sampler`, …), whose ranges are
