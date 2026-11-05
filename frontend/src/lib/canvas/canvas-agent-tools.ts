@@ -11,6 +11,7 @@ import { describeCanvas } from "@/lib/canvas/canvas-agent-view";
 import { configuredClause, generationClause, runClause } from "@/lib/canvas/node-generation-facts";
 import { nodeContentOf, nodePromptOf } from "@/lib/canvas/node-prompt-field";
 import { planNodeSettings, type NodeSettings, type SettingsContract } from "@/lib/canvas/node-settings";
+import { planNodeModel, type ModelChoice, type ModelCatalog } from "@/lib/canvas/node-model";
 import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type Position } from "@/types/canvas";
 
 /**
@@ -68,8 +69,15 @@ export type CanvasHands = {
      * panel would not have offered either — the tool and the UI cannot disagree about what a node takes.
      */
     nodeContract: (nodeId: string) => SettingsContract;
-    /** Write the fields a settings call settles on, the way the node's own panel writes them. */
-    writeSettings: (nodeId: string, patch: CanvasNodeMetadata) => void;
+    /** Write the fields a call settles on — a setting, or which model runs — the way the panel writes them. */
+    writeMetadata: (nodeId: string, patch: CanvasNodeMetadata) => void;
+    /**
+     * The models this node may be set to, in the picker's own order, and whether a run of one reads a key.
+     *
+     * Built from the same `workflowModelOptions` the pickers offer, so a model the panel would not show is not
+     * a model a caller can name — and the contract answer is the panel's own three-state one (#304).
+     */
+    modelCatalog: (nodeId: string) => ModelCatalog;
 };
 
 /** What stopping one node's run did, in the page's own words. */
@@ -110,6 +118,8 @@ export async function runTool(name: string, args: unknown, hands: CanvasHands, s
             return setText(hands, args);
         case "set_node_settings":
             return setNodeSettings(hands, args);
+        case "set_model":
+            return setModel(hands, args);
         case "generate":
             return pressGenerate(hands, args, session);
         case "stop_node":
@@ -307,7 +317,7 @@ function setNodeSettings(hands: CanvasHands, args: unknown): ToolAnswer {
     const plan = planNodeSettings(node, settings as NodeSettings, hands.nodeContract(node.id));
     if (!plan.ok) return { content: [textBlock(plan.reason)], isError: true };
 
-    hands.writeSettings(node.id, plan.patch);
+    hands.writeMetadata(node.id, plan.patch);
     const clause = configuredClause({ ...node.metadata, ...plan.patch });
     return { content: [textBlock(`set ${plan.written.join(", ")} on ${node.id}${clause ? `; it is now ${clause}` : ""}`)], isError: false };
 }
@@ -349,6 +359,33 @@ async function stopNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> 
         };
     }
     return { content: [textBlock(`stopped ${node.id}: the run was cancelled and the node is idle again, holding what it held before`)], isError: false };
+}
+
+/**
+ * Change which run this node is — the model, and the mode a family of workflows is asked in.
+ *
+ * This is the one tool that can change what a picture *is* rather than how it is made, so it says what it did
+ * in the node's own words ("now runs image-qwen21 as edit") and, when the new workflow no longer reads
+ * something the node is holding, names it: a size set for the old model is still on the node, and the request
+ * will now leave it out without a word (#302).
+ *
+ * It is also the way a node made of material — a crop, an upload, a mask — becomes a generator again: choosing
+ * a model *is* saying "generate here", which is why the material panel's picker is the one control it keeps.
+ */
+function setModel(hands: CanvasHands, args: unknown): ToolAnswer {
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
+    const { nodeId: _named, ...choice } = argsOf(args);
+    const plan = planNodeModel(node, choice as ModelChoice, hands.modelCatalog(node.id));
+    if (!plan.ok) return { content: [textBlock(plan.reason)], isError: true };
+
+    hands.writeMetadata(node.id, plan.patch);
+    const clause = configuredClause({ ...node.metadata, ...plan.patch });
+    const ran = plan.mode ? `${plan.model.workflowId} as ${plan.mode}` : plan.model.workflowId;
+    // The settings the new run does not read: still on the node, and dropped by the request, so the caller is
+    // told rather than left to discover it when a number stops mattering.
+    const dropped = plan.stale.length ? `; this run no longer reads ${plan.stale.join(", ")}, and ${plan.stale.length === 1 ? "it is" : "they are"} still on the node — the request leaves ${plan.stale.length === 1 ? "it" : "them"} out` : "";
+    return { content: [textBlock(`${node.id} now runs ${ran}${clause ? ` — ${clause}` : ""}${dropped}`)], isError: false };
 }
 
 /**

@@ -160,8 +160,8 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 	for _, tool := range tools {
 		names = append(names, tool.(map[string]any)["name"].(string))
 	}
-	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,set_text,set_node_settings,generate,stop_node,read_node,read_prompt,delete_node,focus_node,move_node,group_nodes,ungroup_nodes,resize_node" {
-		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, set_text, set_node_settings, generate, stop_node, read_node, read_prompt, delete_node, focus_node, move_node, group_nodes, ungroup_nodes, resize_node", names)
+	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,set_text,set_node_settings,generate,set_model,stop_node,read_node,read_prompt,delete_node,focus_node,move_node,group_nodes,ungroup_nodes,resize_node" {
+		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, set_text, set_node_settings, generate, set_model, stop_node, read_node, read_prompt, delete_node, focus_node, move_node, group_nodes, ungroup_nodes, resize_node", names)
 	}
 }
 
@@ -207,7 +207,9 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 		// #309: the run's shape is a setting too, and it is checked against what the workflow publishes.
 		"canvas_set_node_settings",
 		"canvas_read_prompt reads them back",
-		"Which model runs is not a setting",
+		// #311: the model is its own act, and it is the one change that alters what the picture is.
+		"Which model runs is a separate act, not a setting",
+		"canvas_set_model",
 		// #310: a run the agent started can be ended, and that is what makes pressing safe.
 		"canvas_stop_node",
 		"Press nothing you cannot stop",

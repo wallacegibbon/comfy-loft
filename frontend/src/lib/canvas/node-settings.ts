@@ -285,3 +285,27 @@ function readParams(kind: string, value: unknown, contract: SettingsContract, in
 }
 
 const describeValue = (value: unknown) => (value && typeof value === "object" ? JSON.stringify(value) : String(value));
+
+/**
+ * The request keys this node currently holds values for — what a model change might stop reading.
+ *
+ * The names are the request's, the same ones `fieldsFor` writes, and they are read off the metadata the panels
+ * write: a node that kept a `size` for one workflow and is pointed at another is the case this exists for
+ * (docs/decisions.md #311). `quality` is here though no control writes it: a node made by a button records it
+ * from the config it was made with, so it can go stale like any other.
+ */
+export function heldKeys(node: CanvasNodeData): string[] {
+    const metadata = node.metadata || {};
+    const held: Array<[string, unknown]> = [
+        ["size", metadata.size],
+        ["seconds", metadata.seconds],
+        // A seed is only a value a run reads when the node says it is fixed — the pair #309 writes.
+        ["seed", metadata.seedFixed === "true" ? metadata.seed : ""],
+        ["background", metadata.background],
+        ["quality", metadata.quality ?? metadata.vquality],
+        ["format", metadata.audioFormat],
+        ["lyrics", metadata.audioInstructions],
+        ...Object.entries(metadata.params || {}),
+    ];
+    return held.filter(([key, value]) => key && value !== "" && value != null).map(([key]) => key);
+}

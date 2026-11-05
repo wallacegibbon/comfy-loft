@@ -201,6 +201,19 @@ func (s *Server) mcpTools() []mcpTool {
 			"additionalProperties": false
 		}`),
 	}, {
+		Name:        "set_model",
+		Description: "Change which run this node is: the workflow it generates with, and — for a family that offers several — the mode it is asked in. This is the one tool that changes what a picture is rather than how it is made, so reach for it when the user names a model or asks for a mode, not to make a prompt fit. Both of a model's names work: the workflow this canvas reports (`image-qwen21`) and the picker's own value (`default::image-qwen21`). A mode is resolved the way the panel resolves it — a film's workflow *is* its mode, so naming a film mode names the workflow — and a mode whose node pack is missing is refused here rather than queued to fail inside ComfyUI. The answer names what the node now runs and, if the new workflow no longer reads a setting the node is holding, which one: the value stays on the node and the request leaves it out. Setting a model on a node that holds material is how it becomes a generator again.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeId": {"type": "string", "description": "The id list_nodes reported."},
+				"model": {"type": "string", "description": "The workflow to run, as read_prompt reported it (image-qwen21), or the picker's value (default::image-qwen21). Omit it to change only the mode of the model the node already runs."},
+				"mode": {"type": "string", "description": "The mode to run in: t2i, edit, inpaint or outpaint on a picture family, or text, frames or reference for a film. On a film it names the workflow too. Omitted, a picture keeps the mode it has and a film takes the one its workflow declares."}
+			},
+			"required": ["nodeId"],
+			"additionalProperties": false
+		}`),
+	}, {
 		Name:        "stop_node",
 		Description: "Stop what this node is generating — its panel's stop button, without the question the button asks: a call is the sure part. The node keeps what it held before the run started, and is idle again; the work in progress is thrown away on the server too (the ComfyUI prompt is interrupted, so the GPU is free). Answers one of three things, and they are not the same: the run was cancelled; there was nothing running; or the server did not confirm the cancel, in which case the call failed and the run may still be rendering there. A text node generates nothing, so it has nothing to stop.",
 		InputSchema: json.RawMessage(`{

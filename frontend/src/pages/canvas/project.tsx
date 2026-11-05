@@ -11,8 +11,9 @@ import { toast } from "@/components/kit/toast";
 import { cancelRun, type RunRequest } from "@/services/api/runs";
 import type { GenerateOptions, GenerateStart } from "@/lib/canvas/agent-generate";
 import type { StopOutcome } from "@/lib/canvas/canvas-agent-tools";
+import type { ModelCatalog } from "@/lib/canvas/node-model";
 import { createVideoGenerationTask, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
-import { channelModelOf, modelContractOf, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
+import { acceptsInput, channelModelOf, modelContractOf, modelOptionLabel, useConfigStore, useEffectiveConfig, workflowModelOptions, type ModelCapability } from "@/stores/use-config-store";
 import { imageModeFor } from "@/lib/canvas/image-mode";
 import { uploadImage } from "@/services/image-storage";
 import { nanoid } from "nanoid";
@@ -2122,6 +2123,37 @@ function InfiniteCanvasPage() {
         [effectiveConfig],
     );
 
+    /**
+     * The models a node may be set to, and the contract answer for each — the catalog `set_model` decides with.
+     *
+     * Built from `workflowModelOptions` for the node's kind, which is the pickers' own list, so the tool cannot
+     * offer a model the panel would not; the names beside each value are the model's own and the workflow id,
+     * because those are what `list_nodes` and `read_prompt` report and what a caller will therefore type.
+     */
+    const modelCatalog = useCallback(
+        (nodeId: string): ModelCatalog => {
+            const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
+            const capability: ModelCapability = node?.type === CanvasNodeType.Video ? "video" : node?.type === CanvasNodeType.Audio ? "audio" : "image";
+            const options = workflowModelOptions(effectiveConfig, capability).flatMap((value) => {
+                const model = channelModelOf(effectiveConfig, value)?.model;
+                if (!model) return [];
+                return [
+                    {
+                        value,
+                        names: [...new Set([model.name, model.workflowId].filter((name): name is string => Boolean(name)))],
+                        label: modelOptionLabel(effectiveConfig, value),
+                        workflowId: model.workflowId || model.name,
+                        mode: model.mode || "",
+                        modes: model.variantModes || [],
+                        blocked: model.blockedModes || [],
+                    },
+                ];
+            });
+            return { options, accepts: (value, mode, key) => acceptsInput(effectiveConfig, value, key, mode) };
+        },
+        [effectiveConfig],
+    );
+
     // The agent's hands are the same functions the buttons press.
     useCanvasAgentTools({
         nodesRef,
@@ -2139,7 +2171,8 @@ function InfiniteCanvasPage() {
         ungroupNodes: (nodeIds) => ungroupNodes(new Set(nodeIds)),
         stopNode: stopNodeRun,
         nodeContract,
-        writeSettings: handleConfigNodeChange,
+        modelCatalog,
+        writeMetadata: handleConfigNodeChange,
     });
 
     // Memoize every callback and render function passed to CanvasNode.

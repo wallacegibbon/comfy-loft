@@ -5,6 +5,7 @@ import type { GenerateStart } from "../src/lib/canvas/agent-generate";
 import { registerBuiltinNodes } from "../src/components/canvas/nodes/builtin-nodes";
 import type { SettingsContract } from "../src/lib/canvas/node-settings";
 import type { StopOutcome } from "../src/lib/canvas/canvas-agent-tools";
+import type { ModelCatalog } from "../src/lib/canvas/node-model";
 import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
 
 /**
@@ -25,7 +26,7 @@ function node(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): 
 }
 
 /** The page's hands, with every write recorded instead of performed. */
-function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [], contract: SettingsContract = {}, stopped: StopOutcome = { running: true, cancel: "cancelled" }) {
+function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [], contract: SettingsContract = {}, stopped: StopOutcome = { running: true, cancel: "cancelled" }, catalog: ModelCatalog = { options: [], accepts: () => undefined }) {
     const written = {
         prompts: [] as Array<[string, string]>,
         texts: [] as Array<[string, string]>,
@@ -71,7 +72,10 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [],
         // The published contract is the page's to read and the panel's to ask; what these answer is only
         // whether a setting is written and how the answer reads.
         nodeContract: () => contract,
-        writeSettings: (nodeId, patch) => void written.settings.push([nodeId, patch]),
+        writeMetadata: (nodeId, patch) => void written.settings.push([nodeId, patch]),
+        // The catalog is the page's reading of the published models; the tools' own decisions are tested in
+        // `node-model.test.ts`, so these answer with the fixture the test handed in.
+        modelCatalog: () => catalog,
         // Stopping is the page's two endings (a watch, and the run's own record) collapsed into one answer;
         // what these have to say is only what the tool tells the agent.
         stopNode: async (nodeId) => {
@@ -418,6 +422,57 @@ describe("resize_node: the card's box, not a zoom", () => {
 
         const unknown = await textOf(hands, "resize_node", { nodeId: "text-9", size: { width: 400 } });
         expect(unknown.answer.isError).toBe(true);
+    });
+});
+
+/**
+ * Which run a node is: the one change that alters what the picture *is*.
+ *
+ * The tool writes the picker's own fields and answers in the node's words; which name means which model, and
+ * what a mode may be, are `planNodeModel`'s decisions and are tested where they live (#311).
+ */
+describe("set_model: which run this node is", () => {
+    const catalogWith = (accepts: string[]): ModelCatalog => ({
+        options: [{ value: "default::image-qwen21", names: ["image-qwen21"], label: "Qwen Image 2.1", workflowId: "image-qwen21", mode: "", modes: ["t2i", "edit"], blocked: [] }],
+        accepts: (_value, _mode, key) => accepts.includes(key),
+    });
+
+    test("writes the model and the mode, and answers with what the node now runs", async () => {
+        const { hands, written } = handsFor([placed("image-1", "image")], [], {}, undefined, catalogWith(["prompt", "editCanvasSize"]));
+        const { answer, text } = await textOf(hands, "set_model", { nodeId: "image-1", model: "image-qwen21", mode: "edit" });
+
+        expect(answer.isError).not.toBe(true);
+        expect(written.settings).toEqual([["image-1", { model: "default::image-qwen21", imageMode: "edit" }]]);
+        expect(text).toBe("image-1 now runs image-qwen21 as edit — set to run image-qwen21 as edit");
+    });
+
+    test("a setting the new run does not read is named, and stays on the node", async () => {
+        const sized = placed("image-1", "image", { size: "1360x768", params: { steps: 8 } });
+        const { hands, written } = handsFor([sized], [], {}, undefined, catalogWith(["prompt"]));
+        const { text } = await textOf(hands, "set_model", { nodeId: "image-1", model: "image-qwen21" });
+
+        expect(written.settings[0][1]).not.toHaveProperty("size");
+        expect(text).toContain("no longer reads size, steps");
+        expect(text).toContain("still on the node");
+    });
+
+    test("a name it does not have is refused before anything is written", async () => {
+        const { hands, written } = handsFor([placed("image-1", "image")], [], {}, undefined, catalogWith(["prompt"]));
+        const { answer, text } = await textOf(hands, "set_model", { nodeId: "image-1", model: "image-flux" });
+
+        expect(answer.isError).toBe(true);
+        expect(written.settings).toEqual([]);
+        expect(text).toContain("image-qwen21");
+    });
+
+    test("an id the canvas does not hold, and a node with no run to choose", async () => {
+        const { hands } = handsFor([textSaying(card)], [], {}, undefined, catalogWith(["prompt"]));
+        const unknown = await textOf(hands, "set_model", { nodeId: "image-9", model: "image-qwen21" });
+        expect(unknown.answer.isError).toBe(true);
+
+        const words = await textOf(hands, "set_model", { nodeId: "text-1", model: "image-qwen21" });
+        expect(words.answer.isError).toBe(true);
+        expect(words.text).toContain("holds words");
     });
 });
 

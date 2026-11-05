@@ -67,7 +67,11 @@ export function configuredClause(metadata: CanvasNodeMetadata | undefined): stri
     // asked for, and the channel is a local naming detail the reader cannot act on.
     const at = model.lastIndexOf("::");
     const name = (at >= 0 ? model.slice(at + 2) : model).trim();
-    return [`set to run ${name}`, ...(settings ? [settings] : [])].join(", ");
+    // The mode is part of which run this is, so a rewrite needs it: `image-qwen21 as edit` takes a picture and
+    // the words for changing it, `as t2i` takes words alone. It is not a setting (#309) — it comes with the
+    // model — but it is a fact about the next run, which is what this clause is (#311).
+    const mode = (metadata?.imageMode || "").trim();
+    return [`set to run ${name}${mode ? ` as ${mode}` : ""}`, ...(settings ? [settings] : [])].join(", ");
 }
 
 /** The params a settings clause leaves out: two the run fills in, and one it has already stated. */

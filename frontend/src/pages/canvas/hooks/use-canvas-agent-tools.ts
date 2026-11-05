@@ -39,7 +39,8 @@ export function useCanvasAgentTools({
     groupNodes,
     ungroupNodes,
     nodeContract,
-    writeSettings,
+    writeMetadata,
+    modelCatalog,
     stopNode,
 }: {
     nodesRef: RefObject<CanvasNodeData[]>;
@@ -56,7 +57,8 @@ export function useCanvasAgentTools({
     groupNodes: CanvasHands["groupNodes"];
     ungroupNodes: CanvasHands["ungroupNodes"];
     nodeContract: CanvasHands["nodeContract"];
-    writeSettings: CanvasHands["writeSettings"];
+    writeMetadata: CanvasHands["writeMetadata"];
+    modelCatalog: CanvasHands["modelCatalog"];
     stopNode: CanvasHands["stopNode"];
 }) {
     // The refs and callbacks outlive a render, and a tool call can arrive between two of them.
@@ -75,7 +77,8 @@ export function useCanvasAgentTools({
         groupNodes,
         ungroupNodes,
         nodeContract,
-        writeSettings,
+        writeMetadata,
+        modelCatalog,
         stopNode,
     });
     hands.current = {
@@ -93,7 +96,8 @@ export function useCanvasAgentTools({
         groupNodes: committed(groupNodes),
         ungroupNodes: committed(ungroupNodes),
         nodeContract,
-        writeSettings: committed(writeSettings),
+        writeMetadata: committed(writeMetadata),
+        modelCatalog,
         stopNode,
     };
 

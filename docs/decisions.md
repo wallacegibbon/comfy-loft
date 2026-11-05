@@ -11342,3 +11342,61 @@ before the page is asked. `internal/server/mcp_test.go` pins the seventeen names
 `frontend/src/pages/canvas/project.tsx` (`stopNodeRun`), `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
 `internal/server/routes_mcp.go`, `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`,
 `frontend/tests/canvas-agent-tools.test.ts`.
+
+## 311. Which run a node is, and what changing it stops meaning
+
+**Decision** An eighteenth tool, `set_model(nodeId, { model, mode })`: the workflow the node generates with, and
+the mode a family is asked in. The vocabulary is the canvas's, not the picker's storage: `image-qwen21` and
+`default::image-qwen21` are the same run, and both resolve. A mode is resolved the way the panel resolves it — on
+a picture it is written beside the model, on a film it *names* the workflow (`videoModelModePatch`'s own rule,
+which the panel's mode pill already follows) — and a mode whose node pack is missing is refused at the tool rather
+than queued to fail inside ComfyUI. `read_prompt` now prints the mode ("set to run image-qwen21 as edit"), because
+the wording a rewrite must use depends on it and nothing else said it.
+
+The tool also answers the one thing the panel never has to: **which settings the new run no longer reads**. A
+`size` set for Z-Image is still on a node switched to Qwen's edit, and the request will now leave it out without a
+word (#302). The values stay — a knob belongs to the model that declared it, and the panel leaves them too (#274) —
+and the answer names them.
+
+**Why** The agent could set a size, a length and a seed (#309) but not the model, which is the first sentence a
+user says ("用 Qwen 的 edit 模式"). It is also the only way an agent can turn **material** into a generator again: a
+crop's panel keeps exactly one control, the picker, and choosing a model *is* saying "generate here" (#297).
+
+**What was measured before deciding** Three facts, from the code the pickers and the request run:
+- A node stores `channel::model`; every tool and sentence names the workflow. So one resolver accepts both, asks
+  `workflowModelOptions` for the list (the pickers' own), and refuses a name that two channels both carry rather
+  than choosing a server for the user.
+- A film's `videoMode` is written by `videoModelModePatch` from the workflow's declared `mode`, so "change the
+  mode" and "change the workflow" are one act on a film — and the panel's mode pill already implements it as
+  `videoModelForMode`. The tool follows the panel instead of inventing a second rule.
+- Qwen's `blockedModes` are per family (`variantModes` ∩ missing node packs). Writing a blocked mode would open
+  the mask editor and then fail inside ComfyUI, so it is refused with the blocked list named.
+
+**Rejected** Letting the mode stand as a free field ("it will fall back at press time"). `imageModeFor` does fall
+back, silently, and the answer would then say a mode the run does not use — the accepted-and-ignored failure again,
+in the one place where the mode changes the *wording* the model is asked with.
+
+**Cost** Base models — the `.safetensors` a family can be pointed at — are **not** in the catalog: they are files
+picked by filter and aliased ("moody", "fp16"), the same kind of choice as a LoRA stack, and the panel keeps them
+behind their own row. They remain reachable the low way: `unet` is a published key, so `set_node_settings`'s
+`params: { unet: … }` sets one. Also: switching a model never clears a stale setting, so the report is the whole
+of the help — an agent that ignores it gets a run that ignores the value, and the contract is what says so.
+
+**Tested** `npx vitest run` (494 — 23 new): `node-model.test.ts` pins the resolver (workflow id and picker value,
+an unknown name listed against what exists, a name two channels carry refused with both labels), the modes (a
+family's own, one it does not offer, a blocked one named with the reason, a workflow with none, a film's mode
+naming its workflow, a film mode contradicting a named film, a sound having none, a picture keeping its own when
+only the model is named), the stale report (named and not written; an unfixed seed not claimed; nothing published
+claiming nothing), and the refusals (text/group/LoRA, neither argument, a mode with no model). `canvas-agent-tools
+.test.ts` pins the tool's answers and that a refusal writes nothing. `node-generation-facts.test.ts` pins the mode
+in the clause. `internal/server/mcp_test.go` pins the eighteen names in order and the rewritten prompt rule ("Which
+model runs is a separate act, not a setting" — the old sentence said it was not a tool's business, which is no
+longer true). `go test ./...`, `make check` (503 exports), `npx tsc --noEmit`, `npm run check` (832/799, 187
+modules), `make frontend`, `make build`. Not checked in a browser: the page on `:8190` predates this commit.
+
+**Where** `frontend/src/lib/canvas/node-model.ts` (new), `frontend/src/lib/canvas/canvas-agent-tools.ts`
+(`set_model`), `frontend/src/lib/canvas/node-settings.ts` (`heldKeys`), `frontend/src/lib/canvas/node-generation
+-facts.ts` (the mode in the clause), `frontend/src/pages/canvas/project.tsx` (`modelCatalog`),
+`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`, `internal/server/routes_mcp.go`,
+`internal/server/agent_instructions.go`, `internal/server/mcp_test.go`,
+`frontend/tests/{node-model,canvas-agent-tools,node-generation-facts}.test.ts`.

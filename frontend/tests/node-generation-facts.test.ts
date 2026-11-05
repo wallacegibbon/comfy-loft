@@ -49,6 +49,11 @@ describe("configuredClause", () => {
         expect(configuredClause({ size: "1024x1024" })).toBe("size 1024x1024");
     });
 
+    test("the mode a family is asked in is part of the run, so it is named", () => {
+        // Not a setting (#309) — it comes with the model — but the wording a rewrite must use depends on it (#311).
+        expect(configuredClause({ model: "default::image-qwen21", imageMode: "edit", size: "1360x768" })).toBe("set to run image-qwen21 as edit, size 1360x768");
+    });
+
     test("a seed is not a fact until the node says it is fixed, which is the pair a run reads", () => {
         expect(configuredClause({ model: "image-z-image-turbo", seed: "42" })).toBe("set to run image-z-image-turbo");
     });
