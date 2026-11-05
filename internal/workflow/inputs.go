@@ -61,19 +61,28 @@ func (e *Entry) AcceptedInputs() []string {
 	return keys
 }
 
-// InputSpecs is the typed contract of a workflow, assembled from three sources: the request-level
-// keys above, the workflow's declared `parameters`, and its non-media binding keys.
+// InputSpecs is the typed contract of a workflow: which keys a run may carry, and what each one takes.
+//
+// Two sources say a key exists — the request-level keys above, which the engine itself reads, and the
+// workflow's bindings, which write request values into the graph. The workflow's declared `parameters`
+// are a *third* thing and not a source: they are the presentation of those keys (label, range, options,
+// the value the panel shows before anything is typed). A parameter nothing reads is prose for the panel —
+// the audio workflow declares its length bound that way — and must not become an accepted input, which is
+// the "accepted and then ignored" failure this build refuses to have (#299).
 func (e *Entry) InputSpecs(limits InputLimits) []InputSpec {
 	if e == nil {
 		return nil
 	}
 	specs := make([]InputSpec, 0, len(semanticInputs)+len(e.Parameters))
-	seen := map[string]bool{}
+	at := map[string]int{}
 	add := func(spec InputSpec) {
-		if spec.Key == "" || seen[spec.Key] {
+		if spec.Key == "" {
 			return
 		}
-		seen[spec.Key] = true
+		if _, ok := at[spec.Key]; ok {
+			return
+		}
+		at[spec.Key] = len(specs)
 		specs = append(specs, spec)
 	}
 
@@ -108,24 +117,6 @@ func (e *Entry) InputSpecs(limits InputLimits) []InputSpec {
 	// server-owned input rather than a workflow one.
 	add(InputSpec{Key: "loras", Type: "any", Label: "LoRAs"})
 
-	// Declared parameters carry the workflow's own ranges. They are authoritative for numbers.
-	for _, raw := range e.Parameters {
-		object, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		key, _ := object["key"].(string)
-		if key == "" {
-			continue
-		}
-		spec := InputSpec{Key: key, Type: parameterType(object), Label: stringField(object, "label")}
-		spec.Min = numberPointer(object["min"])
-		spec.Max = numberPointer(object["max"])
-		spec.Default = object["default"]
-		spec.Options = stringList(object["options"])
-		add(spec)
-	}
-
 	// Any remaining non-media binding is a valid input too (a model file override, for example).
 	keys := make([]string, 0, len(bindings))
 	for key := range bindings {
@@ -137,14 +128,44 @@ func (e *Entry) InputSpecs(limits InputLimits) []InputSpec {
 		if binding.IsMedia() {
 			continue
 		}
-		// A binding whose value is derived from somewhere else (`size.width`, `seconds`,
-		// `quality.steps`, another parameter) is not something a caller may set: naming it would be
-		// accepted and then ignored, because the binding reads its source, not `params.<key>`. Only
-		// a binding addressed by its own name — or one with no `from` at all — is an input.
-		if from := binding.String(keyFrom); from != "" && from != "params."+key {
+		// The key a binding contributes is the one it *reads*, which need not be the name it has:
+		// `horizontal` reads `params.horizontalAngle`, so the caller's key is `horizontalAngle`. A binding
+		// derived from anywhere else (`size.width`, `seconds`, `quality.steps`) reads no request key at all
+		// and so contributes none; a binding with no `from` writes the key it is named after.
+		name := key
+		if from := binding.String(keyFrom); from != "" {
+			if !strings.HasPrefix(from, "params.") {
+				continue
+			}
+			name = strings.TrimPrefix(from, "params.")
+		}
+		add(InputSpec{Key: name, Type: bindingInputType(binding), Label: name})
+	}
+
+	// Declared parameters decorate a key that already exists. They are authoritative for what the panel
+	// shows — range, wording, the initial value — and for nothing else: a parameter whose key no binding and
+	// no request-level rule reads does not make that key acceptable (#299).
+	for _, raw := range e.Parameters {
+		object, ok := raw.(map[string]any)
+		if !ok {
 			continue
 		}
-		add(InputSpec{Key: key, Type: bindingInputType(binding), Label: key})
+		key, _ := object["key"].(string)
+		position, exists := at[key]
+		if key == "" || !exists {
+			continue
+		}
+		spec := &specs[position]
+		if label := stringField(object, "label"); label != "" {
+			spec.Label = label
+		}
+		spec.Min = numberPointer(object["min"])
+		spec.Max = numberPointer(object["max"])
+		spec.Default = object["default"]
+		spec.Options = stringList(object["options"])
+		if declared := parameterType(object); declared != "" {
+			spec.Type = declared
+		}
 	}
 	return specs
 }

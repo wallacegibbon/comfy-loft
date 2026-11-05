@@ -166,7 +166,10 @@ func imageFixture() (string, map[string]any, map[string]any) {
 		"bindings": map[string]any{
 			"prompt": map[string]any{"node": "4", "input": "text"},
 			"seed":   map[string]any{"node": "8", "input": "seed", "from": "params.seed", "random": true},
-			"steps":  map[string]any{"node": "8", "input": "steps", "from": "quality.steps", "default": 4},
+			// The quality preset supplies the fallback; the caller's own `steps` overrides it. The key a
+			// binding accepts is the one it reads, which is why `stepsOverride` makes `steps` an input (#299).
+			"steps":         map[string]any{"node": "8", "input": "steps", "from": "quality.steps", "default": 4},
+			"stepsOverride": map[string]any{"node": "8", "input": "steps", "from": "params.steps", "transform": "int"},
 		},
 	}
 	return "test-image.json", graph, entry

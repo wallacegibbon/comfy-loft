@@ -184,7 +184,9 @@ repeat the status code.
 required, range and (where the server owns the value set) the allowed options. A run is validated
 against it **at submission**, so a mistake is a `400` now rather than a failed run minutes later.
 
-The list is assembled from three sources, so no workflow has to restate it:
+The list is assembled from the two sources that make a key reach something — the engine's own request keys, and
+the workflow's bindings — and then *decorated* with what the workflow declares about it, so no workflow has to
+restate it:
 
 1. Request-level keys: `prompt` (required whenever the workflow has a prompt binding), `size`, `quality`,
    `seconds`/`duration`, `mode`. There is **no batch key**: `count` and `n` are refused with `unknown_input`, so N
@@ -192,12 +194,16 @@ The list is assembled from three sources, so no workflow has to restate it:
    why the list carries an `index`. There is **no negative prompt** either: a key by that name anywhere is a `400`,
    and a graph that has a negative text encoder carries its own string, which the server never writes
    (decisions #288).
-2. The workflow's declared `parameters` (`seed`, `steps`, `cfg`, `sampler`, …), whose ranges are
-   authoritative.
-3. Every remaining non-media binding key that a caller can actually set — one addressed by its own
-   name (`params.` + the key) or one with no source at all. A binding that derives its value from
-   somewhere else (`size.width`, `seconds`, `quality.steps`) is not an input: it used to be
-   advertised and silently ignored, which is the same failure as a typo that does not error.
+2. The key every non-media binding *reads*, which need not be the name it has: `horizontal` reads
+   `params.horizontalAngle`, so `horizontalAngle` is the caller's key. A binding with no source
+   (`task_type`) contributes the key it is named after. A binding whose value is derived from
+   somewhere else (`size.width`, `seconds`, `quality.steps`) reads no request key and contributes
+   none — advertising it would be a key that is accepted and then ignored, the same failure as a typo
+   that does not error.
+3. The workflow's declared `parameters` (`seed`, `steps`, `cfg`, `sampler`, …) are the *presentation*
+   of those keys: label, range, options, and the value a panel shows before anything is typed. They
+   add no key of their own; a parameter that describes nothing (the audio workflow's length bound) is
+   prose for the panel, not an input.
 4. The request-level inputs the server itself reads: `background`, `layout`/`layoutEnabled` (the
    MOSS prompt), `loras` (applied by the engine), and — for video workflows — `frameMode` (which
    frames a request supplies).

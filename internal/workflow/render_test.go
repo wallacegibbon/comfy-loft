@@ -89,8 +89,10 @@ func TestPublicProjectionCarriesTheKeysARunMayTake(t *testing.T) {
 		Name: "image-qwen21",
 		Type: "image",
 		RawBindings: OrderedMap[OrderedMap[any]]{
-			Keys:   []string{"prompt", "seed"},
-			Values: map[string]OrderedMap[any]{"prompt": kv("node", "5"), "seed": kv("node", "7", "from", "params.seed")},
+			Keys: []string{"prompt", "seed", "resolution"},
+			// A declared parameter is the panel's wording for a key a binding reads; the binding is what
+			// makes the key acceptable (#299).
+			Values: map[string]OrderedMap[any]{"prompt": kv("node", "5"), "seed": kv("node", "7", "from", "params.seed"), "resolution": kv("node", "5", "from", "params.resolution")},
 		},
 		Parameters: []any{map[string]any{"key": "resolution", "type": "number"}},
 		Variants: OrderedMap[*Variant]{

@@ -39,6 +39,8 @@ func inputEntry() *Entry {
 			"prompt", map[string]any{"node": "4", "input": "text", "required": true},
 			"seed", map[string]any{"node": "8", "input": "seed", "from": "params.seed", "random": true},
 			"steps", map[string]any{"node": "8", "input": "steps", "from": "params.steps"},
+			// A parameter is the panel's wording for a key a binding reads; the binding is what accepts it (#299).
+			"sampler", map[string]any{"node": "8", "input": "sampler_name", "from": "params.sampler"},
 			"refs", map[string]any{
 				"node": "9", "input": "images", "from": "image", "array": true, "inputPrefix": "ref_",
 			},
@@ -203,5 +205,100 @@ func TestDerivedBindingsAreNotInputs(t *testing.T) {
 	// The self-named binding is still the way to set it.
 	if err := ValidateInputs(entry, map[string]any{"prompt": "x", "seed": 7}, InputLimits{}); err != nil {
 		t.Errorf("seed rejected: %v", err)
+	}
+}
+
+// The key a binding contributes is the one it reads, not the name it has.
+//
+// `horizontal` reads `params.horizontalAngle`, so `horizontalAngle` is the caller's key. Naming the
+// binding had made the knob unreachable: the parameter was accepted (it was added on its own) and the
+// binding was not (its name matched no parameter), so the request's value reached nothing (#299).
+func TestABindingContributesTheKeyItReads(t *testing.T) {
+	entry := inputEntry()
+	entry.RawBindings = bindings(
+		"prompt", map[string]any{"node": "4", "input": "text", "required": true},
+		"horizontal", map[string]any{"node": "8", "input": "horizontal_angle", "from": "params.horizontalAngle", "transform": "int"},
+		// A value derived from something other than a request key accepts no key at all.
+		"frameRate", map[string]any{"node": "8", "input": "frame_rate", "from": "params.horizontalAngle", "transform": "multiply", "factor": 24},
+	)
+	entry.Parameters = []any{map[string]any{"key": "horizontalAngle", "type": "number"}}
+
+	keys := map[string]bool{}
+	for _, key := range entry.AcceptedInputs() {
+		keys[key] = true
+	}
+	if !keys["horizontalAngle"] {
+		t.Errorf("the key the binding reads is missing from %v", entry.AcceptedInputs())
+	}
+	if keys["horizontal"] {
+		t.Errorf("the binding's own name became an input: %v", entry.AcceptedInputs())
+	}
+	if keys["frameRate"] {
+		t.Errorf("a derived binding contributed a key: %v", entry.AcceptedInputs())
+	}
+}
+
+// A declared parameter is the panel's wording for a key that exists. On its own it accepts nothing: the
+// audio workflow declares its length bound that way, and accepting `duration` there would be a value the
+// render never reads (#299).
+func TestAParameterNothingReadsIsNotAnInput(t *testing.T) {
+	entry := inputEntry()
+	entry.Parameters = append(entry.Parameters, map[string]any{"key": "volume", "type": "number", "min": 0, "max": 100})
+
+	if err := ValidateInputs(entry, map[string]any{"prompt": "x", "volume": 50}, InputLimits{}); err == nil {
+		t.Error("a parameter no binding reads was accepted")
+	} else if !strings.Contains(err.Error(), "unknown input") {
+		t.Errorf("message = %q, want an unknown-input refusal", err.Error())
+	}
+	for _, spec := range entry.InputSpecs(InputLimits{}) {
+		if spec.Key == "volume" {
+			t.Errorf("a parameter no binding reads appeared in the contract: %+v", spec)
+		}
+	}
+}
+
+// ...and where the key does exist, the parameter is what the panel reads: wording, range, options, and the
+// value shown before anything is typed.
+func TestParametersDecorateTheKeyTheyDescribe(t *testing.T) {
+	entry := inputEntry()
+	spec := map[string]InputSpec{}
+	for _, item := range entry.InputSpecs(InputLimits{}) {
+		spec[item.Key] = item
+	}
+	steps := spec["steps"]
+	if steps.Min == nil || *steps.Min != 1 || steps.Max == nil || *steps.Max != 30 {
+		t.Errorf("steps = %+v, want the declared range 1..30", steps)
+	}
+	if steps.Label == "" {
+		t.Error("steps has no label: the panel would show a bare key")
+	}
+	sampler := spec["sampler"]
+	if sampler.Type != "string" || len(sampler.Options) != 2 || sampler.Options[0] != "euler" {
+		t.Errorf("sampler = %+v, want the declared options", sampler)
+	}
+}
+
+// Every parameter a shipped workflow declares describes an input that workflow accepts. A parameter that
+// describes nothing is prose the contract cannot honour (#299).
+func TestShippedParametersAllDescribeAnInput(t *testing.T) {
+	registry := NewRegistry(RegistryOptions{Dir: shippedWorkflowsDir, Logger: logx.NewWithWriter("test", io.Discard)})
+	if err := registry.Load(); err != nil {
+		t.Fatalf("load shipped registry: %v", err)
+	}
+	for _, entry := range registry.Entries() {
+		accepted := map[string]bool{}
+		for _, key := range entry.AcceptedInputs() {
+			accepted[key] = true
+		}
+		for _, raw := range entry.Parameters {
+			object, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			key, _ := object["key"].(string)
+			if key != "" && !accepted[key] {
+				t.Errorf("%s: parameter %q describes no input", entry.ID, key)
+			}
+		}
 	}
 }

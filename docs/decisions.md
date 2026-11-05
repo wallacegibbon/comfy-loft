@@ -10867,3 +10867,65 @@ an option's text and background come from the same palette as the card. `npx tsc
 
 **Where** `frontend/src/lib/canvas-theme.ts`, `frontend/src/components/canvas/canvas-tool-node-panel.tsx`,
 `frontend/src/components/canvas/nodes/lora-node.tsx`, `frontend/tests/native-select-style.test.ts`.
+
+## 299. Parameters describe inputs; they are not inputs
+
+**Decision** `InputSpecs` builds the accepted key set from the request-level keys the engine reads and from the
+workflow's bindings, then *decorates* those specs with the declared `parameters` (label, range, options, the value
+a panel shows). A parameter whose key nothing reads adds nothing. And the key a binding contributes is the one it
+*reads*, not the name it has: `horizontal` (`from: params.horizontalAngle`) contributes `horizontalAngle`; a
+binding derived from `size.width`/`seconds`/`quality.steps` contributes none; a binding with no `from`
+(`task_type`) contributes its own name.
+
+**Why** Two mechanisms were deciding what a run may carry, and neither was the contract. `parameters` were added
+as inputs on their own, so the audio workflow's length *bound* — 4 s to 360 s, read by the canvas to size its
+slider — was also an accepted key, and a request carrying `duration` was accepted and ignored (the binding reads
+`seconds`). Meanwhile the binding that really reads a knob was rejected for having the wrong *name*: the angle
+workflow's `horizontal` was skipped because `from` was not `params.horizontal`, and `horizontalAngle` only worked
+because a parameter happened to exist with that name (#267's neighbour). One rule now: a key exists because
+something reads it, and what it is called is what the reader says.
+
+**Cost** `audioQuality` becomes an accepted key — a binding read `params.audioQuality` while the contract refused
+it, so the format quality could only ever be its default. Nothing becomes unacceptable. Three fixtures gained the
+binding their parameters described, which is the shape the rule asks for.
+
+**Tested** `internal/workflow/inputs_test.go`: a binding contributes the key it reads and not its own name; a
+derived binding contributes nothing; a parameter nothing reads is refused as `unknown_input` and absent from the
+specs; a parameter decorates the spec that exists (range, options, type); every parameter a shipped workflow
+declares describes an input it accepts. `TestPublicProjectionCarriesTheKeysARunMayTake`'s fixture now binds
+`resolution` instead of only declaring it. `go test ./...`, `make check`.
+
+**Where** `internal/workflow/inputs.go`, `internal/workflow/inputs_test.go`, `internal/workflow/render_test.go`,
+`internal/server/e2e_test.go`, `docs/protocol.md`.
+
+## 300. A default is stated in the caller's domain, and the graph holds the value
+
+**Decision** A binding that *derives* its value — `multiply`, `secondsToFrames`, `secondsToFrames17`, `snap16`,
+`snap32`, `invert10` — carries no `default`: the graph holds that value, and the source parameter holds the
+caller's. Twenty-one such defaults were deleted. A default that is written verbatim must equal the graph's
+authored value, except where one graph file serves several workflows (the H3 trio re-parameterises
+`video-h3-ref2va-drama-vdn.json`). Two values were wrong and are corrected: `image-z-image-turbo`'s `steps` said
+10 where its graph says 8.
+
+**Why** A default is chosen first and transformed afterwards, so a default written in the graph's domain comes out
+of the conversion wrong. RIFE's output frame rate carried `48` (frames per second) where the binding multiplies by
+24 — a run that omitted the multiplier would have asked for 1152 fps; three H3 `length` bindings carried `124`
+(frames) where the binding converts seconds — an omitted length became ~2980 frames. Both were dormant only
+because the canvas always sent the parameter they read. Where the conversion *was* idempotent (a size already
+snapped to 16) the default was a copy of the graph: the same fact, written twice, waiting to drift. Z-Image's
+`steps` had already drifted, and every `quality: auto` run paid a step the 8-step distill never asked for.
+
+**Rejected** Fixing only the two wrong numbers. It leaves 19 copies of graph values that nothing needs, and no way
+to tell a copy from a decision. Also rejected: making the renderer fall back to a declared default when the graph
+has a value — two answers to one question.
+
+**Verified** Rendering every shipped graph from an empty request, before and after: the only differences are
+`steps` 10 → 8 and `length` 2980 → 124 (seeds differ, they are random). Nothing else moved, which is the point —
+the deleted defaults were all reproducing the graph.
+
+**Tested** `internal/workflow/defaults_test.go` (new, 3): a deriving binding carries no default; a default written
+verbatim equals its canonical graph's value (skipping shared files, with the reason in the test); and the value a
+panel publishes equals the default of the binding that reads that key — which is what lets a node be created
+without writing any params and still show the number the run will use. `go test ./...`, `make check`.
+
+**Where** `workflows/registry.json`, `internal/workflow/defaults_test.go`.
