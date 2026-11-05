@@ -125,7 +125,7 @@ authentication; there is no configuration in this server that makes an untrusted
 | `MAX_IMPORT_BYTES` | `8589934592` | Ceiling for one imported canvas archive: the body and the bytes it unpacks to. Its own number because a canvas archive carries every clip that canvas shows. |
 | `RESOURCE_CONCURRENCY` | `2` | Parallel downloads during a resource install. |
 | `ALAYACORE_BIN` | _(found)_ | The agent binary. Empty looks on `PATH`, then beside the server. |
-| `AGENT_CONFIG_PATH` | `UserConfigDir()/comfyloft-server/<host>/alayacore` | The agent's own config directory (`model.conf`, and the `mcp.conf` the server writes). One per host, because `mcp.conf` names the address the agent dials back to; a pre-#147 `model.conf` is copied into it once. |
+| `AGENT_CONFIG_PATH` | `UserConfigDir()/comfyloft-server/alayacore` | The agent's own config directory: `model.conf`, `runtime.conf`, and the `mcp.conf` the server writes. No address or machine name in the path — both used to be there and both lost the operator's models when that one string changed (#245). Two servers sharing one home directory need this set per unit. |
 | `AGENT_AUTO_SUMMARIZE` | `0` | Passed to the agent as `--auto-summarize`: at this percentage of the model's context, AlayaCore summarizes the conversation to make room. `0` — and unset — is off, and passes no flag at all. A value outside `0`–`100` stops the server at startup instead of quietly meaning "off", because off is what a mistyped threshold looks like. |
 | `MCP_BIN` | beside the server binary (`comfyloft-mcp`) | Overrides where the bridge is expected. The path goes into the static `mcp.conf` on every start, so a moved release directory does not leave a stale one behind. |
 
@@ -493,6 +493,7 @@ cmd/comfyloft-mcp        the stdio bridge: JSON-RPC in, loopback call out
 internal/mcpstdio        the bridge's protocol half, testable without a process
 internal/config          environment -> immutable Config
 internal/httpx           error type, JSON responses, middleware, multipart
+internal/ws              the WebSocket the agent's socket and previews ride on
 internal/comfy           ComfyUI HTTP client + minimal WebSocket client
 internal/workflow        registry, graph model, bindings, base-model variants
 internal/generate        runner, LoRA injection, step planning, previews
@@ -500,16 +501,21 @@ internal/setup           availability scan, model aliases, model path resolution
 internal/task            the run queue: persistence, progress, cancel, multi-output records
 internal/upload          uploaded media: bytes on disk, index, cached ComfyUI reference
 internal/resource        resources.json, install jobs, main-model override
+internal/canvas          the canvas directory: documents, revisions, files, import
 internal/prompt          Qwen's `图片N` renumbering, MOSS layout prompts
-internal/store           workflow visibility, main-model overrides
+internal/store           workflow visibility, main-model overrides, speech profiles
+internal/settings        the preferences document, opaque to the server
 internal/sysinfo         ComfyUI's /system_stats, as the panel's units
+internal/agent           spawning AlayaCore, its event whitelist, models, notices
+internal/logx            structured log lines with request ids
+internal/util            the few helpers that are not any one package's business
 internal/server          route table and wiring
 ```
 
 Three design notes worth knowing before changing anything:
 
-- **Graphs are generic JSON.** There are seventeen ComfyUI graphs and they carry node
-  classes this codebase will never model. `internal/workflow` offers typed accessors
+- **Graphs are generic JSON.** There are fourteen ComfyUI graphs beside `registry.json`, and they
+  carry node classes this codebase will never model. `internal/workflow` offers typed accessors
   (`Node.ClassType()`, `Node.Inputs()`) and everything above it is typed.
 - **Bindings keep their raw JSON.** `registry.json` is user-editable, so a binding
   is a thin typed view over the raw object. A closed struct would silently drop
