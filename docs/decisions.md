@@ -10633,7 +10633,9 @@ group leaves `g1` holding nothing, and that shell is debris the press itself mad
 merging — take these two groups and make one — would otherwise leave an empty card every time.
 
 **Cost** A group whose members are all deleted now stays as an empty box until someone deletes it, like any other
-node. That is the price of not deleting other people's cards on an unrelated press. `create_node`'s vocabulary
+node. That is the price of not deleting other people's cards on an unrelated press. **Amended by #318**: that
+sentence described what removing the sweep left behind, and the reason it gives does not cover the delete itself —
+a delete that takes a card's last member is not an unrelated press, so it now removes the shell it emptied. `create_node`'s vocabulary
 grew by one type; a group has no prompt, and a call that carries one is refused rather than answered with a node
 that is not what was asked for.
 
@@ -11646,3 +11648,37 @@ again kept its members and removed nothing. `npx vitest run` (531), `npx tsc --n
 `frontend/src/lib/canvas/canvas-agent-tools.ts` (`moveNode`, `moveClause`, `MoveOutcome`),
 `frontend/src/pages/canvas/project.tsx` (`moveNodesTo`, `finishNodeDrag`, `forgetNodes`),
 `internal/server/routes_mcp.go`, `frontend/tests/{canvas-node-geometry,canvas-agent-tools}.test.ts`.
+
+## 318. A delete that empties a card takes the card with it
+
+**Decision** `deleteNodes` applies `withoutEmptiedGroups` (#317) to what it leaves behind, and answers with the
+cards it took away: `delete_node` appends `; removed g1, which the delete left empty`. A card that still holds a
+member, and a box that was already empty, are untouched. #292's cost sentence — "a group whose members are all
+deleted now stays as an empty box" — is amended: it described the state removing the sweep left behind, and its
+reason ("the price of not deleting other people's cards on an unrelated press") does not reach a press that
+deletes the card's last member.
+
+**Why** #292's rule is "the shells *this press* emptied are debris this press made", and it was applied to
+grouping and ungrouping, then to moving (#317), and not to deleting — so the same canvas state was litter by one
+gesture and permanent by another. The cost sentence was read as a decision to keep it; read against the rule it
+cites, it is only a description: the delete of a last member is the emptiest possible case of "this press emptied
+it". Leaving it also taught the agent nothing: `delete_node` said the node was gone and the next `list_nodes`
+showed a card that had never held anything.
+
+**Rejected** Deleting the shell when the *group* is deleted and not when its last member is — that is the
+asymmetry, not a rule. Also rejected: reporting nothing and letting `list_nodes` explain it later, which is what
+`move_node` was doing before #317.
+
+**Cost** Deleting a member can now remove two nodes, so "I only asked for one" is a thing a person can say; the
+undo is one step, since both removals are written in the same update. `delete_node`'s answer grew a clause and its
+description a sentence.
+
+**Tested** `canvas-agent-tools.test.ts` (+3): a card whose last member is deleted is removed and named in the
+answer; a card that keeps a member stays; an empty box elsewhere is not swept. In the browser, on an isolated
+server with a card holding one member beside a loose node: clicking the member (it took the selection, `z-50`,
+no dialog) and sending the page a Delete keydown left the document holding the loose node alone — the member and
+its card were both gone. `npx vitest run` (534), `npx tsc --noEmit`, `npm run check`, `go test ./...`.
+
+**Where** `frontend/src/lib/canvas/canvas-agent-tools.ts` (`CanvasHands["deleteNodes"]`, `deleteNode`),
+`frontend/src/pages/canvas/project.tsx` (`deleteNodes`), `internal/server/routes_mcp.go`,
+`frontend/tests/canvas-agent-tools.test.ts`, and #292's cost paragraph above.

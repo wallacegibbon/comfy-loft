@@ -258,7 +258,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "delete_node",
-		Description: "Delete one node, the way the Delete key does: the node goes, and so does every connection that touched it. Answers with what disappeared. The user can undo it.",
+		Description: "Delete one node, the way the Delete key does: the node goes, and so does every connection that touched it. A group left with nothing in it is removed too, since a box drawn around nothing is what this delete made; a box that was already empty is left alone. Answers with what disappeared. The user can undo it.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {

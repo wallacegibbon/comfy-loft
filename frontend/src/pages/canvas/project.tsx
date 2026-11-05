@@ -1067,21 +1067,20 @@ function InfiniteCanvasPage() {
     }, []);
 
     const deleteNodes = useCallback(
-        (ids: Set<string>) => {
-            if (!ids.size) return;
-            const allIds = new Set(ids);
-            setNodes((prev) => {
-                const next = prev.filter((node) => !allIds.has(node.id));
-                return next.map((node) => {
-                    const groupId = node.metadata?.groupId;
-                    if (groupId && allIds.has(groupId)) return { ...node, metadata: { ...node.metadata, groupId: undefined } };
-                    return node;
-                });
-            });
-            setConnections((prev) => prev.filter((conn) => !allIds.has(conn.fromNodeId) && !allIds.has(conn.toNodeId)));
+        (ids: Set<string>): { removed: string[] } => {
+            if (!ids.size) return { removed: [] };
+            const before = nodesRef.current;
+            // The cards that go, and the members of any group among them released where they stand.
+            const kept = before.filter((node) => !ids.has(node.id)).map((node) => (node.metadata?.groupId && ids.has(node.metadata.groupId) ? { ...node, metadata: { ...node.metadata, groupId: undefined } } : node));
+            // Deleting a card's last member empties it, and that shell is debris this press made (#318).
+            const remaining = connectionsRef.current.filter((conn) => !ids.has(conn.fromNodeId) && !ids.has(conn.toNodeId));
+            const settled = withoutEmptiedGroups(before, kept, remaining);
+            setNodes(settled.nodes);
+            setConnections(settled.connections);
             setSelectedNodeIds(new Set());
             setSelectedConnectionId(null);
-            forgetNodes(allIds);
+            forgetNodes(new Set([...ids, ...settled.removed]));
+            return { removed: settled.removed };
         },
         [forgetNodes, projectId],
     );

@@ -37,6 +37,7 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [],
         moved: [] as Array<[string, { x: number; y: number }]>,
         grouped: [] as string[][],
         ungrouped: [] as string[][],
+        deleted: [] as string[],
         settings: [] as Array<[string, CanvasNodeMetadata]>,
         stopped: [] as string[],
     };
@@ -54,7 +55,13 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [],
         setNodePrompt: (nodeId, prompt) => void written.prompts.push([nodeId, prompt]),
         writeText: (nodeId, text) => void written.texts.push([nodeId, text]),
         connectNodes: () => false,
-        deleteNodes: () => {},
+        // Deleting a card's last member empties it, and the canvas removes the shell (#318) — the same rule
+        // `withoutEmptiedGroups` applies to a move, so this answers with what it would have taken away.
+        deleteNodes: (nodeIds) => {
+            written.deleted.push(...nodeIds);
+            const kept = nodes.filter((each) => !nodeIds.includes(each.id)).map((each) => (each.metadata?.groupId && nodeIds.includes(each.metadata.groupId) ? { ...each, metadata: { ...each.metadata, groupId: undefined } } : each));
+            return { removed: withoutEmptiedGroups(nodes, kept, []).removed };
+        },
         focusNode: () => {},
         // The real hands move through `withGroupMembers` and `settleMoveMembership`, which are the canvas's own
         // rules and tested where they live; these answer with what those rules would have done, so what the
@@ -798,5 +805,34 @@ describe("ungroup_nodes: letting nodes out", () => {
         const unknown = await textOf(hands, "ungroup_nodes", { nodeIds: ["ghost"] });
         expect(unknown.answer.isError).toBe(true);
         expect(unknown.text).toContain('no node with id "ghost"');
+    });
+});
+
+/**
+ * Deleting, which is the fourth gesture that can empty a group.
+ *
+ * A card whose last member is deleted is a box drawn around nothing, and the delete is what made it that —
+ * the same debris grouping, ungrouping and moving remove (#318, amending #292's cost). A card that keeps a
+ * member, and a box that was already empty, are not the delete's business.
+ */
+describe("delete_node: the card a delete empties", () => {
+    test("deleting a card's last member removes the card, and says so", async () => {
+        const { hands, written } = handsFor([group("group-1", 0, 0), member("text-1", "group-1", 100, 100)]);
+        const { answer, text } = await textOf(hands, "delete_node", { nodeId: "text-1" });
+        expect(answer.isError).not.toBe(true);
+        expect(written.deleted).toEqual(["text-1"]);
+        expect(text).toBe("deleted text-1 (text); removed group-1, which the delete left empty");
+    });
+
+    test("a card that still holds a member stays", async () => {
+        const { hands } = handsFor([group("group-1", 0, 0), member("text-1", "group-1", 100, 100), member("text-2", "group-1", 100, 220)]);
+        const { text } = await textOf(hands, "delete_node", { nodeId: "text-1" });
+        expect(text).toBe("deleted text-1 (text)");
+    });
+
+    test("a box that was already empty is nobody's debris", async () => {
+        const { hands } = handsFor([placed("empty", "group"), placed("text-1", "text")]);
+        const { text } = await textOf(hands, "delete_node", { nodeId: "text-1" });
+        expect(text).toBe("deleted text-1 (text)");
     });
 });

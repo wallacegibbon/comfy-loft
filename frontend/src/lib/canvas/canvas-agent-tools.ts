@@ -59,7 +59,14 @@ export type CanvasHands = {
      */
     stopNode: (nodeId: string) => Promise<StopOutcome>;
     connectNodes: (firstNodeId: string, secondNodeId: string, firstHandleType: "source" | "target") => boolean;
-    deleteNodes: (nodeIds: string[]) => void;
+    /**
+     * Delete these nodes, the way the Delete key does, and say which cards went with them.
+     *
+     * Deleting a group's last member empties it, and a box drawn around nothing is debris the delete itself
+     * made — the same rule grouping, ungrouping and moving follow (#318). What is never touched is a card that
+     * was already empty before the press.
+     */
+    deleteNodes: (nodeIds: string[]) => { removed: string[] };
     focusNode: (nodeId: string) => void;
     /**
      * Move one card, and say what travelled and what the landing did to membership.
@@ -582,9 +589,10 @@ function deleteNode(hands: CanvasHands, args: unknown): ToolAnswer {
     if (!node) return noSuchNode(args);
 
     const edges = hands.connections().filter((connection) => connection.fromNodeId === node.id || connection.toNodeId === node.id).length;
-    hands.deleteNodes([node.id]);
+    const done = hands.deleteNodes([node.id]);
     const connected = edges ? `, and ${edges} connection${edges === 1 ? "" : "s"} that touched it` : "";
-    return { content: [textBlock(`deleted ${node.id} (${node.type})${connected}`)], isError: false };
+    const emptied = done.removed.length ? `; removed ${done.removed.join(", ")}, which the delete left empty` : "";
+    return { content: [textBlock(`deleted ${node.id} (${node.type})${connected}${emptied}`)], isError: false };
 }
 
 /**
