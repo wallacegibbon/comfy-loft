@@ -29,7 +29,6 @@ func (m Media) Reference() string {
 // Context is the normalized request, the single input that bindings read from.
 type Context struct {
 	Prompt         string
-	Negative       *string
 	Size           *util.Size
 	OutputSize     *util.Size
 	Quality        map[string]any
@@ -58,7 +57,6 @@ type UploadResult struct {
 // BuildContextParams collects the raw request fields.
 type BuildContextParams struct {
 	Prompt         string
-	Negative       *string
 	Size           string
 	Quality        string
 	Seconds        float64
@@ -87,7 +85,6 @@ func BuildContext(p BuildContextParams) *Context {
 
 	ctx := &Context{
 		Prompt:         p.Prompt,
-		Negative:       p.Negative,
 		Quality:        quality,
 		Mode:           p.Mode,
 		Background:     p.Background,
@@ -135,9 +132,6 @@ func (c *Context) fields() map[string]any {
 		"images": c.Images,
 	}
 	out["quality"] = c.Quality
-	if c.Negative != nil {
-		out["negative"] = *c.Negative
-	}
 	if c.Size != nil {
 		out["size"] = map[string]any{
 			"width":  c.Size.Width,

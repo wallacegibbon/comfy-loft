@@ -201,7 +201,6 @@ func (s *Server) handleRunCreate(ctx *httpx.Ctx) error {
 	background := httpx.String(inputs, "background")
 	runCtx := workflow.BuildContext(workflow.BuildContextParams{
 		Prompt:         applyBackgroundPrompt(httpx.String(inputs, "prompt"), background, entry),
-		Negative:       optionalString(inputs, "negative"),
 		Size:           httpx.String(inputs, "size"),
 		Quality:        httpx.String(inputs, "quality"),
 		Seconds:        httpx.Number(inputs, "seconds", httpx.Number(inputs, "duration", 0)),

@@ -6,7 +6,7 @@
       "name": "image-z-image-turbo",
       "type": "image",
       "file": "image-z-image-turbo.json",
-      "description": "Z-Image Turbo text-to-image (4-8 step distill); bf16 base model by default with the Qwen3-4B text encoder and the ae VAE; no negative prompt (ConditioningZeroOut).",
+      "description": "Z-Image Turbo text-to-image (4-8 step distill); bf16 base model by default with the Qwen3-4B text encoder and the ae VAE; one prompt, 4-8 steps at cfg 1.",
       "lora": {
         "filter": "Z-Image|ZIT|Kook_Zimage"
       },
@@ -28,7 +28,8 @@
           "from": "size.height",
           "transform": "snap16",
           "default": 1216
-        },        "seed": {
+        },
+        "seed": {
           "node": "4",
           "input": "seed",
           "from": "params.seed",
@@ -812,11 +813,6 @@
           "node": "5",
           "input": "prompt"
         },
-        "negative": {
-          "node": "5",
-          "input": "negative_prompt",
-          "default": "artifacts, low quality, blurry, deformed, watermark"
-        },
         "cfg": {
           "node": "6",
           "input": "cfg",
@@ -906,11 +902,6 @@
               "node": "7",
               "input": "prompt"
             },
-            "negative": {
-              "node": "7",
-              "input": "negative_prompt",
-              "default": "artifacts, low quality, blurry, deformed, watermark"
-            },
             "cfg": {
               "node": "9",
               "input": "cfg",
@@ -961,11 +952,6 @@
             "prompt": {
               "node": "10",
               "input": "prompt"
-            },
-            "negative": {
-              "node": "10",
-              "input": "negative_prompt",
-              "default": "artifacts, low quality, blurry, deformed, watermark"
             },
             "cfg": {
               "node": "11",
@@ -1066,11 +1052,6 @@
               "node": "5",
               "input": "prompt"
             },
-            "negative": {
-              "node": "5",
-              "input": "negative_prompt",
-              "default": "artifacts, low quality, blurry, deformed, watermark"
-            },
             "cfg": {
               "node": "6",
               "input": "cfg",
@@ -1122,11 +1103,6 @@
           "node": "4",
           "input": "text"
         },
-        "negative": {
-          "node": "5",
-          "input": "text",
-          "default": "worst quality, bad anatomy, watermark, jpeg artifact"
-        },
         "width": {
           "node": "7",
           "input": "width",
@@ -1140,7 +1116,8 @@
           "from": "size.height",
           "transform": "snap16",
           "default": 1024
-        },        "seed": {
+        },
+        "seed": {
           "node": "8",
           "input": "seed",
           "from": "params.seed",
@@ -1262,9 +1239,24 @@
       "description": "Qwen-Image 2.1 Turbo + Qwen Multiangle Camera. Local angle regeneration with 0-360 horizontal, -30-60 vertical and zoom.",
       "file": "image-qwen21-angle.json",
       "parameters": [
-        { "key": "horizontalAngle", "label": "Horizontal angle", "type": "number", "default": 0 },
-        { "key": "pitchAngle", "label": "Pitch angle", "type": "number", "default": 0 },
-        { "key": "cameraDistance", "label": "Camera distance", "type": "number", "default": 5 }
+        {
+          "key": "horizontalAngle",
+          "label": "Horizontal angle",
+          "type": "number",
+          "default": 0
+        },
+        {
+          "key": "pitchAngle",
+          "label": "Pitch angle",
+          "type": "number",
+          "default": 0
+        },
+        {
+          "key": "cameraDistance",
+          "label": "Camera distance",
+          "type": "number",
+          "default": 5
+        }
       ],
       "accepts": {
         "images": {
@@ -1605,11 +1597,6 @@
           "node": "4",
           "input": "text"
         },
-        "negative": {
-          "node": "5",
-          "input": "text",
-          "default": "worst quality, bad anatomy, watermark, jpeg artifact"
-        },
         "width": {
           "node": "7",
           "input": "width",
@@ -1623,7 +1610,8 @@
           "from": "size.height",
           "transform": "snap16",
           "default": 1024
-        },        "seed": {
+        },
+        "seed": {
           "node": "8",
           "input": "seed",
           "from": "params.seed",
@@ -1750,11 +1738,6 @@
           "node": "4",
           "input": "text"
         },
-        "negative": {
-          "node": "5",
-          "input": "text",
-          "default": "worst quality, bad anatomy, watermark, jpeg artifact"
-        },
         "width": {
           "node": "7",
           "input": "width",
@@ -1768,7 +1751,8 @@
           "from": "size.height",
           "transform": "snap16",
           "default": 1024
-        },        "seed": {
+        },
+        "seed": {
           "node": "8",
           "input": "seed",
           "from": "params.seed",

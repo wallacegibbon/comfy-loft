@@ -14,7 +14,6 @@ var (
 	reAudioClass   = regexp.MustCompile(`(?i)SaveAudio|VAE.*Audio|Audio`)
 	reTextNode     = regexp.MustCompile(`(?i)CLIPTextEncode`)
 	rePositiveTitl = regexp.MustCompile(`(?i)positive|正向|正面`)
-	reNegativeTitl = regexp.MustCompile(`(?i)negative|负向|负面`)
 	reLatent       = regexp.MustCompile(`(?i)Empty.*LatentImage`)
 	reKSampler     = regexp.MustCompile(`(?i)KSampler`)
 	reRandomNoise  = regexp.MustCompile(`(?i)RandomNoise`)
@@ -139,7 +138,8 @@ func InferBindings(graph Graph) OrderedMap[OrderedMap[any]] {
 	nodes := graph.SortedNodes()
 	out := newBindingBuilder()
 
-	// Text encoders: pick a positive and a negative encoder when present.
+	// Text encoders: pick the positive one. A second encoder is not bound — a negative prompt is not an input
+	// this server offers (#288), so a graph that has one keeps whatever its export says.
 	var textNodes []struct {
 		ID   string
 		Node Node
@@ -157,41 +157,12 @@ func InferBindings(graph Graph) OrderedMap[OrderedMap[any]] {
 				break
 			}
 		}
-		var negative *struct {
-			ID   string
-			Node Node
-		}
-		for i := range textNodes {
-			if reNegativeTitl.MatchString(textNodes[i].Node.Title()) {
-				negative = &textNodes[i]
-				break
-			}
-		}
-		if negative == nil {
-			for i := range textNodes {
-				if textNodes[i].ID != positive.ID {
-					negative = &textNodes[i]
-					break
-				}
-			}
-		}
-
 		positiveInputs := positive.Node.Inputs()
 		if _, ok := positiveInputs["text"].(string); ok {
 			out.Set("prompt", kv(keyNode, positive.ID, "input", "text"))
 		} else if _, ok := positiveInputs["text_g"].(string); ok {
 			out.Set("prompt", kv(keyNode, positive.ID, "input", "text_g"))
 			out.Set("prompt2", kv(keyNode, positive.ID, "input", "text_l"))
-		}
-
-		if negative != nil {
-			negativeInputs := negative.Node.Inputs()
-			if _, ok := negativeInputs["text"].(string); ok {
-				out.Set("negative", kv(keyNode, negative.ID, "input", "text", keyDefault, ""))
-			} else if _, ok := negativeInputs["text_g"].(string); ok {
-				out.Set("negative", kv(keyNode, negative.ID, "input", "text_g", keyDefault, ""))
-				out.Set("negative2", kv(keyNode, negative.ID, "input", "text_l", keyDefault, ""))
-			}
 		}
 	}
 

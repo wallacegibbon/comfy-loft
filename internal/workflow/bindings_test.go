@@ -394,12 +394,10 @@ func TestInferBindingsFindsCommonNodes(t *testing.T) {
 	if got := prompt.Values[keyNode]; got != "4" {
 		t.Errorf("prompt node = %v, want 4 (the Positive encoder)", got)
 	}
-	negative, ok := bindings.Get("negative")
-	if !ok {
-		t.Fatal("negative binding not inferred")
-	}
-	if got := negative.Values[keyNode]; got != "5" {
-		t.Errorf("negative node = %v, want 5", got)
+	// The fixture has a second text encoder, and it must stay unbound: a negative prompt is not an input this
+	// server offers (#288), so a graph that has one keeps whatever its export says.
+	if _, ok := bindings.Get("negative"); ok {
+		t.Error("a negative binding was inferred, and a run can no longer set it")
 	}
 	for _, key := range []string{"width", "height", "batch", "seed", "steps", "cfg"} {
 		if _, ok := bindings.Get(key); !ok {

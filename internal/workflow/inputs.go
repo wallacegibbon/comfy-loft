@@ -44,8 +44,8 @@ type InputSpec struct {
 // Most of them are added for every workflow even though some graphs ignore them: an ESREGAN upscale has no
 // `size` to read, an image workflow no `seconds`. That is a known rough edge, recorded in
 // docs/decisions.md #275 — closing it means the client must stop sending those keys first, so it is its own
-// change. `negative` was pulled out of this list because it is the one the canvas was about to offer as a
-// control, and a control that provably does nothing is worse than a key nobody sends.
+// change. There is no `negative` anywhere in it: a graph that has a negative text encoder carries its own
+// string, and the server never writes one (#288).
 var semanticInputs = []string{"prompt", "size", "quality", "seconds", "duration", "mode", "background", "editCanvasSize", "layout", "layoutEnabled"}
 
 // AcceptedInputs lists the keys a run of this workflow may carry, which is exactly the set
@@ -86,13 +86,6 @@ func (e *Entry) InputSpecs(limits InputLimits) []InputSpec {
 	}
 
 	add(InputSpec{Key: "prompt", Type: "string", Required: promptRequired, Label: "Prompt"})
-	// `negative` is added only where the graph can read it. Z-Image and all four H3 video workflows wire
-	// `ConditioningZeroOut(positive)` as their negative, so there is no second text encoder to write to;
-	// ESREGAN and the music workflow have no text at all, and Qwen's angle graph bakes its negative string
-	// in without a binding. Declaring the key there advertised a knob a run would accept and drop (#275).
-	if negativeBound(bindings) {
-		add(InputSpec{Key: "negative", Type: "string", Label: "Negative prompt"})
-	}
 	add(InputSpec{Key: "size", Type: "size", Label: "Size"})
 	add(InputSpec{Key: "quality", Type: "string", Options: e.qualityOptions(), StrictOptions: len(e.qualityOptions()) > 0, Label: "Quality"})
 	minimumSeconds := 0.0
@@ -154,19 +147,6 @@ func (e *Entry) InputSpecs(limits InputLimits) []InputSpec {
 		add(InputSpec{Key: key, Type: bindingInputType(binding), Label: key})
 	}
 	return specs
-}
-
-// negativeBound reports whether a graph can actually read a negative prompt.
-//
-// A `from`-less binding reads the context field of its own key (`applyScalarBinding`), so `negative` is a
-// real input exactly when a binding of that name reads that field; one that reads somewhere else does not.
-func negativeBound(bindings map[string]*Binding) bool {
-	binding, ok := bindings["negative"]
-	if !ok || binding == nil {
-		return false
-	}
-	from := binding.String(keyFrom)
-	return from == "" || from == "negative"
 }
 
 // MediaBindingKeys lists the binding names that carry media. They are not valid `inputs`: media goes

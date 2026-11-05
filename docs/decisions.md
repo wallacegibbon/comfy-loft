@@ -9884,6 +9884,9 @@ upscaler, `multiplier` only on the interpolation, `transition_step` only on the 
 
 ## 275. `negative` is a key only a graph with a negative text encoder can take
 
+**Superseded by #288** — the key is gone from the contract entirely. What follows is the step that got it
+out of nine workflows; it is kept because it is why the removal had a small surface to begin with.
+
 **Decision** `InputSpecs` now adds `negative` only when a binding reads that field — a `negative` binding with
 no `from`, or one that names `negative` explicitly. Every other request key is still added for every workflow.
 The helper is `negativeBound`; the rule is one `if` in the one function that both the wire projection and the
@@ -10441,3 +10444,47 @@ losing a nuance to save a few kilobytes. Paths were corrected mechanically where
 reason a `Where` line failed, and left alone where the file is one the entry records as deleted — a tombstone whose
 path no longer resolves is saying what it means.
 
+
+## 288. There is one prompt box, and there will never be a second
+
+**Decision** A negative prompt is not part of this server, for any workflow, and the operator has confirmed it never
+will be. What that removed:
+
+- the seven `negative` bindings in `registry.json` (`image-qwen21` and its `inpaint`/`outpaint`/`t2i` variants, the
+  three MOSS workflows);
+- the request-level input and the helper that decided who could read it (`InputSpecs`, `negativeBound`, #275);
+- `Context.Negative` / `BuildContextParams.Negative` and the `negative` key `fields()` rendered;
+- the `Negative:` line in `handleRunCreate`;
+- the inference that turned a second text encoder into `negative`/`negative2` bindings when a graph is imported;
+- `shipped_negative_test.go`, and the negative assertions in `bindings_test.go`.
+
+A run that carries `negative` now gets `unknown_input` with the accepted list, from every workflow, including the
+seven that used to take it. The graphs keep their own strings — `image-moss-*` node 5 still says "worst quality, bad
+anatomy, watermark, jpeg artifact" and `image-qwen21-*` still says "artifacts, low quality, blurry, deformed,
+watermark" — because that is the export's default and a model's own default belongs in the graph.
+
+**Why the removal changes no picture** Every one of the seven bindings carried a `default` that was *identical* to
+the value already in its graph (checked one by one), so the binding could only ever re-write what was there. Removing
+it leaves the graph's own string untouched.
+
+**Why it went at all, given it was inert** Because an input on the wire is a promise that a control can be built for
+it, and the promise was already false in two directions. At `cfg 1` — which every shipped image graph pins — ComfyUI
+drops the uncond branch entirely (`uncond_ = None` in `sampling_function`, `negative_cond = None` in `CFGGuider`), and
+measured on `192.168.3.233` with `image-moss-sft-8step`, seed 424242: two unrelated negatives give **pixel-identical**
+output at `cfg 1` (0 of 3,145,728 channel bytes differ) and a mean difference of 64/255 at `cfg 2`. And the product
+question is settled: one box. Leaving the key would leave a second way to say a prompt — the thing #203, #229 and
+#286 spent their sentences removing — and every new graph would keep being asked whether it has a second encoder.
+
+**Cost** An external caller that used to send `negative` now gets a `400` naming the key. Changing a graph's negative
+string now means editing the graph, which is where a model's own default belongs and which is also why the inference
+no longer invents a binding nobody can set. A future non-distilled model that *wants* a negative prompt cannot have
+one through this server; that is a tombstone, not an oversight — reverse this entry on purpose or not at all.
+
+**Measured** On an isolated `:8191` with a stub ComfyUI capturing `/prompt`: `GET /api/workflows` reports `negative`
+for no workflow; a run carrying it is refused with `unknown_input`; and the same moss request that used to send the
+binding's default sends the graph's own string, unchanged — node 4 `a cat`, node 5 `worst quality, bad anatomy,
+watermark, jpeg artifact`, `cfg 1`. `make check` (508 exports, every one reachable) and `go test ./...` pass, with
+the inference test now asserting that a second text encoder stays **unbound**.
+
+**Where** `internal/workflow/{inputs,bindings,infer}.go`, `internal/server/routes_runs.go`, `workflows/registry.json`,
+`docs/protocol.md`.
