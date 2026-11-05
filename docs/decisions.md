@@ -11093,3 +11093,33 @@ question for every key and every mode. `npx tsc --noEmit`, `npm run check`, `npx
 `frontend/src/components/image-settings-panel.tsx`,
 `frontend/src/components/canvas/canvas-image-settings-popover.tsx`,
 `frontend/tests/contract-controls.test.ts`, `docs/decisions.md` (#302's correction).
+
+## 305. The mask editor has one button, and it runs
+
+**Decision** 导出到画布 is gone. The footer is Reset and 生成; `submit()` takes no flag, `CanvasImageMaskEditPayload` has
+no `generate` field, and `maskEditImageNode` always creates the mask node, the result node and the run — the path it
+already took when pressed with 立刻生成.
+
+**Why** It was the only editor with a "don't run yet" button, and the thing it deferred was the model — deferred
+badly. The exported node recorded `{ prompt }` and nothing else, so its send button ran the canvas's *default* image
+model instead of the one the editor would have used, without `imageMode`, and with two references wired to a workflow
+that may accept none: Qwen's `inpaint` only ran if the canvas's mode happened to be `inpaint`; Z-Image's t2i refused
+the references outright. "Decide later" delivered a card that could not reproduce the run it was exported from.
+
+**Rejected** Keeping it and recording what it needs (#293's rule for a button-created node: model, mode, params),
+which would make the two buttons differ only by one press. #301's rationale for that shape — a cost multiplier (2× or
+3×) the dialog chose before the user could — has no analogue here: the mask and the words are the editor's own
+inputs, and the model comes from the source node, which the user can change on its card before opening the editor.
+Outpaint and MOSS layout are the same kind of editor (a source, a prompt, a run) and were never given a second button;
+that is the house answer, and this was the exception.
+
+**Also** One path means one prompt composition: the `maskPrompt` wrapper ("参考图1为原图，图2是蓝色标注区域…") is now written
+only where the request is sent, so the reference labels cannot be added twice — which is what would have happened the
+moment an exported node's send button re-wrapped the text `requestEdit` had already wrapped.
+
+**Tested** `npx tsc --noEmit`, `npm run check` (i18n 832 keys, no dead keys — `maskExport` removed from both locales),
+`npx vitest run` (433), `make check`, `make frontend`.
+
+**Where** `frontend/src/components/canvas/canvas-node-mask-edit-dialog.tsx` (`CanvasImageMaskEditPayload`),
+`frontend/src/pages/canvas/hooks/use-image-editors.ts` (`maskEditImageNode`),
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts`.

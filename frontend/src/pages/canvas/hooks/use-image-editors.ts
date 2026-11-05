@@ -115,7 +115,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 size: node.metadata?.size || "auto",
                 ...(isQwenImage ? { imageMode: "inpaint" } : {}),
             };
-            if (payload.generate && !isAiConfigReady(generationConfig, generationConfig.model)) {
+            if (!isAiConfigReady(generationConfig, generationConfig.model)) {
                 openPreferences();
                 return;
             }
@@ -135,7 +135,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
             const sentMask = references[1];
             const maskBinding = sentMask.storageKey ? { mask: { storageKey: sentMask.storageKey, mimeType: sentMask.type } } : {};
             const generationMetadata = buildImageGenerationMetadata("edit", generationConfig, references);
-            const childMetadata = payload.generate ? { prompt, status: NODE_STATUS_LOADING, ...generationMetadata } : { prompt };
+            const childMetadata = { prompt, status: NODE_STATUS_LOADING, ...generationMetadata };
             setNodes((prev) => [
                 ...prev,
                 {
@@ -164,7 +164,6 @@ export function useImageEditors(deps: NodeEditorDeps) {
             setSelectedNodeIds(new Set([childId]));
             setSelectedConnectionId(null);
             setDialogNodeId(childId);
-            if (!payload.generate) return;
             setRunningNodeId(childId);
             const controller = startGenerationRequest(childId, node.id, childId);
             try {

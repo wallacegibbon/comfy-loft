@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { Brush, Eraser, ImagePlus, Redo2, RotateCcw, Undo2, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
+import { Brush, Eraser, Redo2, RotateCcw, Undo2, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/kit/button";
@@ -16,7 +16,6 @@ export type CanvasImageMaskEditPayload = {
     prompt: string;
     maskDataUrl: string;
     binaryMaskDataUrl: string;
-    generate: boolean;
 };
 
 type DrawMode = "paint" | "erase";
@@ -224,7 +223,7 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
         return () => window.removeEventListener("keydown", handleKeyDown, true);
     }, [open, redoMask, undoMask]);
 
-    const submit = async (generate: boolean) => {
+    const submit = async () => {
         const nextPrompt = prompt.trim();
         const canvas = maskCanvasRef.current;
         if (!nextPrompt) return setError(t("canvas.editors.maskPromptRequired"));
@@ -240,7 +239,7 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
         } catch {
             return setError(t("common.imageReadFailed"));
         }
-        onConfirm({ prompt: nextPrompt, ...payload, generate });
+        onConfirm({ prompt: nextPrompt, ...payload });
     };
 
     return (
@@ -355,14 +354,9 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
                         <Button icon={<RotateCcw className="size-4" />} onClick={resetMask}>
                             {t("canvas.editors.reset")}
                         </Button>
-                        <div className="flex items-center gap-2">
-                            <Button icon={<ImagePlus className="size-4" />} onClick={() => void submit(false)}>
-                                {t("canvas.editors.maskExport")}
-                            </Button>
-                            <Button type="primary" icon={<WandSparkles className="size-4" />} onClick={() => void submit(true)}>
-                                {t("canvas.editors.maskGenerate")}
-                            </Button>
-                        </div>
+                        <Button type="primary" icon={<WandSparkles className="size-4" />} onClick={() => void submit()}>
+                            {t("canvas.editors.maskGenerate")}
+                        </Button>
                     </div>
                 </div>
             </div>
