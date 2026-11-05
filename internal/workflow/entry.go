@@ -207,6 +207,11 @@ func (o *OutputSpec) FormatNames() []string {
 	return names
 }
 
+// PromptInjectLayout is the `promptInject` value that asks the server to render a structural layout into the
+// prompt. It is a declaration both sides read: the run handler renders it, and the contract offers `layout` only
+// where it is declared.
+const PromptInjectLayout = "moss-layout"
+
 // Source records where an imported workflow came from.
 type Source struct {
 	Kind string `json:"kind,omitempty"`

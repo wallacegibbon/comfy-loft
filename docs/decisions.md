@@ -10971,3 +10971,42 @@ cases it also held stay, because those go through `requestEdit`. `api-video-runs
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/services/api/{image,video}.ts`,
 `frontend/src/components/canvas/canvas-node-upscale-dialog.tsx` (deleted),
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`.
+
+## 302. Every request key is one the workflow reads
+
+**Decision** The engine-owned request keys — `prompt`, `size`, `quality`, `seconds`, `mode`, `frameMode`,
+`background`, `editCanvasSize`, `layout`/`layoutEnabled` — are offered per workflow, each derived from the
+declaration that consumes it (a binding reading `size.width`, a `quality.*` preset field, `from: seconds`, a
+variant list, a frame-mode rule, a background prompt, an output size, `promptInject: "moss-layout"`). `duration` is
+gone: nothing ever read it. And the canvas sends only the keys the contract lists, for the engine's keys as well as
+for the knobs.
+
+**Why** This is the last place the "accepted and then ignored" failure lived, and #275 had already written down the
+shape of the fix: the client has to stop sending those keys first. `size` went to the upscaler (which has no latent)
+and to Qwen (whose picture follows its reference and its own `resolution`), `quality` to every video workflow and to
+MOSS, `mode` to workflows with no variants, `background` to workflows with no background prompt — each accepted,
+validated and dropped. A request that carries a key nothing reads cannot be told apart from one that carries a typo,
+which is what the typed contract exists to prevent.
+
+**Cost** `audio-minimax-music-3` declared its length bound on a parameter named `duration`, which was also the key
+that bound nothing; the parameter is now `seconds` — the key the run reads — and `server-models.ts` reads the bound
+from there. `mode` on a single-mode video workflow is no longer accepted and no longer sent; the workflow's declared
+`mode` decides, as `PlanMedia` always did.
+
+**Still open** Qwen's geometry controls. `image-qwen21` reads neither `size` nor `editCanvasSize`: its t2i graph
+carries a fixed `EmptyImage(1024×1024)` and the entry declares no output size, so the panel's size picker and its
+canvas-ratio pills do nothing — the contract says so now, where before they were accepted and dropped. Honouring
+them is graph authoring (a `size.width/height` binding on that node, an `outputSize` rule for the edits, and a
+decision about which sizes the model is asked for), not a contract change, so it is its own entry.
+
+**Tested** `internal/workflow/inputs_test.go`: a table toggling one declaration at a time, asserting the key appears
+exactly where it is read; `duration` is not an input; `loras` stays open. The shipped-workflow test now requires a
+minimal request per workflow — words only where a prompt is bound, and a prompt refused where one is not. Fixtures
+gained the bindings their requests rely on. `frontend/tests/api-image-runs.test.ts`: a Qwen-shaped contract drops
+`size` and `quality` from the request. `go test ./...`, `make check`, `npx tsc --noEmit`, `npm run check`,
+`npx vitest run` (428), `make frontend`.
+
+**Where** `internal/workflow/inputs.go` (`semanticSpecs`, `bindingsWithVariants`, `injectsLayout`,
+`frameModeDeclared`), `internal/workflow/entry.go` (`PromptInjectLayout`), `internal/server/routes_runs.go`,
+`workflows/registry.json`, `frontend/src/stores/use-config-store.ts` (`acceptedInputs`),
+`frontend/src/services/api/{image,video}.ts`, `frontend/src/lib/server-models.ts`, `docs/protocol.md`.

@@ -57,7 +57,9 @@ func TestRunVideoTakesFramesByRole(t *testing.T) {
 	status, payload := doJSON(t, server.Client(), http.MethodPost, canvasBase(t, server.URL)+"/runs", map[string]any{
 		"workflow": "video-test",
 		"inputs": map[string]any{
-			"prompt": "a cat", "mode": "frames", "frameMode": "last",
+			// No `mode`: a workflow without variants takes none, and the contract no longer accepts one it
+			// would ignore (#302).
+			"prompt": "a cat", "frameMode": "last",
 			"seconds": 5, "size": "1024x576",
 		},
 		"media": map[string]any{"last_frame": last},

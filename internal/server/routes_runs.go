@@ -214,7 +214,7 @@ func (s *Server) handleRunCreate(ctx *httpx.Ctx) error {
 		Presets:        entry.Presets,
 	})
 	runCtx.SourceVideoFrames = media.sourceVideoFrames
-	if entry.PromptInject == "moss-layout" {
+	if entry.PromptInject == workflow.PromptInjectLayout {
 		applyLayoutPrompt(runCtx)
 	}
 

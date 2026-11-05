@@ -13,7 +13,7 @@ import (
 
 func videoFixture() (string, map[string]any, map[string]any) {
 	graph := map[string]any{
-		"76": map[string]any{"class_type": "MiniMaxH3", "inputs": map[string]any{"prompt": ""}},
+		"76": map[string]any{"class_type": "MiniMaxH3", "inputs": map[string]any{"prompt": "", "width": 1344, "height": 768, "length": 124}},
 		"90": map[string]any{"class_type": "SaveVideo", "inputs": map[string]any{"video": []any{"76", 0}}},
 	}
 	entry := map[string]any{
@@ -32,6 +32,10 @@ func videoFixture() (string, map[string]any, map[string]any) {
 		},
 		"bindings": map[string]any{
 			"prompt": map[string]any{"node": "76", "input": "prompt"},
+			// The engine-owned keys this fixture reads: a latent size from `size`, frames from `seconds`.
+			"width":  map[string]any{"node": "76", "input": "width", "from": "size.width", "transform": "snap32"},
+			"height": map[string]any{"node": "76", "input": "height", "from": "size.height", "transform": "snap32"},
+			"length": map[string]any{"node": "76", "input": "length", "from": "seconds", "transform": "secondsToFrames17"},
 			// The first/last wiring is a binding, so a test can see which socket a role reached.
 			"frames": map[string]any{
 				"node": "76", "input": "first_frame", "from": "image", "frameMode": true,

@@ -26,7 +26,7 @@ type AudioSettingsPanelProps = {
  *
  * The length control exists only when the workflow declares a range for it, so a workflow that has no
  * duration input offers none rather than a number that would go nowhere. The bounds are the workflow's own
- * (`parameters.duration`), which is why a song may be asked to run for six minutes while a five-second
+ * (`parameters.seconds`), which is why a song may be asked to run for six minutes while a five-second
  * ceiling would come from a different graph's declaration.
  */
 export function AudioSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5" }: AudioSettingsPanelProps) {

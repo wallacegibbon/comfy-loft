@@ -18,7 +18,7 @@ afterAll(() => {
     else Reflect.deleteProperty(globalThis, "localStorage");
 });
 
-const { defaultConfig, defaultModelOptions, modelIsStep, paramsAcceptedBy, resolveModelForCapability, useConfigStore, workflowModelOptions } = await import("../src/stores/use-config-store");
+const { defaultConfig, defaultModelOptions, modelIsStep, acceptedInputs, resolveModelForCapability, useConfigStore, workflowModelOptions } = await import("../src/stores/use-config-store");
 const { buildGenerationConfig } = await import("../src/lib/canvas/canvas-generation-helpers");
 const { CanvasNodeType } = await import("../src/types/canvas");
 const { videoFollowsSource, videoModelForMode } = await import("../src/lib/canvas/video-model-mode");
@@ -211,13 +211,13 @@ test("a stored knob the model does not take is not sent", () => {
         ],
     };
     // `upscale_model` came from the upscaler; the image workflow does not declare it.
-    expect(paramsAcceptedBy(withKnobs, "replacement::image-z-image-turbo", { upscale_model: "x", seed: 7, steps: 4 })).toEqual({ seed: 7, steps: 4 });
+    expect(acceptedInputs(withKnobs, "replacement::image-z-image-turbo", { upscale_model: "x", seed: 7, steps: 4 })).toEqual({ seed: 7, steps: 4 });
     // `editCanvasSize` is a request key of every workflow rather than a declared parameter, and it survives.
-    expect(paramsAcceptedBy(withKnobs, "replacement::image-z-image-turbo", { editCanvasSize: "1024x1024" })).toEqual({ editCanvasSize: "1024x1024" });
+    expect(acceptedInputs(withKnobs, "replacement::image-z-image-turbo", { editCanvasSize: "1024x1024" })).toEqual({ editCanvasSize: "1024x1024" });
     // Nothing left is `undefined`, not an empty object: the request carries no `params` at all.
-    expect(paramsAcceptedBy(withKnobs, "replacement::image-z-image-turbo", { upscale_model: "x" })).toBeUndefined();
+    expect(acceptedInputs(withKnobs, "replacement::image-z-image-turbo", { upscale_model: "x" })).toBeUndefined();
     // A model the server did not describe claims nothing, so nothing is dropped on a guess.
-    expect(paramsAcceptedBy(withKnobs, "replacement::image-unlisted", { anything: 1 })).toEqual({ anything: 1 });
+    expect(acceptedInputs(withKnobs, "replacement::image-unlisted", { anything: 1 })).toEqual({ anything: 1 });
 });
 
 // The node remembers what it was made with. Recovery asks about that model by name, so a task that

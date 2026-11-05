@@ -294,4 +294,32 @@ describe("a stale knob", () => {
         const body = runBody(calls);
         expect(body.inputs).toEqual({ prompt: "a brass compass", seed: 7, size: "1024x1024" });
     });
+
+    it("covers the engine's own keys too, not only the knobs", async () => {
+        // `size` and `quality` are the server's keys, and a workflow offers each only where it declares what reads
+        // it (#302). This one declares neither, so the canvas sends neither — a key the run would ignore is not a
+        // key to send.
+        const { calls } = stubServer();
+        const image = {
+            ...server(),
+            channels: [
+                {
+                    id: "local",
+                    name: "local",
+                    baseUrl: "http://127.0.0.1:8190/v1",
+                    // Qwen's contract, which reads neither `size` nor `quality`: its picture follows the reference
+                    // and its own `resolution` knob.
+                    models: [{ name: "image-qwen21", capability: "image", workflowId: "image-qwen21", hasPrompt: true, inputs: ["prompt", "mode", "seed", "cfg", "resolution"] }],
+                },
+            ],
+            model: "local::image-qwen21",
+            imageModel: "local::image-qwen21",
+            params: { seed: 7 },
+        } as unknown as Config;
+
+        await requestGeneration(image, "a brass compass");
+
+        const body = runBody(calls);
+        expect(body.inputs).toEqual({ prompt: "a brass compass", seed: 7 });
+    });
 });

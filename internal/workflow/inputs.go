@@ -39,14 +39,12 @@ type InputSpec struct {
 	Label         string `json:"label,omitempty"`
 }
 
-// semanticInputs are the request-level keys, sized for the slice they are appended to.
-//
-// Most of them are added for every workflow even though some graphs ignore them: an ESREGAN upscale has no
-// `size` to read, an image workflow no `seconds`. That is a known rough edge, recorded in
-// docs/decisions.md #275 — closing it means the client must stop sending those keys first, so it is its own
-// change. There is no `negative` anywhere in it: a graph that has a negative text encoder carries its own
-// string, and the server never writes one (#288).
-var semanticInputs = []string{"prompt", "size", "quality", "seconds", "duration", "mode", "background", "editCanvasSize", "layout", "layoutEnabled"}
+// There is no `negative` request key anywhere: a graph that has a negative text encoder carries its own string,
+// and the server never writes one (#288).
+// The request-level keys the engine itself reads. Each is offered to a workflow only where the thing that reads it
+// is there (`semanticSpecs`), so none of them is a key that would be accepted and ignored (#302). There is no
+// `duration`: nothing ever read it — the audio workflow takes its length in `seconds`, and the `duration`
+// parameter of that name is the panel's bound, not an input.
 
 // AcceptedInputs lists the keys a run of this workflow may carry, which is exactly the set
 // `ValidateInputs` will not refuse. It is the same list the client needs to keep a knob it no longer
@@ -73,7 +71,7 @@ func (e *Entry) InputSpecs(limits InputLimits) []InputSpec {
 	if e == nil {
 		return nil
 	}
-	specs := make([]InputSpec, 0, len(semanticInputs)+len(e.Parameters))
+	specs := make([]InputSpec, 0, len(e.Parameters)+12)
 	at := map[string]int{}
 	add := func(spec InputSpec) {
 		if spec.Key == "" {
@@ -86,36 +84,10 @@ func (e *Entry) InputSpecs(limits InputLimits) []InputSpec {
 		specs = append(specs, spec)
 	}
 
-	promptRequired := false
 	bindings := e.Bindings()
-	if binding, ok := bindings["prompt"]; ok {
-		// A prompt binding is required unless it names a default: without one the node input would keep
-		// whatever the export happened to contain.
-		promptRequired = !binding.Has("default") || binding.Bool("required")
+	for _, spec := range e.semanticSpecs(bindings) {
+		add(spec)
 	}
-
-	add(InputSpec{Key: "prompt", Type: "string", Required: promptRequired, Label: "Prompt"})
-	add(InputSpec{Key: "size", Type: "size", Label: "Size"})
-	add(InputSpec{Key: "quality", Type: "string", Options: e.qualityOptions(), StrictOptions: len(e.qualityOptions()) > 0, Label: "Quality"})
-	minimumSeconds := 0.0
-	add(InputSpec{Key: "seconds", Type: "number", Min: &minimumSeconds, Label: "Seconds"})
-	add(InputSpec{Key: "duration", Type: "number", Min: &minimumSeconds, Label: "Duration"})
-	add(InputSpec{Key: "mode", Type: "string", Options: e.VariantModes(), Label: "Mode"})
-	if strings.EqualFold(e.Type, "video") {
-		// Which frames a request supplies (first, last or both) and how many images each of
-		// those needs is the workflow's own declaration, so `frameMode` is accepted here and
-		// judged by PlanMedia — one owner for the rule, one message for the caller.
-		add(InputSpec{Key: "frameMode", Type: "string", Label: "Frame mode"})
-	}
-	add(InputSpec{Key: "background", Type: "string", Label: "Background"})
-	add(InputSpec{Key: "editCanvasSize", Type: "size", Label: "Edit canvas size"})
-	// The structured layout a MOSS workflow renders into its prompt; the server owns its shape, so
-	// it is passed through rather than described here.
-	add(InputSpec{Key: "layout", Type: "any", Label: "Layout"})
-	add(InputSpec{Key: "layoutEnabled", Type: "boolean", Label: "Layout enabled"})
-	// The LoRA stack is applied by the engine (ApplyLoraChain), not by a binding, so it is a
-	// server-owned input rather than a workflow one.
-	add(InputSpec{Key: "loras", Type: "any", Label: "LoRAs"})
 
 	// Any remaining non-media binding is a valid input too (a model file override, for example).
 	keys := make([]string, 0, len(bindings))
@@ -402,4 +374,108 @@ func formatNumber(value float64) string {
 		return strconv.FormatInt(int64(value), 10)
 	}
 	return fmt.Sprintf("%g", value)
+}
+
+// semanticSpecs answers, per request-level key, whether *this* workflow reads it.
+//
+// These keys are not bindings: the engine applies them — `size` sizes the latent, `quality` selects a preset,
+// `seconds` becomes frames, `mode` chooses a variant, `layout` is rendered into the prompt, `background` wraps
+// the words, `loras` is a chain. Offering one where nothing reads it is the same failure as a knob that reaches
+// nothing (#302), so each is derived from the declaration that consumes it.
+func (e *Entry) semanticSpecs(bindings map[string]*Binding) []InputSpec {
+	from := map[string]bool{}
+	for _, set := range e.bindingsWithVariants() {
+		for _, binding := range set {
+			if source := binding.String(keyFrom); source != "" {
+				from[source] = true
+			}
+		}
+	}
+	readsQuality := false
+	for source := range from {
+		if strings.HasPrefix(source, "quality.") {
+			readsQuality = true
+		}
+	}
+
+	specs := make([]InputSpec, 0, 10)
+	if binding, ok := bindings["prompt"]; ok {
+		// A prompt binding is required unless it names a default: without one the node input would keep whatever
+		// the export happened to contain.
+		required := !binding.Has("default") || binding.Bool("required")
+		specs = append(specs, InputSpec{Key: "prompt", Type: "string", Required: required, Label: "Prompt"})
+	}
+	if from["size.width"] || from["size.height"] || (e.OutputSize != nil && e.OutputSize.FromSize) {
+		specs = append(specs, InputSpec{Key: "size", Type: "size", Label: "Size"})
+	}
+	if readsQuality {
+		options := e.qualityOptions()
+		specs = append(specs, InputSpec{Key: "quality", Type: "string", Options: options, StrictOptions: len(options) > 0, Label: "Quality"})
+	}
+	if from["seconds"] {
+		minimum := 0.0
+		specs = append(specs, InputSpec{Key: "seconds", Type: "number", Min: &minimum, Label: "Seconds"})
+	}
+	if len(e.VariantModes()) > 0 {
+		specs = append(specs, InputSpec{Key: "mode", Type: "string", Options: e.VariantModes(), Label: "Mode"})
+	}
+	if e.frameModeDeclared() {
+		// Which frames a request supplies (first, last or both) and how many images each of those needs is the
+		// workflow's own declaration, so `frameMode` is accepted here and judged by PlanMedia — one owner for the
+		// rule, one message for the caller.
+		specs = append(specs, InputSpec{Key: "frameMode", Type: "string", Label: "Frame mode"})
+	}
+	if e.BackgroundPrompt != "" {
+		specs = append(specs, InputSpec{Key: "background", Type: "string", Label: "Background"})
+	}
+	if e.OutputSize != nil {
+		specs = append(specs, InputSpec{Key: "editCanvasSize", Type: "size", Label: "Edit canvas size"})
+	}
+	if e.injectsLayout() {
+		// The structured layout a MOSS workflow renders into its prompt; the server owns its shape, so it is
+		// passed through rather than described here.
+		specs = append(specs, InputSpec{Key: "layout", Type: "any", Label: "Layout"}, InputSpec{Key: "layoutEnabled", Type: "boolean", Label: "Layout enabled"})
+	}
+	// The LoRA stack is applied by the engine (ApplyLoraChain), not by a binding. It stays open to every workflow
+	// because the engine answers for it: a stack sent to a graph with no model loader is refused with
+	// `lora_injection_failed` rather than ignored.
+	specs = append(specs, InputSpec{Key: "loras", Type: "any", Label: "LoRAs"})
+	return specs
+}
+
+// bindingsWithVariants is every binding a workflow can run, its own and its modes'.
+func (e *Entry) bindingsWithVariants() []map[string]*Binding {
+	sets := []map[string]*Binding{e.Bindings()}
+	for _, mode := range e.VariantModes() {
+		if variant, ok := e.Variants.Get(mode); ok && variant != nil {
+			sets = append(sets, variant.Bindings())
+		}
+	}
+	return sets
+}
+
+// profileOf mirrors the "promptInject" names that ask the server to render a layout into the prompt.
+func (e *Entry) injectsLayout() bool {
+	if e.PromptInject == PromptInjectLayout {
+		return true
+	}
+	for _, mode := range e.VariantModes() {
+		if variant, ok := e.Variants.Get(mode); ok && variant != nil && variant.PromptInject == PromptInjectLayout {
+			return true
+		}
+	}
+	return false
+}
+
+// frameModeDeclared reports whether the workflow, or one of its modes, says how a request's images map to frames.
+func (e *Entry) frameModeDeclared() bool {
+	if e.FrameMode != nil {
+		return true
+	}
+	for _, mode := range e.VariantModes() {
+		if variant, ok := e.Variants.Get(mode); ok && variant != nil && variant.FrameMode != nil {
+			return true
+		}
+	}
+	return false
 }

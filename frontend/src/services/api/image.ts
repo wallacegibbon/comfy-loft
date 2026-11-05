@@ -1,6 +1,6 @@
 import i18n from "@/i18n";
 import { LOCAL_SERVER_BASE_URL, isLocalServerUrl } from "@/constant/app-mode";
-import { modelImageInputs, modelIsStep, modelTakesPrompt, paramsAcceptedBy, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
+import { modelImageInputs, modelIsStep, modelTakesPrompt, acceptedInputs, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import { imageModeFor } from "@/lib/canvas/image-mode";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { mediaIdOf } from "@/services/canvas-files";
@@ -135,6 +135,9 @@ async function requestServerImages(input: { config: AiConfig; prompt: string; re
     if (imageMode && imageMode !== "layout") inputs.mode = imageMode;
     if (config.quality?.trim()) inputs.quality = config.quality.trim();
     Object.assign(inputs, params);
+    // ...and only what this workflow reads: a key the run would ignore is not sent, so the contract, the panel and
+    // the request answer with one list (#302).
+    const accepted = acceptedInputs(config, config.model, inputs, imageMode) || {};
 
     const capacity = modelImageInputs(config, config.model);
     const usable = typeof capacity === "number" ? references.slice(0, Math.max(0, capacity)) : references;
@@ -145,7 +148,7 @@ async function requestServerImages(input: { config: AiConfig; prompt: string; re
     }
 
     try {
-        const run = await createRun(config, { workflow: config.model, inputs, ...(Object.keys(media).length ? { media } : {}), askedBy: options?.askedBy });
+        const run = await createRun(config, { workflow: config.model, inputs: accepted, ...(Object.keys(media).length ? { media } : {}), askedBy: options?.askedBy });
         options?.onRun?.(run.id);
         const finished = await waitForRun(config, run.id, { signal: options?.signal, onProgress: options?.onProgress, cancelOnAbort: true });
         // The run wrote these files into the canvas; the node references them where they are (#173).
@@ -210,7 +213,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
     const imageMode = imageModeFor(requestConfig, requestConfig.model);
     // Only the knobs this model takes travel: one left over from another model is a 400 for a field nobody
     // typed (#274). The layout below is added after, because it is this client's own word rather than a knob.
-    const requestParams = paramsAcceptedBy(requestConfig, requestConfig.model, options?.params ?? requestConfig.params, imageMode) || {};
+    const requestParams = acceptedInputs(requestConfig, requestConfig.model, options?.params ?? requestConfig.params, imageMode) || {};
     // `layout` is the node's own word, not a mode the server has: it means "a text-to-image run whose prompt
     // carries a MOSS layout", and the server renders it into the prompt (`internal/prompt/layout.go`). So it is
     // read from the node's choice, while the mode beside it is the one the model declares — reading the pseudo
@@ -239,7 +242,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const requestSize = resolveRequestSize(config.size);
     const background = normalizeBackground(config.background);
     const imageMode = String(config.imageMode || requestConfig.imageMode || "").trim();
-    const requestParams = paramsAcceptedBy(requestConfig, requestConfig.model, options?.params ?? requestConfig.params, imageMode) || {};
+    const requestParams = acceptedInputs(requestConfig, requestConfig.model, options?.params ?? requestConfig.params, imageMode) || {};
     if (config.imageMode === "outpaint" && config.outpaint) {
         const { left, top, right, bottom, width, height } = config.outpaint;
         // ComfyUI's ImageScaleToTotalPixels counts 1 MP as 1024², not 1e6.

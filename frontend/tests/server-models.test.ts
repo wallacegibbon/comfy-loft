@@ -120,7 +120,8 @@ describe("modelsOf", () => {
                 type: "audio",
                 parameters: [
                     { key: "seed", type: "number" },
-                    { key: "duration", type: "number", min: 4, max: 360, step: 0.04 },
+                    // The bound lives on the key the run reads (#302).
+                    { key: "seconds", type: "number", min: 4, max: 360, step: 0.04 },
                 ],
                 models: [{ id: "audio-minimax-music-3" }],
             }),

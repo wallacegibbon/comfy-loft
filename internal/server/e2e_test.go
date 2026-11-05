@@ -71,9 +71,10 @@ func newFakeComfy(t *testing.T) *fakeComfy {
 			return
 		}
 		writeJSON(w, map[string]any{
-			"CLIPTextEncode": map[string]any{"input": map[string]any{}},
-			"KSampler":       map[string]any{"input": map[string]any{}},
-			"SaveImage":      map[string]any{"input": map[string]any{}},
+			"CLIPTextEncode":   map[string]any{"input": map[string]any{}},
+			"KSampler":         map[string]any{"input": map[string]any{}},
+			"EmptyLatentImage": map[string]any{"input": map[string]any{}},
+			"SaveImage":        map[string]any{"input": map[string]any{}},
 		})
 	})
 	mux.HandleFunc("/prompt", func(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +153,7 @@ func writeJSON(w http.ResponseWriter, value any) {
 func imageFixture() (string, map[string]any, map[string]any) {
 	graph := map[string]any{
 		"4": map[string]any{"class_type": "CLIPTextEncode", "inputs": map[string]any{"text": "placeholder"}},
+		"7": map[string]any{"class_type": "EmptyLatentImage", "inputs": map[string]any{"width": 1024.0, "height": 1024.0}},
 		"8": map[string]any{"class_type": "KSampler", "inputs": map[string]any{"seed": 1.0, "steps": 4.0, "cfg": 1.0}},
 		"9": map[string]any{"class_type": "SaveImage", "inputs": map[string]any{
 			"images": []any{"8", 0}, "filename_prefix": "out",
@@ -170,6 +172,10 @@ func imageFixture() (string, map[string]any, map[string]any) {
 			// binding accepts is the one it reads, which is why `stepsOverride` makes `steps` an input (#299).
 			"steps":         map[string]any{"node": "8", "input": "steps", "from": "quality.steps", "default": 4},
 			"stepsOverride": map[string]any{"node": "8", "input": "steps", "from": "params.steps", "transform": "int"},
+			// The engine-owned keys this fixture reads: a latent size from `size`, a preset step count from
+			// `quality` (above).
+			"width":  map[string]any{"node": "7", "input": "width", "from": "size.width", "transform": "snap16"},
+			"height": map[string]any{"node": "7", "input": "height", "from": "size.height", "transform": "snap16"},
 		},
 	}
 	return "test-image.json", graph, entry

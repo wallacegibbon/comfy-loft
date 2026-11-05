@@ -307,7 +307,11 @@ export function modelContractOf(config: AiConfig, value: string, mode?: string):
 }
 
 /**
- * The stored knobs a request may carry: the ones the model that will run it accepts.
+ * A request's keys, minus the ones the workflow that will run it does not read.
+ *
+ * This covers every key a run carries, not only `params`: `size`, `quality`, `seconds`, `mode` and the rest are
+ * the engine's, and each is accepted only where the workflow declares what reads it (#302). The answer comes from
+ * the same list the server validates against, so what the canvas sends and what a run accepts cannot disagree.
  *
  * A node keeps its `params` when the model under it changes — a knob belongs to the model that declared it,
  * not to the node — so a value from a previous model travelled with the request and was refused as
@@ -317,7 +321,7 @@ export function modelContractOf(config: AiConfig, value: string, mode?: string):
  * A model that declares nothing is left alone: nothing is claimed about it, which is the three-state reading
  * every other acceptance gets. `mode` is the mode the run will resolve to, since a variant takes its own keys.
  */
-export function paramsAcceptedBy(config: AiConfig, value: string, params: Record<string, unknown> | undefined, mode?: string) {
+export function acceptedInputs(config: AiConfig, value: string, params: Record<string, unknown> | undefined, mode?: string) {
     if (!params) return undefined;
     const accepted = modelContractOf(config, value, mode)?.inputs;
     if (!accepted) return params;

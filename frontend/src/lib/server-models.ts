@@ -26,7 +26,9 @@ const CAPABILITIES: ModelCapability[] = ["image", "video", "audio"];
  * hardcoding a range here would be a second answer to a question the registry already answers.
  */
 function durationOf(workflow: ServerWorkflow) {
-    const parameter = (workflow.parameters || []).find((item) => item?.key === "duration" && item.type === "number");
+    // The bound lives on the key the run reads (`seconds`), declared by the workflow that owns it: the audio
+    // model accepts 4–360 s and says so, and no second key names the same thing (#302).
+    const parameter = (workflow.parameters || []).find((item) => item?.key === "seconds" && item.type === "number");
     const min = Number(parameter?.min);
     const max = Number(parameter?.max);
     if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return undefined;

@@ -41,6 +41,12 @@ func inputEntry() *Entry {
 			"steps", map[string]any{"node": "8", "input": "steps", "from": "params.steps"},
 			// A parameter is the panel's wording for a key a binding reads; the binding is what accepts it (#299).
 			"sampler", map[string]any{"node": "8", "input": "sampler_name", "from": "params.sampler"},
+			// The engine-owned keys a workflow reads, declared the way a real one does: a latent size from
+			// `size`, a preset step count from `quality`, frames from `seconds`.
+			"width", map[string]any{"node": "8", "input": "width", "from": "size.width", "transform": "snap16"},
+			"height", map[string]any{"node": "8", "input": "height", "from": "size.height", "transform": "snap16"},
+			"qualitySteps", map[string]any{"node": "8", "input": "steps", "from": "quality.steps", "default": 8},
+			"length", map[string]any{"node": "8", "input": "length", "from": "seconds", "transform": "secondsToFrames"},
 			"refs", map[string]any{
 				"node": "9", "input": "images", "from": "image", "array": true, "inputPrefix": "ref_",
 			},
@@ -122,6 +128,7 @@ func TestVideoOnlyInputs(t *testing.T) {
 
 	video := inputEntry()
 	video.Type = "video"
+	video.FrameMode = &FrameModeRule{}
 	if err := ValidateInputs(video, map[string]any{"prompt": "x", "frameMode": "last"}, InputLimits{}); err != nil {
 		t.Errorf("video inputs rejected: %v", err)
 	}
@@ -140,7 +147,7 @@ func TestSchemaListsTypedInputs(t *testing.T) {
 	for _, spec := range schema.Inputs {
 		byKey[spec.Key] = spec
 	}
-	for _, key := range []string{"prompt", "size", "quality", "seconds", "mode", "steps", "sampler", "seed"} {
+	for _, key := range []string{"prompt", "size", "quality", "seconds", "steps", "sampler", "seed"} {
 		if _, ok := byKey[key]; !ok {
 			t.Errorf("schema is missing %q", key)
 		}
@@ -156,25 +163,31 @@ func TestSchemaListsTypedInputs(t *testing.T) {
 	}
 }
 
-// Every shipped workflow must accept the one input it always needs (a prompt) and reject a typo.
+// Every shipped workflow must accept its own minimal request and reject a typo.
+//
+// A workflow with a prompt binding must take words; a tool — an upscaler, an interpolation — binds no prompt and
+// must therefore accept a request with no words at all, and refuse one that carries them (#302).
 func TestShippedWorkflowsValidateTheirInputs(t *testing.T) {
 	registry := NewRegistry(RegistryOptions{Dir: shippedWorkflowsDir, Logger: logx.NewWithWriter("test", io.Discard)})
 	if err := registry.Load(); err != nil {
 		t.Fatalf("load shipped registry: %v", err)
 	}
 	for _, entry := range registry.Entries() {
-		specs := entry.InputSpecs(InputLimits{})
-		hasPrompt := false
-		for _, spec := range specs {
-			if spec.Key == "prompt" {
-				hasPrompt = true
+		minimal := map[string]any{}
+		_, bindsPrompt := entry.Bindings()["prompt"]
+		if bindsPrompt {
+			minimal["prompt"] = "a cat"
+		}
+		if err := ValidateInputs(entry, minimal, InputLimits{}); err != nil {
+			t.Errorf("%s rejected a minimal request: %v", entry.ID, err)
+		}
+		if !bindsPrompt {
+			if err := ValidateInputs(entry, map[string]any{"prompt": "a cat"}, InputLimits{}); err == nil {
+				t.Errorf("%s binds no prompt but accepted one", entry.ID)
 			}
 		}
-		if !hasPrompt {
-			t.Errorf("%s has no prompt input", entry.ID)
-		}
-		if err := ValidateInputs(entry, map[string]any{"prompt": "a cat"}, InputLimits{}); err != nil {
-			t.Errorf("%s rejected a minimal request: %v", entry.ID, err)
+		if bindsPrompt && !hasInput(entry, "prompt") {
+			t.Errorf("%s binds a prompt but does not accept it", entry.ID)
 		}
 		if err := ValidateInputs(entry, map[string]any{"prompt": "a cat", "nonsense": 1}, InputLimits{}); err == nil {
 			t.Errorf("%s accepted an unknown input", entry.ID)
@@ -300,5 +313,71 @@ func TestShippedParametersAllDescribeAnInput(t *testing.T) {
 				t.Errorf("%s: parameter %q describes no input", entry.ID, key)
 			}
 		}
+	}
+}
+
+// hasInput reports whether the workflow's contract carries a key.
+func hasInput(entry *Entry, key string) bool {
+	for _, spec := range entry.InputSpecs(InputLimits{}) {
+		if spec.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+// A request-level key is offered only where the workflow declares what reads it.
+//
+// These keys are the engine's, not bindings — `size` sizes the latent, `quality` picks a preset, `seconds`
+// becomes frames, `mode` chooses a variant, `layout` is rendered into the prompt, `background` wraps the words —
+// so each one needs a declaration behind it. Offering them unconditionally was a key that is accepted and then
+// ignored (#302).
+func TestRequestKeysAreOfferedOnlyWhereTheyAreRead(t *testing.T) {
+	base := func() *Entry {
+		return &Entry{
+			Name:        "keys-test",
+			RawBindings: bindings("prompt", map[string]any{"node": "4", "input": "text", "required": true}),
+		}
+	}
+	cases := []struct {
+		key    string
+		declar func(*Entry)
+	}{
+		{"size", func(e *Entry) {
+			e.RawBindings = bindings("width", map[string]any{"node": "8", "input": "width", "from": "size.width"})
+		}},
+		{"quality", func(e *Entry) {
+			e.RawBindings = bindings("qualitySteps", map[string]any{"node": "8", "input": "steps", "from": "quality.steps"})
+		}},
+		{"seconds", func(e *Entry) {
+			e.RawBindings = bindings("length", map[string]any{"node": "8", "input": "length", "from": "seconds"})
+		}},
+		{"mode", func(e *Entry) {
+			e.Variants = OrderedMap[*Variant]{Keys: []string{"edit"}, Values: map[string]*Variant{"edit": {File: "edit.json"}}}
+		}},
+		{"frameMode", func(e *Entry) { e.FrameMode = &FrameModeRule{} }},
+		{"background", func(e *Entry) { e.BackgroundPrompt = "rgba" }},
+		{"editCanvasSize", func(e *Entry) { e.OutputSize = &OutputSize{Node: "8", LatentNode: "9"} }},
+		{"layout", func(e *Entry) { e.PromptInject = PromptInjectLayout }},
+	}
+	for _, testCase := range cases {
+		plain := base()
+		if hasInput(plain, testCase.key) {
+			t.Errorf("%s is accepted by a workflow that declares nothing about it", testCase.key)
+		}
+		declared := base()
+		testCase.declar(declared)
+		if !hasInput(declared, testCase.key) {
+			t.Errorf("%s is not accepted by a workflow that declares what reads it: %v", testCase.key, declared.AcceptedInputs())
+		}
+	}
+
+	// `duration` is gone: nothing ever read it, and the audio model takes its length in `seconds`.
+	if hasInput(base(), "duration") {
+		t.Error("duration is still an input")
+	}
+	// The LoRA stack stays open to every workflow: the engine answers for it, refusing a stack a graph cannot take.
+	if !hasInput(base(), "loras") {
+		t.Error("loras is not accepted")
 	}
 }

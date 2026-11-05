@@ -188,8 +188,13 @@ The list is assembled from the two sources that make a key reach something — t
 the workflow's bindings — and then *decorated* with what the workflow declares about it, so no workflow has to
 restate it:
 
-1. Request-level keys: `prompt` (required whenever the workflow has a prompt binding), `size`, `quality`,
-   `seconds`/`duration`, `mode`. There is **no batch key**: `count` and `n` are refused with `unknown_input`, so N
+1. The request-level keys the engine itself reads, each only where the workflow declares what consumes it:
+   `prompt` (required whenever there is a prompt binding), `size` (a binding sized from `size.*`), `quality` (a
+   binding reading a `quality.*` preset field), `seconds` (a binding converting seconds), `mode` (the workflow has
+   variants), `frameMode` (it declares a frame-mode rule), `background` (it declares a background prompt),
+   `editCanvasSize` (it declares an output size), `layout`/`layoutEnabled` (it renders a layout), and `loras`
+   (engine-owned; the stack is refused rather than ignored when a graph cannot take it). There is **no `duration`**
+   key: a length is `seconds`. There is **no batch key**: `count` and `n` are refused with `unknown_input`, so N
    pictures are N runs; a graph that batches internally still returns one row per artifact in `outputs`, which is
    why the list carries an `index`. There is **no negative prompt** either: a key by that name anywhere is a `400`,
    and a graph that has a negative text encoder carries its own string, which the server never writes

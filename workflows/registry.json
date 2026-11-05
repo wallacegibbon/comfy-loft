@@ -1978,7 +1978,7 @@
           "description": "Leave empty for a random seed each time"
         },
         {
-          "key": "duration",
+          "key": "seconds",
           "label": "Max duration (s)",
           "type": "number",
           "min": 4,
