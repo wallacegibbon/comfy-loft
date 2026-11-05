@@ -4,7 +4,7 @@ import { ArrowUp, Bot, ChevronRight, CircleCheck, CircleDashed, CircleX, Eraser,
 
 import { citationLabel, mentionResolver, referenceBlock, referenceLine, type Citation, type MentionSegment } from "@/lib/canvas/agent-references";
 import { insertSpoken } from "@/lib/canvas/agent-dictation";
-import { agentIsWorking, textOf, transcriptEvent, transcriptWindow, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
+import { agentIsWorking, agentRunState, textOf, transcriptEvent, transcriptWindow, type AgentRunState, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
 import { contextSegment, speedSegment } from "@/lib/canvas/agent-usage";
 import { nodeTitle } from "@/lib/canvas/node-title";
 import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
@@ -135,6 +135,21 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
      * outright on delivery, not decremented: one delivery empties the queue.
      */
     const [steering, setSteering] = useState(0);
+    /**
+     * The turn, as one line of text.
+     *
+     * The two facts that used to be two rows — is the agent waiting, and how many messages are queued behind
+     * it — are decided in `agentRunState` and worded here per state, rather than glued together out of two
+     * sentences: a language that names the count first is a translation, not a second layout.
+     */
+    const runState = agentRunState(working, steering);
+    const turnLines: Record<AgentRunState, string> = {
+        idle: "",
+        waiting: t("canvas.agent.working", { seconds: waited }),
+        "waiting-queued": t("canvas.agent.workingQueued", { seconds: waited, count: steering }),
+        queued: t("canvas.agent.steeringQueued", { count: steering }),
+    };
+    const turnLine = turnLines[runState];
     /**
      * Whether the stop button is asking what to do with the queue.
      *
@@ -485,9 +500,9 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
             followRef.current = true;
         }
         element.scrollTop = element.scrollHeight;
-        // `working` too: the line that says the turn is running arrives without a message to announce it, and
-        // a reader at the bottom should see it appear rather than find it under the fold.
-    }, [messages, working]);
+        // Only the messages: the turn's own row is outside this box (#315), so nothing in here appears
+        // without a message to announce it.
+    }, [messages]);
 
     /**
      * Showing more of the conversation must not move what is being read.
@@ -613,28 +628,24 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                         </div>
                     ),
                 )}
-                {/* The turn, not the answer: this says the message was taken and the agent is working, and it is
-                    drawn from the send (`agentIsWorking`) rather than from a frame, so it is up before the model
-                    has said anything. It is not a word about thinking — the folded reasoning above already
-                    carries that, and two rows both labelled "Thinking" read as one thing drawn twice. It sits
-                    outside the bubbles on purpose: an empty answer with a spinner in it would claim the agent is
-                    saying something, which is what `answerFrame` refuses to draw. */}
-                {working ? (
-                    <p className="flex items-center gap-1.5 px-1 text-xs tabular-nums opacity-50" title={t("canvas.agent.workingHint")}>
-                        <LoaderCircle className="size-3 animate-spin" />
-                        <span>{t("canvas.agent.working", { seconds: waited })}</span>
-                    </p>
-                ) : null}
             </div>
 
             <div className="relative border-t px-2 py-2" style={{ borderColor: theme.toolbar.border }}>
-                {steering > 0 ? (
-                    // A queue nobody can see looks like a message that was lost, so the agent's own word on
-                    // it is shown right where the message was sent from. What happens to those words when
-                    // the turn is stopped is asked at the moment of stopping — see the dialog below.
-                    <p className="flex items-center gap-1.5 px-1 pb-1 text-[11px] opacity-60">
+                {/* The turn, in one row: waiting for its first word, how many messages are queued behind it,
+                    or both at once. It is drawn from the send (`agentIsWorking`) rather than from a frame, so
+                    it is up before the model has said anything, and it is not a word about thinking — the
+                    folded reasoning in the transcript already carries that.
+
+                    One row, because the wait and the queue are one subject: they used to be two rows with two
+                    spinners in two places, so queuing a message mid-turn showed two of them and the wait could
+                    scroll out of sight in a long conversation (#315). This row does not scroll — it sits where
+                    the message was sent from and where the stop button is, and what happens to those queued
+                    words when the turn is stopped is asked at the moment of stopping (see the dialog below).
+                    The microphone's row under it is a different subject. */}
+                {runState !== "idle" ? (
+                    <p className="flex items-center gap-1.5 px-1 pb-1 text-[11px] tabular-nums opacity-60" title={working ? t("canvas.agent.workingHint") : undefined}>
                         <LoaderCircle className="size-3 animate-spin" />
-                        {t("canvas.agent.steeringQueued", { count: steering })}
+                        {turnLine}
                     </p>
                 ) : null}
                 {/* What the microphone is doing, in the place the words are about to appear. A failure is

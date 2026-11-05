@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { referenceBlock, referenceLine } from "@/lib/canvas/agent-references";
-import { agentIsWorking, transcriptEvent, transcriptWindow, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
+import { agentIsWorking, agentRunState, transcriptEvent, transcriptWindow, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
 import type { AgentEvent } from "@/services/api/agent";
 
 /**
@@ -197,6 +197,40 @@ describe("the line that says the agent is working", () => {
         // the words that follow have not arrived yet.
         const queued = fold({ type: "user", text: "画一只猫" }, { type: "delta", text: "我看看画布。" }, { type: "user", text: "顺便放大" });
         expect(agentIsWorking(queued, true)).toBe(true);
+    });
+});
+
+/**
+ * One line for the running turn.
+ *
+ * The wait and the queue used to be two rows with a spinner each, in two places, so a message queued
+ * mid-turn drew two spinners and the wait could scroll out of sight (#315). The cases below are the
+ * combinations that are possible, and each says what the single row has to show: neither fact may replace
+ * the other, and nothing is drawn for nothing.
+ */
+describe("the one line the running turn is drawn as", () => {
+    it("is the wait alone when nothing is queued", () => {
+        expect(agentRunState(true, 0)).toBe("waiting");
+        // A count cannot go below zero, but a row is not worth drawing on the chance that it does.
+        expect(agentRunState(true, -1)).toBe("waiting");
+    });
+
+    it("keeps the wait and adds the queue to it, rather than one replacing the other", () => {
+        expect(agentRunState(true, 2)).toBe("waiting-queued");
+    });
+
+    it("still shows the queue once the answer has started, because the queue outlives the wait", () => {
+        // The pair that makes this a function and not two conditions in the JSX: `agentIsWorking` goes false
+        // as soon as the answer has words, and a message queued behind that answer is still waiting to go in.
+        const answering = fold({ type: "user", text: "画一只猫" }, { type: "delta", text: "我看看画布。" });
+        expect(agentRunState(agentIsWorking(answering, true), 1)).toBe("queued");
+        // And queued into a turn that has not spoken since: both, from the same two facts.
+        const spoken = fold({ type: "user", text: "画一只猫" }, { type: "delta", text: "我看看画布。" }, { type: "user", text: "顺便放大" });
+        expect(agentRunState(agentIsWorking(spoken, true), 1)).toBe("waiting-queued");
+    });
+
+    it("draws nothing for a turn that is not running and a queue that is empty", () => {
+        expect(agentRunState(false, 0)).toBe("idle");
     });
 });
 

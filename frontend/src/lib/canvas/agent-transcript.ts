@@ -152,6 +152,26 @@ export function agentIsWorking(messages: TranscriptMessage[], busy: boolean): bo
 }
 
 /**
+ * The panel's one line about the running turn — which of the four states it is in.
+ *
+ * The wait and the queue are the same subject (a turn is running) and they used to be two rows with a
+ * spinner each, in two different places (#315). One row cannot show one and hide the other, so the choice is
+ * made here, once, instead of in a pair of conditions in the JSX: `waiting-queued` exists so that a queued
+ * message never replaces the wait it was queued into, and `queued` exists because `agentIsWorking` goes false
+ * the moment the answer has words while the queue outlives that — a queue nobody can see looks like a message
+ * that was lost.
+ *
+ * A count of zero is no queue: the number comes from counted frames, and a row is not drawn for nothing.
+ */
+export type AgentRunState = "idle" | "waiting" | "waiting-queued" | "queued";
+
+export function agentRunState(working: boolean, queued: number): AgentRunState {
+    const hasQueue = queued > 0;
+    if (working) return hasQueue ? "waiting-queued" : "waiting";
+    return hasQueue ? "queued" : "idle";
+}
+
+/**
  * One frame of an answer being written.
  *
  * The answer is the message at the end — the one nothing has arrived after yet. If what is at the end is

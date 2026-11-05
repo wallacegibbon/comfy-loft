@@ -11505,3 +11505,49 @@ from either key and from neither `Control`, `Meta` nor `Shift` (those stay the h
 `frontend/src/components/canvas/use-hold-to-talk.ts`, `frontend/src/components/canvas/canvas-top-bar.tsx`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
 `frontend/tests/agent-dictation.test.ts`.
+
+## 315. One row says what the turn is doing, and it does not scroll
+
+**Decision** The "working" line and the "N queued" line are one row, in the composer's status area above the box,
+drawn from one four-state value (`agentRunState(working, queued)` in `agent-transcript.ts`):
+
+| state | the row |
+| --- | --- |
+| `idle` | nothing |
+| `waiting` | 处理中… 3 秒 |
+| `waiting-queued` | 处理中… 3 秒（2 条消息已排队,会在当前步骤之后一起插入） |
+| `queued` | 2 条消息已排队,会在当前步骤之后一起插入 |
+
+One spinner, one place, `text-[11px]` like the dictation row under it. The transcript lost its trailing spinner,
+so its auto-follow effect went back to depending on the messages alone — nothing in that box appears without a
+message to announce it any more.
+
+**Why** Both lines are the same subject — a turn is running — and they were drawn twice, in two places, with two
+spinners: the wait at the end of the transcript (drawn from the send, before any frame comes back), the queue
+above the box (put there so a queue nobody can see would not look like a lost message). Queuing a message
+mid-turn put two spinners on screen at once, and the one line that says the agent is alive could scroll out of
+sight in a long conversation while the count stayed. In the user's words: 这两个信息… 都是运行状态,应该放在一个地方.
+
+**Three keys, not one sentence glued from two clauses.** Each state's copy is a whole sentence in `i18n`
+(`working`, `workingQueued`, `steeringQueued`), because the wait and the count can each appear alone — and a
+language that names the count first has to be a translation, not a second layout. The both-at-once case is the
+user's own suggestion: the count in parentheses after the timer.
+
+**Rejected** Leaving the wait in the transcript and moving only the count up: that is still two rows for one
+subject, and the timer would be invisible to a reader who scrolled into the history. Also rejected: dropping the
+seconds whenever a queue exists — the timer is what tells an agent that is thinking from a panel doing nothing,
+and a queued message is not evidence of progress.
+
+**Cost** The row is 11px like its neighbours rather than 12px, and the end of the conversation no longer marks
+where the answer will start. The seconds still reset whenever the wait ends (an answer that starts speaking
+clears it), which the merged row inherits unchanged.
+
+**Tested** `npx vitest run` (519 — four new in `tests/agent-transcript.test.ts`): the wait alone, the wait with a
+queue, the queue alone while an answer is being written (checked against `agentIsWorking` on folded frames, which
+is the case two conditions in the JSX would have got wrong), and nothing at all for an idle turn with an empty
+queue. `npx tsc --noEmit`, `npm run check` (833/800, 187 modules), `go test ./...`, `make check` (503 exports),
+`make frontend`, `make build`. Not seen on a screen: the page on `:8190` predates this commit.
+
+**Where** `frontend/src/lib/canvas/agent-transcript.ts` (`agentRunState`, `AgentRunState`),
+`frontend/src/components/canvas/canvas-agent-panel.tsx` (`turnLines`), `frontend/src/i18n/locales/{zh-CN,en-US}.ts`
+(`workingQueued`), `frontend/tests/agent-transcript.test.ts`.
