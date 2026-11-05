@@ -375,7 +375,7 @@ dictionary (Chinese, this UI). A workflow added by hand shows English in both la
 someone adds the zh entries — visible, not silent.
 
 **Where** `workflows/registry.json`, `canvas/web/src/lib/gateway-labels.ts`,
-`web/src/i18n/locales/zh-CN.ts` (`gateway.models`, `gateway.variants`), `use-config-store.ts`
+`frontend/src/i18n/locales/zh-CN.ts` (`gateway.models`, `gateway.variants`), `use-config-store.ts`
 (`modelOptionLabel`, `baseModelOptions`), `resource-center-panel.tsx` (variant list).
 
 **Not translated on purpose** `parameters[].label/description` for the API and plugin consumers
@@ -413,7 +413,7 @@ that is the point, not a limitation to work around.
 
 **Where** `internal/config/config.go` (`boolValue`), `internal/resource/install_policy.go`,
 `internal/resource/jobs.go` (`Install`, `installHint`), `internal/resource/status.go`,
-`resource-center-panel.tsx`, `web/src/services/api/resources.ts`, `docs/server.md`,
+`resource-center-panel.tsx`, `frontend/src/services/api/resources.ts`, `docs/server.md`,
 `.env.example`, `README.md`.
 
 ---
@@ -458,11 +458,11 @@ only hide them.
 it are not allowed to spread past one file each:
 
 - _antd's internal DOM._ Every `.ant-*` class name used by application logic now lives in
-  `src/lib/canvas-overlay.ts`. The overlay guards match our own `data-canvas-overlay` marker
+  `frontend/src/lib/canvas-overlay.ts`. The overlay guards match our own `data-canvas-overlay` marker
   and the existing `data-canvas-no-zoom` first; the antd class list is a documented fallback
   array beneath them. When antd goes, that array goes and the canvas is not touched.
 - _The palette._ App chrome takes its colours from Tailwind's `stone` scale.
-  `src/lib/canvas-theme.ts` keeps its own hex on purpose — it is feature data (the canvas
+  `frontend/src/lib/canvas-theme.ts` keeps its own hex on purpose — it is feature data (the canvas
   palette handed to node renderers and the plugin context), not app chrome.
 
 **Why** Measured before this decision: 60 of 167 frontend files import antd, ~530 JSX
@@ -492,8 +492,8 @@ library that is no longer installed. `design-tokens.ts` and the `:root` / `.dark
 `globals.css` cannot import each other, so changing a semantic colour is two edits — both
 file headers say so.
 
-**Where** `canvas/web/src/lib/canvas-overlay.ts`, `design-tokens.ts`, `app-theme.ts`,
-`canvas-theme.ts`, `styles/globals.css`, `components/canvas/infinite-canvas.tsx`,
+**Where** `frontend/src/lib/canvas-overlay.ts`, `design-tokens.ts`, `app-theme.ts`,
+`canvas-theme.ts`, `styles/globals.css`, `frontend/src/components/canvas/infinite-canvas.tsx`,
 `canvas-context-menu.tsx`, `canvas-size-picker.tsx`, `canvas-resource-mention-textarea.tsx`.
 
 ---
@@ -510,9 +510,9 @@ Do not "simplify" that away; it is the seam that keeps the library choice out of
 
 **Why** antd's `message` was reached 121 times from 20 files, 19 of them through
 `const { message } = App.useApp()`. That hook was the only reason those files imported `App`
-at all. After the move, `hooks/use-copy-text.ts` and `components/layout/client-root-init.tsx`
+at all. After the move, `frontend/src/hooks/use-copy-text.ts` and `frontend/src/components/layout/client-root-init.tsx`
 import nothing from antd, the file count went 60 → 58, and `App.useApp()` now survives only in
-the three files that still need `modal.confirm` (`pages/canvas/project.tsx`,
+the three files that still need `modal.confirm` (`frontend/src/pages/canvas/project.tsx`,
 `layout/app-config-modal.tsx`, `layout/config-prompt-sources.tsx`) — which is the next slice.
 It also fixed a real inconsistency: `canvas-node-prompt-panel.tsx` used antd's _static_
 `message`, which does not read `ConfigProvider` and therefore rendered with antd's default
@@ -529,8 +529,8 @@ as a size optimisation.
 one-for-one, no bare `message` identifier is left in application code, and the three files
 that keep `modal` still destructure it correctly.
 
-**Where** `canvas/web/src/components/kit/toast.ts`,
-`components/layout/app-providers.tsx`, `package.json` (sonner), and the 20 migrated files.
+**Where** `frontend/src/components/kit/toast.ts`,
+`frontend/src/components/layout/app-providers.tsx`, `package.json` (sonner), and the 20 migrated files.
 
 ---
 
@@ -547,7 +547,7 @@ the tree in antd's `App`; nothing reaches `App.useApp()` any more (measured: 0 c
 the only remaining `.ant-app` reference in the repo is gone too, so no styles depended on it).
 
 **Why** `App.useApp()` was down to the three files that needed `modal.confirm`
-(`pages/canvas/project.tsx`, `layout/app-config-modal.tsx`, `layout/config-prompt-sources.tsx`),
+(`frontend/src/pages/canvas/project.tsx`, `layout/app-config-modal.tsx`, `layout/config-prompt-sources.tsx`),
 i.e. the last thing keeping those files tied to antd's context. With it gone, the antd chunk fell
 from 912.9 kB to 883.5 kB purely by deleting the `App` wrapper, and a future migration no longer
 has to reason about a context layer.
@@ -558,8 +558,8 @@ That behaviour had to be reimplemented by hand, so if someone later "cleans up" 
 async cases will start closing early. The styling is also ours now — it is meant to look like the
 antd dialogs around it, and will need a touch-up if the surrounding design moves.
 
-**Where** `canvas/web/src/components/kit/confirm.tsx`,
-`components/layout/app-providers.tsx`, the three call sites above.
+**Where** `frontend/src/components/kit/confirm.tsx`,
+`frontend/src/components/layout/app-providers.tsx`, the three call sites above.
 
 ---
 
@@ -624,8 +624,8 @@ hand will notice their absence.
 antd 60 → 44. antd chunk 916 kB → 739 kB (298 → 240 kB gzip); vendor chunk 1,090 kB → 571 kB
 (366 → 192 kB gzip), the latter from dropping the prompt-source and config-file graphs.
 
-**Where** `src/constant/app-mode.ts` (`LOCAL_ONLY` removed), `src/router.tsx`,
-`src/constant/navigation-tools.ts`, `src/stores/use-config-store.ts`, and every file that used
+**Where** `frontend/src/constant/app-mode.ts` (`LOCAL_ONLY` removed), `frontend/src/router.tsx`,
+`src/constant/navigation-tools.ts`, `frontend/src/stores/use-config-store.ts`, and every file that used
 to branch on the flag.
 
 ---
@@ -667,8 +667,8 @@ and tests; `git log` keeps the deleted version.
 144 modules / 28,377 lines. Vendor chunk unchanged (571 kB) because the runtime was tree-shaken
 out of reachable paths already; the win is comprehensibility, not bytes.
 
-**Where** `services/api/model-plugin.ts`, `services/api/image.ts`, `video.ts`, `audio.ts`,
-`stores/use-config-store.ts`, `components/layout/channel-editor-drawer.tsx`,
+**Where** `services/api/model-plugin.ts`, `frontend/src/services/api/image.ts`, `video.ts`, `audio.ts`,
+`frontend/src/stores/use-config-store.ts`, `components/layout/channel-editor-drawer.tsx`,
 `i18n/locales/{zh-CN,en-US}.ts`.
 
 ---
@@ -695,7 +695,7 @@ Three behaviours are decided deliberately rather than inherited:
 
 **Why this had to carry attributes** This is the part that would have broken silently. The canvas
 overlay guards used to match `.ant-modal-root` and `.ant-modal-content`; those class names are
-gone, and `lib/canvas-overlay.ts` resolves overlays through `data-canvas-overlay` and
+gone, and `frontend/src/lib/canvas-overlay.ts` resolves overlays through `data-canvas-overlay` and
 `data-canvas-dialog-content`. The kit dialog emits both, so a dialog opened over the canvas still
 swallows clicks and wheel, and the prompt mention menu still measures its boundary. Remove those
 attributes and the canvas pans behind its own dialogs — a bug with no compile error anywhere.
@@ -709,8 +709,8 @@ resource gate, the asset editor, the system panel, the 980 px settings dialog an
 "clear canvas" dialog all open, close via the X / Escape / their buttons, and the DOM after
 closing contains no `ant-modal` at all. The antd chunk went 739 kB → 714 kB (240 → 232 kB gzip).
 
-**Where** `components/kit/dialog.tsx`, `components/kit/button.tsx`,
-`components/kit/confirm.tsx`, and the 23 files that used to render `<Modal>`.
+**Where** `frontend/src/components/kit/dialog.tsx`, `frontend/src/components/kit/button.tsx`,
+`frontend/src/components/kit/confirm.tsx`, and the 23 files that used to render `<Modal>`.
 
 ---
 
@@ -748,7 +748,7 @@ graph all passed while a primary button was invisible.
 not shrink (714 kB) because Button is imported internally by the components that remain, so this
 step buys removability rather than bytes.
 
-**Where** `components/kit/button.tsx`, `styles/globals.css`, `main.tsx`, and the 30 files whose
+**Where** `frontend/src/components/kit/button.tsx`, `styles/globals.css`, `main.tsx`, and the 30 files whose
 antd import lost `Button`.
 
 ---
@@ -794,9 +794,9 @@ class name at all.
 first bytes this migration has actually returned, because `Select` was the last component pulled in
 from outside the `Button`/`Modal`/`Tooltip` subtree that the remaining components drag along.
 
-**Where** `components/kit/select.tsx`, `components/kit/tag-input.tsx`, `styles/globals.css`, and the
-four call sites (`pages/assets/index.tsx`, `components/canvas/canvas-side-panel.tsx`,
-`components/canvas/canvas-node-super-resolve-dialog.tsx`, `components/layout/app-config-modal.tsx`).
+**Where** `frontend/src/components/kit/select.tsx`, `components/kit/tag-input.tsx`, `styles/globals.css`, and the
+four call sites (`pages/assets/index.tsx`, `frontend/src/components/canvas/canvas-side-panel.tsx`,
+`frontend/src/components/canvas/canvas-node-super-resolve-dialog.tsx`, `components/layout/app-config-modal.tsx`).
 
 ---
 
@@ -833,7 +833,7 @@ work — the antd chunk stayed at 714 kB from 42 files down to 6, then collapsed
 → nothing as `Select`, `Form`, and the providers left.
 
 **What it returned** antd JS chunk 916 kB → 0; vite modules 4126 → 2564; dependencies 32 → 29.
-`lib/canvas-overlay.ts` no longer contains a single third-party class name — the contract #23 wrote
+`frontend/src/lib/canvas-overlay.ts` no longer contains a single third-party class name — the contract #23 wrote
 ("when antd goes, that array goes and the canvas is not touched") is now literally true: the array
 went, and the canvas code above it did not change.
 
@@ -861,8 +861,8 @@ page stays readable — which is the outcome we want. Fixing it means patching r
 focus in the trigger's `onPointerDown`; both are larger than a console line nobody sees, and neither changes
 what the dialog does.
 
-**Where** `package.json`, `components/kit/*`, `components/kit/field.tsx`, `lib/canvas-overlay.ts`,
-`lib/design-tokens.ts`, `components/layout/app-providers.tsx`.
+**Where** `package.json`, `components/kit/*`, `frontend/src/components/kit/field.tsx`, `frontend/src/lib/canvas-overlay.ts`,
+`lib/design-tokens.ts`, `frontend/src/components/layout/app-providers.tsx`.
 
 ---
 
@@ -912,7 +912,7 @@ deletion, and each one earns its place:
 - `fflate` — the asset package zip. `axios`, `file-saver`, `localforage` — the network, download and
   storage layers.
 
-**Also removed while auditing** two analytics IDs in `constant/runtime-config.ts`. Nothing imported
+**Also removed while auditing** two analytics IDs in `frontend/src/constant/runtime-config.ts`. Nothing imported
 them, no script was ever assembled, and no docs or `.env` entry mentioned them, so the feature was
 never wired to anything.
 
@@ -933,7 +933,7 @@ why that entry insists on the reference graph: several of them were not dead, on
 
 ## 36. One HTTP layer, replacing axios and three copies of the error reader
 
-**Decision** `services/api/http.ts` owns the transport. `httpJson` / `httpBlob` / `httpVoid` wrap
+**Decision** `frontend/src/services/api/http.ts` owns the transport. `httpJson` / `httpBlob` / `httpVoid` wrap
 `fetch`; `readApiErrorMessage` and `apiErrorMessage` own the failure-to-sentence mapping. The four
 service files that used axios now call these, and their three copies of
 `readApiErrorMessage` / `readAxiosError` / `statusMessage` are gone.
@@ -957,14 +957,14 @@ migration that the risk was a behaviour hiding in library-specific plumbing rath
 path's `ECONNABORTED` special case in one file only. And a non-2xx that a caller expected to be a
 blob is still read as text, where axios produced an unreadable `Blob`.
 
-**Verification** 28 tests in `tests/api-http.test.ts` pin every branch of the mapping — cancel,
+**Verification** 28 tests in `frontend/tests/api-http.test.ts` pin every branch of the mapping — cancel,
 timeout, API-supplied message, each status, the fallback, HTML error pages, and the gateway report —
 because a browser can demonstrate the result but cannot enumerate the branches.
 
 **Result** vendor chunk 556.7 → 514.4 kB (≈16 kB gzip), runtime dependencies 19 → 17.
 
-**Where** `services/api/http.ts`, `services/api/{image,video,audio,skin-unlocks}.ts`,
-`tests/api-http.test.ts`.
+**Where** `frontend/src/services/api/http.ts`, `services/api/{image,video,audio,skin-unlocks}.ts`,
+`frontend/tests/api-http.test.ts`.
 
 ---
 
@@ -1132,8 +1132,8 @@ Two details worth keeping. `CanvasDeleteProjectsDialog` renders as a sibling of 
 a child, so the two are independent radix roots rather than a nested focus trap. And `/canvas`
 still resolves — to a redirect, so old bookmarks land on a canvas instead of a 404.
 
-**Where** `src/pages/canvas/entry.tsx`, `src/router.tsx`, `stores/canvas/use-canvas-store.ts`
-(`lastProjectId`), `components/canvas/canvas-top-bar.tsx` (the switcher this made obvious:
+**Where** `frontend/src/pages/canvas/entry.tsx`, `frontend/src/router.tsx`, `frontend/src/stores/canvas/use-canvas-store.ts`
+(`lastProjectId`), `frontend/src/components/canvas/canvas-top-bar.tsx` (the switcher this made obvious:
 switching used to mean leaving the canvas for the list page), `components/canvas/canvas-manager-dialog.tsx`.
 
 ---
@@ -1219,17 +1219,17 @@ panel open while a crop dialog floats above it). Only the modal ten were collaps
 **Cost** 52 `useState` in the component became 43. The diff is 59 insertions and 64 deletions,
 almost all of them mechanical renames the compiler checked.
 
-**Where** `canvas/web/src/pages/canvas/project.tsx`.
+**Where** `frontend/src/pages/canvas/project.tsx`.
 
 
 ## 43. The node editors are a module with a nine-key contract, not a closure
 
 **Decision** Nine editors moved out of `project.tsx` into
-`pages/canvas/hooks/use-image-editors.ts` (crop, split, mask, outpaint, MOSS layout, super-resolve,
-fast upscale, multi-angle) and `pages/canvas/hooks/use-video-editors.ts` (video upscale, frame
+`frontend/src/pages/canvas/hooks/use-image-editors.ts` (crop, split, mask, outpaint, MOSS layout, super-resolve,
+fast upscale, multi-angle) and `frontend/src/pages/canvas/hooks/use-video-editors.ts` (video upscale, frame
 interpolation). `project.tsx` was 3,981 lines; it is now 3,459. Five modules appeared:
-the two hooks, `hooks/node-editor-deps.ts` (a type), `lib/canvas/canvas-generated-video.ts` and
-`lib/canvas/canvas-node-status.ts`.
+the two hooks, `hooks/node-editor-deps.ts` (a type), `frontend/src/lib/canvas/canvas-generated-video.ts` and
+`frontend/src/lib/canvas/canvas-node-status.ts`.
 
 **Why these nine and not "generation"** They were the only large, genuinely closed region left.
 Every one of them follows the same shape — take the node you were handed, append a child beside it,
@@ -1246,11 +1246,11 @@ dialogs stayed in the page too — they are page furniture, positioned against p
 **Two things fell out of the move**
 
 - `applyGeneratedVideo` and the 420 px video cap were used by both the poller (which stays) and the
-  video editors (which left), so they went to `lib/canvas/canvas-generated-video.ts` rather than
+  video editors (which left), so they went to `frontend/src/lib/canvas/canvas-generated-video.ts` rather than
   being duplicated or imported page-ward from a hook.
 - `NODE_STATUS_*` were four `"idle" | "loading" | "success" | "error"` literals declared in
   `project.tsx` and re-typed by hand in the node components. Now that two more modules needed them
-  they moved to `lib/canvas/canvas-node-status.ts`.
+  they moved to `frontend/src/lib/canvas/canvas-node-status.ts`.
 
 **What this is not** It is not a line-count win: 522 lines left the page and 603 arrived elsewhere,
 because each hook carries its own imports and the contract type is written down instead of being
@@ -1263,7 +1263,7 @@ screen, and that proving an editor correct no longer means standing up a 3,459-l
 ## 44. `handleGenerateNode` was 440 lines and four of them did not talk to each other
 
 **Decision** The four generation modes — image, video, audio, text — moved out of `handleGenerateNode`
-into `pages/canvas/hooks/use-generation-runs.ts`, one function each. `handleGenerateNode` is now a
+into `frontend/src/pages/canvas/hooks/use-generation-runs.ts`, one function each. `handleGenerateNode` is now a
 123-line orchestrator: resolve config, hydrate the prompt, build a `GenerationRun`, dispatch on mode,
 own the shared `catch` and `finally`.
 
@@ -1291,7 +1291,7 @@ difference. It stays where it is, at ~340 lines, and is the next thing worth its
 stamping in `catch` — because they are about the canvas, not about one request. The five setters and
 the two registry calls go in as `GenerationRunDeps`, the same shape as `NodeEditorDeps` (#43).
 
-**Where** `canvas/web/src/pages/canvas/hooks/use-generation-runs.ts`.
+**Where** `frontend/src/pages/canvas/hooks/use-generation-runs.ts`.
 
 
 ## 45. Retry joins the generation module, and `project.tsx` drops under 3,000
@@ -1327,7 +1327,7 @@ context menu work, and the console is empty. The body is a byte-identical move a
 type-checked, but the runtime path itself remains unexercised — worth one click from a human on a
 node that has actually failed.
 
-**Where** `canvas/web/src/pages/canvas/hooks/use-generation-runs.ts`.
+**Where** `frontend/src/pages/canvas/hooks/use-generation-runs.ts`.
 
 
 ## 46. Three pieces of housekeeping, and what two of them turned out to be
@@ -1358,8 +1358,8 @@ floating panels, the side panel, the canvas list). Three files moved and two wer
 | was                                     | is                                             |
 | --------------------------------------- | ---------------------------------------------- |
 | `stores/use-panel-store.ts`             | `stores/canvas/use-canvas-panel-store.ts`      |
-| `stores/use-canvas-side-panel-store.ts` | `stores/canvas/use-canvas-side-panel-store.ts` |
-| `stores/canvas/use-canvas-ui-store.ts`  | `stores/canvas/use-canvas-list-store.ts`       |
+| `stores/use-canvas-side-panel-store.ts` | `frontend/src/stores/canvas/use-canvas-side-panel-store.ts` |
+| `stores/canvas/use-canvas-ui-store.ts`  | `frontend/src/stores/canvas/use-canvas-list-store.ts`       |
 
 **The merge I proposed and did not do** The audit said to fold `useCanvasUiStore` into
 `usePanelStore`. Reading them, that is wrong: `useCanvasPanelStore` answers "which floating panel is
@@ -1401,7 +1401,7 @@ than created and shown empty.
 ## 47. Content ingress is a module: `File | string` in, node out
 
 **Decision** Eight callbacks that turn something the user handed us into a node moved to
-`pages/canvas/hooks/use-content-ingress.ts` (310 lines): the three `create*FileNode`, the clipboard
+`frontend/src/pages/canvas/hooks/use-content-ingress.ts` (310 lines): the three `create*FileNode`, the clipboard
 text node, the system-clipboard paste, the file-picker request, the file-picker handler, and drop.
 `project.tsx`: 2,990 → 2,735 lines.
 
@@ -1430,7 +1430,7 @@ is now exactly zero, which is a stronger statement than "tsc passes".
 `File` built from a canvas and a `DataTransfer`: a node titled `ingress-test.png` appeared with its
 image, selected, composer open, and was deleted afterwards. Console empty.
 
-**Where** `canvas/web/src/pages/canvas/hooks/use-content-ingress.ts`.
+**Where** `frontend/src/pages/canvas/hooks/use-content-ingress.ts`.
 
 
 ## 48. Three small correctness fixes found by a full read of the frontend
@@ -1492,8 +1492,8 @@ the browser: drag the resizer 280 → 400, reload, the panel comes back at 400. 
 were not exercised, because they need the gateway to report a workflow with problems or a hidden
 one, and the local gateway reports neither.
 
-**Where** `stores/canvas/use-canvas-side-panel-store.ts`, `components/canvas/canvas-side-panel.tsx`,
-`components/settings/resource-center-panel.tsx`, `i18n/locales/`.
+**Where** `frontend/src/stores/canvas/use-canvas-side-panel-store.ts`, `frontend/src/components/canvas/canvas-side-panel.tsx`,
+`frontend/src/components/settings/resource-center-panel.tsx`, `i18n/locales/`.
 
 
 ## 49. An unreadable store is preserved, refused, and explained
@@ -1532,7 +1532,7 @@ cannot lose anything, since the copy is already on disk.
   reads as a broken button. The handler now nudges both stores with `setState({})` so the cleared
   state actually replaces the blob.
 
-**Scope** The banner renders in `layouts/user-layout.tsx`, not in the canvas list, because `/`
+**Scope** The banner renders in `frontend/src/layouts/user-layout.tsx`, not in the canvas list, because `/`
 resolves straight to a canvas — most sessions never open the list, and a message that only appears
 there would be seen by almost nobody.
 
@@ -1595,7 +1595,7 @@ screen it is 760, and only the tallest editors scroll.
 1000×646. Canvas list: 1000×646. Asset library: 1000×646. Crop editor: 1000×646. Clear-canvas
 confirmation: 520×161, unchanged.
 
-**Where** `components/kit/dialog.tsx` and the thirty call sites.
+**Where** `frontend/src/components/kit/dialog.tsx` and the thirty call sites.
 
 
 ## 51. The editors' canvases fill the panel instead of guessing at the viewport
@@ -1629,7 +1629,7 @@ column was 320 then too; the arithmetic, not the change, is what shows it. The r
 (`flex-wrap`), so the three buttons reflow instead of the last one disappearing.
 
 **Where** `components/canvas/canvas-node-{crop,mask-edit,split}-dialog.tsx`,
-`components/canvas/canvas-node-hover-toolbar.tsx`.
+`frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`.
 
 
 ## 52. The persisted format has a version, and a migration that can refuse
@@ -1940,14 +1940,14 @@ other channel keeps the speech call. When image and video migrate, the same rule
 the declared container at submission — fixed one commit earlier, because the canvas now sends the
 container the user chose rather than one the adapter guessed.
 
-**Tested** `tests/api-runs.test.ts` (root resolution, submit body, polling to terminal, failed runs,
-abort-cancels-only-when-asked, relative output URLs) and `tests/canvas-resumable-runs.test.ts`
+**Tested** `frontend/tests/api-runs.test.ts` (root resolution, submit body, polling to terminal, failed runs,
+abort-cancels-only-when-asked, relative output URLs) and `frontend/tests/canvas-resumable-runs.test.ts`
 (which nodes survive a reload). End to end against a real ComfyUI with the exact payload the canvas
 sends: a run reached `succeeded` 30/30 and the downloaded mp3 played; `opus` came back as Ogg/Opus.
 
-**Where** `canvas/web/src/services/api/runs.ts`, `services/api/audio.ts`,
-`pages/canvas/hooks/use-generation-runs.ts`, `pages/canvas/project.tsx`,
-`lib/canvas/canvas-generation-helpers.ts`.
+**Where** `frontend/src/services/api/runs.ts`, `frontend/src/services/api/audio.ts`,
+`frontend/src/pages/canvas/hooks/use-generation-runs.ts`, `frontend/src/pages/canvas/project.tsx`,
+`frontend/src/lib/canvas/canvas-generation-helpers.ts`.
 
 
 ## 59. A video run carries roles, frames and its own post-step
@@ -1991,14 +1991,14 @@ the way in, so a rejected request names the offending key.
 `invalid_frame_mode`; `interpolation: "4x"` is rejected with the accepted set; a `2x` run submits the
 generation _and_ the RIFE graph and still stores one artifact; `frameMode` on an image workflow is
 `unknown input`. `internal/workflow/inputs_test.go` covers the video-only input surface and
-`InterpolationFactor`. `tests/api-video-runs.test.ts` pins the canvas side: one run per generation,
+`InterpolationFactor`. `frontend/tests/api-video-runs.test.ts` pins the canvas side: one run per generation,
 media by role (frames, references, no media for text-to-video), `interpolation` on the same request,
 step and preview reporting, failure named as a video task failure, and cancel only on an explicit
 user stop.
 
 **Where** `internal/server/postprocess.go`, `internal/server/routes_runs.go`,
 `internal/server/routes_video.go`, `internal/workflow/inputs.go`,
-`canvas/web/src/services/api/video.ts`, `services/api/runs.ts`, `pages/canvas/project.tsx`,
+`frontend/src/services/api/video.ts`, `frontend/src/services/api/runs.ts`, `frontend/src/pages/canvas/project.tsx`,
 `docs/protocol.md`.
 
 
@@ -2020,12 +2020,12 @@ that never stopped, or the two paths will drift.
 run id, because the node it repairs usually already has content and would not qualify as resumable
 anyway. Retrying is a deliberate, short action; the batch is the one that can quietly outlive a page.
 
-**Tested** `tests/canvas-resumable-runs.test.ts`: a `loading` image node with `imageRunId` survives
+**Tested** `frontend/tests/canvas-resumable-runs.test.ts`: a `loading` image node with `imageRunId` survives
 the restore pass (and one with content, or of another type, does not). The fill-and-resume path was
 exercised against the real gateway during the image migration.
 
-**Where** `canvas/web/src/pages/canvas/hooks/use-generation-runs.ts`,
-`lib/canvas/canvas-generation-helpers.ts`, `pages/canvas/project.tsx`, `types/canvas.ts`.
+**Where** `frontend/src/pages/canvas/hooks/use-generation-runs.ts`,
+`frontend/src/lib/canvas/canvas-generation-helpers.ts`, `frontend/src/pages/canvas/project.tsx`, `frontend/src/types/canvas.ts`.
 
 
 ## 61. The last generation adapters, and why one of them is not a run
@@ -2055,14 +2055,14 @@ the honest options are (a) register RIFE as a workflow and delete the engine's i
 one graph but not one mechanism, so the choice is deferred to the deletion phase instead of being made
 in a hurry — the adapter stays until then, and `docs/protocol.md` says so.
 
-**Tested** `tests/api-video-runs.test.ts`: an upscale request is one run whose media is the uploaded
+**Tested** `frontend/tests/api-video-runs.test.ts`: an upscale request is one run whose media is the uploaded
 clip and whose inputs are only the declared ones (`scale`/`fps` are absent). Against the real gateway
 the request was accepted, the graph was built with the clip wired into `LoadVideo`, and ComfyUI's own
 `missing_node_type` error came back on the run — the same failure the adapter produced on that
 machine, since the SeedVR2 custom node is not installed there.
 
-**Where** `canvas/web/src/services/api/video.ts`, `services/api/image.ts`,
-`pages/canvas/hooks/use-video-editors.ts`, `docs/protocol.md`, `docs/server.md`.
+**Where** `frontend/src/services/api/video.ts`, `frontend/src/services/api/image.ts`,
+`frontend/src/pages/canvas/hooks/use-video-editors.ts`, `docs/protocol.md`, `docs/server.md`.
 
 
 ## 62. Frame interpolation is a workflow, not a run input
@@ -2106,7 +2106,7 @@ equation: the canvas may chain runs to achieve one effect, and it already had th
 **Tested** `internal/workflow/bindings_test.go` (`multiply`: 2 → 48, 3 → 72),
 `internal/server/video_runs_e2e_test.go` (a `video-rife` run wires the clip into `LoadVideo`, writes
 `multiplier` 3 and `frame_rate` 72 into the RIFE/VHS nodes, and stores one output), plus the shipped
-registry still validating. `tests/api-video-runs.test.ts` pins the canvas side: an interpolate request
+registry still validating. `frontend/tests/api-video-runs.test.ts` pins the canvas side: an interpolate request
 is one run with `{multiplier}` and `media.video`, and a generation run no longer carries an
 `interpolation` input.
 
@@ -2117,7 +2117,7 @@ reports.
 
 **Where** `workflows/video-rife.json`, `workflows/registry.json`, `internal/workflow/bindings.go`,
 `internal/workflow/loaders.go`, `internal/server/routes_video.go`, `internal/server/routes_runs.go`,
-`canvas/web/src/services/api/video.ts`.
+`frontend/src/services/api/video.ts`.
 
 
 ## 63. An input is a key that reaches something
@@ -2155,7 +2155,7 @@ workflow's schema was re-read through the live gateway.
 **Decision** `registry.json` has no `hidden` flag any more, and neither do `/api/workflows` rows or
 the availability scan. The gateway registers workflows and reports two facts about each: what it
 accepts, and whether it can run here. Which of them appear in a model dropdown is decided by the
-canvas (`lib/canvas/tool-workflows.ts`), because the canvas is the only client.
+canvas (`frontend/src/lib/canvas/tool-workflows.ts`), because the canvas is the only client.
 
 **What `hidden` was doing** Four unrelated jobs at once: keeping a workflow out of the model list,
 excluding it from the availability totals and the "what is missing" list, refusing the user's own
@@ -2177,12 +2177,12 @@ they used, so the panel no longer offers an 8.5GB download for a workflow nobody
 
 **Tested** `internal/server/setup_report_test.go`: a workflow whose node class is missing appears in
 the setup status totals and in `missing.nodes` (models and tools alike), and a workflow row carries no
-`hidden` field. `tests/tool-workflows.test.ts` pins the client-side list. The live gateway's
+`hidden` field. `frontend/tests/tool-workflows.test.ts` pins the client-side list. The live gateway's
 `/api/setup/status` and `/api/workflows` were re-read after the change.
 
 **Where** `internal/workflow/entry.go`, `internal/workflow/render.go`, `internal/setup/scan.go`,
 `internal/server/routes_admin.go`, `internal/resource/status.go`, `workflows/registry.json`,
-`resources/index.json`, `canvas/web/src/lib/canvas/tool-workflows.ts`.
+`resources/index.json`, `frontend/src/lib/canvas/tool-workflows.ts`.
 
 
 ## 65. The image upscaler is a run, and a tool workflow takes exactly one item
@@ -2218,20 +2218,20 @@ fields.
 
 **Tested** `internal/server/runs_e2e_test.go:TestRunImageUpscaleTakesOneImage` (image reaches the
 graph, `upscale_model` reaches its node, no image is a 400),
-`tests/api-image-upscale.test.ts` (one upload + one run, nothing on `/v1`, a failed run surfaces its
+`frontend/tests/api-image-upscale.test.ts` (one upload + one run, nothing on `/v1`, a failed run surfaces its
 message). In the browser: the 放大 dialog listed the three ESRGAN models from `/api/workflows`,
 submitted a run, and produced a 4096×4096 PNG node.
 
 **Where** `internal/server/routes_generation.go`, `internal/server/routes_admin.go`,
-`workflows/registry.json`, `canvas/web/src/services/api/workflows.ts`,
-`canvas/web/src/services/api/image.ts`,
-`canvas/web/src/components/canvas/canvas-node-super-resolve-dialog.tsx`.
+`workflows/registry.json`, `frontend/src/services/api/workflows.ts`,
+`frontend/src/services/api/image.ts`,
+`frontend/src/components/canvas/canvas-node-super-resolve-dialog.tsx`.
 
 
 ## 66. Everything under `workflows/` is English _(the one path it kept was not the author's, see #117)_
 
 **Decision** The graphs, `registry.json` and their defaults contain no Chinese. Chinese for a shipped
-workflow lives in `i18n/locales/zh-CN.ts` under `gateway.models.<id>.label`, keyed by the id the
+workflow lives in `frontend/src/i18n/locales/zh-CN.ts` under `gateway.models.<id>.label`, keyed by the id the
 gateway sends (#8 already said this; the registry just had not caught up).
 
 **What was mixed** Three unrelated kinds of Chinese in the directory:
@@ -2256,14 +2256,14 @@ pass has to be applied again. The registry is the part that matters, and it is m
 in the resource panel, with no key indirection. That is #67; it could not be fixed by editing JSON
 alone.
 
-**Where** `workflows/*.json`, `workflows/registry.json`, `canvas/web/src/i18n/locales/zh-CN.ts`.
+**Where** `workflows/*.json`, `workflows/registry.json`, `frontend/src/i18n/locales/zh-CN.ts`.
 
 
 ## 67. The resource catalogue is English; its Chinese lives beside the app _(one of the two paths was not upstream's, see #117)_
 
 **Decision** `resources/index.json` carries no Chinese copy — pack `label`/`description`, resource
 `label`/`note`/`license` are English. The Chinese sits in
-`canvas/web/src/lib/resource-copy-zh.ts`, keyed by pack/resource id, and
+`frontend/src/lib/resource-copy-zh.ts`, keyed by pack/resource id, and
 `ResourceCenterPanel` looks it up before falling back to the index text. Vendored third-party content
 under `resources/payload/**` is untouched: it is the upstream author's text, not ours.
 
@@ -2284,14 +2284,14 @@ Chinese (`loras/Qwen-功能2.1/…`, `loras/Moss_image/KOOK-MOSS-SFT-观澜.safe
 paths, not copy; translating them would break the install. A test fails the build if any _other_ field
 grows Chinese again.
 
-**Tested** `tests/resource-copy-zh.test.ts`: Chinese for pack/resource/license in `zh-CN`, nothing at
+**Tested** `frontend/tests/resource-copy-zh.test.ts`: Chinese for pack/resource/license in `zh-CN`, nothing at
 all in `en-US` (so the index text stands), nothing for an unknown id, a dotted id resolving, and the
 index itself containing Chinese only in `target`. In the browser: the Add-workflows panel reads in
 English with the language set to English and in Chinese with it set to 中文, over the same rows,
 including the LoRA whose path stays Chinese.
 
-**Where** `resources/index.json`, `canvas/web/src/lib/resource-copy-zh.ts`,
-`canvas/web/src/components/settings/resource-center-panel.tsx`.
+**Where** `resources/index.json`, `frontend/src/lib/resource-copy-zh.ts`,
+`frontend/src/components/settings/resource-center-panel.tsx`.
 
 
 ## 68. There is no `/v1/models`; a workflow reports the ids it answers to
@@ -2315,7 +2315,7 @@ will answer to.
 
 **What stayed in the client** Three decisions, none of which is a fact about a workflow: a workflow
 whose `type` the canvas cannot render is not a model; a workflow the canvas drives from a button
-(`lib/canvas/tool-workflows.ts`) is not a model; a disabled (`enabled: false`) or unavailable workflow
+(`frontend/src/lib/canvas/tool-workflows.ts`) is not a model; a disabled (`enabled: false`) or unavailable workflow
 is not offered. `lib/gateway-capability.ts` went with the endpoint — it existed to guess a capability
 from a name or a metadata field, and the workflow's own `type` is the answer.
 
@@ -2332,9 +2332,9 @@ base-model sub-dropdown still lists `默认底模 / z_image_bf16 / int8`, and a 
 returned three images.
 
 **Where** `internal/server/routes_admin.go`, `internal/server/e2e_test.go`,
-`canvas/web/src/services/api/workflows.ts`,
+`frontend/src/services/api/workflows.ts`,
 `canvas/web/src/hooks/use-local-gateway-sync.ts`,
-`canvas/web/src/lib/gateway-models.ts`, `canvas/web/src/services/api/image.ts`
+`canvas/web/src/lib/gateway-models.ts`, `frontend/src/services/api/image.ts`
 (`fetchChannelModels`).
 
 
@@ -2403,7 +2403,7 @@ as before — a user-typed title, or one from a canvas written by an older build
 **The migration** `CANVAS_PERSIST_VERSION` 2 adds `titleKey` to a stored node whose `title` matches one
 of the app's own defaults **in either language**; the same idea runs over the channel list on load (no
 version bump: the config store already rebuilds channels every time it reads). The matching list lives in
-`lib/canvas/node-title.ts` and has to be extended when a new default title is added; the test fails when
+`frontend/src/lib/canvas/node-title.ts` and has to be extended when a new default title is added; the test fails when
 a stored default goes unrecognised.
 
 **What is deliberately still a snapshot** Titles that _compose_ several translations — the multi-angle
@@ -2411,25 +2411,25 @@ label (`前方 · 俯视 10° · 正面视角`), the split title's source name �
 descriptions of a particular moment, and rebuilding them would need the parameters, not just a key. The
 `Copy` suffix and asset titles (which are prompts) are the same kind of thing.
 
-**Tested** `tests/node-title.test.ts` (key wins, params pass through, a typed title is untouched, a dotted
+**Tested** `frontend/tests/node-title.test.ts` (key wins, params pass through, a typed title is untouched, a dotted
 id, whole-title matching, `channelName` both ways) and a case in `tests/persist-migration.test.ts` (a
 stored "音频" becomes `canvas.nodeTypes.audio`, a typed title and an explicit key are untouched). In the
 browser: the existing canvas, created in Chinese, shows "Audio" and "Local ComfyUI" in English, and
 "音频" / "本地 ComfyUI" again after switching back — with nothing edited in between.
 
-**Where** `canvas/web/src/lib/canvas/node-title.ts`,
-`canvas/web/src/constant/canvas.ts`,
+**Where** `frontend/src/lib/canvas/node-title.ts`,
+`frontend/src/constant/canvas.ts`,
 `canvas/web/src/stores/canvas/canvas-persist.ts`,
-`canvas/web/src/stores/use-config-store.ts`,
-`canvas/web/src/components/canvas/canvas-node.tsx`,
-`canvas/web/src/pages/canvas/hooks/use-image-editors.ts`,
-`canvas/web/src/pages/canvas/project.tsx`.
+`frontend/src/stores/use-config-store.ts`,
+`frontend/src/components/canvas/canvas-node.tsx`,
+`frontend/src/pages/canvas/hooks/use-image-editors.ts`,
+`frontend/src/pages/canvas/project.tsx`.
 
 
 ## 71. There is one channel, and it is the gateway the page came from
 
 **Decision** The canvas has exactly one model channel. Its address is the gateway that served the page
-(`constant/app-mode.ts`), its model list is whatever `GET /api/workflows` reports, and the channel editor
+(`frontend/src/constant/app-mode.ts`), its model list is whatever `GET /api/workflows` reports, and the channel editor
 keeps only two things: a name and a per-model capability override. "Add a channel", "choose a provider"
 and the address field are gone.
 
@@ -2445,10 +2445,10 @@ user wants it to be.
 on read: the first channel that points at this gateway wins, the rest are dropped, and a backup of the
 original blob is left in `localStorage` under `…:pre-local-only-backup`.
 
-**Where** `canvas/web/src/constant/app-mode.ts`,
-`canvas/web/src/stores/use-config-store.ts` (`merge`),
+**Where** `frontend/src/constant/app-mode.ts`,
+`frontend/src/stores/use-config-store.ts` (`merge`),
 `canvas/web/src/components/settings/channel-editor-drawer.tsx`,
-`canvas/web/src/components/layout/client-root-init.tsx`.
+`frontend/src/components/layout/client-root-init.tsx`.
 
 **Tested** `npm run check`, `npx vitest run` (the config-store merge cases), and in the browser: a cleared
 config syncs the gateway's workflow list, the editor shows one channel, and its address field does not
@@ -2467,7 +2467,7 @@ caller stripped it again before using it — `gatewayProtocolRoot`, `local-sessi
 `canvas-system-status`, two plugin-host fetches, plus the config store's own normalization. Six strips
 for a suffix nothing needed.
 
-**What replaced them** One function, `gatewayRoot(url)` in `constant/app-mode.ts`, applied where the
+**What replaced them** One function, `gatewayRoot(url)` in `frontend/src/constant/app-mode.ts`, applied where the
 address enters the app (the injected value and a persisted channel). The call sites now use the value
 directly, which is what makes "there is no `/v1`" true rather than maintained by convention.
 
@@ -2485,11 +2485,11 @@ separately.
 17 models sync from `http://127.0.0.1:8190`, the stored channel address has no `/v1`, and a recorded
 network capture shows every gateway request on `/api/...` with no `/v1` path anywhere.
 
-**Where** `canvas/web/src/constant/app-mode.ts`, `start.sh`,
+**Where** `frontend/src/constant/app-mode.ts`, `start.sh`,
 `canvas/web/src/services/api/{runs,resources}.ts`,
-`canvas/web/src/components/canvas/canvas-system-status.tsx`,
+`frontend/src/components/canvas/canvas-system-status.tsx`,
 `canvas/web/src/pages/canvas/hooks/use-plugin-host.tsx`,
-`canvas/web/src/stores/use-config-store.ts`. (The `lib/local-session.ts` this list used to
+`frontend/src/stores/use-config-store.ts`. (The `lib/local-session.ts` this list used to
 name went in #109, and `POST /api/prompts/chat` — the endpoint #73 gave the prompt path — went in #76
 when prompts became the agent's socket.)
 
@@ -2539,10 +2539,10 @@ and the browser's own capture shows no `/v1` path on the gateway.
 **Where** `internal/prompt/optimizer.go` (`ChatRequest`, `Complete`, `chatMessages`),
 `internal/server/routes_generation.go` (`handlePromptChat`, `promptCloud`, `promptImageURLs`),
 `canvas/web/src/services/api/prompts.ts` (the four prompt routes, moved out of `image.ts`),
-`canvas/web/src/services/api/image.ts`,
+`frontend/src/services/api/image.ts`,
 `canvas/web/src/pages/canvas/hooks/{use-generation-runs,use-plugin-host}.tsx`,
-`canvas/web/src/pages/canvas/project.tsx`,
-`canvas/web/src/stores/use-config-store.ts`,
+`frontend/src/pages/canvas/project.tsx`,
+`frontend/src/stores/use-config-store.ts`,
 `canvas/web/src/components/canvas/{canvas-config-node-panel,canvas-node-prompt-panel}.tsx`.
 
 
@@ -2592,13 +2592,13 @@ caption route returned a prompt with no `engine` field.
 
 **Where** `internal/prompt/optimizer.go`, `internal/server/routes_generation.go`,
 `canvas/web/src/lib/config-migration.ts`,
-`canvas/web/src/stores/use-config-store.ts`,
+`frontend/src/stores/use-config-store.ts`,
 `canvas/web/src/services/api/prompts.ts`,
 `canvas/web/src/components/canvas/canvas-prompt-endpoint-chip.tsx`,
-`canvas/web/src/components/canvas/canvas-node-prompt-panel.tsx`,
+`frontend/src/components/canvas/canvas-node-prompt-panel.tsx`,
 `canvas/web/src/components/canvas/canvas-config-node-panel.tsx`,
 `canvas/web/src/components/settings/app-config-modal.tsx`,
-`canvas/web/src/types/canvas.ts`.
+`frontend/src/types/canvas.ts`.
 
 
 ## 75. Prompts are served by AlayaCore, and one instance belongs to one person
@@ -2673,7 +2673,7 @@ optimised an image prompt through the one route.
 **Decision** `nodeRegenerateBehavior` is gone. Pressing generate on a node that already holds a result
 replaces that result, always. Nothing is created beside it, and the old image is not quietly fed back in
 as a reference. The "原图" leading reference (`canvas.references.source`, `leadingNode`) went with it,
-and so did `Radio` in `components/kit/choice.tsx`, which had no caller left.
+and so did `Radio` in `frontend/src/components/kit/choice.tsx`, which had no caller left.
 
 **Why** The setting offered two answers to one button: _overwrite_ meant "re-roll this one", _new node_
 meant "keep this, and make another one conditioned on it" — it created the sibling **and** inserted the
@@ -3388,7 +3388,7 @@ now reports the session's disappearance; the workspace tests read the new `agent
 ## 101. A replayed citation shows the words, not the block
 
 **Decision** The block the canvas puts in front of a cited prompt — `【画布引用】` and one line per node —
-now has a home of its own, `lib/canvas/agent-references.ts`, and that module can take it off again
+now has a home of its own, `frontend/src/lib/canvas/agent-references.ts`, and that module can take it off again
 (`withoutReferences`). The panel uses the first half when sending and the second half when it draws a
 user message replayed from the agent's session file.
 
@@ -3551,7 +3551,7 @@ A title containing the block's own separator (`: `) loses its tail when read bac
 the link still points at the right node; only the token that gets coloured is shorter. That is the cost of
 keeping a format that reads well for the agent, and it was not worth a second markup.
 
-**Tested** `tests/agent-references.test.ts` round-trips the block: what `referenceBlock` writes,
+**Tested** `frontend/tests/agent-references.test.ts` round-trips the block: what `referenceBlock` writes,
 `referenceEntries` reads, including the colon case. In a browser: cited an audio node with the panel's `@`
 picker, sent the message, and the mention drew in the accent colour inside otherwise plain text; pressing
 "reset view" moved the canvas to `translate(858.5px, 367px)`, and clicking the mention put it back at
@@ -3799,7 +3799,7 @@ as this repository can go without ComfyUI's interpreter.
 carried through the undo history, restored on every open), the four `CanvasAssistant*` types, the
 `hydrateAssistantImages` pass, thirteen dead translation keys, the `step-progress` bus
 (`bindStepProgress` / `unbindStepProgress` / `publishStepProgress`), and the thirty-one unused locals and
-cloud-era leftovers that `tsc --noUnusedLocals` lists (mostly `services/api/video.ts`: `ApiVideoResponse`,
+cloud-era leftovers that `tsc --noUnusedLocals` lists (mostly `frontend/src/services/api/video.ts`: `ApiVideoResponse`,
 `ApiEnvelope`, `VideoGenerationTaskState`, `aiHeaders`, `videoResultFromUrl`, `assertVideoBlob`,
 `normalizeVideoResolution`, `delay`).
 
@@ -3929,7 +3929,7 @@ machine or a 152 MiB re-download.
 **Tested** `make check` (gofmt, `go vet`, `go test . ./internal/...`) passes. The LoRA still reaches the
 workflow's dropdown: `internal/generate/lora.go` compiles the filter with `(?i)`, so
 `Qwen21|qwen_image_2.1|Qwen-Image-2.1` matches the new name through its last alternative.
-`tests/resource-copy-zh.test.ts` passes and now has one Chinese `target` to police instead of two — it
+`frontend/tests/resource-copy-zh.test.ts` passes and now has one Chinese `target` to police instead of two — it
 caught the first draft of the new index `note`, which had quoted the old folder name.
 
 **Where** `workflows/image-qwen21-outpaint.json`, `resources/index.json`, #66, #67.
@@ -3974,7 +3974,7 @@ has to be updated when upstream moves. And a hash can only be added this way for
 one; a source that offers neither header still needs the bytes downloaded once.
 
 **Where** `resources/index.json`, `workflows/video-h3-ref2va-drama.json`,
-`canvas/web/src/lib/resource-copy-zh.ts`.
+`frontend/src/lib/resource-copy-zh.ts`.
 
 
 ## 119. Guanlan leaves: an optional download nobody needs
@@ -4007,7 +4007,7 @@ convenient to list.
 **Tested** `make check` and the canvas suite (133 tests) both pass; `resource-copy-zh.test.ts` is the gate
 that would have caught a zh dictionary key left pointing at a resource that no longer exists.
 
-**Where** `resources/index.json`, `canvas/web/src/lib/resource-copy-zh.ts`.
+**Where** `resources/index.json`, `frontend/src/lib/resource-copy-zh.ts`.
 
 
 ## 120. taeh3 stops being a binary of unknown origin
@@ -4048,7 +4048,7 @@ only way to take the binary out of the repository without breaking three workflo
 is unaffected because `payloadPath` itself did not change. `resources/payload/` now contains node packs
 only.
 
-**Where** `resources/index.json`, `canvas/web/src/lib/resource-copy-zh.ts`,
+**Where** `resources/index.json`, `frontend/src/lib/resource-copy-zh.ts`,
 `resources/payload/vae_approx/`.
 
 
@@ -4219,8 +4219,8 @@ every pack reference resolves, and the 8 payload directories are exactly the 8 v
 
 **Where** `workflows/registry.json`, `workflows/video-h3-ref2va-drama.json` (deleted),
 `resources/index.json`, `resources/payload/custom_nodes/ComfyUI-SolAttn_triton` (deleted),
-`canvas/web/src/lib/canvas/video-model-mode.ts`, the two node panels, `video-settings-panel.tsx`,
-`i18n/locales/*`, `lib/resource-copy-zh.ts`, `internal/workflow/media_test.go`.
+`frontend/src/lib/canvas/video-model-mode.ts`, the two node panels, `video-settings-panel.tsx`,
+`i18n/locales/*`, `frontend/src/lib/resource-copy-zh.ts`, `internal/workflow/media_test.go`.
 
 
 ## 125. Krea2 is gone: the second text-to-image family nobody opened
@@ -4284,7 +4284,7 @@ by the panel: the packs were deleted from the reference machine's `custom_nodes`
 exercises the new code.
 
 **Where** `internal/resource/jobs.go`, `internal/resource/install_extract_test.go` (new),
-`resources/index.json`, `canvas/web/src/lib/resource-copy-zh.ts`, `resources/payload/` (deleted).
+`resources/index.json`, `frontend/src/lib/resource-copy-zh.ts`, `resources/payload/` (deleted).
 
 
 ## 128. `resources/index.json` becomes `catalogue.json` _(the name given in it was wrong, see #129)_
@@ -4433,7 +4433,7 @@ still renders as a green row with an install checkbox.
 
 **Where** `resources.json`, `internal/resource/status.go`,
 `canvas/web/src/{components/settings/resource-center-panel.tsx,
-i18n/locales/{en-US,zh-CN}.ts,lib/resource-copy-zh.ts}`, `canvas/web/tests/resource-copy-zh.test.ts`,
+i18n/locales/{en-US,zh-CN}.ts,lib/resource-copy-zh.ts}`, `frontend/tests/resource-copy-zh.test.ts`,
 `README.md`.
 
 
@@ -4555,7 +4555,7 @@ qwenmultiangle]`, `optionalIds = []`, and every pack reporting `present == total
 `go test ./internal/...`, `tsc --noEmit`, 132 canvas tests.
 
 **Where** `internal/resource/{status.go,derive.go}`, `resources.json`,
-`canvas/web/src/components/settings/resource-center-panel.tsx`.
+`frontend/src/components/settings/resource-center-panel.tsx`.
 
 
 ## 136. The brush ring was behind the dialog it lives in
@@ -4576,14 +4576,14 @@ without.
 promise that a substitute is on screen; keeping that promise conditional means a future regression costs a
 crosshair instead of the feature.
 
-**Tested** `tests/overlay-z-index.test.ts` reads the sources: it takes the highest z-index in
+**Tested** `frontend/tests/overlay-z-index.test.ts` reads the sources: it takes the highest z-index in
 `kit/dialog.tsx` + `kit/drawer.tsx` as the floor and fails for any `fixed z-[n]` portal in a file that renders a
 `<Dialog`/`<Drawer`. Reverting the ring to 1100 fails with the file and line named, restoring it passes. The
 canvas's own portals (context menu at 80, @-mention list at 120) are out of scope on purpose — the canvas is
 behind the dialog, so those can never be opened from inside one. `tsc --noEmit`, 134 canvas tests.
 
-**Where** `canvas/web/src/components/canvas/canvas-node-mask-edit-dialog.tsx`,
-`canvas/web/tests/overlay-z-index.test.ts` (new).
+**Where** `frontend/src/components/canvas/canvas-node-mask-edit-dialog.tsx`,
+`frontend/tests/overlay-z-index.test.ts` (new).
 
 
 ## 137. `infinite-canvas/` becomes `canvas/`
@@ -4612,7 +4612,7 @@ away from rewriting an upstream link.
 
 **Not renamed on purpose** `canvas/plugins/infinite-canvas/` keeps its name: that is the upstream plugin's *id*,
 declared inside its own `plugin.json` and in the marketplace entry, and it is data rather than a path we own.
-`canvas/web/package.json` still says `"name": "infinite-canvas"` for the same reason — it is the npm project's
+`frontend/package.json` still says `"name": "infinite-canvas"` for the same reason — it is the npm project's
 identity inside the subtree, not this repository's name for it.
 
 **Tested** `make web` builds into the new path, `make check`/`tsc`/134 tests pass, and a tree-wide grep for
@@ -4723,7 +4723,7 @@ comment also still pointed at `infinite-canvas/web/public/plugins/`, a path that
   in the user's browser, not labels. Renaming them silently orphans every canvas, asset, setting and theme on every
   machine that has used this app. Doing it properly means reading the old key, writing the new one, and keeping the
   old one readable for a while — a migration, not a rename.
-- **Export files.** `app: "infinite-canvas"` in `canvas-export.ts`, `types/canvas-export.ts`,
+- **Export files.** `app: "infinite-canvas"` in `canvas-export.ts`, `frontend/src/types/canvas-export.ts`,
   `asset-transfer.ts` and `project.tsx` is the marker that says "this JSON is a canvas export". Change it and every
   file exported so far stops importing. Its own migration, if it is ever worth it.
 - **The agent plugin.** `canvas/plugins/infinite-canvas/**` is a third party's work: the manifest names
@@ -4831,7 +4831,7 @@ written before this commit still import; they simply carry a marker that no long
 the one place the old name survives, in files already on disk, which is where it belongs: they are history, not
 code.
 
-**Left alone** `components/canvas/infinite-canvas.tsx` and its `InfiniteCanvas` export keep their names. That is a
+**Left alone** `frontend/src/components/canvas/infinite-canvas.tsx` and its `InfiniteCanvas` export keep their names. That is a
 description of the widget — a canvas that scrolls forever — not the product's name, and renaming it would churn
 every import in the canvas for no gain a reader could see.
 
@@ -5053,8 +5053,8 @@ then a tool call answered — the model's reply described the empty canvas it ha
 **Decision** The plugin system is gone — loader, runtime, store, manager dialog, the SDK and its eight
 packages, the `public/plugins` directory, the per-plugin IndexedDB database, the event bus the runtime
 handed out, and the "节点插件" button. The one node that was actually reachable, the LoRA card, is now a
-built-in node (`CanvasNodeType.Lora`) rendered by `components/canvas/nodes/lora-node.tsx`. The
-`CanvasPluginDefinition` shape survives as `types/canvas-node.ts`, because it was always the description
+built-in node (`CanvasNodeType.Lora`) rendered by `frontend/src/components/canvas/nodes/lora-node.tsx`. The
+`CanvasPluginDefinition` shape survives as `frontend/src/types/canvas-node.ts`, because it was always the description
 of a node and the registry is what built-ins use.
 
 **Why** The mechanism bought two things: a third-party author could add a node without this repository,
@@ -5097,7 +5097,7 @@ Added: `canvas/web/src/{components/canvas/nodes/lora-node.tsx,types/canvas-node.
 Touched: `node-registry.ts`, `builtin-nodes.tsx`, `canvas-node.tsx`, `project.tsx`, `canvas-toolbar.tsx`,
 `canvas-create-menus.tsx`, `canvas-top-bar.tsx`, `user-status-actions.tsx`,
 `services/{localforage-databases,local-storage-usage}.ts`, `vite.config.ts`, `vite-env.d.ts`,
-`constant/canvas.ts`, `types/canvas.ts`, `services/api/video.ts`, `i18n/locales/*`,
+`frontend/src/constant/canvas.ts`, `frontend/src/types/canvas.ts`, `frontend/src/services/api/video.ts`, `i18n/locales/*`,
 `internal/server/routes_mcp.go`, `scripts/check-exports.cjs`, `docs/known-issues.md`, `README.md`,
 `.gitignore`.
 
@@ -5279,11 +5279,11 @@ saved task keeps the model it was made with, and that still has a test.
 `本地 ComfyUI · 本地网关 · 11 个模型 · http://127.0.0.1:8190`: the model list arrives from a
 header-less `GET /api/workflows`, which is the path this entry changed most. An image node is created and
 the console stays empty. No generation was re-run for this entry: the removed header was ignored by the
-gateway, and the run and upload request shapes are covered by `tests/api-runs.test.ts`.
+gateway, and the run and upload request shapes are covered by `frontend/tests/api-runs.test.ts`.
 
 **Where** `canvas/src/stores/use-config-store.ts`, `services/api/{runs,workflows,image,audio,video}.ts`,
 `hooks/use-local-gateway-sync.ts`, `components/settings/{app-config-modal,channel-editor-drawer}.tsx`,
-`components/layout/client-root-init.tsx`, `i18n/locales/*`, `tests/model-selection.test.ts`,
+`frontend/src/components/layout/client-root-init.tsx`, `i18n/locales/*`, `frontend/tests/model-selection.test.ts`,
 `internal/httpx/middleware.go`.
 
 
@@ -5291,7 +5291,7 @@ gateway, and the run and upload request shapes are covered by `tests/api-runs.te
 
 **Decision** `use-canvas-store` no longer stores a document anywhere. It holds two things: `canvases`
 — the list the gateway reports, metadata only — and `projects`, the documents this session has opened.
-Every write goes through `lib/canvas/save-queue.ts`:
+Every write goes through `frontend/src/lib/canvas/save-queue.ts`:
 
 - **coalesced** — a 400 ms debounce, so dragging a node is one save rather than sixty, and the save
   carries the state at flush time rather than the state that queued it;
@@ -5323,7 +5323,7 @@ gone rather than fetched per card. `deletedProjects` (id + deletedAt tombstones)
 is a delete (#152). `hydrated` became `ready`, which is what it now means: the first list has arrived.
 
 **One browser preference left, for one entry** "Which canvas was I in" is device state, not workspace
-state, and `lib/canvas/last-canvas.ts` keeps it in `localStorage` under `comfyloft:last_canvas`. It
+state, and `frontend/src/lib/canvas/last-canvas.ts` keeps it in `localStorage` under `comfyloft:last_canvas`. It
 moves to `/api/settings` in #155 with the theme, the language and the panel widths.
 
 **A CORS bug this found** `If-Match` was not in the gateway's `Access-Control-Allow-Headers`, so every
@@ -5345,7 +5345,7 @@ a tab left on a canvas that no longer existed got `404`, went to `/`, and create
 
 **Where** `canvas/src/{services/api/canvases.ts,lib/canvas/{save-queue.ts,last-canvas.ts},stores/canvas/use-canvas-store.ts}`
 (new/rewritten), `pages/canvas/{entry.tsx,project.tsx}`, `components/{canvas/{canvas-manager-dialog,canvas-project-card,canvas-top-bar,canvas-delete-projects-dialog}.tsx,layout/{user-layout,client-root-init}.tsx}`,
-`services/{file-storage,image-storage}.ts`, `lib/canvas/node-title.ts`, `i18n/locales/*`,
+`services/{file-storage,image-storage}.ts`, `frontend/src/lib/canvas/node-title.ts`, `i18n/locales/*`,
 `tests/{canvas-save-queue,node-title}.test.ts`, `scripts/check-exports.cjs`, `internal/httpx/middleware.go`.
 
 
@@ -5775,7 +5775,7 @@ block's own `: ` still loses its tail when read back (#106's cost, unchanged). A
 `@图片 2` where the user might have expected their node's name — true, and unavoidable while two nodes answer
 to that name.
 
-**Tested** `tests/agent-references.test.ts`: `citationLabel` numbering, two citations that read the same
+**Tested** `frontend/tests/agent-references.test.ts`: `citationLabel` numbering, two citations that read the same
 resolving to two ids, a legacy transcript with identical tokens, a citation beating a node of the same name,
 the longest label winning (`图片 10` before `图片 1`), and an `@` that names nothing staying text. Gates:
 `npx vitest run` (137), `npm run check`, `make check`, `make frontend`.
@@ -5987,7 +5987,7 @@ artifact), where no name exists yet.
 **What else had to agree** The export carried the in-memory project, whose `metadata.content` is the absolute
 URL an `<img>` needs, so a zip contained `http://127.0.0.1:8190/api/canvases/…` — the exact thing #152 forbids
 in a document, and the reason an imported canvas displayed the *exporting* workspace's URLs until the next save
-stripped them. The document is now built in one place (`lib/canvas/canvas-document.ts`) by both the save queue
+stripped them. The document is now built in one place (`frontend/src/lib/canvas/canvas-document.ts`) by both the save queue
 and the export, and a zip carries no id, no rev and no URL.
 
 **Cost** The gateway now accepts bytes at a name a client chose, guarded by the same name validation the read
@@ -5998,7 +5998,7 @@ something this route can do, and is not something the canvas offers.
 
 **Tested** Go: `TestWriteFileKeepsTheNameAndRefusesATakenOne` (store) and
 `TestAFileCanBeWrittenUnderANameTheDocumentUses` (route: write, read back the same bytes, second write 409,
-escaping name 400, unknown canvas 404). Frontend: `tests/canvas-document.test.ts` — media named by reference,
+escaping name 400, unknown canvas 404). Frontend: `frontend/tests/canvas-document.test.ts` — media named by reference,
 nodes without metadata untouched, and only the five document fields in the result. Gates: `make check`,
 `go test -race`, `npm run check`, `npx vitest run` (149).
 
@@ -6055,7 +6055,7 @@ rules above, no symlinks and no modes taken from the archive.
 **Tested** Go: `TestImportingAnArchiveRestoresTheCanvasAsItWasExported` (document, title, file bytes and name),
 `TestAnArchiveThatIsNotOneCanvasIsRefused` (old format, no document, `..` entry, not a zip — and no canvas left
 behind), `TestAnImportPastTheLimitIsRefusedAndLeavesNothing` (413 with a 32-byte ceiling). Frontend:
-`tests/canvas-document.test.ts` still pins the document that goes into `canvas.json`. Gates: `make check`,
+`frontend/tests/canvas-document.test.ts` still pins the document that goes into `canvas.json`. Gates: `make check`,
 `go test -race`, `npm run check`, `npx vitest run` (149).
 
 **In the browser** Exported a canvas holding an image: the zip holds `manifest.json`, `canvas.json`,
@@ -6102,9 +6102,9 @@ Reference media for a run is uploaded the same way — it is the user's file, no
 **Cost** A node's `content` is the run's own name, so an artifact keeps the run's spelling (`task_<uuid>.png`)
 rather than a short one. Nothing renames files, which is the point.
 
-**Tested** `tests/api-runs.test.ts` (a run's outputs become the document's names and the gateway's URLs),
-`tests/api-image-upscale.test.ts` (an upscale run's artifact is referenced, not fetched — the call list stops
-at the run's status), `tests/api-video-runs.test.ts` (a clip's reference carries its size and duration, and the
+**Tested** `frontend/tests/api-runs.test.ts` (a run's outputs become the document's names and the gateway's URLs),
+`frontend/tests/api-image-upscale.test.ts` (an upscale run's artifact is referenced, not fetched — the call list stops
+at the run's status), `frontend/tests/api-video-runs.test.ts` (a clip's reference carries its size and duration, and the
 artifact is never fetched). Gates: `npm run check`, `npx vitest run` (147).
 
 **In the browser** Generated three 1024×1024 images from the canvas: `canvases/<id>/files/` held exactly three
@@ -6145,7 +6145,7 @@ file, instead of silently being re-uploaded from whatever the page still had in 
 answer either way — the node was showing a picture whose file is gone — and the message names the file that is
 missing.
 
-**Tested** `tests/api-image-upscale.test.ts`: a source with a `storageKey` produces exactly two calls (submit,
+**Tested** `frontend/tests/api-image-upscale.test.ts`: a source with a `storageKey` produces exactly two calls (submit,
 poll) and `media: {image: ["up-abcdef12.png"]}`, while a source with none still uploads first. Gates:
 `npm run check`, `npx vitest run` (148).
 
@@ -6173,7 +6173,7 @@ paint the node red. The agent path was already wrong in a second way: an aborted
 **Cost** Two message constants (`apiErrors.requestCanceled`, `common.requestCanceled`) still exist, for display;
 neither is load-bearing for control flow now.
 
-**Tested** `tests/api-runs.test.ts`, `tests/api-video-runs.test.ts` and the generation hooks' own cases all
+**Tested** `frontend/tests/api-runs.test.ts`, `frontend/tests/api-video-runs.test.ts` and the generation hooks' own cases all
 assert on `name === "AbortError"` paths; `npm run check` and `npx vitest run` (150).
 
 **Where** `frontend/src/services/api/http.ts` (`throwIfCanceled`), `frontend/src/services/api/{image,video,audio,runs,agent}.ts`,
@@ -6216,7 +6216,7 @@ media (16 MiB is the store's ceiling) can never travel this way.
 alternative was pretending: `keepalive: true` on a 2 MB body fails the fetch, which is worse than a normal
 request that usually still arrives.
 
-**Tested** `tests/canvas-save-queue.test.ts`: `flushAll` marks its saves `keepalive`, a debounced save does not.
+**Tested** `frontend/tests/canvas-save-queue.test.ts`: `flushAll` marks its saves `keepalive`, a debounced save does not.
 
 **Where** `frontend/src/services/api/http.ts`, `frontend/src/services/api/{canvases,settings}.ts`,
 `frontend/src/lib/canvas/save-queue.ts`, `frontend/src/stores/{canvas/use-canvas-store,use-settings-store}.ts`.
@@ -6270,7 +6270,7 @@ draws nothing after a reload, and a picture only the current browser can show is
 **Cost** A URL behind an address this machine cannot reach fails loudly at the point of the node that wanted it.
 That is the honest answer, and it is the same answer #174 gives for a canvas file that is no longer there.
 
-**Tested** `tests/image-storage.test.ts`: a URL whose download fails rejects, with an `Image` stub that *would*
+**Tested** `frontend/tests/image-storage.test.ts`: a URL whose download fails rejects, with an `Image` stub that *would*
 load, so the old branch would have resolved — the test fails against the previous code (`promise resolved instead
 of rejecting`) and passes now.
 
@@ -6447,7 +6447,7 @@ text node, which is the point. A document written before this keeps whatever a r
 alone in that case rather than being renamed after a request nobody typed.
 
 **Tested** `npm run check` (i18n 897/883), `npx vitest run` (156, including five new cases in
-`tests/canvas-generation-context.test.ts`: appended once after the box's words, whole request when the box
+`frontend/tests/canvas-generation-context.test.ts`: appended once after the box's words, whole request when the box
 is empty, still appended when the box repeats the words, one block per text in connection order, nothing
 when no text is connected), `make check`, `go test -race`. In the browser (a `/tmp/verify` copy on
 8191/3001 with its own `AGENT_CONFIG_PATH`): `create_node` text + image, `connect` — the image node's box
@@ -6596,10 +6596,10 @@ MCP tests (which go through `writeMCPConf`) still pass.
 is deleted. Two windows replace it, each opened by its own button at the right end of the top bar and
 closed by the X in its own top-right corner:
 
-- `PreferencesDialog` (`components/settings/preferences-dialog.tsx`): default image and video model,
+- `PreferencesDialog` (`frontend/src/components/settings/preferences-dialog.tsx`): default image and video model,
   generation defaults, auto-center on select, system prompt. (The card skin and progress-ring skin
   pickers were in this list too; #193 removed them.)
-- `AddWorkflowsDialog` (`components/settings/workflows-dialog.tsx`): the resource panel in a frame. The
+- `AddWorkflowsDialog` (`frontend/src/components/settings/workflows-dialog.tsx`): the resource panel in a frame. The
   first-run `ResourceSetupGate` opens the same window with its own heading and no close button, so the
   two cannot drift apart in size or padding. The panel's summary card lost its own "Add workflows" line
   for this: the window title says it once.
@@ -6636,7 +6636,7 @@ Continue was then a click the user made anyway. They now call `openPreferences()
 because a window that saves as you type has nothing left to announce.
 
 **Tested** `npm run check` (i18n 870 zh / 856 en: 28 keys gone, 4 added, no dead or missing keys;
-exports 170 modules), `npx vitest run` (155 — `tests/overlay-z-index.test.ts` lost its `drawer.tsx`
+exports 170 modules), `npx vitest run` (155 — `frontend/tests/overlay-z-index.test.ts` lost its `drawer.tsx`
 half), `make check`. In the browser, on a `/tmp/verify` copy (8191/3001): the top bar shows
 "Preferences" and "Add workflows" where the gear was, each opens its own 1000×646 window with the X in
 its own top-right corner and leaves the other shut; `/config` still opens the preferences window and
@@ -7003,7 +7003,7 @@ already carry is the updated time printed under the title, which is enough.
 times rather than by looking at the first row. Creating a canvas still inserts at the top, because creation is an
 explicit act and the new canvas is where you are taken.
 
-**Tested** `tests/last-canvas.test.ts` gained "the last write does not move a canvas", which sorts two canvases
+**Tested** `frontend/tests/last-canvas.test.ts` gained "the last write does not move a canvas", which sorts two canvases
 whose `updatedAt` contradicts their `createdAt` (156 tests). In the browser: with two canvases, clicking the
 second row changed the route and the highlighted row and left the row order `[Canvas 2, Canvas 1]` exactly as it
 was.
@@ -7323,8 +7323,8 @@ may be outside a smaller browser window, so drawing clamps it into the canvas, b
 as written. Geometry is debounced 500 ms (open/closed is written at once), and `pagehide` runs the pending
 write before the page goes, so the debounce is a save-rate choice rather than a hole a refresh falls into.
 
-**Tested** `npm run test` (`tests/canvas-document.test.ts` pins the field in the document and
-`tests/canvas-agent-window.test.ts` pins per-canvas isolation, restore-once and the old-document default),
+**Tested** `npm run test` (`frontend/tests/canvas-document.test.ts` pins the field in the document and
+`frontend/tests/canvas-agent-window.test.ts` pins per-canvas isolation, restore-once and the old-document default),
 `tsc --noEmit`, `node scripts/check-exports.cjs`. Not exercised in a browser in this change.
 
 **Where** `frontend/src/types/canvas.ts`, `frontend/src/services/api/canvases.ts`,
@@ -7935,7 +7935,7 @@ written when the run's file becomes the node's content, and erased while a pictu
 the old one is gone, and the run that made it describes nothing.
 
 The facts ride on the *artifact*, not on each node patch. `Run` already answers both, so `factsOf(run)`
-(`services/api/runs.ts`) puts them on what `generatedImage` / `generatedVideo` / `generatedAudio` return, and the
+(`frontend/src/services/api/runs.ts`) puts them on what `generatedImage` / `generatedVideo` / `generatedAudio` return, and the
 three metadata builders turn them into node fields. Every path from a finished run to a node goes through those two
 places: a live run, a batch fill, an in-place regeneration, a resumed poll after a reload, a retry, an inpaint or
 upscale child. A picked file, a crop, a mask: no run on the artifact, and the fields are absent.
@@ -8031,7 +8031,7 @@ were read, not clicked.
 
 **Decision** `content` is what a node holds; `prompt` is the words it will be asked next (the ones that made it, for
 a node a run made and nobody has retyped since); `composerContent` is what you type when it already holds something,
-so typing cannot throw the result away. Three questions, one answer each, in `lib/canvas/node-prompt-field.ts`:
+so typing cannot throw the result away. Three questions, one answer each, in `frontend/src/lib/canvas/node-prompt-field.ts`:
 `nodeContentOf` (what it says), `nodePromptOf` (what was asked of it), `promptPatch` (where an instruction goes). The
 panel and the agent's `set_prompt` both call `promptPatch`, so they cannot write different fields for the same words.
 `holdsResult` is no longer a whitelist of text and image: every content type answers by whether `content` is there.
@@ -8061,8 +8061,8 @@ and #228 had just made imports the common case. A film or a sound holds a result
 artifact protection (#91) applied to pictures only. And a config node's panel wrote `composerContent` while
 `set_prompt` wrote `prompt` — both read, so it worked, but "the tool writes where the panel writes" was false there.
 
-**Cost** One new tool (`set_text`), one new module (`lib/canvas/canvas-agent-view.ts`, so the list's format is
-testable without a page), and the tool functions moved out of the hook into `lib/canvas/canvas-agent-tools.ts` for the
+**Cost** One new tool (`set_text`), one new module (`frontend/src/lib/canvas/canvas-agent-view.ts`, so the list's format is
+testable without a page), and the tool functions moved out of the hook into `frontend/src/lib/canvas/canvas-agent-tools.ts` for the
 same reason: they are decisions, not wiring. The panel's `onPromptChange` prop and `handleNodePromptChange` are gone —
 one writer for one field.
 
@@ -8233,7 +8233,7 @@ exercised in a browser: what to look for is one live conversation — "这张图
 gone. (The browser half of this decision was a retry loop that waited three minutes; #235 replaced it with
 making a reload actually re-attach, for all three kinds of content.)
 
-- **Browser ↔ gateway** (`waitForRun`, `services/api/runs.ts`): the watch ends when a read fails, and the node
+- **Browser ↔ gateway** (`waitForRun`, `frontend/src/services/api/runs.ts`): the watch ends when a read fails, and the node
   keeps the run id so the next open of the canvas re-attaches (#235). What this decision ends here is the
   *other* half: the node no longer treats "could not ask" as "the run failed" by throwing the id away.
 - **Gateway ↔ ComfyUI** (`waitForHistory`, `internal/generate/runner.go`): the same rule one layer down. A
@@ -8385,7 +8385,7 @@ a video mid-render, `Ctrl+C` and `./start.sh`, then watching the node say 等待
 **Decision** The panel parses the text parts of an **assistant** message as a small Markdown subset into tokens and
 draws the tokens with React. A table's cells do not wrap: the table's own box scrolls sideways.
 
-- **Tokens, never HTML.** `lib/markdown.ts` produces `MarkdownBlock[]` / `MarkdownInline[]` and
+- **Tokens, never HTML.** `frontend/src/lib/markdown.ts` produces `MarkdownBlock[]` / `MarkdownInline[]` and
   `agent-markdown.tsx` maps them to elements; nothing is ever `innerHTML` and no parser was added. The words are a
   model's, quoting files on the canvas, in a page served over plain HTTP — a token tree cannot become a tag or a
   handler, and `<img src=x onerror=…>` is asserted to stay eleven characters of text. The second reason is that a
@@ -8498,7 +8498,7 @@ become the first exception.
 `MediaRecorder` produces webm/opus (Chrome) or mp4 (Safari), both refused by name, and renaming the file does not
 help because the bytes are sniffed ("input is Matroska/WebM, not WAV"). So the panel captures raw samples through
 the Web Audio graph (`ScriptProcessorNode` — deprecated, and still the shortest path that starts inside the gesture
-with no second module) and writes the 44-byte header itself (`lib/wav.ts`). No resampling here: the server was
+with no second module) and writes the 44-byte header itself (`frontend/src/lib/wav.ts`). No resampling here: the server was
 measured transcribing 24, 44.1 and 48 kHz with the reported duration intact, so the true rate in the header is less
 code and less to be wrong about.
 
@@ -8510,7 +8510,7 @@ first. Repeats are dropped (`event.repeat`) and losing focus ends the recording 
 key whose keyup lands on a page that is not listening.
 
 **Why the caret** Speaking is another way of typing, so it does what typing does: the words go in at the caret,
-replacing a selection, and the caret ends after them (`lib/canvas/agent-dictation.ts`, a pure function of the draft
+replacing a selection, and the caret ends after them (`frontend/src/lib/canvas/agent-dictation.ts`, a pure function of the draft
 and a range — the only way to test it without a DOM). The range is the box's own selection, which a textarea keeps
 while unfocused (exactly the state it is in, since the gesture began on the canvas), with the end of the draft as
 the answer for a box never touched. A gesture under 0.2 s of sound is dropped silently rather than sent and refused.
@@ -8595,7 +8595,7 @@ the page is on.
 there too. Any other answer is a memory, and memories of a moved server fail in the worst way — the page loads,
 the canvas draws, and only the things that talk to the server break, one at a time.
 
-**Tested** `tests/server-address.test.ts` seeds a settings document that names the old machine and a page that
+**Tested** `frontend/tests/server-address.test.ts` seeds a settings document that names the old machine and a page that
 is on the new one, then asserts that the document's address, every channel's address, the models and the stored
 selection are what the store hands out. Verified to fail against the previous code (`×` on both address
 assertions, `✓` on the models) so it pins the bug rather than the fix. `npm run check`, `npx vitest run` 314,
@@ -8775,10 +8775,10 @@ the section asks the server once when it opens.
 the summary line `failed: 0 dead key(s), 0 missing key(s)` printed just above it, which is how it went
 unnoticed: the counts read clean and the exit code was not looked at. `check-exports.cjs` still had its
 `TEST_ONLY` reason keyed to `src/lib/gateway-models.ts:modelsOf`, which the rename had moved to
-`src/lib/server-models.ts`, so the same run reported that export as having only a test's caller. Both are
+`frontend/src/lib/server-models.ts`, so the same run reported that export as having only a test's caller. Both are
 strings in scripts that nothing compiles, and the only thing that can catch them is running the gates —
 which is the whole reason `npm run check` is a gate. Fixed, and the two comments that still said
-`lib/gateway-labels.ts` now name `lib/server-labels.ts`.
+`lib/gateway-labels.ts` now name `frontend/src/lib/server-labels.ts`.
 
 **An error with nothing to say rendered as an empty message.** `httpx.WriteError` opened with
 `message := "Internal error"` and then assigned it on both branches, so `ineffassign` flagged the literal as
@@ -8909,7 +8909,7 @@ request AlayaCore sends malformed, and `model.conf` is not a file to learn that 
 **Numbers as text in the form** `contextLimit` and `maxTokens` are strings in the draft, not numbers: a
 half-typed `1` on the way to `1000000` must not become a `NaN` that reads as zero, and a cleared box means zero
 — which is what `model.conf` writes for "not set". `InputNumber` gives back `null` for empty, and the draft
-converts both ways in one place (`lib/agent-models.ts`).
+converts both ways in one place (`frontend/src/lib/agent-models.ts`).
 
 **Tested** `internal/agent/models_test.go`: the list a canvas sees carries the token caps, the blocks, the
 reasoning field and the tool-call mode (and still no `api_key`); an edit replaces every one of them; a cleared
@@ -9387,7 +9387,7 @@ no voice input and no speed input to bind them to.
 
 **What stayed, and why** The format pills stay even though `audio-minimax-music-3` writes only mp3, flac and opus: the
 container is sent as chosen and the server answers with a message naming the set it accepts, which is a deliberate rule
-(`services/api/audio.ts`) rather than a substitution the node's label would then be wrong about. The lyrics field stays
+(`frontend/src/services/api/audio.ts`) rather than a substitution the node's label would then be wrong about. The lyrics field stays
 — it is the run's `lyrics` input — with its label and placeholder narrowed to lyrics, since the "speech workflows" the
 old text mentioned are not a thing this server registers.
 
@@ -9528,9 +9528,9 @@ the wire — it is English registry data, and the panel's copy comes from `i18n`
 `params` + `references` and drop size/seconds/resolution/mode, so a node cannot claim a 720p it was never asked for.
 
 **Tested** `internal/workflow/render_test.go` (the row carries `accepts`; each mode carries its own contract, and
-the run path resolves the same one), `tests/server-models.test.ts` (a tool is tagged, says `hasPrompt: false`, and
-carries its contract), `tests/api-video-runs.test.ts` (a step submits `{multiplier: 3}` + `media.video` and no
-prompt), `tests/api-image-upscale.test.ts` (an upscaler submits `{upscale_model}` + `media.image`). `go test ./...`,
+the run path resolves the same one), `frontend/tests/server-models.test.ts` (a tool is tagged, says `hasPrompt: false`, and
+carries its contract), `frontend/tests/api-video-runs.test.ts` (a step submits `{multiplier: 3}` + `media.video` and no
+prompt), `frontend/tests/api-image-upscale.test.ts` (an upscaler submits `{upscale_model}` + `media.image`). `go test ./...`,
 `npx vitest run` (373), `npm run check` (870/856 keys, 182 modules) pass.
 
 **Where** `internal/workflow/render.go`, `internal/workflow/registry.go`, `workflows/registry.json`,
@@ -9627,7 +9627,7 @@ which the compiler refuses), `npm run check` (866/852 keys, 182 modules, prettie
 - `isH3Text` / `isH3Frames` / `isH3Reference` → the model's `mode` (`text` / `frames` / `reference`), which
   #263 put on the wire; "this workflow is one of a family that has modes" → it declares a `mode` at all.
 - The SelfLift fast/quality pills → the workflow declares `transition_step`, the knob that toggle writes
-  (`services/api/video.ts`), carried as `selfLift`.
+  (`frontend/src/services/api/video.ts`), carried as `selfLift`.
 - A locked length ("follow source video") → no binding reads `seconds`, carried as `bindsSeconds`;
   `video-h3-character-swap` is the case: its `videos` binding names `sourceLengthInput`, so the clip decides.
 - "This workflow takes no media" — the red warning and the disabled reference bar — → the contract's own
@@ -9758,7 +9758,7 @@ second case is the proof that no mode's name is left in the code.
 
 ## 269. A knob is named by the dictionary, like every other registry string
 
-**Decision** Parameter labels go through `serverParameterLabel(key, fallback)` in `lib/server-labels.ts`, the
+**Decision** Parameter labels go through `serverParameterLabel(key, fallback)` in `frontend/src/lib/server-labels.ts`, the
 same helper shape as `serverModelLabel` and `serverVariantLabel`: the Chinese label comes from
 `server.parameters.<key>`, keyed by the identifier the server sends, and the registry's English is the
 fallback. Both renderers use it — the step panel's `ParameterControl` and the super-resolve dialog's fields —
@@ -10046,7 +10046,7 @@ the rule every other knob already follows.
 
 **Not closed here** Other request keys are still offered to workflows that ignore them: `size` to the upscaler,
 `seconds` to an image workflow, `layout` to anything but MOSS. Closing that class is the same shape of fix, but
-it needs the client to stop sending those keys first — `services/api/image.ts` sends `size` and `background`
+it needs the client to stop sending those keys first — `frontend/src/services/api/image.ts` sends `size` and `background`
 unconditionally — so it is its own change. It is written down where the list lives, in `semanticInputs`.
 
 **Tested** `go test ./...` (`TestShippedNegativeIsAcceptedOnlyWhereItIsRead`: the four entries and four Qwen
@@ -10258,7 +10258,7 @@ written.
 that names what the call was about, then — for a file read — the part of the file it asked for. The mark stands
 where the wrench icon stood — a ball turning while the call is out, a green tick when it came back, a red cross
 when it came back as a failure, a dashed circle when the turn ended before the call did. The subject comes from
-`toolSubjectOf` (`lib/canvas/tool-argument.ts`), a table of the built-in tools' identifying arguments read out of
+`toolSubjectOf` (`frontend/src/lib/canvas/tool-argument.ts`), a table of the built-in tools' identifying arguments read out of
 the call's own JSON — `read_file`/`edit_file`/`write_file` → `path`, `execute_command` → `command`,
 `search_content` → `pattern` — plus, for `read_file`, `start_line`/`num_lines` as `start=12, count=40`. The tool's
 name and that range never shrink; the subject is the half that gets an ellipsis when the line runs out of room.
@@ -10290,7 +10290,7 @@ they mean.
 learns it — nothing is guessed from an argument's shape, because "the first string in the JSON" is the sort of
 guess that shows a node id to a reader. The wrench icon is gone from the panel's imports.
 
-**Tested** `tests/tool-argument.test.ts` (each built-in, each shape of a line range, a range with nothing to
+**Tested** `frontend/tests/tool-argument.test.ts` (each built-in, each shape of a line range, a range with nothing to
 narrow, an unknown tool, arguments that have not arrived, are not JSON, or hold an empty or non-string field, and a
 command folded onto one line). The states and the truncation were rendered in a throwaway harness at 1× and 4× in
 both palettes — a long path cut to `frontend/src/components/c…` with `start=12, count=40` whole beside it — and
@@ -10307,7 +10307,7 @@ with the real AlayaCore: a `read_file` call drew `✓ calling read_file frontend
 ## 282. A folded thought shows its two ends
 
 **Decision** A collapsed reasoning row reads `Thinking <head> … <tail>`: the first 120 characters of the thought,
-one ellipsis, and its last 20. `reasoningPreview` (`lib/canvas/reasoning-preview.ts`) cuts both halves by length,
+one ellipsis, and its last 20. `reasoningPreview` (`frontend/src/lib/canvas/reasoning-preview.ts`) cuts both halves by length,
 folds their line breaks into single spaces, drops half a character at either edge, and drops the punctuation a cut
 can leave at the front of the tail. Expanded, the preview is not drawn at all — the whole thought is under the row.
 
@@ -10343,7 +10343,7 @@ clientWidth`, not by looking. The same trap waits for the next row that puts lon
 A head that fades takes a couple of its characters with it. The two lengths are constants in one file, and a wider
 panel shows more of the same thought rather than more of the thought's ends.
 
-**Tested** `tests/reasoning-preview.test.ts` (a short thought shown whole, a long one's two ends, the head reaching
+**Tested** `frontend/tests/reasoning-preview.test.ts` (a short thought shown whole, a long one's two ends, the head reaching
 the end so there is no middle to elide, line breaks folded, a cut through an emoji at either edge, punctuation left
 at the front of the tail, and nothing to show for nothing). In the real panel against a real replayed conversation
 on an isolated `:8191`, at 520px and at 408px: the folded rows read
@@ -10551,8 +10551,9 @@ it went, and what must not come back.
 **Why** Measured over the 285 entries before this one: `**Decision**` sections were 45.1% of the file, `Why`
 20.1%, `Cost` 7.7%, `Tested` 15.4%, `Where` 6.7%. A file that is 45% prose restating what was built is read by
 an agent *one grep at a time* — ~2.8 KB per hit, half of it the diff it could have had from git. 69 entries froze
-a snapshot of the day's numbers (`deadcode 508`, `561 kB`, `vitest 397`), and 238 of 860 `Where` paths no longer
-exist.
+a snapshot of the day's numbers (`deadcode 508`, `561 kB`, `vitest 397`). Of the 400 distinct paths the `Where`
+lines name, 131 do not exist: 121 more were one of two renames (`canvas/web/`, `main.go`) and are corrected, and
+what remains names files the entries themselves record as deleted — which is not rot but the point.
 
 **What this is not** It is not pruning. Of the entries that looked like narration, every one sampled carried a
 refusal that had been measured or an alternative that had been rejected: the padding is inside entries, not
@@ -10572,3 +10573,9 @@ component which did not exist.
 
 **Where** `docs/decisions.md`.
 
+
+**Scope of this pass, and where it stopped** The entries over 5 KB are rewritten first, because that is where the
+bytes are; below that size an entry is mostly its decision and its refusal already, and rewriting 250 of them risks
+losing a nuance to save a few kilobytes. Paths were corrected mechanically where one of two renames was the only
+reason a `Where` line failed, and left alone where the file is one the entry records as deleted — a tombstone whose
+path no longer resolves is saying what it means.
