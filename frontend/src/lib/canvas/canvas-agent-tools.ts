@@ -1,6 +1,7 @@
 import { getNodeSpec } from "@/constant/canvas";
 import { NODE_MIN_SIZE, nodeRatio } from "@/lib/canvas/canvas-node-size";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
+import { canGroupSelectedNodes, collectGroupMemberNodes } from "@/lib/canvas/canvas-node-geometry";
 import { describeEmptyInputs, inputsHoldingNothing, repeatedConnectedText } from "@/components/canvas/canvas-node-generation";
 import { resolveMediaUrl } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
@@ -37,6 +38,19 @@ export type CanvasHands = {
     moveNode: (nodeId: string, position: Position) => void;
     /** Give one card a new size, the way the end of a corner drag does: the top-left corner stays put. */
     resizeNode: (nodeId: string, width: number, height: number) => void;
+    /**
+     * Wrap these nodes in one group, the way the Group button wraps a selection, and say what it made.
+     *
+     * The members of a group named here come with it and the old group is absorbed, which is the canvas's
+     * own behaviour for a selection that spans groups — so merging two groups is this tool with both ids.
+     * Null when there is nothing to wrap.
+     */
+    groupNodes: (nodeIds: string[]) => { groupId: string; memberIds: string[] } | null;
+    /**
+     * Release these nodes from their groups, the way Ungroup does: a group named here is dissolved, a member
+     * named here leaves, and a group left with no members goes away. Null when nothing was in a group.
+     */
+    ungroupNodes: (nodeIds: string[]) => { released: string[]; dissolved: string[] } | null;
 };
 
 /** One tool's result: the content blocks the agent reads, and whether it failed rather than did something. */
@@ -44,7 +58,8 @@ type ToolAnswer = { content: ToolContent[]; isError?: boolean };
 
 const textBlock = (text: string): ToolContent => ({ type: "text", text });
 
-/** The node types a tool may make. A group is structure, not content. */
+/** The node types a tool may make. A group is structure, not content: it is made by `group_nodes` from what
+ *  is already on the canvas, never out of nothing. */
 const CREATE_TYPES: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text];
 
 export async function runTool(name: string, args: unknown, hands: CanvasHands, session: string): Promise<ToolAnswer> {
@@ -75,6 +90,10 @@ export async function runTool(name: string, args: unknown, hands: CanvasHands, s
             return moveNode(hands, args);
         case "resize_node":
             return resizeNode(hands, args);
+        case "group_nodes":
+            return groupNodes(hands, args);
+        case "ungroup_nodes":
+            return ungroupNodes(hands, args);
         default:
             // Not "no such tool": the tool list the agent was handed is the server's, and this switch is the
             // page's, so a name missing here is a page older than its own tools. Saying which is what makes
@@ -456,6 +475,96 @@ function readSize(args: Record<string, unknown>): { width: number; height?: numb
     if (typeof width !== "number" || !Number.isFinite(width)) return undefined;
     if (height !== undefined && (typeof height !== "number" || !Number.isFinite(height))) return undefined;
     return { width, height };
+}
+
+/**
+ * The ids a group tool names: the array as given, without blanks or repeats.
+ *
+ * Both group tools take a set rather than one id, because both are about a relation between nodes.
+ */
+function nodeIdsOf(args: unknown): string[] | undefined {
+    const value = argsOf(args).nodeIds;
+    if (!Array.isArray(value)) return undefined;
+    const ids = [
+        ...new Set(
+            value
+                .filter((item): item is string => typeof item === "string")
+                .map((item) => item.trim())
+                .filter(Boolean),
+        ),
+    ];
+    return ids.length ? ids : undefined;
+}
+
+/** The answer for a tool that named ids the canvas does not hold. */
+function noSuchNodes(missing: string[]): ToolAnswer {
+    const names = missing.map((nodeId) => `"${nodeId}"`).join(", ");
+    return { content: [textBlock(`no node with id ${names} on this canvas`)], isError: true };
+}
+
+/**
+ * Wrap nodes in one group — the Group button, given ids instead of the live selection.
+ *
+ * A group is structure and not content, which is why `create_node` refuses one: there is no group to make out
+ * of nothing, and no prompt behind it. Nothing about the members changes — they keep their places, their
+ * prompts and their results, and the group is a card drawn around them that carries them when it moves.
+ *
+ * A group named among the ids is absorbed into the new one, which is the canvas's own rule for a selection
+ * that spans groups: merging two groups is this tool with both ids.
+ */
+function groupNodes(hands: CanvasHands, args: unknown): ToolAnswer {
+    const nodeIds = nodeIdsOf(args);
+    if (!nodeIds) return { content: [textBlock("group_nodes needs nodeIds: the ids list_nodes reported, at least two of them")], isError: true };
+    const nodes = hands.nodes();
+    const missing = nodeIds.filter((nodeId) => !nodes.some((node) => node.id === nodeId));
+    if (missing.length) return noSuchNodes(missing);
+
+    // What would end up in the card: the nodes named, and the members of any group named — the same expansion
+    // the canvas makes for a selection that spans groups (`collectGroupMemberNodes`).
+    const named = new Set(nodeIds);
+    const members = collectGroupMemberNodes(named, nodes);
+    if (members.length < 2) {
+        return {
+            content: [
+                textBlock(`nothing was grouped: ${nodeIds.join(", ")} makes ${members.length} member${members.length === 1 ? "" : "s"}, and a group holds at least two. A group named here brings its own members, so name the nodes that should be inside`),
+            ],
+            isError: true,
+        };
+    }
+
+    // Everything would be one group already. A second card around the same nodes is the same thing drawn
+    // twice, so this names the group they are in and the two ways forward instead of making another one.
+    if (!canGroupSelectedNodes(named, nodes)) {
+        const groupId = members[0].metadata?.groupId;
+        return { content: [textBlock(`${nodeIds.join(", ")} are already one group (${groupId}): nothing to wrap. Name another node to merge into it, or release it with ungroup_nodes`)], isError: true };
+    }
+
+    const made = hands.groupNodes(nodeIds);
+    if (!made) return { content: [textBlock(`nothing was grouped: the canvas has no group to make out of ${nodeIds.join(", ")}`)], isError: true };
+    return { content: [textBlock(`grouped ${made.memberIds.join(", ")} into ${made.groupId}`)], isError: false };
+}
+
+/**
+ * Release nodes from their groups — the Ungroup button, given ids instead of the live selection.
+ *
+ * Two shapes, and which one is meant is decided by what the ids name: a group is dissolved and its members
+ * stay on the canvas exactly as they were, and a member is taken out of its group. A group left with no
+ * members goes away, which is the rule the button follows too. Nothing is deleted but the group's own card —
+ * the members, their prompts and their results are untouched, and the connections were never inside it.
+ */
+function ungroupNodes(hands: CanvasHands, args: unknown): ToolAnswer {
+    const nodeIds = nodeIdsOf(args);
+    if (!nodeIds) return { content: [textBlock("ungroup_nodes needs nodeIds: a group's id to dissolve it, or the ids of the nodes to take out of theirs")], isError: true };
+    const nodes = hands.nodes();
+    const missing = nodeIds.filter((nodeId) => !nodes.some((node) => node.id === nodeId));
+    if (missing.length) return noSuchNodes(missing);
+
+    const done = hands.ungroupNodes(nodeIds);
+    if (!done) return { content: [textBlock(`${nodeIds.join(", ")} ${nodeIds.length === 1 ? "is" : "are"} not in a group: there is nothing to release`)], isError: true };
+    const parts: string[] = [];
+    if (done.released.length) parts.push(`released ${done.released.join(", ")}`);
+    if (done.dissolved.length) parts.push(`removed ${done.dissolved.join(", ")}`);
+    return { content: [textBlock(parts.join("; "))], isError: false };
 }
 
 /**

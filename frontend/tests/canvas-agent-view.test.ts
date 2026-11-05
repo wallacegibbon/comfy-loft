@@ -61,6 +61,28 @@ describe("the canvas as the agent reads it", () => {
         expect(lines).toEqual(["2 nodes, 1 connections", "- text-1 (text) at (40, -12), 320×240 content: a brass compass", "- image-1 (image) at (40, -12), 320×240", "connections:", "- text-1 -> image-1"]);
     });
 
+    // A group is the one relation a flat list cannot show by accident: the card is drawn around members that
+    // are ordinary nodes, so without a clause the list named a box and said nothing about what was in it.
+    // It is stated from both ends, because both questions are asked — "what is in g1" and "where does this
+    // node belong" — and each is answered by reading one line.
+    test("a group names its members, and a member names its group", () => {
+        const group = { ...node("group"), id: "g1", title: "森林" };
+        const inside = [
+            { ...node("image", { content: "/api/canvases/c/files/a.png" }), id: "n1", metadata: { content: "/api/canvases/c/files/a.png", groupId: "g1" } },
+            { ...node("text", { content: "无字幕" }), id: "n2", metadata: { content: "无字幕", groupId: "g1" } },
+        ];
+        const lines = canvas([group, ...inside]);
+        expect(lines[1]).toBe(`- g1 (group) "森林" at (40, -12), 320×240 members: n1, n2`);
+        expect(lines[2]).toBe("- n1 (image) at (40, -12), 320×240 in group g1");
+        expect(lines[3]).toBe("- n2 (text) at (40, -12), 320×240 in group g1 content: 无字幕");
+    });
+
+    test("a group nobody is in says so, rather than looking like a group whose members were left out", () => {
+        // The two are different: "members: none" is a card to fill, and a missing clause would have been a
+        // group this format simply did not understand.
+        expect(canvas([{ ...node("group"), id: "g1" }])[1]).toBe("- g1 (group) at (40, -12), 320×240 members: none");
+    });
+
     // A card is the shape of what it holds, not its size: an agent deciding whether a node is worth reading
     // needs to know the photograph is 1920×1280 in a 480×320 card. The second size is left out when the two
     // agree, because a fact repeated is noise.

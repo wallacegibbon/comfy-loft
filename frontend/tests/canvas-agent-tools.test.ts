@@ -30,6 +30,8 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [])
         generated: [] as Array<[string, string]>,
         created: [] as string[],
         resized: [] as Array<[string, number, number]>,
+        grouped: [] as string[][],
+        ungrouped: [] as string[][],
     };
     const hands: CanvasHands = {
         nodes: () => nodes,
@@ -49,6 +51,18 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [])
         focusNode: () => {},
         moveNode: () => {},
         resizeNode: (nodeId, width, height) => void written.resized.push([nodeId, width, height]),
+        // The real hands group through `applyGroupSelection`, which is the canvas's own rule and tested
+        // where it lives; what these have to answer is only what the tool reports back.
+        groupNodes: (nodeIds) => {
+            written.grouped.push(nodeIds);
+            return nodeIds.length < 2 ? null : { groupId: "group-1", memberIds: nodeIds };
+        },
+        ungroupNodes: (nodeIds) => {
+            written.ungrouped.push(nodeIds);
+            const dissolved = nodes.filter((each) => nodeIds.includes(each.id) && each.type === "group").map((each) => each.id);
+            const released = nodes.filter((each) => (nodeIds.includes(each.id) ? Boolean(each.metadata?.groupId) : dissolved.includes(each.metadata?.groupId || ""))).map((each) => each.id);
+            return dissolved.length || released.length ? { released, dissolved } : null;
+        },
     };
     return { hands, written };
 }
@@ -375,5 +389,89 @@ describe("resize_node: the card's box, not a zoom", () => {
 
         const unknown = await textOf(hands, "resize_node", { nodeId: "text-9", size: { width: 400 } });
         expect(unknown.answer.isError).toBe(true);
+    });
+});
+
+/** A node with the id the test needs, since the group tools are about ids and relations between them. */
+const placed = (id: string, type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData => ({ ...node(type, metadata), id });
+
+/**
+ * The two structure tools: a group holds nodes, so these describe a relation rather than a node.
+ *
+ * What is checked here is the answer and the three refusals — a single node, a set that is already one
+ * group, and ids the canvas does not hold. Which nodes end up in which card is `applyGroupSelection`'s
+ * business, tested where it lives.
+ */
+describe("group_nodes: putting nodes in one card", () => {
+    test("hands the ids to the canvas, and says what was wrapped", async () => {
+        const { hands, written } = handsFor([placed("image-1", "image"), placed("text-1", "text")]);
+        const { answer, text } = await textOf(hands, "group_nodes", { nodeIds: ["image-1", "text-1"] });
+        expect(answer.isError).not.toBe(true);
+        expect(written.grouped).toEqual([["image-1", "text-1"]]);
+        expect(text).toBe("grouped image-1, text-1 into group-1");
+    });
+
+    test("refuses one node: a group holds at least two", async () => {
+        const { hands } = handsFor([placed("image-1", "image")]);
+        const { answer, text } = await textOf(hands, "group_nodes", { nodeIds: ["image-1"] });
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("nothing was grouped");
+        expect(text).toContain("a group holds at least two");
+    });
+
+    test("refuses a set that is already one group, and names that group", async () => {
+        // A second card around the same nodes is the same thing drawn twice, so the answer points at the
+        // group they are in and at the two ways forward instead of making another one.
+        const { hands, written } = handsFor([placed("image-1", "image", { groupId: "group-9" }), placed("text-1", "text", { groupId: "group-9" })]);
+        const { answer, text } = await textOf(hands, "group_nodes", { nodeIds: ["image-1", "text-1"] });
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("already one group (group-9)");
+        expect(text).toContain("ungroup_nodes");
+        expect(written.grouped).toEqual([]);
+    });
+
+    test("asks for the ids, and answers an id the canvas does not hold", async () => {
+        const { hands } = handsFor([placed("image-1", "image"), placed("text-1", "text")]);
+        const none = await textOf(hands, "group_nodes", {});
+        expect(none.answer.isError).toBe(true);
+        expect(none.text).toContain("group_nodes needs nodeIds");
+
+        const unknown = await textOf(hands, "group_nodes", { nodeIds: ["image-1", "ghost"] });
+        expect(unknown.answer.isError).toBe(true);
+        expect(unknown.text).toContain('no node with id "ghost"');
+    });
+});
+
+describe("ungroup_nodes: letting nodes out", () => {
+    test("dissolving a group releases its members and says the card is gone", async () => {
+        const { hands, written } = handsFor([placed("group-1", "group"), placed("image-1", "image", { groupId: "group-1" }), placed("text-1", "text", { groupId: "group-1" })]);
+        const { answer, text } = await textOf(hands, "ungroup_nodes", { nodeIds: ["group-1"] });
+        expect(answer.isError).not.toBe(true);
+        expect(written.ungrouped).toEqual([["group-1"]]);
+        expect(text).toBe("released image-1, text-1; removed group-1");
+    });
+
+    test("taking one node out leaves the group standing", async () => {
+        const { hands } = handsFor([placed("group-1", "group"), placed("image-1", "image", { groupId: "group-1" })]);
+        const { text } = await textOf(hands, "ungroup_nodes", { nodeIds: ["image-1"] });
+        expect(text).toBe("released image-1");
+    });
+
+    test("refuses a node that is in no group", async () => {
+        const { hands } = handsFor([placed("image-1", "image")]);
+        const { answer, text } = await textOf(hands, "ungroup_nodes", { nodeIds: ["image-1"] });
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("not in a group");
+    });
+
+    test("asks for the ids, and answers an id the canvas does not hold", async () => {
+        const { hands } = handsFor([placed("image-1", "image")]);
+        const none = await textOf(hands, "ungroup_nodes", {});
+        expect(none.answer.isError).toBe(true);
+        expect(none.text).toContain("ungroup_nodes needs nodeIds");
+
+        const unknown = await textOf(hands, "ungroup_nodes", { nodeIds: ["ghost"] });
+        expect(unknown.answer.isError).toBe(true);
+        expect(unknown.text).toContain('no node with id "ghost"');
     });
 });

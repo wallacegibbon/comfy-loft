@@ -36,6 +36,8 @@ export function useCanvasAgentTools({
     focusNode,
     moveNode,
     resizeNode,
+    groupNodes,
+    ungroupNodes,
 }: {
     nodesRef: RefObject<CanvasNodeData[]>;
     connectionsRef: RefObject<CanvasConnection[]>;
@@ -48,6 +50,8 @@ export function useCanvasAgentTools({
     focusNode: CanvasHands["focusNode"];
     moveNode: CanvasHands["moveNode"];
     resizeNode: CanvasHands["resizeNode"];
+    groupNodes: CanvasHands["groupNodes"];
+    ungroupNodes: CanvasHands["ungroupNodes"];
 }) {
     // The refs and callbacks outlive a render, and a tool call can arrive between two of them.
     const hands = useRef<CanvasHands>({
@@ -62,6 +66,8 @@ export function useCanvasAgentTools({
         focusNode,
         moveNode,
         resizeNode,
+        groupNodes,
+        ungroupNodes,
     });
     hands.current = {
         nodes: () => nodesRef.current || [],
@@ -75,6 +81,8 @@ export function useCanvasAgentTools({
         focusNode,
         moveNode: committed(moveNode),
         resizeNode: committed(resizeNode),
+        groupNodes: committed(groupNodes),
+        ungroupNodes: committed(ungroupNodes),
     };
 
     useEffect(

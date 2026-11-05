@@ -1047,14 +1047,20 @@ function InfiniteCanvasPage() {
         });
     }, []);
 
-    const groupSelection = useCallback(() => {
-        const selectedIds = selectedNodeIdsRef.current;
-        const members = collectGroupMemberNodes(selectedIds, nodesRef.current);
-        if (members.length < 2) return;
+    /**
+     * Wrap these nodes in one group — the Group button, for a set of ids rather than the live selection.
+     *
+     * One function for both callers: the toolbar names the current selection, a tool names the ids it was
+     * given, and everything after that is the canvas's own grouping (`applyGroupSelection`). What it returns
+     * is what a tool has to report back — which card was made, and what went into it.
+     */
+    const groupNodes = useCallback((ids: Set<string>): { groupId: string; memberIds: string[] } | null => {
+        const members = collectGroupMemberNodes(ids, nodesRef.current);
+        if (members.length < 2) return null;
         const rect = getGroupWrapRect(members);
         const created = createCanvasNode(CanvasNodeType.Group, { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
-        const result = applyGroupSelection(selectedIds, nodesRef.current, connectionsRef.current, { ...created, position: { x: rect.x, y: rect.y }, width: rect.width, height: rect.height });
-        if (!result) return;
+        const result = applyGroupSelection(ids, nodesRef.current, connectionsRef.current, { ...created, position: { x: rect.x, y: rect.y }, width: rect.width, height: rect.height });
+        if (!result) return null;
         setNodes(result.nodes);
         setConnections(result.connections);
         setSelectedNodeIds(new Set(result.selectedIds));
@@ -1062,11 +1068,24 @@ function InfiniteCanvasPage() {
         setToolbarNodeId(result.selectedIds[0] || null);
         setDialogNodeId(null);
         setContextMenu(null);
+        return { groupId: created.id, memberIds: members.map((member) => member.id) };
     }, []);
 
-    const ungroupSelection = useCallback((ids?: Set<string>) => {
-        const result = applyUngroupSelection(ids || selectedNodeIdsRef.current, nodesRef.current, connectionsRef.current);
-        if (!result) return;
+    const groupSelection = useCallback(() => {
+        groupNodes(selectedNodeIdsRef.current);
+    }, [groupNodes]);
+
+    /**
+     * Release these nodes from their groups, and say what that did.
+     *
+     * The button's own function: naming a group dissolves it, naming a member takes it out, and a group left
+     * with no members goes away — all of it `applyUngroupSelection`. The two lists are only for the answer a
+     * tool has to give; a press acts and says nothing.
+     */
+    const ungroupNodes = useCallback((ids: Set<string>): { released: string[]; dissolved: string[] } | null => {
+        const before = nodesRef.current;
+        const result = applyUngroupSelection(ids, before, connectionsRef.current);
+        if (!result) return null;
         setNodes(result.nodes);
         setConnections(result.connections);
         setSelectedNodeIds(new Set(result.selectedIds));
@@ -1074,7 +1093,18 @@ function InfiniteCanvasPage() {
         setToolbarNodeId(result.selectedIds.length === 1 ? result.selectedIds[0] : null);
         setDialogNodeId(null);
         setContextMenu(null);
+        const after = new Map(result.nodes.map((node) => [node.id, node]));
+        const released = before.filter((node) => node.metadata?.groupId && after.get(node.id) && !after.get(node.id)?.metadata?.groupId).map((node) => node.id);
+        const dissolved = before.filter((node) => ids.has(node.id) && node.type === CanvasNodeType.Group && !after.has(node.id)).map((node) => node.id);
+        return { released, dissolved };
     }, []);
+
+    const ungroupSelection = useCallback(
+        (ids?: Set<string>) => {
+            ungroupNodes(ids || selectedNodeIdsRef.current);
+        },
+        [ungroupNodes],
+    );
 
     const deleteConnection = useCallback((connectionId: string) => {
         setConnections((prev) => prev.filter((conn) => conn.id !== connectionId));
@@ -2031,6 +2061,8 @@ function InfiniteCanvasPage() {
         focusNode,
         moveNode: moveNodesTo,
         resizeNode: handleNodeResize,
+        groupNodes: (nodeIds) => groupNodes(new Set(nodeIds)),
+        ungroupNodes: (nodeIds) => ungroupNodes(new Set(nodeIds)),
     });
 
     // Memoize every callback and render function passed to CanvasNode.

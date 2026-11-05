@@ -113,7 +113,7 @@ func (s *Server) mcpTools() []mcpTool {
 		InputSchema: noArguments,
 	}, {
 		Name:        "list_nodes",
-		Description: "Every node on the canvas, one line each — id, type, title, position and the size of its card, then the picture's own size when that is not the card's, then what made its content and when, then `content:`: the words it holds (a text node's text). What a node will be asked is not here; read one node's prompt with read_prompt. Then every connection between them. The ids are what the other tools act on.",
+		Description: "Every node on the canvas, one line each — id, type, title, position and the size of its card, then the picture's own size when that is not the card's, then which group it is in (`in group <id>`, and a group's own line names its members), then what made its content and when, then `content:`: the words it holds (a text node's text). What a node will be asked is not here; read one node's prompt with read_prompt. Then every connection between them. The ids are what the other tools act on.",
 		InputSchema: noArguments,
 	}, {
 		Name:        "create_node",
@@ -241,6 +241,38 @@ func (s *Server) mcpTools() []mcpTool {
 				}
 			},
 			"required": ["nodeId", "position"],
+			"additionalProperties": false
+		}`),
+	}, {
+		Name:        "group_nodes",
+		Description: "Wrap nodes in one group, the way the Group button does: a card is drawn around them, they stay exactly where they are and keep their prompts and results, and moving the group moves them. Name at least two. A group named among the ids is absorbed into the new one, so two groups become one by naming both. A group is structure, not content: nothing generates it, it cannot be connected, and create_node will not make one — a group exists to hold what is already on the canvas.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeIds": {
+					"type": "array",
+					"items": {"type": "string"},
+					"minItems": 2,
+					"description": "The ids list_nodes reported: the nodes to wrap, or a group to absorb into the new one."
+				}
+			},
+			"required": ["nodeIds"],
+			"additionalProperties": false
+		}`),
+	}, {
+		Name:        "ungroup_nodes",
+		Description: "Take nodes out of their groups, the way Ungroup does: name a group and it is dissolved, its members left on the canvas exactly as they were; name a node and it leaves the group it is in. A group left with no members goes away. Nothing else changes — prompts, results and connections were never inside the group — and the user can undo it.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeIds": {
+					"type": "array",
+					"items": {"type": "string"},
+					"minItems": 1,
+					"description": "The ids list_nodes reported: a group to dissolve, or the nodes to take out of theirs."
+				}
+			},
+			"required": ["nodeIds"],
 			"additionalProperties": false
 		}`),
 	}, {

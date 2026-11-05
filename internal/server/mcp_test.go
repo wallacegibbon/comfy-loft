@@ -160,8 +160,8 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 	for _, tool := range tools {
 		names = append(names, tool.(map[string]any)["name"].(string))
 	}
-	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,set_text,generate,read_node,read_prompt,delete_node,focus_node,move_node,resize_node" {
-		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, set_text, generate, read_node, read_prompt, delete_node, focus_node, move_node, resize_node", names)
+	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,set_text,generate,read_node,read_prompt,delete_node,focus_node,move_node,group_nodes,ungroup_nodes,resize_node" {
+		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, set_text, generate, read_node, read_prompt, delete_node, focus_node, move_node, group_nodes, ungroup_nodes, resize_node", names)
 	}
 }
 
@@ -190,6 +190,10 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 		// #286: layout is checked against the sizes, not guessed.
 		"read the card sizes list_nodes reports",
 		"not on top of each other",
+		// #290: a group is structure the user owns, and membership is not geometry.
+		"A group is a container, not a picture",
+		"Grouping is the user's tidying",
+		"never from where the cards are",
 		// #286: asking about a node is answered by moving the user's view to it.
 		"Naming a node is not showing it",
 		"write its title with an @ in front",

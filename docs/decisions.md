@@ -10526,3 +10526,53 @@ the agent in between. `npx tsc --noEmit`, `npx vitest run` (402), `npm run check
 `frontend/src/components/canvas/canvas-agent-panel.tsx` (the row, the interval, the scroll effect's dependency),
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts` (`canvas.agent.working`, `canvas.agent.workingHint`),
 `frontend/tests/agent-transcript.test.ts`.
+
+## 290. The agent can see a group, and can change one
+
+**Decision** `list_nodes` states membership from both ends — a group's line ends `members: n1, n2`, a member's
+line carries `in group g1`, and an empty group says `members: none` — and two tools exist: `group_nodes {nodeIds}`
+and `ungroup_nodes {nodeIds}`. Both are the canvas's own buttons (`applyGroupSelection` / `applyUngroupSelection`)
+reached with an explicit set instead of the live selection, and the page's Group/Ungroup callbacks were rewritten
+to take that set and answer with what they did, so the toolbar and the tools are one function each. `create_node`
+still refuses `group`. The system prompt gained one paragraph: a group is a container, grouping is the user's
+tidying, and membership is not geometry.
+
+**Why** The list described a flat canvas, so a group appeared as a card with nothing in it. The agent could see
+the box and had no way to answer "what is in it" except by reading the rectangle — wrong in both directions,
+because membership is a field on the member (`metadata.groupId`) that outlives a drag and is never recomputed
+from where the cards sit. The relation existed in the document and in the panel's own side list, and no tool
+named it.
+
+The write half is the same gap from the other side: the only way to put a node in a group was to move it inside
+the rectangle, and there was no way to make a group, dissolve one, or take a node out. `ungroup_nodes` covers the
+two shapes the button covers — a group named is dissolved, a member named leaves, a group left empty goes away —
+and a group named in `group_nodes` brings its members and is absorbed, which is how two groups become one.
+
+**Rejected** Letting `create_node` make a `group`. A group holds nodes that already exist, so an empty one is a
+card whose only purpose is to be filled by the next call, which could have been the first. The refusal and its
+test stay; a group is made from what is on the canvas.
+
+**Cost** Two entries in the advertised table (`routes_mcp.go`, and `mcp_test.go`'s list of names), two branches in
+`runTool`, two hands on `CanvasHands`, one clause on every member line (two tokens per member), and the two
+callbacks in `project.tsx` returning what they changed. `group_nodes` refuses a set that is already one group
+rather than making a second card around the same nodes, and says which group it is.
+
+**Tested** `canvas-agent-view.test.ts`: a group naming its members, a member naming its group, an empty group
+saying `members: none`. `canvas-agent-tools.test.ts`: the ids reaching the canvas and the answer, the three
+refusals (one node, a set that is already one group, ids the canvas does not hold), dissolving, taking one member
+out, and a node that is in no group. `mcp_test.go`: the advertised vocabulary, and three phrases pinning the new
+system-prompt rule. In the browser, end to end, through the MCP endpoint against the real page (isolated server on
+`:8191`, fake agent, canvas of three nodes): `group_nodes ["n1","n2"]` →
+`grouped n1, n2 into group-…-d8ifk`; `list_nodes` then reported the card at `(76, 48), 788×316 members: n1, n2`
+with both members `in group …`; grouping `["n1","n3"]` moved `n1` out of the first group and left it holding
+`n2`; `ungroup_nodes` on a member released it; merging two groups by naming both left one group holding both
+their members; `ungroup_nodes` on the merged group released them and removed the card. `npx tsc --noEmit`,
+`npx vitest run` (412), `go test ./...`, `make check` (508 exports, every one reachable), `npm run build`
+(563.72 kB).
+
+**Where** `frontend/src/lib/canvas/canvas-agent-view.ts` (`membersByGroup`, `groupClause`),
+`frontend/src/lib/canvas/canvas-agent-tools.ts` (`groupNodes`, `ungroupNodes`, `nodeIdsOf`, `noSuchNodes`,
+`CREATE_TYPES`' comment), `frontend/src/pages/canvas/project.tsx` (`groupNodes`, `ungroupNodes`, `groupSelection`,
+`ungroupSelection`), `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
+`internal/server/routes_mcp.go`, `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`,
+`frontend/tests/{canvas-agent-view,canvas-agent-tools}.test.ts`.
