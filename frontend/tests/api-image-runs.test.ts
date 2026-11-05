@@ -24,13 +24,13 @@ vi.mock("@/lib/image-utils", () => ({
     dataUrlToFile: (image: { name?: string }) => new File([new Uint8Array([1, 2, 3])], image.name || "source.png", { type: "image/png" }),
 }));
 
-const { requestEdit, requestGeneration, requestUpscale } = await import("@/services/api/image");
+const { requestEdit, requestGeneration } = await import("@/services/api/image");
 
 // A run belongs to a canvas (#156): these cases post into one.
 const { setActiveCanvas } = await import("@/services/canvas-files");
 const CANVAS_ID = "40e8afb47f10";
 setActiveCanvas(CANVAS_ID);
-type Config = Parameters<typeof requestUpscale>[0];
+type Config = Parameters<typeof requestEdit>[0];
 
 const server = () =>
     ({
@@ -293,69 +293,5 @@ describe("a stale knob", () => {
 
         const body = runBody(calls);
         expect(body.inputs).toEqual({ prompt: "a brass compass", seed: 7, size: "1024x1024" });
-    });
-});
-
-describe("requestUpscale", () => {
-    it("names a source that is already a canvas file instead of copying it", async () => {
-        // The node's picture is a file of this canvas, and a run reads its media by name from the same canvas
-        // (#156, #174): uploading it first would store the same bytes again under an `up-` name.
-        const { calls } = stubServer();
-
-        await requestUpscale(server(), image("source.png", "files/up-abcdef12.png"), {
-            workflowId: "image-esrgan-upscale",
-            params: { upscale_model: "RealESRGAN_x4plus.pth" },
-        });
-
-        expect(calls.map((call) => call.url)).toEqual([`${ROOT}/api/canvases/${CANVAS_ID}/runs`, `${ROOT}/api/runs/task_upscale_1`]);
-        expect(runBody(calls).media).toEqual({ image: ["up-abcdef12.png"] });
-    });
-
-    it("is one run with the source image uploaded by role", async () => {
-        const { calls } = stubServer();
-
-        const upscaled = await requestUpscale(server(), image("source.png"), {
-            workflowId: "image-esrgan-upscale",
-            params: { upscale_model: "RealESRGAN_x4plus.pth" },
-        });
-
-        // The result is a reference to the file the run wrote, not a copy of it.
-        expect(upscaled).toMatchObject({
-            storageKey: "files/task_upscale_1.png",
-            url: `${ROOT}/api/canvases/${CANVAS_ID}/files/task_upscale_1.png`,
-            width: 512,
-            height: 512,
-            bytes: 3,
-            mimeType: "image/png",
-        });
-        // Three addresses, in full: the source into the canvas, the run into it, and the run's status. The
-        // artifact is *not* fetched — it is already there, and the node points at it.
-        expect(calls.map((call) => call.url)).toEqual([`${ROOT}/api/canvases/${CANVAS_ID}/uploads`, `${ROOT}/api/canvases/${CANVAS_ID}/runs`, `${ROOT}/api/runs/task_upscale_1`]);
-        // Nothing reaches the OpenAI-shaped surface any more: the id in hand is a run id.
-        expect(calls.some((call) => call.url.includes("/v1/"))).toBe(false);
-
-        const body = runBody(calls);
-        expect(body.workflow).toBe("image-esrgan-upscale");
-        expect(body.inputs).toEqual({ upscale_model: "RealESRGAN_x4plus.pth" });
-        // An upload is referenced by the name the server gave it, which is its id.
-        expect(body.media).toEqual({ image: [UPLOAD_ID] });
-    });
-
-    it("sends no prompt: the workflow's own default is the prompt", async () => {
-        const { calls } = stubServer();
-
-        await requestUpscale(server(), image("source.png"), { workflowId: "image-esrgan-upscale" });
-
-        // An undeclared key is a 400 from the typed input contract, so a prompt here would break
-        // every upscale that has its own text binding.
-        expect(runBody(calls).inputs).toEqual({});
-    });
-
-    it("reports the run's failure as the request's failure", async () => {
-        stubServer({
-            status: () => json(run({ status: "failed", error: { code: "comfy_execution_failed", message: "Prompt outputs failed validation" } })),
-        });
-
-        await expect(requestUpscale(server(), image("source.png"), { workflowId: "image-esrgan-upscale" })).rejects.toThrow("Prompt outputs failed validation");
     });
 });

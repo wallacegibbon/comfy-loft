@@ -294,28 +294,3 @@ export async function requestImageAngle(config: AiConfig, prompt: string, params
         options,
     });
 }
-
-type UpscaleOptions = { workflowId: string; params?: Record<string, unknown>; signal?: AbortSignal };
-
-/**
- * Upscale one image with a tool workflow, as a run.
- *
- * The chosen upscaler is a workflow id, its knobs (`upscale_model`, `resolution`) are that
- * workflow's own inputs and the source image is its media, so this is one run — the same path every
- * other image edit takes. There is no prompt: the workflow's prompt binding carries its own
- * default, and sending an undeclared key would be rejected by the typed input contract.
- */
-export async function requestUpscale(config: AiConfig, image: ReferenceImage, options: UpscaleOptions) {
-    const requestConfig = { ...resolveModelRequestConfig(config, config.imageModel || config.model), baseUrl: LOCAL_SERVER_BASE_URL, model: options.workflowId };
-    try {
-        const run = await createRun(requestConfig, {
-            workflow: options.workflowId,
-            inputs: { ...(options.params ?? {}) },
-            media: { image: [await mediaId(requestConfig, image, image.name || `${image.id}.png`, options.signal)] },
-        });
-        const finished = await waitForRun(requestConfig, run.id, { signal: options.signal, cancelOnAbort: true });
-        return await generatedImage(requestConfig, finished, { signal: options.signal });
-    } catch (error) {
-        throw new Error(apiErrorMessage(error, apiText("requestFailed"), "imageTimeout"));
-    }
-}

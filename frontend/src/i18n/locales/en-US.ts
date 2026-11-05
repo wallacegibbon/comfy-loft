@@ -402,15 +402,6 @@ export default {
         },
         upscale: {
             title: "Upscale image",
-            model: "Upscale model",
-            output: "Output size",
-            source: "Source",
-            run: "Start upscaling",
-            noWorkflow: "No upscale workflow is available",
-            unavailable: "The upscale workflow is unavailable",
-            largeOutput: "The long edge is over {{edge}}px; this step fails when memory runs out.",
-            note: "Upscaling runs in the background and creates a new image node when finished.",
-            hint: "Upscaling makes the picture bigger, not clearer — for more detail, generate again on a larger canvas.",
         },
         node: {
             node: "Node",
@@ -494,7 +485,7 @@ export default {
             split: "Split",
             splitTitle: "Split the image by rows and columns",
             upscale: "Upscale",
-            upscaleTitle: "Enlarge the image to a size you can use",
+            upscaleTitle: "Adds an upscale node: bigger, not clearer (for more detail, generate again on a larger canvas)",
             angle: "Multi-angle",
             angleTitle: "Generate another angle",
             view: "View image",
@@ -537,7 +528,7 @@ export default {
             syncPlay: "Play together",
             syncPlayTitle: "Play all selected videos from 0s, muted by default",
             interpolate: "Interpolate",
-            interpolateTitle: "RIFE interpolation 2×",
+            interpolateTitle: "RIFE interpolation",
         },
         runtime: {
             runUnwatched: "Could not confirm the run ({{reason}}). It may still be going — reload the page and it will be picked up",

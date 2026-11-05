@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { nanoid } from "nanoid";
 
 import { toast } from "@/components/kit/toast";
-import { requestEdit, requestGeneration, requestImageAngle, requestUpscale } from "@/services/api/image";
+import { requestEdit, requestGeneration, requestImageAngle } from "@/services/api/image";
 import { uploadImage } from "@/services/image-storage";
 import { channelModelOf, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { cropDataUrl, splitDataUrl } from "@/lib/canvas/canvas-image-data";
@@ -15,13 +15,12 @@ import type { CanvasImageMaskEditPayload } from "@/components/canvas/canvas-node
 import type { CanvasOutpaintPayload } from "@/components/canvas/canvas-node-outpaint-dialog";
 import type { CanvasMossLayoutPayload } from "@/components/canvas/canvas-node-moss-layout-dialog";
 import type { CanvasImageSplitParams } from "@/components/canvas/canvas-node-split-dialog";
-import type { CanvasUpscaleParams } from "@/components/canvas/canvas-node-upscale-dialog";
 import type { CanvasImageAngleParams } from "@/components/canvas/canvas-node-angle-dialog";
 import { buildImageGenerationMetadata, buildStepNodeMetadata, imageMetadata, referenceUrl } from "@/lib/canvas/canvas-node-factory";
-import { IMAGE_ANGLE_WORKFLOW } from "@/lib/canvas/tool-workflows";
+import { IMAGE_ANGLE_WORKFLOW, IMAGE_UPSCALE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 import { buildAngleLabel, buildAnglePrompt, buildGenerationConfig, isGenerationCanceled } from "@/lib/canvas/canvas-generation-helpers";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
-import { NODE_STATUS_ERROR, NODE_STATUS_LOADING, NODE_STATUS_SUCCESS } from "@/lib/canvas/canvas-node-status";
+import { NODE_STATUS_ERROR, NODE_STATUS_IDLE, NODE_STATUS_LOADING } from "@/lib/canvas/canvas-node-status";
 import type { NodeEditorDeps } from "@/pages/canvas/hooks/node-editor-deps";
 
 /**
@@ -299,11 +298,10 @@ export function useImageEditors(deps: NodeEditorDeps) {
     );
 
     const upscaleImageNode = useCallback(
-        async (node: CanvasNodeData, params: CanvasUpscaleParams) => {
+        (node: CanvasNodeData) => {
             if (!node.metadata?.content) return;
             const childId = nanoid();
             const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
-            setRunningNodeId(childId);
             setNodes((prev) => [
                 ...prev,
                 {
@@ -314,42 +312,19 @@ export function useImageEditors(deps: NodeEditorDeps) {
                     position: { x: node.position.x + node.width + 96, y: node.position.y },
                     width: imageConfig.width,
                     height: imageConfig.height,
-                    // The workflow the dialog submitted, not the canvas's model: an upscale is
-                    // `image-esrgan-upscale` whatever the node being upscaled was made with. Written here,
-                    // while the node is already spinning, so its panel is its own rather than the default
-                    // model's (#263) and the model that was chosen is the one it reads back.
-                    metadata: { ...buildStepNodeMetadata(effectiveConfig, params.workflowId, params.params), prompt: node.metadata?.prompt, status: NODE_STATUS_LOADING },
+                    // The workflow, not the canvas's model: an upscale is `image-esrgan-upscale` whatever the
+                    // node being upscaled was made with (#293). No params and no prompt — the model is the
+                    // workflow's default until someone chooses another, and an upscaler is asked nothing —
+                    // and nothing runs until the node's own send button is pressed (#301).
+                    metadata: { ...buildStepNodeMetadata(effectiveConfig, IMAGE_UPSCALE_WORKFLOW), status: NODE_STATUS_IDLE },
                 },
             ]);
             setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
             setSelectedNodeIds(new Set([childId]));
+            setSelectedConnectionId(null);
             setDialogNodeId(childId);
-            const controller = startGenerationRequest(childId, node.id, childId);
-            try {
-                const image = await requestUpscale(
-                    effectiveConfig,
-                    {
-                        id: node.id,
-                        name: `${node.title || node.id}.png`,
-                        type: node.metadata.mimeType || "image/png",
-                        dataUrl: node.metadata.content,
-                        storageKey: node.metadata.storageKey,
-                    },
-                    { workflowId: params.workflowId, params: params.params, signal: controller.signal },
-                );
-                const uploaded = image;
-                const size = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), status: NODE_STATUS_SUCCESS } } : item)));
-            } catch (error) {
-                if (isGenerationCanceled(error)) return;
-                const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails } } : item)));
-            } finally {
-                finishGenerationRequest(childId, controller);
-                setRunningNodeId(null);
-            }
         },
-        [effectiveConfig, finishGenerationRequest, startGenerationRequest, t],
+        [effectiveConfig, t],
     );
 
     const generateAngleNode = useCallback(

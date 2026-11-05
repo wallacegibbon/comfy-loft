@@ -19,6 +19,7 @@ afterAll(() => {
 
 const { defaultConfig, modelForWorkflow, modelIsStep } = await import("../src/stores/use-config-store");
 const { buildStepNodeMetadata } = await import("../src/lib/canvas/canvas-node-factory");
+const { nodeCanGenerate } = await import("../src/lib/canvas/canvas-generation-helpers");
 const { IMAGE_ANGLE_WORKFLOW, IMAGE_UPSCALE_WORKFLOW } = await import("../src/lib/canvas/tool-workflows");
 
 /**
@@ -97,4 +98,17 @@ test("a workflow nothing offers leaves no model claim and keeps what the run was
     const metadata = buildStepNodeMetadata(config, "image-not-installed", { upscale_model: "RealESRGAN_x4plus.pth" });
     expect(metadata.model).toBeUndefined();
     expect(metadata.params).toEqual({ upscale_model: "RealESRGAN_x4plus.pth" });
+});
+
+// The node a button creates is a node like any other: it appears configured and waits for its own send button.
+// Nothing runs from the toolbar, so the multiplier the interpolation was not asked for is never spent, and the
+// upscaler's weight is whatever the workflow declares until someone chooses another.
+test("a node a button creates is ready to run, and runs nothing until asked", () => {
+    const metadata = buildStepNodeMetadata(config, IMAGE_UPSCALE_WORKFLOW);
+    expect(metadata.model).toBe("default::image-esrgan-upscale");
+    // No params: the workflow's own declaration decides, so there is no second copy of the default on the node.
+    expect(metadata.params).toBeUndefined();
+    // No content yet — and that is what makes it a generator rather than material: its panel is the step panel,
+    // with the source wired in and a send button that is the first thing that spends anything (#297, #301).
+    expect(nodeCanGenerate({ id: "n", type: "image", title: "Upscale", position: { x: 0, y: 0 }, width: 240, height: 240, metadata } as never)).toBe(true);
 });

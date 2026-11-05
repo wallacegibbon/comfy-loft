@@ -2,7 +2,6 @@ import i18n from "@/i18n";
 import { apiErrorMessage, isCancelled, throwIfCanceled } from "@/services/api/http";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio } from "@/lib/media-size";
-import { VIDEO_INTERPOLATE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 import { mediaIdOf } from "@/services/canvas-files";
 import { getMediaBlob, resolveMediaUrl, type UploadedFile } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
@@ -18,9 +17,6 @@ const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiE
 
 /** A video task is a run: the id is the run id, and the file is read off the run. */
 type VideoGenerationTask = { id: string; model: string };
-type VideoUpscaleSource = { name: string; type?: string; url?: string; storageKey?: string };
-type VideoInterpolateSource = VideoUpscaleSource;
-type VideoInterpolateParams = { multiplier: 2 | 3 };
 export type VideoPreview = { url: string; mime?: string; step?: number; total?: number };
 type WaitOptions = RequestOptions & {
     onPreview?: (preview: VideoPreview | null) => void;
@@ -72,33 +68,6 @@ async function createVideoStepTask(config: AiConfig, prompt: string, references:
             askedBy: options?.askedBy,
         });
         return { id: run.id, model: config.model };
-    } catch (error) {
-        throwIfCanceled(error);
-        throw new Error(apiErrorMessage(error, apiText("videoTaskCreateFailed")));
-    }
-}
-
-/**
- * Interpolate a clip: the RIFE workflow with the clip in the `video` role.
- *
- * The output frame rate is derived inside the workflow (source rate × multiplier), so the only input
- * is the multiplier the caller asked for.
- */
-export async function createVideoInterpolateTask(config: AiConfig, source: VideoInterpolateSource, params: VideoInterpolateParams, options?: RequestOptions): Promise<VideoGenerationTask> {
-    const requestConfig = resolveModelRequestConfig(config, VIDEO_INTERPOLATE_WORKFLOW);
-    let sourceId = mediaIdOf(source);
-    if (!sourceId) {
-        const file = await referenceMediaToFile(source, "source.mp4", "invalidReferenceVideo", options);
-        sourceId = (await uploadMedia(requestConfig, file, file.name, { signal: options?.signal })).id;
-    }
-    try {
-        const run = await createRun(requestConfig, {
-            workflow: VIDEO_INTERPOLATE_WORKFLOW,
-            inputs: { multiplier: params.multiplier },
-            media: { video: sourceId },
-            askedBy: options?.askedBy,
-        });
-        return { id: run.id, model: VIDEO_INTERPOLATE_WORKFLOW };
     } catch (error) {
         throwIfCanceled(error);
         throw new Error(apiErrorMessage(error, apiText("videoTaskCreateFailed")));

@@ -10929,3 +10929,45 @@ panel publishes equals the default of the binding that reads that key — which 
 without writing any params and still show the number the run will use. `go test ./...`, `make check`.
 
 **Where** `workflows/registry.json`, `internal/workflow/defaults_test.go`.
+
+## 301. A button creates a node; the node's send button runs it
+
+**Decision** The image toolbar's 放大 and the video toolbar's 插帧 now only create a node: it appears wired to its
+source, selected, with its panel open, carrying the workflow's model and no params and no prompt — and nothing
+runs until that node's own send button is pressed. `CanvasNodeUpscaleDialog` is gone with it, and so are the two
+request builders that existed only for these buttons: `requestUpscale` and `createVideoInterpolateTask`. Both
+nodes now submit through the paths a step node always had (`requestGeneration` → `requestServerStep`,
+`createVideoGenerationTask` → `createVideoStepTask`).
+
+**Why** The parameter a step takes is a choice, and choosing it after the run is paying for the wrong one. The
+interpolation ran at 2× before anyone could pick 3×; the upscale ran with whatever weight the dialog defaulted to,
+or asked for a modal whose only purpose was to collect the same numbers the node's card shows one instant later.
+After #293 the card *is* the parameter form — model, needs, send — so the dialog was that form twice, once
+throwaway. A node that is already spinning is also the worst place to discover the default was not what you
+wanted.
+
+**Rejected** Keeping a pre-flight dialog for the upscaler's output size. It shows a predicted number; the node
+shows the actual one, one press later, and a wrong 4× guess costs one 2× run — the same price RIFE has always
+charged for guessing a multiplier.
+
+**Also** Neither node records a `prompt`: an upscaler and an interpolation are asked nothing, so inheriting the
+source's words was the same claim #297 removed from a crop. The interpolation's title loses its "2×" — the
+multiplier is a setting now, and a title that pre-empts it would contradict the card. The one sentence the
+upscale dialog owed the user — bigger, not clearer, generate again on a larger canvas — moved to the button's
+tooltip, which is where the decision is made.
+
+**Cost** One extra press for the common case. Both buttons leave the node selected with its panel open, so it is
+"look at the default, press send".
+
+**Tested** `frontend/tests/step-node-metadata.test.ts` (6th case): the node a button creates names the workflow,
+carries no params so the workflow's own declaration decides, and is a generator with no content — which is what
+puts the step panel in front of the user with a live send button. `frontend/tests/api-image-upscale.test.ts`
+became `api-image-runs.test.ts` with the four `requestUpscale` cases deleted; the step, angle, layout and stale-knob
+cases it also held stay, because those go through `requestEdit`. `api-video-runs.test.ts` lost its
+`createVideoInterpolateTask` case. `npx tsc --noEmit`, `npm run check` (i18n at 833 keys), `npx vitest run` (427),
+`make check`, `make frontend`.
+
+**Where** `frontend/src/pages/canvas/hooks/use-image-editors.ts`, `frontend/src/pages/canvas/hooks/use-video-editors.ts`,
+`frontend/src/pages/canvas/project.tsx`, `frontend/src/services/api/{image,video}.ts`,
+`frontend/src/components/canvas/canvas-node-upscale-dialog.tsx` (deleted),
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts`.

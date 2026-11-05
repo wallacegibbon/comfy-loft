@@ -2,43 +2,38 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { nanoid } from "nanoid";
 
-import { toast } from "@/components/kit/toast";
-import { createVideoInterpolateTask, waitForVideoGenerationTask } from "@/services/api/video";
 import { useEffectiveConfig } from "@/stores/use-config-store";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
-import { isGenerationCanceled } from "@/lib/canvas/canvas-generation-helpers";
 import { VIDEO_INTERPOLATE_WORKFLOW } from "@/lib/canvas/tool-workflows";
-import { videoModelForWorkflow } from "@/lib/canvas/video-model-mode";
-import { VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH, applyGeneratedVideo } from "@/lib/canvas/canvas-generated-video";
-import { NODE_STATUS_ERROR, NODE_STATUS_LOADING } from "@/lib/canvas/canvas-node-status";
+import { VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH } from "@/lib/canvas/canvas-generated-video";
+import { NODE_STATUS_IDLE } from "@/lib/canvas/canvas-node-status";
+import { buildStepNodeMetadata } from "@/lib/canvas/canvas-node-factory";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 import type { NodeEditorDeps } from "@/pages/canvas/hooks/node-editor-deps";
 
 /**
- * The two editors that produce a new *video* node: upscale and frame interpolation.
+ * The editor that produces a new *video* node: frame interpolation.
  *
- * They are split from the image editors because they share almost nothing with them beyond the
- * spawn-select-open pattern — different task API, different polling, and a node whose size comes
- * from the clip rather than from a fixed default.
+ * It is split from the image editors because it shares almost nothing with them beyond the spawn-select-open
+ * pattern — a node whose size comes from the clip rather than from a fixed default.
+ *
+ * It creates the node and stops there. The multiplier is a choice (2× or 3×) and the node's own card is where
+ * such a choice is made, so pressing the toolbar button configures a node and pressing that node's send button
+ * runs it — the same two steps every other node on the canvas takes. Running from the button meant the first run
+ * always used the default multiplier, and the user paid for a 2× pass to discover they wanted 3× (#301).
  */
 export function useVideoEditors(deps: NodeEditorDeps) {
-    const { setNodes, setConnections, setSelectedNodeIds, setSelectedConnectionId, setDialogNodeId, setRunningNodeId, startGenerationRequest, finishGenerationRequest } = deps;
+    const { setNodes, setConnections, setSelectedNodeIds, setSelectedConnectionId, setDialogNodeId } = deps;
     const { t } = useTranslation();
     const effectiveConfig = useEffectiveConfig();
 
     const interpolateVideoNode = useCallback(
-        async (node: CanvasNodeData) => {
+        (node: CanvasNodeData) => {
             if (!node.metadata?.content) return;
             const childId = nanoid();
             const sourceWidth = node.metadata?.naturalWidth || node.width;
             const sourceHeight = node.metadata?.naturalHeight || node.height;
             const size = fitNodeSize(sourceWidth, sourceHeight, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-            // The node says which workflow it runs from the moment it exists. Naming it only after the run
-            // was accepted left it looking like whatever the canvas falls back to — an H3 text-to-video
-            // node, with a prompt box and a red warning that it takes no references (#263).
-            const model = videoModelForWorkflow(effectiveConfig, VIDEO_INTERPOLATE_WORKFLOW) || VIDEO_INTERPOLATE_WORKFLOW;
-            const params = { multiplier: 2 };
-            setRunningNodeId(childId);
             setNodes((prev) => [
                 ...prev,
                 {
@@ -49,54 +44,19 @@ export function useVideoEditors(deps: NodeEditorDeps) {
                     position: { x: node.position.x + node.width + 96, y: node.position.y },
                     width: size.width,
                     height: size.height,
-                    metadata: { prompt: node.metadata?.prompt, status: NODE_STATUS_LOADING, model, params },
+                    // The workflow, not the canvas's model — named from the moment the node exists, so its panel
+                    // is its own rather than whatever the canvas falls back to (#263). No params: the multiplier
+                    // is the workflow's declared default until someone picks another, and no prompt, because an
+                    // interpolation is asked nothing.
+                    metadata: { ...buildStepNodeMetadata(effectiveConfig, VIDEO_INTERPOLATE_WORKFLOW), status: NODE_STATUS_IDLE },
                 },
             ]);
             setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
             setSelectedNodeIds(new Set([childId]));
             setSelectedConnectionId(null);
             setDialogNodeId(childId);
-            const controller = startGenerationRequest(childId, node.id, childId);
-            try {
-                const task = await createVideoInterpolateTask(
-                    effectiveConfig,
-                    {
-                        name: `${node.title || node.id}.mp4`,
-                        type: node.metadata?.mimeType || "video/mp4",
-                        url: node.metadata?.content,
-                        storageKey: node.metadata?.storageKey,
-                    },
-                    { multiplier: 2 },
-                    { signal: controller.signal },
-                );
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, runId: task.id, model, params } } : item)));
-                const video = await waitForVideoGenerationTask(effectiveConfig, task, { signal: controller.signal });
-                setNodes((prev) =>
-                    prev.map((item) =>
-                        item.id === childId
-                            ? applyGeneratedVideo(item, video, {
-                                  prompt: node.metadata?.prompt,
-                                  model,
-                                  params,
-                                  previewUrl: undefined,
-                                  previewMime: undefined,
-                                  previewStep: undefined,
-                                  previewTotal: undefined,
-                              })
-                            : item,
-                    ),
-                );
-            } catch (error) {
-                if (isGenerationCanceled(error)) return;
-                const errorDetails = error instanceof Error ? error.message : t("canvas.runtime.generationFailed");
-                toast.error(errorDetails);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails } } : item)));
-            } finally {
-                finishGenerationRequest(childId, controller);
-                setRunningNodeId((current) => (current === childId ? null : current));
-            }
         },
-        [effectiveConfig, finishGenerationRequest, startGenerationRequest, t],
+        [effectiveConfig, t],
     );
 
     return { interpolateVideoNode };

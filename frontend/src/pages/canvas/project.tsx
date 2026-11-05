@@ -41,7 +41,6 @@ import { CanvasNodeMaskEditDialog } from "@/components/canvas/canvas-node-mask-e
 import { CanvasNodeOutpaintDialog } from "@/components/canvas/canvas-node-outpaint-dialog";
 import { CanvasNodeMossLayoutDialog } from "@/components/canvas/canvas-node-moss-layout-dialog";
 import { CanvasNodeSplitDialog } from "@/components/canvas/canvas-node-split-dialog";
-import { CanvasNodeUpscaleDialog } from "@/components/canvas/canvas-node-upscale-dialog";
 import { buildNodeGenerationContext, describeEmptyInputs, hydrateNodeGenerationContext, inputsHoldingNothing } from "@/components/canvas/canvas-node-generation";
 import { CanvasNodeHoverToolbar, CanvasNodeInfoModal } from "@/components/canvas/canvas-node-hover-toolbar";
 import { CanvasSelectionToolbar } from "@/components/canvas/canvas-selection-toolbar";
@@ -118,7 +117,7 @@ type CanvasGenerationRequest = {
 // editor is open" had no single answer, so each reset path cleared a different subset: delete and
 // clear closed five of the ten, Escape closed three. One nullable record instead makes "at most one
 // editor is open" an invariant the compiler can see, and leaves the resets a single thing to clear.
-type CanvasNodeTool = "info" | "crop" | "maskEdit" | "outpaint" | "mossLayout" | "split" | "upscale" | "angle";
+type CanvasNodeTool = "info" | "crop" | "maskEdit" | "outpaint" | "mossLayout" | "split" | "angle";
 type CanvasNodeToolState = { kind: CanvasNodeTool; nodeId: string } | null;
 
 // Stable empty reference array prevents `... || []` from invalidating CanvasNode's React.memo on every render.
@@ -895,7 +894,6 @@ function InfiniteCanvasPage() {
     const outpaintNode = activeNodeTool?.kind === "outpaint" ? activeNodeToolNode : null;
     const mossLayoutNode = activeNodeTool?.kind === "mossLayout" ? activeNodeToolNode : null;
     const splitNode = activeNodeTool?.kind === "split" ? activeNodeToolNode : null;
-    const upscaleNode = activeNodeTool?.kind === "upscale" ? activeNodeToolNode : null;
     const angleNode = activeNodeTool?.kind === "angle" ? activeNodeToolNode : null;
     const contextMenuNode = contextMenu?.type === "node" ? nodeById.get(contextMenu.nodeId) || null : null;
     const previewNode = previewNodeId ? nodeById.get(previewNodeId) || null : null;
@@ -2395,7 +2393,7 @@ function InfiniteCanvasPage() {
                     onMaskEdit={(node) => openNodeTool("maskEdit", node.id)}
                     onCrop={(node) => openNodeTool("crop", node.id)}
                     onSplit={(node) => openNodeTool("split", node.id)}
-                    onUpscale={(node) => openNodeTool("upscale", node.id)}
+                    onUpscale={(node) => upscaleImageNode(node)}
                     onAngle={(node) => openNodeTool("angle", node.id)}
                     onViewImage={handleNodeViewImage}
                     onDelete={(node) => deleteNodes(new Set([node.id]))}
@@ -2483,19 +2481,6 @@ function InfiniteCanvasPage() {
                 ) : null}
 
                 {splitNode?.metadata?.content ? <CanvasNodeSplitDialog dataUrl={splitNode.metadata.content} open={Boolean(splitNode)} onClose={() => closeNodeTool()} onConfirm={(params) => void splitImageNode(splitNode!, params)} /> : null}
-
-                {upscaleNode?.metadata?.content ? (
-                    <CanvasNodeUpscaleDialog
-                        dataUrl={upscaleNode.metadata.content}
-                        open={Boolean(upscaleNode)}
-                        config={effectiveConfig}
-                        onClose={() => closeNodeTool()}
-                        onConfirm={(params) => {
-                            closeNodeTool();
-                            if (upscaleNode) void upscaleImageNode(upscaleNode, params);
-                        }}
-                    />
-                ) : null}
 
                 {angleNode?.metadata?.content ? (
                     <Suspense fallback={null}>

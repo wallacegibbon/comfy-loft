@@ -446,15 +446,6 @@ export default {
         },
         upscale: {
             title: "图片放大",
-            model: "放大模型",
-            output: "输出尺寸",
-            source: "源图",
-            run: "开始放大",
-            noWorkflow: "没有可用的放大工作流",
-            unavailable: "放大工作流当前不可用",
-            largeOutput: "输出长边超过 {{edge}}px，显存不够时这一步会失败。",
-            note: "放大在后台进行，完成后会生成新的图片节点。",
-            hint: "放大只是把尺寸做大，不会补出细节；要更清楚请用更大的画布重新生成。",
         },
         node: {
             node: "节点",
@@ -529,7 +520,7 @@ export default {
             split: "切图",
             splitTitle: "按行列切分图片",
             upscale: "放大",
-            upscaleTitle: "把图片放大到够用的尺寸",
+            upscaleTitle: "新建一个放大节点：只把尺寸做大，不补细节（要更清楚请用更大的画布重新生成）",
             angle: "多角度",
             angleTitle: "生成角度",
             view: "查看大图",
@@ -572,7 +563,7 @@ export default {
             syncPlay: "同时播放",
             syncPlayTitle: "所有选中视频从 0 秒开始同步播放（默认静音）",
             interpolate: "插帧",
-            interpolateTitle: "RIFE 插帧 2×",
+            interpolateTitle: "RIFE 插帧",
         },
         runtime: {
             runUnwatched: "无法确认这次运行的状态（{{reason}}）。它可能还在跑，刷新页面会自动接上",

@@ -26,7 +26,7 @@ vi.mock("@/services/file-storage", () => ({
     readVideoMeta: async () => ({ width: 1280, height: 720, durationMs: 5000 }),
 }));
 
-const { createVideoGenerationTask, createVideoInterpolateTask, waitForVideoGenerationTask } = await import("@/services/api/video");
+const { createVideoGenerationTask, waitForVideoGenerationTask } = await import("@/services/api/video");
 
 // A run belongs to a canvas (#156): these cases post into one.
 const { setActiveCanvas } = await import("@/services/canvas-files");
@@ -216,20 +216,6 @@ describe("createVideoGenerationTask on a step workflow", () => {
         // which is the silent no-op this path exists to avoid.
         expect(body.inputs).toEqual({ multiplier: 3 });
         expect(body.media).toEqual({ video: [VIDEO_ID] });
-    });
-});
-
-describe("createVideoInterpolateTask", () => {
-    it("is one run of the RIFE workflow with the clip and the multiplier", async () => {
-        const { calls } = stubServer({ upload: () => json({ upload: { id: VIDEO_ID, kind: "video", mime: "video/mp4", bytes: 3, filename: "source.mp4" } }) });
-
-        const task = await createVideoInterpolateTask(server(), { name: "clip.mp4", type: "video/mp4", storageKey: "k1" }, { multiplier: 2 });
-
-        expect(task).toMatchObject({ model: "video-rife" });
-        const body = runBody(calls);
-        expect(body.workflow).toBe("video-rife");
-        expect(body.inputs).toEqual({ multiplier: 2 });
-        expect(body.media).toEqual({ video: VIDEO_ID });
     });
 });
 
