@@ -4,7 +4,7 @@ import { ArrowUp, Bot, ChevronRight, CircleCheck, CircleDashed, CircleX, Eraser,
 
 import { citationLabel, mentionResolver, referenceBlock, referenceLine, type Citation, type MentionSegment } from "@/lib/canvas/agent-references";
 import { insertSpoken } from "@/lib/canvas/agent-dictation";
-import { textOf, transcriptEvent, transcriptWindow, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
+import { agentIsWorking, textOf, transcriptEvent, transcriptWindow, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
 import { contextSegment, speedSegment } from "@/lib/canvas/agent-usage";
 import { nodeTitle } from "@/lib/canvas/node-title";
 import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
@@ -98,6 +98,35 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
     const [draft, setDraft] = useState("");
     const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "closed">("idle");
     const [busy, setBusy] = useState(false);
+    /**
+     * The turn is running and has put nothing on screen for itself yet.
+     *
+     * Read from `busy` — which the send sets — and not from the transcript, so the line is on screen from
+     * the moment the message goes out rather than from the first frame that comes back (see
+     * `agentIsWorking`).
+     */
+    const working = agentIsWorking(messages, busy);
+    /**
+     * How many seconds this stretch of waiting has lasted.
+     *
+     * Counted here because it is the one thing on this side that *can* be counted: the agent's own
+     * first-token time arrives with the step that ends the wait, so before that frame there is no number to
+     * relay. A counter that keeps climbing is what tells a reader the difference between an agent that is
+     * thinking and a panel that is doing nothing at all — the same seconds with no motion is what a hang
+     * looks like.
+     */
+    const [waited, setWaited] = useState(0);
+    useEffect(() => {
+        if (!working) {
+            setWaited(0);
+            return;
+        }
+        const startedAt = Date.now();
+        // One tick a second, and only while the wait lasts: the transcript below is memoised, so what a tick
+        // re-renders is this row.
+        const timer = window.setInterval(() => setWaited(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+        return () => window.clearInterval(timer);
+    }, [working]);
     /**
      * How many messages are waiting in the agent's queue for the running task.
      *
@@ -455,7 +484,9 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
             followRef.current = true;
         }
         element.scrollTop = element.scrollHeight;
-    }, [messages]);
+        // `working` too: the line that says the turn is running arrives without a message to announce it, and
+        // a reader at the bottom should see it appear rather than find it under the fold.
+    }, [messages, working]);
 
     /**
      * Showing more of the conversation must not move what is being read.
@@ -578,19 +609,21 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
                                     </p>
                                 ),
                             )}
-                            {/* Nothing said yet, and the turn is still going: a line saying so. It is not a word
-                                about thinking — the folded reasoning above already carries that, and two rows
-                                both labelled "Thinking" read as one thing drawn twice. The agent is working
-                                regardless of which part it is working on, so the word is about the work. */}
-                            {message.role === "assistant" && !textOf(message) && message.streaming ? (
-                                <p className="flex items-center gap-1.5 text-xs opacity-50">
-                                    <LoaderCircle className="size-3 animate-spin" />
-                                    {t("canvas.agent.working")}
-                                </p>
-                            ) : null}
                         </div>
                     ),
                 )}
+                {/* The turn, not the answer: this says the message was taken and the agent is working, and it is
+                    drawn from the send (`agentIsWorking`) rather than from a frame, so it is up before the model
+                    has said anything. It is not a word about thinking — the folded reasoning above already
+                    carries that, and two rows both labelled "Thinking" read as one thing drawn twice. It sits
+                    outside the bubbles on purpose: an empty answer with a spinner in it would claim the agent is
+                    saying something, which is what `answerFrame` refuses to draw. */}
+                {working ? (
+                    <p className="flex items-center gap-1.5 px-1 text-xs tabular-nums opacity-50" title={t("canvas.agent.workingHint")}>
+                        <LoaderCircle className="size-3 animate-spin" />
+                        <span>{t("canvas.agent.working", { seconds: waited })}</span>
+                    </p>
+                ) : null}
             </div>
 
             <div className="relative border-t px-2 py-2" style={{ borderColor: theme.toolbar.border }}>

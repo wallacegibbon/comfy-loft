@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { referenceBlock, referenceLine } from "@/lib/canvas/agent-references";
-import { transcriptEvent, transcriptWindow, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
+import { agentIsWorking, transcriptEvent, transcriptWindow, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
 import type { AgentEvent } from "@/services/api/agent";
 
 /**
@@ -160,6 +160,43 @@ describe("the agent transcript", () => {
     it("opens nothing for a frame that says nothing", () => {
         expect(fold({ type: "delta", text: "" })).toEqual([]);
         expect(fold({ type: "done" })).toEqual([]);
+    });
+});
+
+describe("the line that says the agent is working", () => {
+    it("is on from the send, before any frame has come back", () => {
+        // The stretch this exists for: the message is out, the model has not said anything, and the panel
+        // used to look idle for as long as that took. Nothing in the transcript is what puts the line up.
+        expect(agentIsWorking([], true)).toBe(true);
+        expect(agentIsWorking(fold({ type: "user", text: "画一只猫" }), true)).toBe(true);
+    });
+
+    it("goes away once the answer has said something, because the words are the sign of life", () => {
+        const messages = fold({ type: "user", text: "画一只猫" }, { type: "delta", text: "我看看画布。" });
+        expect(agentIsWorking(messages, true)).toBe(false);
+    });
+
+    it("stays for a turn that has only called a tool, and for one that has only thought", () => {
+        // Neither is an answer: a call is an action and reasoning is a path to the words, so there is still
+        // nothing on screen saying the agent is alive.
+        expect(agentIsWorking(fold({ type: "user", text: "画一只猫" }, { type: "tool_call", callId: "c1", name: "canvas_list_nodes" }), true)).toBe(true);
+        expect(agentIsWorking(fold({ type: "user", text: "画一只猫" }, { type: "reasoning", text: "先看看节点" }), true)).toBe(true);
+    });
+
+    it("says nothing when no turn is running", () => {
+        expect(agentIsWorking([], false)).toBe(false);
+        expect(agentIsWorking(fold({ type: "user", text: "画一只猫" }, { type: "done" }), false)).toBe(false);
+    });
+
+    it("comes back for a message queued into a turn that has already spoken", () => {
+        // The answer being written keeps it down, and the queue says so in its own line above the box — so a
+        // second message does not stand the spinner back up beside it.
+        const answered = fold({ type: "user", text: "画一只猫" }, { type: "delta", text: "我看看画布。" });
+        expect(agentIsWorking(answered, true)).toBe(false);
+        // Once that answer is closed by the next thing said, the tail is no longer a streaming answer and
+        // the words that follow have not arrived yet.
+        const queued = fold({ type: "user", text: "画一只猫" }, { type: "delta", text: "我看看画布。" }, { type: "user", text: "顺便放大" });
+        expect(agentIsWorking(queued, true)).toBe(true);
     });
 });
 

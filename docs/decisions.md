@@ -10488,3 +10488,41 @@ the inference test now asserting that a second text encoder stays **unbound**.
 
 **Where** `internal/workflow/{inputs,bindings,infer}.go`, `internal/server/routes_runs.go`, `workflows/registry.json`,
 `docs/protocol.md`.
+
+## 289. The working line follows the send, not the first frame
+
+**Decision** The panel's one "Working…" row is drawn from `busy` — set where the socket takes the message — and not
+from an answer that has arrived. It sits at the end of the transcript instead of inside an answer bubble, and it
+carries the seconds counted since the send: `Working… 12s`. The condition is `agentIsWorking(messages, busy)` in
+`lib/canvas/agent-transcript.ts`: a turn is running and the answer being written has no text yet.
+
+**Why** Between the message going out and the first frame coming back there is nothing on screen. The model's first
+token, and the tool call that often opens a turn, take seconds to minutes, and the panel looked idle for all of it:
+`busy` was true, the stop button was there, and nothing on screen told a thinking agent from a hung one. The row
+that already existed could not help, because it was a child of an answer bubble and answer bubbles are created by
+frames (`answerFrame` — a frame that says nothing opens nothing).
+
+The seconds are counted on this side because it is the only side that can count them: the agent's own `ttft_ms`
+arrives with the step that *ends* the wait. It is the one number here that is not the agent's, and it is what makes
+waiting distinguishable from a hang — the same silence with nothing moving.
+
+Rejected: opening an empty answer message at the send so the old row had somewhere to live. That is exactly what
+`answerFrame` refuses and rightly — an empty bubble with a spinner in it claims the agent is saying something. What
+is true at the send is that a *turn* is running, which is why the row lives outside the bubbles.
+
+**Cost** One predicate, one interval that runs only while the wait lasts (the transcript is memoised, so a tick
+re-renders the row), and one string that is no longer the agent's vocabulary: `{{seconds}}` is translated, unlike
+`tok/s`. The row also comes back for a message queued into a turn that has already spoken and then been closed by
+the echo of the new one — correct, since the queue line is gone and the agent is working on those words.
+
+**Tested** `frontend/tests/agent-transcript.test.ts` (`agentIsWorking`: on from the send with an empty transcript and
+with only the echo, off once the answer has text, on for a call-only or reasoning-only turn, off with no turn
+running, back for a queued message). In the browser, against an isolated server on `:8191` whose agent is a fake
+speaking AlayaCore's wire (`ALAYACORE_BIN`) and answering ten seconds late: pressing Enter produced `Working… 0s` in
+the same observation as the user's own message, and a sync five seconds later read `Working… 6s` with nothing from
+the agent in between. `npx tsc --noEmit`, `npx vitest run` (402), `npm run check`, `npm run build` (560.91 kB).
+
+**Where** `frontend/src/lib/canvas/agent-transcript.ts` (`agentIsWorking`),
+`frontend/src/components/canvas/canvas-agent-panel.tsx` (the row, the interval, the scroll effect's dependency),
+`frontend/src/i18n/locales/{en-US,zh-CN}.ts` (`canvas.agent.working`, `canvas.agent.workingHint`),
+`frontend/tests/agent-transcript.test.ts`.

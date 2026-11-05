@@ -131,6 +131,27 @@ export function textOf(message: TranscriptMessage): string {
 }
 
 /**
+ * Whether the turn the user started is running and has not put any words on screen yet — what the panel's
+ * one "working" line is drawn from.
+ *
+ * It asks `busy` rather than the transcript because the send is the event. Between the message going out and
+ * the first frame coming back — the model's first token, or the call it opens with — nothing has arrived, and
+ * a line that waited for a frame was absent for exactly the stretch a reader has nothing else to go on. The
+ * panel sets `busy` where the socket takes the message and clears it when the turn ends, so there is one
+ * word for "a turn is running" and this reads it.
+ *
+ * An answer that has already said something does not need it: the words are the sign of life, and they are
+ * right above. An answer that has only called a tool keeps it, which is why the question is about the text
+ * and not about the parts.
+ */
+export function agentIsWorking(messages: TranscriptMessage[], busy: boolean): boolean {
+    if (!busy) return false;
+    const last = messages[messages.length - 1];
+    if (last?.streaming && textOf(last)) return false;
+    return true;
+}
+
+/**
  * One frame of an answer being written.
  *
  * The answer is the message at the end — the one nothing has arrived after yet. If what is at the end is
