@@ -145,6 +145,24 @@ function withoutRemoved(nodes: CanvasNodeData[], connections: CanvasConnection[]
     };
 }
 
+/**
+ * The cards a move left with nothing in them, taken away — #292's rule for the third gesture that can empty one.
+ *
+ * Grouping and ungrouping already remove the shell they empty, because a box drawn around nothing is debris
+ * *that press* made. A move is the same fact by another hand: dragging a card's last member out, or moving it
+ * onto another card, leaves a shell nobody asked for. What is not touched is a card that was already empty
+ * before the move — that is a box somebody made to fill later, and #292 exists to keep it (#317).
+ *
+ * `before` is the canvas as the move found it: only the `groupId` fields are read, so the positions the move
+ * wrote onto `nodes` make no difference to the comparison.
+ */
+export function withoutEmptiedGroups(before: CanvasNodeData[], nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+    const removed = emptiedGroupIds(before, nodes);
+    if (!removed.size) return { nodes, connections, removed: [] as string[] };
+    // A group that is gone takes its connections with it: the card is not a wire's other end any more.
+    return { ...withoutRemoved(nodes, connections, removed), removed: [...removed] };
+}
+
 export function applyGroupSelection(selectedIds: Set<string>, nodes: CanvasNodeData[], connections: CanvasConnection[], group: CanvasNodeData) {
     const members = collectGroupMemberNodes(selectedIds, nodes);
     if (members.length < 2) return null;

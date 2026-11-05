@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { applyGroupSelection, applyUngroupSelection, settleMoveMembership, withGroupMembers } from "../src/lib/canvas/canvas-node-geometry";
+import { applyGroupSelection, applyUngroupSelection, settleMoveMembership, withGroupMembers, withoutEmptiedGroups } from "../src/lib/canvas/canvas-node-geometry";
 import type { CanvasNodeData } from "../src/types/canvas";
 
 /**
@@ -164,5 +164,46 @@ describe("who belongs to what after a move", () => {
         const moved = canvas().map((node) => (node.id === "m1" ? card("m1", "text", 100, 450, "g1") : node));
         const after = settleMoveMembership(moved, new Set(["m1"]));
         expect(groupOf(after, "m1")).toBe("g2");
+    });
+});
+
+/**
+ * The card a move leaves with nothing in it, which is discarded — #292's rule for the third gesture that can
+ * empty a group.
+ *
+ * Grouping and ungrouping already remove the shell they empty. A move that takes a card's last member away
+ * leaves the same debris, and a box drawn around nothing is exactly what a person would delete by hand. What
+ * is never touched is a card that was already empty before the move: that is a box made to be filled later,
+ * and keeping it is the whole point of #292.
+ */
+describe("the cards a move emptied", () => {
+    const box = (id: string): CanvasNodeData => ({ id, type: "group", title: id, position: { x: 0, y: 0 }, width: 300, height: 300, metadata: {} });
+    const held = (id: string, groupId: string): CanvasNodeData => ({ id, type: "text", title: id, position: { x: 100, y: 100 }, width: 100, height: 100, metadata: { groupId } });
+
+    test("a card whose last member was moved out is taken away", () => {
+        const before = [box("g1"), held("m1", "g1")];
+        const settled = [box("g1"), { ...held("m1", "g1"), metadata: {}, position: { x: 100, y: 900 } }];
+        const result = withoutEmptiedGroups(before, settled, [{ id: "c1", fromNodeId: "g1", toNodeId: "m1" }]);
+        expect(result.nodes.map((node) => node.id)).toEqual(["m1"]);
+        expect(result.removed).toEqual(["g1"]);
+        // A card that is gone is not a wire's other end any more.
+        expect(result.connections).toEqual([]);
+    });
+
+    test("a card that still holds a member stays", () => {
+        const before = [box("g1"), held("m1", "g1"), held("m2", "g1")];
+        const settled = [box("g1"), { ...held("m1", "g1"), position: { x: 100, y: 900 } }, held("m2", "g1")];
+        const result = withoutEmptiedGroups(before, settled, []);
+        expect(result.nodes.map((node) => node.id)).toEqual(["g1", "m1", "m2"]);
+        expect(result.removed).toEqual([]);
+    });
+
+    test("a box that was already empty is nobody's debris", () => {
+        // Somebody made it to be filled later; a move elsewhere on the canvas must not delete it.
+        const before = [box("empty"), box("g1"), held("m1", "g1")];
+        const settled = [box("empty"), box("g1"), { ...held("m1", "g1"), metadata: {}, position: { x: 100, y: 900 } }];
+        const result = withoutEmptiedGroups(before, settled, []);
+        expect(result.nodes.map((node) => node.id)).toEqual(["empty", "m1"]);
+        expect(result.removed).toEqual(["g1"]);
     });
 });

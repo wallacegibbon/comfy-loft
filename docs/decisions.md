@@ -11603,3 +11603,46 @@ function through the same `setNodes` update. `npx vitest run` (524), `npx tsc --
 **Where** `frontend/src/lib/canvas/canvas-node-geometry.ts` (`settleMoveMembership`, `findContainingGroupId` now
 file-local), `frontend/src/pages/canvas/project.tsx` (`moveNodesTo`, `finishNodeDrag`, and the import it no longer
 needs), `frontend/tests/canvas-node-geometry.test.ts`.
+
+## 317. A move says what it changed, and takes away the card it emptied
+
+**Decision** `move_node` answers with the membership its landing changed — `; left g1`, `; joined g2` — and with
+the cards it took away. Deletion is `withoutEmptiedGroups(before, nodes, connections)`: `emptiedGroupIds` (#292),
+which already decides the shells grouping and ungrouping may delete, applied to the third gesture that can empty a
+group, by the drag and by the tool alike. A group that was already empty is untouched, and a group that goes takes
+its connections with it. The page clears the UI state that named a removed card (`forgetNodes`, the bookkeeping
+`deleteNodes` already owed, extracted so there is one copy).
+
+**Why** #316 stopped a move from rewriting who belongs to what, but a node moved *on its own* still changes groups
+geometrically — that is how a card is dragged out and how one is dropped on a card — and the tool said nothing
+about it. For a person the change is visible: the card snaps into the drop target, the highlight, the shape. For an
+agent the answer is the whole of its senses, so the next `list_nodes` was the first it heard of a change it had
+caused. The same argument decides the shell. Dragging a card's last member out leaves a box drawn around nothing;
+grouping and ungrouping already delete the shell they empty and call it debris the press made (#292), and a move is
+that same press by another hand. Keeping one of the three and not the others is the inconsistency, not the fix.
+
+**Rejected** Leaving the empty box, on the grounds that #292 priced it ("a group whose members are all deleted now
+stays as an empty box"). That price was about *deletion* — the node the person asked to delete is the node that
+goes, and sweeping the container too would turn one delete into two. A move is different: the member survives and
+is moved somewhere, so the card is the only thing the gesture left behind. Deleting the shell on a member's
+*deletion* was not done and is still #292's recorded cost. Also rejected: reporting membership as node ids
+(`text-1 left group-1`) — the moved node is the sentence's subject, so the group is the only new noun the answer
+needs.
+
+**Cost** A member dragged out of a card that held only it now takes the card with it, so "I'll put it back" costs a
+re-group (or one undo). A group that changes hands has two clauses in its answer instead of one, and `move_node`'s
+description grew a sentence.
+
+**Tested** `canvas-node-geometry.test.ts` (+3): a card whose last member moved out is removed and loses its
+connections; a card that still holds a member stays; a box that was already empty is left alone.
+`canvas-agent-tools.test.ts` (+3, and one fixture grew a second member so two clauses could be read apart):
+`; left group-1`, `; joined group-2`, `; left group-1, removed because nothing was left in it`, and a group moved
+onto another card reporting no membership at all. In the browser, on the same build, two drags: one card's only
+member onto the other card — the member joined it and the emptied card was gone from the document — and, because
+the drop handler stopped going through a `setNodes` updater, a whole card dragged onto another (the #316 case)
+again kept its members and removed nothing. `npx vitest run` (531), `npx tsc --noEmit`, `npm run check`, `go test ./...`.
+
+**Where** `frontend/src/lib/canvas/canvas-node-geometry.ts` (`withoutEmptiedGroups`),
+`frontend/src/lib/canvas/canvas-agent-tools.ts` (`moveNode`, `moveClause`, `MoveOutcome`),
+`frontend/src/pages/canvas/project.tsx` (`moveNodesTo`, `finishNodeDrag`, `forgetNodes`),
+`internal/server/routes_mcp.go`, `frontend/tests/{canvas-node-geometry,canvas-agent-tools}.test.ts`.

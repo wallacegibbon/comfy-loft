@@ -10,7 +10,7 @@ import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
 import { cancelRun, type RunRequest } from "@/services/api/runs";
 import type { GenerateOptions, GenerateStart } from "@/lib/canvas/agent-generate";
-import type { StopOutcome } from "@/lib/canvas/canvas-agent-tools";
+import type { MoveOutcome, StopOutcome } from "@/lib/canvas/canvas-agent-tools";
 import type { ModelCatalog } from "@/lib/canvas/node-model";
 import { createVideoGenerationTask, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
 import { acceptsInput, channelModelOf, modelContractOf, modelOptionLabel, useConfigStore, useEffectiveConfig, workflowModelOptions, type ModelAccepts, type ModelCapability } from "@/stores/use-config-store";
@@ -79,6 +79,7 @@ import {
     settleMoveMembership,
     snapNodesIntoGroup,
     withGroupMembers,
+    withoutEmptiedGroups,
 } from "@/lib/canvas/canvas-node-geometry";
 import { adoptLegacyRunIds, audioExtension, buildGenerationConfig, failedWatch, hasResumableRun, hydrateCanvasImages, imageExtension, isGenerationCanceled, resetInterruptedGeneration, runWatchEnded } from "@/lib/canvas/canvas-generation-helpers";
 import { videoRunMetadata } from "@/lib/canvas/video-run-metadata";
@@ -1046,6 +1047,25 @@ function InfiniteCanvasPage() {
 
     // The agent's hands are the same function the buttons press.
 
+    /**
+     * Drop every piece of UI state that points at these ids — the bookkeeping any deletion owes.
+     *
+     * A node can go without being the one the user deleted: a group is removed when the move that emptied it
+     * is applied (`withoutEmptiedGroups`, #317). The card itself is gone from the list; a toolbar, a panel, a
+     * menu or a selection still naming it would be the only thing left of it.
+     */
+    const forgetNodes = useCallback((ids: Set<string>) => {
+        setSelectedNodeIds((current) => (current.size && [...current].some((id) => ids.has(id)) ? new Set([...current].filter((id) => !ids.has(id))) : current));
+        setHoveredNodeId((current) => (current && ids.has(current) ? null : current));
+        setToolbarNodeId((current) => (current && ids.has(current) ? null : current));
+        setDialogNodeId((current) => (current && ids.has(current) ? null : current));
+        setActiveNodeTool((current) => (current && ids.has(current.nodeId) ? null : current));
+        setPreviewNodeId((current) => (current && ids.has(current) ? null : current));
+        setRunningNodeId((current) => (current && ids.has(current) ? null : current));
+        setReferencePickerNodeId((current) => (current && ids.has(current) ? null : current));
+        setContextMenu((current) => (current?.type === "node" && ids.has(current.nodeId) ? null : current));
+    }, []);
+
     const deleteNodes = useCallback(
         (ids: Set<string>) => {
             if (!ids.size) return;
@@ -1061,16 +1081,9 @@ function InfiniteCanvasPage() {
             setConnections((prev) => prev.filter((conn) => !allIds.has(conn.fromNodeId) && !allIds.has(conn.toNodeId)));
             setSelectedNodeIds(new Set());
             setSelectedConnectionId(null);
-            setHoveredNodeId((current) => (current && allIds.has(current) ? null : current));
-            setToolbarNodeId((current) => (current && allIds.has(current) ? null : current));
-            setDialogNodeId((current) => (current && allIds.has(current) ? null : current));
-            setActiveNodeTool((current) => (current && allIds.has(current.nodeId) ? null : current));
-            setPreviewNodeId((current) => (current && allIds.has(current) ? null : current));
-            setRunningNodeId((current) => (current && allIds.has(current) ? null : current));
-            setReferencePickerNodeId((current) => (current && allIds.has(current) ? null : current));
-            setContextMenu((current) => (current?.type === "node" && allIds.has(current.nodeId) ? null : current));
+            forgetNodes(allIds);
         },
-        [projectId],
+        [forgetNodes, projectId],
     );
 
     /**
@@ -1082,20 +1095,27 @@ function InfiniteCanvasPage() {
      * moving a node onto a group mean the same thing either way. A card carried by its own group keeps that
      * group, though — that is the move, not a regrouping (#316).
      */
-    const moveNodesTo = useCallback((nodeId: string, position: Position) => {
-        setNodes((prev) => {
-            const named = prev.find((node) => node.id === nodeId);
-            if (!named) return prev;
-            const dx = position.x - named.position.x;
-            const dy = position.y - named.position.y;
-            // The cards this move carries: the named one, and a group's members — `withGroupMembers`, which is
-            // also what the drag uses, so "move this group" means the same thing to a tool and to a hand.
-            const carrying = withGroupMembers(new Set([nodeId]), prev);
-            const moved = prev.map((node) => (carrying.has(node.id) ? { ...node, position: { x: node.position.x + dx, y: node.position.y + dy } } : node));
-            // What a drag leaves behind, from the one function that decides it (`settleMoveMembership`): a card
-            // that came with its group keeps it, and only a node that moved alone is placed by where it landed.
-            return settleMoveMembership(moved, carrying);
-        });
+    const moveNodesTo = useCallback((nodeId: string, position: Position): MoveOutcome | null => {
+        const before = nodesRef.current;
+        const named = before.find((node) => node.id === nodeId);
+        if (!named) return null;
+        const dx = position.x - named.position.x;
+        const dy = position.y - named.position.y;
+        // The cards this move carries: the named one, and a group's members — `withGroupMembers`, which is
+        // also what the drag uses, so "move this group" means the same thing to a tool and to a hand.
+        const carrying = withGroupMembers(new Set([nodeId]), before);
+        const moved = before.map((node) => (carrying.has(node.id) ? { ...node, position: { x: node.position.x + dx, y: node.position.y + dy } } : node));
+        // What a drag leaves behind, from the one function that decides it (`settleMoveMembership`): a card
+        // that came with its group keeps it, and only a node that moved alone is placed by where it landed.
+        // A card the move left with nothing in it is debris the move made, so it goes (#317).
+        const settled = withoutEmptiedGroups(before, settleMoveMembership(moved, carrying), connectionsRef.current);
+        setNodes(settled.nodes);
+        setConnections(settled.connections);
+        // The membership the landing changed, for the answer the tool gives: a member that travelled with its
+        // card cannot appear here, so this is the node that moved on its own.
+        const after = new Map(settled.nodes.map((node) => [node.id, node.metadata?.groupId]));
+        const membership = before.filter((node) => node.metadata?.groupId !== after.get(node.id)).map((node) => ({ nodeId: node.id, from: node.metadata?.groupId, to: after.get(node.id) }));
+        return { carried: [...carrying], membership, removed: settled.removed };
     }, []);
 
     /**
@@ -1567,17 +1587,20 @@ function InfiniteCanvasPage() {
         setIsNodeDragging(false);
         setDropTargetGroupId(null);
         if (dragRef.current.hasMoved && clientX != null && clientY != null) {
-            setNodes((prev) => {
-                const moved = prev.map((node) => {
-                    const initial = initialPositions.get(node.id);
-                    return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
-                });
-                const targetGroup = findGroupDropTarget(movedIds, moved);
-                if (targetGroup) return snapNodesIntoGroup(movedIds, moved, targetGroup);
-                // The same rule the tool's move reads: a card that travelled with its group keeps it, and only
-                // a node that moved alone is placed by where it landed (`settleMoveMembership`, #316).
-                return settleMoveMembership(moved, movedIds);
+            const before = nodesRef.current;
+            const moved = before.map((node) => {
+                const initial = initialPositions.get(node.id);
+                return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
             });
+            const targetGroup = findGroupDropTarget(movedIds, moved);
+            // Dropping onto a card states the membership; anywhere else it is settled by where the cards
+            // landed — the same rule the tool's move reads (`settleMoveMembership`, #316). Either way the card
+            // this move emptied is debris it made, and goes (#317).
+            const placed = targetGroup ? snapNodesIntoGroup(movedIds, moved, targetGroup) : settleMoveMembership(moved, movedIds);
+            const settled = withoutEmptiedGroups(before, placed, connectionsRef.current);
+            setNodes(settled.nodes);
+            setConnections(settled.connections);
+            if (settled.removed.length) forgetNodes(new Set(settled.removed));
         }
 
         dragRef.current.isDraggingNode = false;

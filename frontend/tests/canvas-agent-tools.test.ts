@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { runTool, type CanvasHands } from "../src/lib/canvas/canvas-agent-tools";
+import { settleMoveMembership, withGroupMembers, withoutEmptiedGroups } from "../src/lib/canvas/canvas-node-geometry";
 import type { GenerateStart } from "../src/lib/canvas/agent-generate";
 import { registerBuiltinNodes } from "../src/components/canvas/nodes/builtin-nodes";
 import type { SettingsContract } from "../src/lib/canvas/node-settings";
@@ -55,7 +56,23 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [],
         connectNodes: () => false,
         deleteNodes: () => {},
         focusNode: () => {},
-        moveNode: (nodeId, position) => void written.moved.push([nodeId, position]),
+        // The real hands move through `withGroupMembers` and `settleMoveMembership`, which are the canvas's own
+        // rules and tested where they live; these answer with what those rules would have done, so what the
+        // tool reports is what a real page would report.
+        moveNode: (nodeId, position) => {
+            written.moved.push([nodeId, position]);
+            const named = nodes.find((each) => each.id === nodeId);
+            if (!named) return null;
+            const carried = withGroupMembers(new Set([nodeId]), nodes);
+            const dx = position.x - named.position.x;
+            const dy = position.y - named.position.y;
+            const moved = nodes.map((each) => (carried.has(each.id) ? { ...each, position: { x: each.position.x + dx, y: each.position.y + dy } } : each));
+            const settled = settleMoveMembership(moved, carried);
+            const after = new Map(settled.map((each) => [each.id, each.metadata?.groupId]));
+            const membership = nodes.filter((each) => each.metadata?.groupId !== after.get(each.id)).map((each) => ({ nodeId: each.id, from: each.metadata?.groupId, to: after.get(each.id) }));
+            const removed = withoutEmptiedGroups(nodes, settled, []).removed;
+            return { carried: [...carried], membership, removed };
+        },
         resizeNode: (nodeId, width, height) => void written.resized.push([nodeId, width, height]),
         // The real hands group through `applyGroupSelection`, which is the canvas's own rule and tested
         // where it lives; what these have to answer is only what the tool reports back.
@@ -600,6 +617,16 @@ describe("stop_node: ending a run", () => {
 const placed = (id: string, type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData => ({ ...node(type, metadata), id });
 
 /**
+ * A card at a place and a size, because a move is judged by where the cards sit: membership follows the
+ * rectangle a node lands in (`settleMoveMembership`, docs/decisions.md #316), so a fixture for it has to say
+ * where things are rather than leave every node at the origin.
+ */
+const at = (id: string, type: CanvasNodeData["type"], x: number, y: number, metadata: CanvasNodeMetadata = {}, size = 100): CanvasNodeData => ({ ...node(type, metadata), id, position: { x, y }, width: size, height: size });
+const group = (id: string, x: number, y: number): CanvasNodeData => at(id, "group", x, y, {}, 300);
+const member = (id: string, groupId: string, x: number, y: number): CanvasNodeData => at(id, "text", x, y, { groupId });
+const loose = (id: string, x: number, y: number): CanvasNodeData => at(id, "text", x, y);
+
+/**
  * The settings a run's shape is made of: the size, the length, the seed, the knobs.
  *
  * The tool writes what the node's panel writes and answers with the node's own clause, so what an agent is
@@ -659,9 +686,38 @@ describe("move_node: what a move carries", () => {
     });
 
     test("a plain node moves alone and says so", async () => {
-        const { hands } = handsFor([placed("text-1", "text", { groupId: "group-1" }), placed("group-1", "group")]);
+        // Nothing to join and nothing to leave: no clause at all, so the common answer stays as short as it was.
+        const { hands } = handsFor([loose("text-1", 100, 100)]);
         const { text } = await textOf(hands, "move_node", { nodeId: "text-1", position: { x: 10, y: 20 } });
         expect(text).toBe("moved text-1 (text) to (10, 20)");
+    });
+
+    test("a node dropped on a card says which one it joined", async () => {
+        // A move is the third way to change membership, and the answer is the agent's only view of it.
+        const { hands } = handsFor([group("group-2", 0, 400), loose("text-1", 100, 100)]);
+        const { text } = await textOf(hands, "move_node", { nodeId: "text-1", position: { x: 100, y: 450 } });
+        expect(text).toBe("moved text-1 (text) to (100, 450); joined group-2");
+    });
+
+    test("a member moved from one card onto another names both", async () => {
+        const { hands } = handsFor([group("group-1", 0, 0), member("text-1", "group-1", 100, 100), member("text-2", "group-1", 100, 220), group("group-2", 0, 400)]);
+        const { text } = await textOf(hands, "move_node", { nodeId: "text-1", position: { x: 100, y: 450 } });
+        expect(text).toBe("moved text-1 (text) to (100, 450); left group-1, joined group-2");
+    });
+
+    test("taking a card's last member out removes the card it emptied, and says so", async () => {
+        // #292's rule applied to the third gesture that can empty a group: the shell is debris the move made.
+        const { hands } = handsFor([group("group-1", 0, 0), member("text-1", "group-1", 100, 100)]);
+        const { text } = await textOf(hands, "move_node", { nodeId: "text-1", position: { x: 100, y: 450 } });
+        expect(text).toBe("moved text-1 (text) to (100, 450); left group-1, removed because nothing was left in it");
+    });
+
+    test("a group moved onto another card reports no membership at all", async () => {
+        // Its members travel with it, so the landing cannot hand them over (#316) — and the answer must not
+        // invent a change that did not happen.
+        const { hands } = handsFor([group("group-1", 0, 0), member("text-1", "group-1", 100, 100), group("group-2", 0, 400)]);
+        const { text } = await textOf(hands, "move_node", { nodeId: "group-1", position: { x: 0, y: 400 } });
+        expect(text).toBe("moved group-1 (group) and its 1 member to (0, 400)");
     });
 });
 /**

@@ -25,6 +25,21 @@ import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type 
  * what a node that is not text answers, where an instruction goes. Tests call them directly.
  */
 
+/**
+ * What a move did, as the page can see it: the cards it carried, and every membership its landing changed.
+ *
+ * Membership is one field on a node, so a change is stated as the group left and the group joined — absent on
+ * either end means the canvas itself. A group's members never appear here: they keep the group they travelled
+ * with (#316).
+ */
+export type MoveOutcome = {
+    /** The card the tool named, then everything that travelled with it. */
+    carried: string[];
+    membership: Array<{ nodeId: string; from?: string; to?: string }>;
+    /** The groups this move left with nothing in them, which are gone (#317). */
+    removed: string[];
+};
+
 /** What the page lends a tool: its state to read, the way it makes a node, and the button that runs one. */
 export type CanvasHands = {
     nodes: () => CanvasNodeData[];
@@ -46,7 +61,14 @@ export type CanvasHands = {
     connectNodes: (firstNodeId: string, secondNodeId: string, firstHandleType: "source" | "target") => boolean;
     deleteNodes: (nodeIds: string[]) => void;
     focusNode: (nodeId: string) => void;
-    moveNode: (nodeId: string, position: Position) => void;
+    /**
+     * Move one card, and say what travelled and what the landing did to membership.
+     *
+     * A move is also one of the two ways a node changes groups — dropped on a card it joins it, moved out of
+     * the card it was in it leaves — so the answer is what a tool has to report. A group's own members cannot
+     * change: they travel with the card (#316). Null when the canvas no longer holds the node.
+     */
+    moveNode: (nodeId: string, position: Position) => MoveOutcome | null;
     /** Give one card a new size, the way the end of a corner drag does: the top-left corner stays put. */
     resizeNode: (nodeId: string, width: number, height: number) => void;
     /**
@@ -589,6 +611,11 @@ function focusNode(hands: CanvasHands, args: unknown): ToolAnswer {
  * A group is a box drawn around nodes, so moving one carries its members: the card and what it holds are one
  * thing to move, and a box that travelled alone would be drawn around nothing. The answer says how many came
  * with it, because that is the difference between tidying a group and scattering one.
+ *
+ * A node that travels alone is also how membership changes without the two structure tools — dropped on a card
+ * it joins it, drawn out of the card it was in it leaves — so the answer names that too. The agent's only view
+ * of the canvas is what these answers say, and a node that silently changed groups is one it will reason about
+ * wrongly next call (#317).
  */
 function moveNode(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
@@ -597,10 +624,37 @@ function moveNode(hands: CanvasHands, args: unknown): ToolAnswer {
     if (!position) return { content: [textBlock("move_node needs a position: {x, y} in canvas coordinates")], isError: true };
 
     const corner = { x: Math.round(position.x), y: Math.round(position.y) };
-    const members = node.type === CanvasNodeType.Group ? hands.nodes().filter((candidate) => candidate.metadata?.groupId === node.id) : [];
-    hands.moveNode(node.id, corner);
-    const carried = members.length ? ` and its ${members.length} member${members.length === 1 ? "" : "s"}` : "";
-    return { content: [textBlock(`moved ${node.id} (${node.type})${carried} to (${corner.x}, ${corner.y})`)], isError: false };
+    const done = hands.moveNode(node.id, corner);
+    if (!done) return { content: [textBlock(`nothing was moved: this canvas no longer holds ${node.id}`)], isError: true };
+    // What came along, from the canvas's own rule (`withGroupMembers`): the card named, then its members.
+    const carried = done.carried.length - 1;
+    const carriedClause = carried > 0 ? ` and its ${carried} member${carried === 1 ? "" : "s"}` : "";
+    return { content: [textBlock(`moved ${node.id} (${node.type})${carriedClause} to (${corner.x}, ${corner.y})${moveClause(done.membership, done.removed)}`)], isError: false };
+}
+
+/**
+ * The membership a move changed and the cards it took away, in the answer's own words.
+ *
+ * Stated by group rather than by node, because that is the fact: the moved node is the sentence's subject
+ * already, and "left g1, joined g2" is what a reader does with it. A node that changed nothing gets no
+ * clause, so the common answer stays as short as it was.
+ *
+ * A card the move emptied is deleted (`withoutEmptiedGroups`), and that is said in the same breath as the
+ * leaving — "left g1, removed because nothing was left in it" is one event, not two. Said out loud at all for
+ * the same reason membership is: the agent's picture of the canvas is built from these answers, and a card
+ * that vanishes between two calls without a word is a wrong picture it will act on.
+ */
+function moveClause(membership: MoveOutcome["membership"], removed: string[]): string {
+    const gone = new Set(removed);
+    const left = [...new Set(membership.filter((change) => change.from && change.from !== change.to).map((change) => change.from as string))];
+    const joined = [...new Set(membership.filter((change) => change.to && change.to !== change.from).map((change) => change.to as string))];
+    const parts = left.map((groupId) => (gone.has(groupId) ? `left ${groupId}, removed because nothing was left in it` : `left ${groupId}`));
+    if (joined.length) parts.push(`joined ${joined.join(", ")}`);
+    // A group emptied without the moved node leaving it cannot happen today (a card travels with its members);
+    // kept so the sentence still holds if some future move empties one another way.
+    const besides = removed.filter((groupId) => !left.includes(groupId));
+    if (besides.length) parts.push(`removed ${besides.join(", ")}, which the move left empty`);
+    return parts.length ? `; ${parts.join(", ")}` : "";
 }
 
 /**
