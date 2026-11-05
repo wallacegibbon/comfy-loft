@@ -7174,66 +7174,44 @@ resource rows and a hidden workflow beside two enabled ones were screenshotted b
 
 ## 203. A prompt is said once: the box or the text node, never both
 
-**Decision** The always-on canvas prompt gains a fourth rule — *a node's own prompt is the user's words; a
-text node connected to it is an input, and its words are added to that prompt when the node generates; so
-when a text node already holds what a node needs, leave that node's own prompt empty and connect it* — and
-`connect`'s description gains the mechanism rather than the policy: "a text node's words are added to the
-target's own prompt when it generates, so a target that already says them in its own prompt would say them
-twice". The agent's own `connect` and `set_prompt` answers then name the state, in the same reply that made
-it: `… already says text-…'s words in its own prompt, so generating it would send them twice — clear it with
-set_prompt ""`. One helper computes that (`repeatedConnectedText` in `canvas-node-generation.ts`, which is
-the module that already knows what feeds a node), and two call sites ask it.
+**Decision** The always-on canvas prompt gains a fourth rule — *a node's own prompt is the user's words; a text node
+connected to it is an input, and its words are added to that prompt when the node generates; so when a text node
+already holds what a node needs, leave that node's own prompt empty and connect it* — and `connect`'s description
+gains the mechanism rather than the policy: "a text node's words are added to the target's own prompt when it
+generates, so a target that already says them in its own prompt would say them twice". The agent's own `connect` and
+`set_prompt` answers then name the state, in the reply that made it: `… already says text-…'s words in its own
+prompt, so generating it would send them twice — clear it with set_prompt ""`. One helper computes that
+(`repeatedConnectedText`, in the module that already knows what feeds a node) and two call sites ask it.
 
-**Why** Because the agent re-made the bug #185 removed from the UI. The canvas `3df8b7a65088` still holds the
-evidence: `canvas_read_node` + `canvas_list_nodes` (one text node), then three `canvas_create_node` calls
-carrying `"prompt": "宫崎骏吉卜力风格插画：一片纯净茂密的森林全景"` — the text node's words, copied in at
-creation — then three `canvas_connect` from the text node, then three `canvas_generate`. The saved nodes keep
-both halves: `prompt` is those words and `sentPrompt` is `宫崎…\n\n【Text 1】\n宫崎…`, so every picture was
-asked for the same thing twice. It was not doubt that made it copy: its reasoning says "That's fine—since the
-text node is connected to the image node, the content will flow through the connection", so it believed the
-copy was harmless. #185 decided this exact rule ("the box is the node's own content, the connection is an
-input") and its Where list named only frontend files: the UI stopped copying, and the half of the system that
-*writes* through tools was never told.
+**Why** Because the agent re-made the bug #185 removed from the UI. Canvas `3df8b7a65088` holds the evidence:
+`read_node` + `list_nodes` (one text node), three `create_node` calls carrying `"prompt": "宫崎骏吉卜力风格插画：一片
+纯净茂密的森林全景"` — the text node's words, copied in at creation — three `connect`, three `generate`. The saved
+nodes keep both halves: `prompt` is those words and `sentPrompt` is `宫崎…\n\n【Text 1】\n宫崎…`, so every picture was
+asked for the same thing twice. It was not doubt that made it copy: its reasoning says "That's fine—since the text
+node is connected to the image node, the content will flow through the connection", so it believed the copy was
+harmless. #185 decided this exact rule and its Where list named only frontend files: the UI stopped copying, and the
+half of the system that *writes* through tools was never told.
 
-**Why not a skill** A skill is activated by reading it, and this agent read nothing: its first move was a tool
-call. The rule has to be true from the first token, which is what `canvasInstructions` is for (#183, #184);
-`h3-prompt-writing` is the opposite case — deep reference material that one task needs and no other.
+**Why not a skill** A skill is activated by reading it, and this agent read nothing: its first move was a tool call.
+The rule has to be true from the first token, which is what `canvasInstructions` is for (#183, #184);
+`h3-prompt-writing` is the opposite case — deep reference for one task and no other.
 
-**Why a note and not a refusal, and why not a silent rewrite** The canvas allows this state: a user can drag a
-text node into a node whose box already says the same words, and #185's test deliberately keeps that
-composition "still appended when the box repeats the words". A tool that refused would be a second policy
-dressed as a tool (the tools do what the buttons do), and one that cleared the box would be the canvas
-guessing intent — #185 already refused the first half of that. The note is the honest third option: the
-connection is made, and the agent is told what it built while it can still undo it. `create_node` and
-`generate` were left alone on purpose — a new node has no connections, so the mistake cannot be created there,
-and a third copy of the same sentence is sediment.
+**Why a note and not a refusal, and not a silent rewrite** The canvas allows this state: a user can drag a text node
+into a node whose box already says the same words, and #185's test deliberately keeps that composition "still
+appended when the box repeats the words". A tool that refused would be a second policy dressed as a tool, and one
+that cleared the box would be the canvas guessing intent. The note is the honest third option: the connection is
+made, and the agent is told what it built while it can still undo it. `create_node` and `generate` were left alone on
+purpose — a new node has no connections, so the mistake cannot be created there, and a third copy of the same
+sentence is sediment.
 
-**Cost** The duplication is discouraged, not impossible: a model that ignores the note still sends the doubled
-request, and the user sees it in the box. The check is exact after trimming — an input whose words merely
-appear inside a longer prompt is not flagged — so a copy that reworded the words as it copied is missed; the
-other way round would fire on correct work. Two answers are longer by one clause.
+**Cost** Discouraged, not impossible: a model that ignores the note still sends the doubled request, and the user
+sees it in the box. The check is exact after trimming — an input whose words merely appear inside a longer prompt is
+not flagged — so a copy that reworded the words as it copied it is missed, which is the right way round: the other
+direction would fire on correct work. Two answers are one clause longer.
 
-**Tested** Go: `TestAgentSpawnCarriesTheCanvasRule` now requires the fourth rule in the system prompt and the
-mechanism clause in `connect`'s description. Frontend: four cases in
-`tests/canvas-generation-context.test.ts` — the repeated text is named, only the exactly-repeated one of two
-is named, a mention inside a longer sentence is not, and nothing when nothing is connected or the prompt is
-empty. `npm run check` (zh 845 / en 831, exports 168, prettier, `tsc --noEmit`), `npx vitest run` (22 files,
-169 tests), `npm run build`, `make check`. In the browser, with the real agent: a `/tmp/verify` copy on
-8191/3011, its own data directory and its own `AGENT_CONFIG_PATH`, and a canvas seeded with one text node
-holding those words. **Turn one** ("根据画布上的 Text 节点生成一张图片"): `canvas_list_nodes`, then
-`canvas_create_node` with `{"position":{…},"type":"image"}` — **no `prompt` at all** — then `canvas_connect`,
-then `canvas_generate`; the saved node is `prompt: ""` with `sentPrompt: "【Text 1】\n宫崎骏吉卜力风格插画：一片
-纯净茂密的森林全景"`, so the words travelled once, as the connection, and the picture came out. **Turn two**,
-asking for the mistake on purpose ("把 Text 节点里的文字也写进这张图的提示词里"): the tool answered
-`the prompt of image-… is now: 宫崎…; note: image-… already says text-…'s words in its own prompt, so
-generating it would send them twice — clear it with set_prompt ""`, and the agent's reply repeated that in its
-own words with the two ways out (drop the connection, or clear the box). Nothing refused, nothing rewritten.
-
-**Where** `internal/server/agent_instructions.go`, `internal/server/routes_mcp.go`,
-`internal/server/mcp_test.go`, `frontend/src/components/canvas/canvas-node-generation.ts`,
-`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
-`frontend/tests/canvas-generation-context.test.ts`, `docs/server.md`.
-
+**Where** `frontend/src/lib/canvas/canvas-node-generation.ts` (`repeatedConnectedText`),
+`frontend/src/lib/canvas/canvas-agent-tools.ts` (`connect`, `set_prompt`),
+`internal/server/agent_instructions.go`, `internal/server/mcp_test.go`, `frontend/tests/canvas-generation-context.test.ts`.
 
 ## 204. The viewport follows what the answer is about
 
@@ -7951,74 +7929,51 @@ with `bin/comfyloft-mcp` removed → exit 1 with the sentence above. The script 
 
 ## 227. A node remembers the run that made it: the workflow, and when it finished
 
-**Decision** A node's metadata carries two more facts about its own content — `workflow` (the gateway's id
-for what ran: `image-z-image-turbo`) and `generatedAt` (the instant that run finished, ISO 8601 in UTC,
-kept verbatim). They are written when the run's file becomes the node's content, and erased while a node's
-picture is being replaced by a new run — the old one is gone, and the run that made it describes nothing.
+**Decision** A node's metadata carries two facts about its own content — `workflow` (the gateway's id for what ran:
+`image-z-image-turbo`) and `generatedAt` (the instant that run finished, ISO 8601 UTC, kept verbatim). They are
+written when the run's file becomes the node's content, and erased while a picture is being replaced by a new run:
+the old one is gone, and the run that made it describes nothing.
 
-The facts ride on the *artifact* rather than being passed to each node patch. `Run` already answers both —
-`workflow` and `finished_at` — so `factsOf(run)` (`services/api/runs.ts`) puts them on what
-`generatedImage` / `generatedVideo` / `generatedAudio` return, and the three metadata builders
-(`imageMetadata`, `videoMetadata`, `audioMetadata`) turn them into node fields. Every path from a finished
-run to a node goes through those two places: a live run, a batch fill, an in-place regeneration, a resumed
-poll after a reload, a retry, an inpaint or upscale child. A picked file, a crop, a mask: no run on the
-artifact, and the fields are simply absent.
+The facts ride on the *artifact*, not on each node patch. `Run` already answers both, so `factsOf(run)`
+(`services/api/runs.ts`) puts them on what `generatedImage` / `generatedVideo` / `generatedAudio` return, and the
+three metadata builders turn them into node fields. Every path from a finished run to a node goes through those two
+places: a live run, a batch fill, an in-place regeneration, a resumed poll after a reload, a retry, an inpaint or
+upscale child. A picked file, a crop, a mask: no run on the artifact, and the fields are absent.
 
-The canvas tools then say it, in one place: `generationClause(metadata)`
-(`lib/canvas/node-generation-facts.ts`) returns `made 2026-11-03T13:09:19.928Z with image-z-image-turbo`.
-`list_nodes` puts it on the node's line, before the prompt; `read_node` ends its answer with it. The node
-information dialog shows the same two facts as rows, and the timestamp there is rendered in the reader's
-own clock — a person is looking at their own machine, a model is not.
+The tools then say it in one place: `generationClause(metadata)` returns `made 2026-11-03T13:09:19.928Z with
+image-z-image-turbo`. `list_nodes` puts it on the node's line before the prompt, `read_node` ends its answer with it,
+and the node information dialog shows the same two facts as rows — rendered in the reader's own clock there, because
+a person is looking at their own machine and a model is not.
 
-**Why** A node held everything about a picture except what made it and when. `metadata.model` was there but
-unreachable through any tool, and held the *pick* (`default::image-z-image-turbo`), which the settings can
-rename or delete after the fact. There was no time anywhere on the node at all.
+**Why** A node held everything about a picture except what made it and when. `metadata.model` was unreachable through
+any tool and held the *pick* (`default::image-z-image-turbo`), which the settings can rename or delete afterwards,
+and there was no time anywhere on the node.
 
-The time was recoverable in principle, and every route was worse than writing it down. The run record has
-it (`createdAt`, `startedAt`, `completedAt`) but is pruned (`TASK_RETENTION_DAYS`, `MAX_STORED_TASKS`) and
-names only `object: "image"` — no node — so a run cannot be traced back to what it drew. The output file's
-name carries the run id (`files/task_<id>.png`) and its mtime is the moment it was written, which is a
-derivation through two accidents; `imageRunId` is cleared when the image lands, so even that link is gone
-for pictures (video keeps `videoTaskId`). The canvas's `updatedAt` is the whole document. The node id's
-leading number is when the *node* was created — a node re-run in place keeps its id, so it answers a
-different question. And the agent has no HTTP path to `/api/runs` at all: its tools are the canvas ones.
+The time was recoverable in principle, and every route was worse than writing it down. The run record has it but is
+pruned (`TASK_RETENTION_DAYS`, `MAX_STORED_TASKS`) and names only `object: "image"` — no node — so a run cannot be
+traced to what it drew. The output file's name carries the run id and its mtime is when it was written: a derivation
+through two accidents, and `imageRunId` is cleared when the image lands, so even that link is gone for pictures
+(video keeps `videoTaskId`). The canvas's `updatedAt` is the whole document. The node id's leading number is when the
+*node* was created, and a node re-run in place keeps its id — a different question. And the agent has no HTTP path to
+`/api/runs`: its tools are the canvas ones. So an agent asked "which model drew this, and when" could only guess from
+the prompt, and the honest answer was "I cannot tell" — worst exactly where it mattered, on a canvas with a dozen
+pictures from three models.
 
-So an agent asked "which model drew this, and when" could only guess from the prompt, and the honest answer
-was "I cannot tell". Worse for the case that made this worth fixing: a canvas with a dozen pictures from
-three models, where the question is precisely *which* of them drew the one under discussion.
+**Cost** One optional field on the two artifact types, two on `CanvasNodeMetadata`, and one `NO_MAKER` patch
+(`{workflow: undefined, generatedAt: undefined}`) where a node forgets its maker. The `list_nodes` line grows by
+about fifty characters per generated node — accepted, because the alternative is a `read_node` per node, and that
+answer carries the picture's bytes.
 
-**Cost** One optional field on the two artifact types, two optional fields on `CanvasNodeMetadata`, and one
-`{workflow: undefined, generatedAt: undefined}` patch (`NO_MAKER`) where a node forgets its maker. The
-`list_nodes` line grows by about fifty characters per generated node — accepted, because the alternative is
-a `read_node` per node, and that answer carries the picture's bytes.
+**What this does not cover** A text node's answer is not a run (its own agent writes it), so it has no `generatedAt`
+and keeps `model` alone. Nodes written before this have neither field and their tools say nothing about a maker:
+there is no backfill, and inventing one from the filename would put a guess where every other fact here is a record.
+The one other way a node's content could change without a run — the user putting their own file into an existing node
+— no longer exists (#228), which is also why `model` no longer has to be scrubbed from a clip or a sound a picked
+file replaced.
 
-What this does not cover: a text node's answer is not a run (its own agent writes it), so it has no
-`generatedAt`; it keeps `model` and nothing else. Nodes written before this decision have neither field and
-their tools say nothing about a maker — there is no backfill, and inventing one from the filename would put
-a guess where every other fact here is a record. The one other way a node's content could once change
-without a run — the user putting their own file into an existing node — no longer exists (#228), which is
-also why `model` no longer has to be scrubbed from a clip or a sound that a picked file replaced.
-
-**Tested** `frontend/tests/api-runs.test.ts`: `factsOf` — the workflow with `finished_at`, the `created_at`
-fallback, nothing for a run that names no workflow, nothing for one with no time; the artifact carries the
-two facts; and the seam — a finished run through `generatedImage`, `imageMetadata` and `generationClause`
-comes out as `made 2026-11-03T13:09:19.928Z with audio-minimax-music-3`, which is the sentence the two
-tools print. `frontend/tests/canvas-node-metadata.test.ts`: all three builders stamp both fields from the
-artifact's run, and a file nothing made has neither. `frontend/tests/node-generation-facts.test.ts` (4):
-both facts, workflow alone, time alone, and nothing at all for a node nothing made (or another node's empty
-strings). `npx vitest run` (222), `npm run check`, `npm run build`, `make check`, `go test ./internal/...`.
-Not exercised against a live gateway in a browser: the wire was already carrying `workflow` and
-`finished_at`, so what is untested on screen is the two dialog rows and the two tool sentences, and the
-sentences are unit-tested.
-
-**Where** `frontend/src/services/api/runs.ts` (`RunFacts`, `factsOf`),
-`frontend/src/services/image-storage.ts`, `frontend/src/services/file-storage.ts`,
-`frontend/src/lib/canvas/generated-media.ts`, `frontend/src/lib/canvas/canvas-node-factory.ts`,
-`frontend/src/lib/canvas/node-generation-facts.ts`, `frontend/src/types/canvas.ts`,
-`frontend/src/pages/canvas/hooks/{use-canvas-agent-tools,use-generation-runs}.ts`,
-`frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`, the two locales,
-`internal/server/routes_mcp.go` (the two tool descriptions).
-
+**Where** `frontend/src/services/api/runs.ts` (`factsOf`), `frontend/src/lib/canvas/node-generation-facts.ts`
+(`generationClause`), `frontend/src/lib/canvas/{generated-media,canvas-agent-view,canvas-agent-tools}.ts`,
+`frontend/src/types/canvas.ts`, `frontend/tests/api-runs.test.ts`.
 
 ## 228. A file enters the canvas as a node, never into a node
 
@@ -8208,6 +8163,7 @@ and removing them touches how a node takes pointer events. A separate decision.
 **Where** `frontend/src/lib/canvas/{builtin-nodes,node-prompt-field,canvas-agent-view}.ts`,
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/pages/canvas/hooks/use-node-generation.ts`,
 `frontend/src/components/canvas/panels/`, `internal/server/{routes_mcp.go,agent_instructions.go}`.
+
 
 ## 232. The node definition loses the flags nothing set
 
@@ -8472,6 +8428,7 @@ them a cache:
 **Where** `frontend/src/lib/markdown.ts`, `frontend/src/components/canvas/agent-markdown.tsx`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/tests/markdown.test.ts`.
 
+
 ## 238. Stopping is a choice: the queued words can outlive the task
 
 **Decision** A cancel carries AlayaCore's optional `keep_steering` argument, and the panel offers the choice
@@ -8567,6 +8524,7 @@ default and one line to change if a server is ever found where it is not.
 
 **Where** `frontend/src/lib/{wav.ts,canvas/agent-dictation.ts}`, `frontend/src/components/canvas/canvas-agent-panel.tsx`,
 `internal/server/routes_speech.go`, `docs/server.md`.
+
 
 ## 240. The binary is `comfyloft-server`, and nothing is called a gateway any more
 
@@ -8805,6 +8763,7 @@ the section asks the server once when it opens.
 
 **Where** `internal/server/routes_speech.go`, `internal/store/` (the key file this entry introduced),
 `frontend/src/components/settings/`, `docs/server.md`.
+
 
 ## 247. Sweep after #246: two gates the rename left red, a silent error, a map nobody read
 
@@ -9378,8 +9337,8 @@ loading and the types.
 
 ## 259. A music run is told how long it may be
 
-**Decision** The audio settings panel has a duration control whenever the selected workflow declares a range for
-one, and `requestAudioGeneration` sends that number as `seconds`. The bounds come from the workflow's declaration
+**Decision** The audio settings panel has a duration control whenever the selected workflow declares a range for one,
+and `requestAudioGeneration` sends that number as `seconds`. The bounds come from the workflow's declaration
 (`parameters[].duration`, 4–360 s for `audio-minimax-music-3`), carried on the model entry as `duration: {min, max}`;
 the node keeps the value in `metadata.seconds` (where a video's length already lives) and the config field is
 `audioSeconds`, defaulting to 60.
@@ -9388,54 +9347,31 @@ the node keeps the value in `metadata.seconds` (where a video's length already l
 `max_duration: 60` whatever the panel said — the workflow could be told 4 to 360 seconds and only the registry knew
 it. Everything downstream was already there: `bindings.duration` reads `ctx.Seconds` into `37:13.max_duration`,
 `routes_runs.go` builds `ctx.Seconds` from `inputs.seconds` (falling back to `inputs.duration`), and
-`internal/workflow/shipped_audio_test.go` pins both the 45-second and the 60-second-default paths. The gap was one
-missing input on one request.
+`shipped_audio_test.go` pins both the 45-second and the default paths. The gap was one missing input on one request.
 
 **Why the bounds come from the registry rather than a constant** `VIDEO_SECONDS_MIN/MAX` (4–30) are constants because
-every video workflow is the same shape of clip; a song is not, and 4–360 is this model's own ceiling, not a fact about
-audio. A client that hardcodes it would need editing when a longer music workflow arrives, and would offer 360 seconds
-to a workflow that stops at 30. So `durationOf` in `server-models.ts` reads the declaration once, when the model list is
-built, and everything else — the slider, the number box, the request — reads those bounds. The step is the exception:
-the declaration's is 0.04 s (1/25, the latent's grid) and the UI rounds to whole seconds, because this number is an
-upper bound the model may finish under and nobody reads a song length to a hundredth.
+every video workflow is the same shape of clip; a song is not, and 4–360 is this model's own ceiling, not a fact
+about audio. A hardcoded range would need editing when a longer music workflow arrives, and would offer 360 seconds
+to a workflow that stops at 30. So `durationOf` in `server-models.ts` reads the declaration once, when the model list
+is built, and the slider, the number box and the request all read those bounds. The step is the exception: the
+declaration's is 0.04 s (1/25, the latent's grid) and the UI rounds to whole seconds, because this number is an upper
+bound the model may finish under.
 
 **Why the declaration is also the switch** A workflow that declares no duration gets no control and is sent no
-`seconds` — its binding default answers, and the client does not invent a length for a workflow whose inputs it has
-not been told about. That is the same rule as the rest of the panel: what the panel shows, the run receives.
+`seconds` — its binding default answers, and the client does not invent a length for a workflow whose inputs it was
+not told about. That is the same rule as the rest of the panel: what the panel shows, the run receives.
 
-**Cost** `defaultConfig.audioSeconds` is `"60"`, a copy of the value the binding writes when the request says nothing,
-so the control opens showing what the first run will actually ask for. If the registry's default changed, the client
-would keep sending 60 — visible on the panel before the run, not a silent substitution. A node that has never been
-touched has no `metadata.seconds`, so the agent's `read_prompt` reports the workflow without a length until the user
-picks one (a video node behaves the same way). The panel and `buildGenerationConfig` both read `metadata.seconds`
-for `audioSeconds`, so an audio node's length also lands in `videoSeconds` and vice versa — the two are only ever read
-by the kind of node that owns them.
+**Cost** `defaultConfig.audioSeconds` is `"60"`, a copy of the value the binding writes when the request says
+nothing, so the control opens showing what the first run will ask for; if the registry's default changed, the client
+would keep sending 60 — visible on the panel before the run, not a silent substitution. A never-touched node has no
+`metadata.seconds`, so `read_prompt` reports the workflow without a length until the user picks one (a video node
+behaves the same way). The panel and `buildGenerationConfig` read `metadata.seconds` for both `audioSeconds` and
+`videoSeconds`, so an audio length lands in `videoSeconds` too and vice versa — each is only read by the kind of node
+that owns it.
 
-**Tested** `npx vitest run` (368: `tests/audio-duration.test.ts` posts 90 s for a 4–360 workflow, clamps a stored
-600 to 120 for a 4–120 one, sends no `seconds` at all for a workflow that declares none, and keeps the lyrics and the
-container beside it; `clampAudioSeconds` at both ends, on a fractional value, and on a value that is not a number;
-`tests/server-models.test.ts` takes the range from the `duration` declaration, ignores a non-numeric one, and the
-signature changes when the range does). Against the live server (no render):
-`GET /api/workflows` reports `duration 4–360`, and `GET /api/workflows/audio-minimax-music-3/schema` lists `seconds`
-as an accepted number input. The end-to-end wiring — `seconds` → `ctx.Seconds` → `max_duration` — is
-`TestShippedMusicWorkflowBindsCaptionAndLyrics`, which reads the same `registry.json` the server loads.
-
-The panel itself was rendered, not just type-checked: `renderToStaticMarkup` of `AudioSettingsPanel` in a throwaway
-`tests/tmp-render-audio.test.ts` (node environment, `createElement` because vitest here only collects `.test.ts` and
-the file had no DOM) printed the Format pills, a range and number box at 4–360 with the stored `999` clamped to
-`360`, the `s` suffix, the hint with both bounds filled in, and the lyrics box — in both locales (`格式`/`时长`/
-`4–360 秒的上限；模型可能提前结束`/`歌词` and the English ones) — and no voice or speed group; with a model that
-declares no range, the duration group is absent. Deleted afterwards, so this is a check that was run rather than a
-test that stays: the repository has no component test and this entry does not start the pattern.
-
-**Where** `frontend/src/lib/server-models.ts`, `frontend/src/stores/use-config-store.ts`,
-`frontend/src/services/api/audio.ts`, `frontend/src/components/audio-settings-panel.tsx`,
-`frontend/src/components/canvas/canvas-audio-settings-popover.tsx`,
-`frontend/src/components/canvas/canvas-node-prompt-panel.tsx`,
-`frontend/src/lib/canvas/{canvas-generation-helpers,canvas-node-factory,node-settings-memory}.ts`,
-`frontend/src/lib/audio-generation.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts` (`settingsPanels.audio.seconds`),
-`frontend/tests/{audio-duration,server-models}.test.ts`.
-
+**Where** `frontend/src/components/settings/audio-settings-panel.tsx`,
+`frontend/src/lib/canvas/{server-models.ts,build-generation-config.ts}`,
+`frontend/src/services/api/audio.ts`, `frontend/tests/{audio-duration,server-models}.test.ts`.
 
 ## 260. The audio panel has no voice and no speed
 
