@@ -1,49 +1,16 @@
 # The server protocol
 
-Status: **landed.** Every media type, every canvas node and every tool action is on this protocol, and
-`/v1/*` is gone from the server. What is left of the migration notes below is the record of why the
-shape looks like this.
+Status: **landed, and `/v1/*` is gone** (decisions #69). Every media type, every canvas node and every tool
+action submits a run; there is no second way to produce media. What the migration left behind is the shape:
 
-> Since #156 a run belongs to a canvas and the canvas owns the media: submission is
-> `POST /api/canvases/{id}/runs`, an upload lands in that canvas, and an artifact is served out of it.
-> The routes in this document are the canvas-scoped ones; the shape of a run is unchanged.
-
-- Done: one execution core (`internal/server/runs.go`) over the task store. Video and audio both
-  submit through it; an audio request is now a queued run that the `/v1/audio/speech` adapter waits
-  on, so the song survives a dead connection, is listed in `GET /api/runs`, and keeps its ComfyUI
-  error code and details when it fails.
-- Done: the media half of the contract is data. `accepts` / `frameMode` / `mode` /
-  `promptInject` / `promptReorder` / `sourceVideoFrames` live in `registry.json` and are resolved by
-  `workflow.PlanMedia`; no handler mentions a workflow id any more. `outputs.formats` declares the
-  containers a workflow's encoder can write (mp3/V0, flac, opus/128k), so the audio adapter no longer
-  hardcodes them.
-- Done: submit, status, outputs, preview and cancel exist with the shape below — media referenced by
-  id and role, one row per artifact (a batch image request returns several). Audio is already an
-  adapter on the same execution path.
-- Done: `inputs` is typed and checked at submission (closed key set, types, ranges, `required`,
-  output container), with `GET /api/workflows/{id}/schema` publishing the same contract.
-- Done: the server no longer decides what belongs in a model list. A workflow is a workflow; the
-  canvas — the only client — offers the ones with a prompt as models and drives the rest from the
-  buttons that supply their media. Every workflow is reported by the availability scan, so a missing
-  node behind a tool is as visible as one behind a model.
-- Done: **the canvas's audio, image and video nodes use this protocol.** They submit a run, keep its
-  id on the node, drive the step ring from the run's own progress, resume polling after a reload, and
-  cancel the run when the user stops it. An image batch is one run with `count`, so its outputs are
-  one artifact list instead of N parallel requests — and a reload fills the batch's placeholders from
-  that run instead of asking for the images again.
-- Done: **the canvas's video nodes use this protocol too.** The workflow's mode decides which media
-  a request carries (`first_frame` / `last_frame` / `reference` + `video` + `audio`) and `frameMode`
-  says which frames a request supplies. The live preview frame is part of the run payload, so a
-  generating node no longer reads a second endpoint to show one.
-- Done: the canvas's *tool* actions that produce media are runs too — video upscale, image upscale,
-  the multi-angle re-render and frame interpolation (`video-rife`: one clip in, one clip out).
-- Done: **`/v1/models` is gone.** `GET /api/workflows` carries the model ids each workflow answers to
-  (`models: [{id, label, baseModel, baseModelLabel, imageInputs}]`), because an id like `img-zit-int8`
-  is a spelling the server builds and resolves. The canvas builds its picker from that list and
-  filters it itself (buttons vs models, enabled, available).
-- Done: **`/v1/*` is empty — the adapters are deleted**, with their request shapes, their helpers and
-  their tests. `POST /api/canvases/{id}/runs` is the only way to produce media; the prompt services and
-  the two in-flight helpers (`previews`, `progress`) are what remains beside it.
+- One execution core over the task store. Video, audio, image and every tool action submit through it.
+- Media type is **data**, not routing: `accepts` / `frameMode` / `mode` / `promptInject` / `promptReorder` /
+  `sourceVideoFrames` live in `registry.json` and are resolved by `workflow.PlanMedia`; no handler names a
+  workflow id, and `outputs.formats` declares the containers an encoder can write.
+- `inputs` is typed and checked at submission, with `GET /api/workflows/{id}/schema` publishing the same
+  contract (see "What a run may carry, exactly").
+- The canvas is the only client: it submits, keeps the run id on the node, drives the step ring from
+  `progress`, resumes polling after a reload, and cancels when the user stops it.
 
 **One user action may be several runs.** Raising a clip's frame rate is two GPU jobs (generate, then
 interpolate), so it is two runs — the canvas chains them, exactly as its "interpolate" button always
@@ -93,8 +60,9 @@ Every write names its canvas, and the two read paths for bytes are files of that
 | `GET` | `/api/canvases/{id}/files/{name}` | The bytes of one file: an upload, or a finished run's artifact. Cacheable for good — a name is written once. |
 | `POST` | `/api/canvases/import` | One exported canvas archive (a zip: `canvas.json`, `manifest.json`, `files/<name>`) in, one canvas out. The files keep the names the document uses, so nothing is rewritten. |
 
-`/health`, `/api/canvases*`, `/api/settings`, `/api/resources/*`, `/api/system/*` are the rest of the
-surface; they manage the server and the workspace, they do not run workflows
+`/health`, `/api/canvases*`, `/api/settings`, `/api/loras`, `/api/resources/*`, `/api/system/*`,
+`/api/speech/*` and `/api/agent/*` are the rest of the surface: they manage the server, the workspace, the
+resource packs, dictation and the conversation. None of them runs a workflow except by submitting a run
 ([`server.md`](server.md) lists them all).
 
 ## Submitting a run
@@ -219,7 +187,10 @@ against it **at submission**, so a mistake is a `400` now rather than a failed r
 The list is assembled from three sources, so no workflow has to restate it:
 
 1. Request-level keys: `prompt` (required whenever the workflow has a prompt binding), `negative`,
-   `size`, `count`/`n`, `quality`, `seconds`/`duration`, `mode`.
+   `size`, `quality`, `seconds`/`duration`, `mode`. There is **no batch key**: `count` and `n` are refused
+   with `unknown_input`, and N pictures are N runs. `negative` is added only for a workflow whose graph has a
+   negative text encoder (`image-qwen21`, `image-moss-*`) — nine of the thirteen shipped graphs wire
+   `ConditioningZeroOut` or have no second encoder, and asking them for one is a `400` (decisions #275).
 2. The workflow's declared `parameters` (`seed`, `steps`, `cfg`, `sampler`, …), whose ranges are
    authoritative.
 3. Every remaining non-media binding key that a caller can actually set — one addressed by its own
@@ -283,41 +254,16 @@ id exists to remove.
 - A missing model or node is caught by the availability scan before submission; a run that still
   fails records the ComfyUI error (code, message, details) on the run.
 
-## What this replaces
+## What the `/v1` bodies became
 
-| Today | Target |
-| --- | --- |
-| `/v1/images/generations`, `/v1/images/edits`, `/v1/images/upscale` (gone) | one `POST /api/canvases/{id}/runs` with `inputs` + `media` |
-| `/v1/models` (gone) | `GET /api/workflows`, then the client decides what to offer |
-| `/v1/videos`, `/v1/videos/{id}`, `/{id}/content`, `/{id}/cancel` (gone) | the same `run` endpoints |
-| `/v1/audio/speech` (gone) | the same `run` endpoints |
-| `/v1/videos/interpolate` (gone) | a run of the `video-rife` workflow |
-| `mode`, `vquality`, `resolution_name`, `params` (JSON string) | declared `inputs` in the schema |
-| field names that must contain `image`/`frame` | explicit media roles |
-| `entry.ID == "video-h3-…"`, `image-qwen21`, `image-moss-*` branches in handlers | `accepts` / `inputs` / `outputs` in `registry.json` |
-| base64 bodies, `/{id}/content`, a server-wide `/files/{name}` | one file route per canvas: `GET /api/canvases/{id}/files/{name}` |
+The adapters are deleted; what is worth keeping from them is the shape their callers knew. `/v1/videos`'s
+`params` JSON string is now `inputs`, and a form field named `image[]` is now `media: {reference: [id]}`.
+The full mapping, endpoint by endpoint, is decisions #69 — it is history, not contract.
 
-The adapters were deleted one node type at a time, so no step left the canvas without a working path.
-What is worth keeping from them is the shape of the request they accepted: a caller who knew
-`/v1/videos`'s `params` JSON string now sends `inputs`, and a caller who knew a form field named
-`image[]` now sends `media: {reference: [id]}`.
+## Migration, as it happened
 
-## Migration order
+Four phases, each leaving the repository runnable and `make check` green: the execution core; the registry as
+data; the run routes with the canvas moving node type by node type; and the deletion of the adapters with their
+shapes, helpers, tests and docs (#69). Then #156 put runs and uploads under a canvas — `POST /api/runs` and
+`POST /api/uploads` were that phase's routes and are gone.
 
-1. **Execution core** (this step): one submission path over the existing task store; audio and
-   video both use it, audio stops being a blocking generation. Existing routes keep working as
-   adapters.
-2. **Registry as data**: `accepts` / `inputs` / `outputs` + one validator; delete every hardcoded
-   workflow-id branch from the handlers.
-3. **Runs and uploads**: the run routes land next to the adapters; the canvas moves node type by
-   node type — audio, then image, then video, then the tool actions (upscale, angle, interpolate).
-   All of them are on runs now.
-4. **Deletion**: adapters, `/v1/*`, dead fields, dead tests, and the docs that described them. Done —
-   see decisions #69.
-
-A later move is not in this list because it is not part of the /v1 migration: #156 put the runs and
-uploads under a canvas. `POST /api/runs` and `POST /api/uploads` were that phase's routes and are
-gone; every request above now names its canvas, and an artifact is a file in it.
-
-Every phase leaves the repository runnable and `make check` green. Nothing in a later phase
-depends on a half-finished earlier one.

@@ -372,6 +372,9 @@ Workspace:
 | `DELETE` | `/api/canvases/{id}` | Delete it, and everything under it. |
 | `GET` | `/api/settings` | The workspace preferences: one document, opaque to the server. |
 | `PUT` | `/api/settings` | Replace them. `{settings: {...}}`. |
+| `GET` | `/api/speech/profiles` | The speech servers dictation can use: `{profiles: [{id, name, url, model, hasKey}], active}`, never a key (decisions #252). |
+| `PUT` | `/api/speech/profiles` | Write the whole list back — the page's order, so a missing entry is a deleted profile. An entry without a `key` field keeps the stored one; `""` removes it. |
+| `POST` | `/api/speech/transcriptions` | One recording in, `{text}` out. Names no server: the active profile's address, model and key are used, so a form field cannot redirect the audio (decisions #239, #252). |
 
 The canvas, when `WEB_DIR` names one — the only endpoints here that are not under `/api`:
 
@@ -630,17 +633,18 @@ configuration validation, resource catalogue validation against the real `resour
 the real workflow graphs (#130), and an end-to-end HTTP test that drives real image
 generation against an in-process fake ComfyUI.
 
-## Intentional differences from the Node server
+## What this server deliberately does not do
 
-- **Runtime pip installs are gone.** The server used to write into the user's venv
-  and regularly corrupted it. `/api/resources/status` now reports `runtimeDeps` and
-  the UI shows the exact command to run instead.
+Each of these was a feature somewhere else, and the reason it is absent is the reason it is worth having
+here.
+
+- **Runtime pip installs.** It wrote into the user's venv and regularly corrupted it. `/api/resources/status`
+  reports `runtimeDeps` and the UI shows the exact command to run instead — see
+  [`runtime-deps.md`](runtime-deps.md).
 - **No remote resource index.** The panel reads `resources.json` only.
-- **Memory is ComfyUI's, not this host's.** The panel used to read `/proc/meminfo` and shell out to
-  `nvidia-smi` on the server's machine; since #99 it reports what ComfyUI says about the machine that
-  actually does the work, and nothing at all when ComfyUI does not answer.
-- **`mainModel.options` ordering** may differ slightly from `localeCompare` in the
-  old build. The option set is identical; only the dropdown order varies.
-- **Bake artifacts** (`type: "bake"`) are never installed. They need a local merge, so the
-  panel shows the exact command (`tools/bake-moss-preset.py`, exposed as `manualCommand` on
-  the resource) instead of a download button.
+- **Memory is ComfyUI's, not this host's.** Since #99 the panel reports what ComfyUI says about the machine
+  that does the work, and nothing at all when ComfyUI does not answer — a workbench whose GPU is on another
+  box must not show its own RAM as if it were the one running the model.
+- **Bake artifacts** (`type: "bake"`) are never installed: they need a local merge, so the panel shows the
+  exact command (`tools/bake-moss-preset.py`, exposed as `manualCommand` on the resource).
+- **No `/v1`, no API key, no remote bind by default.** See `protocol.md` and decisions #69, #110, #19.

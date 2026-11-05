@@ -1,7 +1,9 @@
 # Runtime libraries must be installed by hand
 
 A few things here are **not model files** but Python packages ComfyUI needs at runtime.
-The workbench **will not install them for you**. It used to `pip install` into ComfyUI's
+The workbench **will not install these for you**. (Node packs and model files are a different question and are the
+resource panel's business: `/api/resources/install` does install those, gated by `INSTALL_INTO_COMFY`. This page is
+only about Python packages ComfyUI imports.) It used to `pip install` into ComfyUI's
 Python environment and regularly broke the venv (wrong version, overwritten torch
 dependencies, half-installed builds after a compile failure), so this is now a command
 you run yourself.
