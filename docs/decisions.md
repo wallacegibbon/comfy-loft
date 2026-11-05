@@ -323,6 +323,7 @@ for that work.
 
 **Where** `frontend/package.json`, `frontend/src/components/layout/app-providers.tsx`.
 
+
 ## 19. `COMFYLOFT_SERVER_HOST` is bound as given; there is no `ALLOW_REMOTE`
 
 **Decision** The server listens on whatever `COMFYLOFT_SERVER_HOST` says — loopback or a LAN address — with no
@@ -341,6 +342,7 @@ canvas origin is matched by host, so the wildcard was only ever an accident wait
 
 **Where** `internal/config/config.go`, `internal/httpx/middleware.go` (`sameHostOrigin`),
 `cmd/comfyloft-server/main.go`, `.env.example`, `docs/server.md`.
+
 
 ## 20. Workflow metadata is English in the registry and translated by id in the canvas
 
@@ -576,6 +578,7 @@ looks like coverage.
 
 **Cost** The suite covers pure functions only — viewport focus, thumbnail choice, model selection. There are no
 component or canvas interaction tests, so overlay guards and kit primitives are still verified by hand.
+
 
 ## 27. Cloud mode is deleted, not hidden
 
@@ -2633,6 +2636,7 @@ file's format belongs to AlayaCore.
 
 **Where** `internal/agent/{spawn,wire,run,sessions}.go`, `internal/server/routes_agent.go`, `internal/ws`.
 
+
 ## 76. The prompt recipes are deleted; the agent route is the only one
 
 **Decision** The four `/api/prompts/*` routes, `internal/prompt`'s chat client and its recipes (the H3
@@ -4173,6 +4177,7 @@ second has none and does not need one.
 **Cost** A user holding an arbitrary clip and wanting it bigger has no path. If that becomes a requirement the
 honest way back is a file→file workflow of our own, not this pack.
 
+
 ## 124. The no-VDN path leaves, and takes the last unlicensed pack with it
 
 **Decision** The three `-novdn` workflows, their graph, the LightX2V 8-step LoRA, the SolAttn pack, the
@@ -4230,6 +4235,7 @@ Krea2 — and three of its four weight files existed for this workflow alone.
 **What it costs to say no** 29.92 GiB resident for a second aesthetic, in a pack the resource panel installs
 again in minutes. Z-Image (drafts), Qwen-Image 2.1 (edit, inpaint, outpaint, angle) and MOSS-Image (photoreal)
 do different jobs; Krea2 was the only removable duplicate.
+
 
 ## 126. The node packs are no longer bundled
 
@@ -6325,6 +6331,7 @@ remembering; it is a rule that punishes remembering nothing. The build takes two
 **Cost** Every start touches the filesystem, and a source tree whose mtime moved without its content changing
 rebuilds a bundle that did not need it. Both are cheaper than a stale page.
 
+
 ## 182. The agent can delete a node, and point at one
 
 **Decision** Two more MCP tools, both run by the page with the functions the user's own controls call:
@@ -6868,92 +6875,47 @@ and `npm run build` all pass.
 
 ## 195. The left column has two lists, and the panel opens downward
 
-**Decision** The canvases in the workspace and the nodes in this one are two sections of the left column
-(`CanvasSidePanel`), one at a time, behind a switch at the top of the box. The 1000×760 window that held the
-canvas list (`canvas-manager-dialog.tsx`), its tall card (`canvas-project-card.tsx`) and its one-boolean store
-(`use-canvas-panel-store.ts`) are gone; the column is where a list lives now.
+**Decision** The workspace's canvases and this canvas's nodes are two sections of one left column
+(`CanvasSidePanel`), one at a time, behind a switch at the top; the section is stored
+(`canvas-side-panel-section`) beside the width and the open flag. The 1000×760 `canvas-manager-dialog`, its card
+and its one-boolean store are gone.
 
-- **One column, one surface.** The top bar's grid button opens the column on `canvases`
-  (`openSection`), the panel button opens and shuts it, and the switch inside moves between the two lists. The
-  section is stored (`canvas-side-panel-section`) beside the width and the open flag, so the column comes back
-  the way it was left.
-- **Both lists stay mounted**, the inactive one `hidden`. Switching back finds its search box, its filter and
-  its selection where they were — cheaper and more honest than lifting seven pieces of list state into a store.
-- **A row, not a card.** The list is 220–480px wide: a title, the updated time, a tick for the canvas you are
-  in, and a `⋯` menu with export / rename / delete. The card's three icon buttons became named menu items for
-  the reason the bottom dock became a menu (#188) — at this width, three 12px glyphs was all that fitted.
-- **Delete all became select-all.** The canvases list now has the bar the elements list has: select-all, a
-  count, one action. One button that deletes the whole workspace, in a 280px column, is a trap; the same place
-  is still reached through the same confirmation.
-- **It opens by height, from its top edge.** `height: 0 → calc(100dvh - 140px)` on the box, with the content
-  inside pinned to that full height (`CANVAS_COLUMN_HEIGHT`) so the reveal clips it instead of squashing it.
-  This replaces #98's sideways `translateX` slide, by request. `transform` and `scaleY` are both wrong here,
-  for different reasons: a translate keeps the list's own top edge still and moves the box *through* it, and a
-  scale squashes every row on the way down. `height` also costs nothing outside the box — the panel floats over
-  the canvas (#98), so the board does not reflow.
-- **Nothing paints while it is shut.** At `height: 0` the box's own border and shadow still drew a two-pixel
-  line across the canvas at the top of the column — measured in the browser, 1.6px of it. `overflow: hidden`
-  cannot clip a border, so the box leaves with `visibility: hidden` on a transition *delayed by the animation's
-  own duration*; on the way in the delay is zero, or there would be nothing to grow. `inert` covers the
-  collapsing frames, when the content is still focusable.
-- **The element list's search reads the words a node holds.** It searched `title`, `content` and `prompt`, which
-  was wrong in both directions: it could not find the text in the prompt box the panel shows (`composerContent`,
-  where a node that holds a result keeps its words) while it *did* search `content`, which for a picture is a
-  file name — so "png" matched every image on the canvas. `nodeWords()` sits next to `holdsResult()` in
-  `lib/canvas/node-prompt-field.ts`, which is the module that already knows which field a node's prompt is in. A
-  search that finds nothing now says so: it used to say "no nodes on this canvas", which reads as if the list had
-  lost its contents.
+- **Both lists stay mounted**, the inactive one `hidden`: switching back finds its search box, filter and
+  selection where they were — cheaper and more honest than lifting seven pieces of list state into a store.
+- **A row, not a card** — title, updated time, a tick for the canvas you are in, and a `⋯` menu with export /
+  rename / delete. At 220–480px, three 12px glyphs is all that fits (#188 made the same trade).
+- **Delete all became select-all**: one button that deletes a whole workspace in a 280px column is a trap, and
+  the same place is still reached through the same confirmation.
+- **It opens by height from its top edge** (`height: 0 → calc(100dvh - 140px)`), content pinned to full height
+  so the reveal clips it. A `translateX` keeps the list's top edge still and slides the box *through* it; `scaleY`
+  squashes every row on the way down; `height` costs nothing outside the box because the panel floats over the
+  canvas (#98). This replaces #98's sideways slide, by request.
+- **Nothing paints while it is shut**: at `height: 0` the box's own border still drew 1.6px across the canvas, and
+  `overflow: hidden` cannot clip a border — so it leaves with `visibility: hidden` on a transition delayed by the
+  animation's duration (zero on the way in, or there would be nothing to grow), and `inert` covers the collapsing
+  frames.
+- **The elements list's search reads the words a node holds** (`nodeWords()` in `node-prompt-field.ts`). It
+  searched `content`, which for a picture is a file name — so "png" matched every image — and missed
+  `composerContent`, the box the panel actually shows. A search that finds nothing now says "no nodes match", not
+  "no nodes on this canvas".
 
-**Why** The window was the last surface that had to be summoned and dismissed, and it was the only list that
-lived outside the column that exists for lists. The two questions it answered are not the same question: "which
-canvas am I in" is a place, "which node is this" is a thing, and merging them into one *surface* with two
-sections keeps both answers one click away without giving either half a column — at 220px, stacked, the elements
-list would lose the room its hover preview needs.
+**Why** The window was the last surface that had to be summoned and dismissed, and the only list living outside
+the column that exists for lists. Its two questions are not one question — "which canvas am I in" is a place,
+"which node is this" is a thing — so one *surface* with two sections keeps both one click away. Replacing the
+elements list instead (the first shape of the request) was the thing not to do: it is the only name-based
+navigation on a board bigger than the window, the only multi-select export, and its hover preview is how four
+similar pictures are told apart.
 
-Replacing the elements list instead — the first shape of this request — was the one thing not to do. That list is
-the only name-based navigation on a board bigger than the window, the only multi-select export, and its hover
-preview is how you tell four similar pictures apart before jumping to one. Keeping the preview was the
-requirement; the column is what both lists needed.
+**Cost** Titles truncate where they wrapped, deleting everything is two clicks instead of one, `height` relayouts
+rows for 240ms during the reveal, and the section is a stored preference: a second browser opening the same
+workspace starts on Elements.
 
-**Cost** The canvas list lost its 1000px frame: titles truncate where they used to wrap, and deleting everything
-is two clicks instead of one. `height` is a layout animation — the rows relayout on each frame for 240ms — which
-is the price of a reveal that does not distort anything; it is confined to this box because the panel floats.
-And the section is a stored preference: a second browser opening the same workspace starts on Elements.
+**Amended by #198** Picking a canvas no longer switches the column to Elements: the board behind changes, and
+watching it change is how a pick is checked.
 
-**Amended by #198** Picking a canvas used to switch the column to Elements, on the theory that the question
-"which canvas?" had just been answered. It does not: the board behind changes, and watching it change is how
-you check you picked the right one — the first version hid exactly that.
-
-**Tested** `npm run check` (i18n 824/810, no dead or missing keys — `canvas.sidePanel.elements`,
-`canvas.deleteAll`, `canvas.project.saveName` and `canvas.project.cancelRename` went with the card, and
-`canvas.sidePanel.tab.*`, `canvas.sidePanel.noMatch` and `canvas.project.more` are new), `npx vitest run` (155),
-`npm run build`, `make check`. In the browser (`/tmp/verify`, 8191/3001, its own data directory, a copy of the
-workspace's one canvas):
-
-- The animation, measured frame by frame with `getBoundingClientRect`: opening, `top` 64 on every frame and
-  `bottom` 66 → 1402, `height` 2 → 1338 = `100dvh - 140`; closing, `top` 64 and `bottom` 1402 → 66, finished in
-  200ms of a 240ms transition. Settled shut: `height` 1.6 (two 0.8px borders) and `visibility: hidden`, so
-  nothing paints.
-- The switch: both tabs render, clicking Canvases shows New / Import / Select and the row "Canvas 1 — Updated
-  11/03, 03:25 AM" with its "More actions" menu (Export / Rename / Delete items). The section and the open flag
-  were written to `data/settings.json` (`canvas-side-panel-section: "canvases"`), and the top bar's grid button
-  re-opened the column on that list.
-- Select mode: the header's Select became Cancel, the row grew a "Select Canvas 1" tick, and the bar showed
-  "Select all", "0 selected" with Delete disabled — "1 selected" with Delete enabled after ticking it.
-- The search: `zzz` now says "No nodes match" (it said "No nodes on this canvas"), and `森林` brings the four
-  rows back. Hovering a row put the preview overlay at `opacity: 1` with that node's image, which is the
-  behaviour the whole column had to keep.
-
-**Where** `frontend/src/components/canvas/canvas-side-panel.tsx`,
-`frontend/src/components/canvas/canvas-side-panel-canvases.tsx` (new),
-`frontend/src/components/canvas/canvas-side-panel-elements.tsx` (the old `CanvasNodesTab`),
-`frontend/src/components/canvas/canvas-side-panel-parts.tsx` (new),
-`frontend/src/components/canvas/canvas-manager-dialog.tsx` (deleted),
-`frontend/src/components/canvas/canvas-project-card.tsx` (deleted),
-`frontend/src/stores/canvas/use-canvas-panel-store.ts` (deleted),
-`frontend/src/stores/canvas/use-canvas-side-panel-store.ts`,
-`frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/pages/canvas/project.tsx`,
-`frontend/src/lib/canvas/node-prompt-field.ts`, both locales, `frontend/scripts/check-i18n.cjs`.
+**Where** `frontend/src/components/canvas/canvas-side-panel{,-canvases,-elements,-parts}.tsx`,
+`frontend/src/stores/canvas/use-canvas-side-panel-store.ts`, `frontend/src/lib/canvas/node-prompt-field.ts`,
+`frontend/src/components/canvas/canvas-top-bar.tsx`.
 
 
 ## 196. The canvas menu holds this canvas's commands
@@ -7124,90 +7086,60 @@ change). `npm run check` (zh 825 / en 811 keys), `npx vitest run` (156), `npm ru
 
 ## 201. The agent's models are edited through the agent, and the key stays on the gateway
 
-**Decision** The preferences window grows an **Agent models** section: the list AlayaCore announces, one row per
-model (name, protocol, what it points at, and its key as six dots), a pencil and a cross on each row, and one
-**Add model** button that opens a small form — name, model id, URL, protocol (`openai` / `anthropic`), API key.
-Every change, add, edit or delete, is sent to the agent as its own `:model_sync` with the whole list. The gateway
-completes that list before the agent sees it: a model it already knows is rebuilt from the entry the agent
-announced, and only the fields the canvas can see are replaced. A `SM model_list` the agent restates after the
-write is forwarded as a `models` event, and so is the same list to every other live session.
+**Decision** The preferences window has an **Agent models** section: one row per model the agent announces (name,
+protocol, what it points at, its key as six dots), a pencil and a cross, and **Add model** opening a form (name,
+model id, URL, protocol, API key). Every change goes to the agent as its own `:model_sync` carrying the whole
+list, which the gateway completes before the agent sees it.
 
-**Why through the agent** Because `model.conf` is AlayaCore's file, and #75 recorded the rule: the format
-(`protocol_type`, `reasoning_0/1/2`, `serial_tool_calls`, …) belongs to the agent, so the editor writes through
-the command plane rather than parsing and re-emitting the file from Go. The gateway therefore knows the
-*protocol's* JSON and nothing about the file's key-value syntax.
+**Why through the agent** `model.conf` is AlayaCore's file, and #75's rule stands: the format (`protocol_type`,
+`reasoning_0/1/2`, `serial_tool_calls`, …) belongs to the agent, so the editor writes through the command plane
+rather than parsing and re-emitting that file from Go.
 
-**Why the gateway completes the list, and why that is not a detail** `:model_sync` replaces *every* model and
-rewrites the file from what it was given. The list a canvas is shown is `agent.Model`: id, name, protocol, base
-URL, model id, context limit and `hasKey` — no `api_key`, because `SM model_list` carries every key from
-`model.conf` in cleartext and the gateway strips them (#75, "the event surface is a whitelist"). Forwarded
-as-is, removing one model would delete every key on the machine, and every `reasoning_N` block and token cap
-beside them. So the gateway keeps each announced entry **whole** (`modelObject`, the raw JSON), the canvas says
-which ids stay and what changed, and `Session.mergeModelSync` rebuilds the rest. Whole is the point: a field
-AlayaCore adds tomorrow survives a round trip through a page that has never heard of it. Ids are rewritten to
-the models' positions, which is what `:model_sync` assigns them — the ids the canvas's `model_set` will have to
-use once the file is written. An empty key field means "keep the stored one": the page cannot see the key, so
-it is in no position to mean it away, while a key that is typed is how one is rotated.
+**Why the gateway completes the list** `:model_sync` replaces *every* model and rewrites the file from what it was
+given, while `SM model_list` carries every key in cleartext and the gateway strips them (#75's whitelist).
+Forwarded as-is, removing one model would delete every key on the machine, plus every `reasoning_N` block beside
+them. So the gateway keeps each announced entry **whole** (`modelObject`, the raw JSON), the canvas says which ids
+stay and what changed, and `Session.mergeModelSync` rebuilds the rest — which is also why a field AlayaCore adds
+tomorrow survives a round trip through a page that has never heard of it. Ids are rewritten to the models'
+positions, because that is what `:model_sync` assigns and what the canvas's later `model_set` must use. An empty
+key field means "keep the stored one": the page cannot see the key, so it is in no position to mean it away, while
+a typed key is how one is rotated.
 
-**Why the other sessions are told** `model.conf` is one file for the whole host, and every agent process reads
-it into its own memory at startup. A list written through the preferences window would otherwise leave the
-canvas panel's picker offering a model that no longer exists and missing the one that was just added, until
-that process was replaced. The gateway is the only layer that knows there is one file behind several processes,
-so `Sessions.ModelSync` hands the list it is about to write to every other session (`tellModels`). Their `active`
-model is their own and is left alone.
+**Why the other sessions are told** `model.conf` is one file for the host and every agent process reads it into
+its own memory at startup, so a list written through this window would leave another session's picker offering a
+deleted model and missing an added one until that process was replaced. `Sessions.ModelSync` hands the list it is
+about to write to every other session; their `active` model is their own and is left alone.
 
-**Why the write is atomic** It is AlayaCore's, on purpose: `modelManager.writeConfigFile` goes through
-`internal/atomicfile`, which writes a sibling temp file, fsyncs it and renames it over the target — so a reader
-sees the old list or the new one, never half of either, and an interrupted write cannot leave the only copy of a
-key truncated. The gateway never writes that file. The one config file it does write, `mcp.conf`, is installed
-the same way (`agent_config.go`: temp file in the same directory, then a rename).
+**Why the write is atomic, and whose job that is** AlayaCore's: `modelManager.writeConfigFile` goes through
+`internal/atomicfile` — sibling temp file, fsync, rename — so a reader sees the old list or the new one, and an
+interrupted write cannot truncate the only copy of a key. The gateway never writes that file; the one it does
+write, `mcp.conf`, is installed the same way.
 
-**Why the log redactor learned a second spelling** Because this is the first change that puts a *complete*
-model list — keys included, since the gateway has just put them back — into a frame the gateway itself writes.
-`redactKeys` matched `"api_key":"…"`, the spelling of a field in a frame; `:model_sync`'s argument is the list
-as a JSON **string**, so its keys are escaped (`\"api_key\":\"…\"`) and went into the transcript in cleartext.
-Found by pointing the transcript at a canary key and grepping it, which is now what
-`TestRedactKeysReachesInsideAnArgument` does in miniature. The frontend was never involved: that frame goes the
-other way, towards AlayaCore.
+**Why the log redactor learned a second spelling** This is the first frame the gateway itself writes that carries
+a *complete* list, keys included. `redactKeys` matched `"api_key":"…"` — a field in a frame — while `:model_sync`'s
+argument is that list as a JSON **string**, so its keys are escaped (`\"api_key\":\"…\"`) and went into the
+transcript in cleartext. Found by pointing the transcript at a canary key and grepping it
+(`TestRedactKeysReachesInsideAnArgument`).
 
-**Why a dialog rather than five inputs under the list** The first shape put them inline, and the verdict was
-immediate and correct: a model is a small document, and five labelled fields wrapped into a row of inputs nobody
-read. The list stays a list; the form appears when there is a form to fill.
+**Why a dialog rather than five inputs under the list** Inline was the first shape and it read as a row of inputs
+nobody reads: a model is a small document. The list stays a list; the form appears when there is a form to fill.
 
-**Cost** A session per open preferences window — the list is the agent's, so it has to be asked — and the list is
-as fresh as that session's start: a `model.conf` edited outside the app is invisible until the window is
-reopened. A rejection on the agent's side (an entry it will not accept) leaves the other sessions holding a list
-slightly ahead of the file until their next start; the rejection itself is shown in the agent's own words under
-the list. Six dots say a key exists, never that it is the right one.
+**Cost** One session per open preferences window (the list is the agent's, so it must be asked), and the list is
+as fresh as that session's start — a `model.conf` edited outside the app is invisible until the window is
+reopened. A rejection leaves the other sessions holding a list slightly ahead of the file until their next start,
+and the rejection is shown in the agent's own words. Six dots say a key exists, never that it is the right one.
 
-**Tested** Go: `internal/agent/models_test.go` (the merge keeps what the canvas cannot see, replaces only the
-edited fields, rotates a key only when one is sent, numbers the list positionally, refuses a non-array, never
-puts a key in the event, tells the other sessions) and `TestModelSyncPutsBackWhatTheCanvasCannotSee` in the
-server's e2e, which reads the frame the fake agent received: the stored key is in it, the canvas's edit is in it,
-the deleted model is not, and the other socket got the new list. `make check`, `go test -race ./cmd/...
-./internal/...`, `make verify-static`. Frontend: `npm run check` (zh 845 / en 831 keys, no dead ones, exports
-clean), `npx vitest run` (165), `npm run build`. In the browser (`/tmp/verify`, 8191/3011, its own data
-directory and its own `AGENT_CONFIG_PATH` holding a two-model fixture), dark and light: adding wrote a third
-entry with its key; editing renamed the first and left its `api_key`, `max_tokens` and `reasoning_1` in place;
-retyping only the second model's key changed only that key; deleting the middle model left the other two, keys
-and reasoning intact. The canvas agent panel's picker offered the model added a moment earlier without a reload.
-Atomicity measured, not assumed: `stat -c %i` reported a different inode after an edit (38282622 → 38283412) —
-a rename rather than a truncate — and no `.tmp-*` file was left in the config directory.
+**Measured** With a two-model fixture on an isolated `:8191`: adding wrote a third entry with its key; editing
+renamed the first and left its `api_key`, `max_tokens` and `reasoning_1` in place; retyping only the second model's
+key changed only that key; deleting the middle model left the other two intact; the panel's picker offered the
+model added a moment earlier with no reload. `stat -c %i` reported a different inode after an edit — a rename,
+not a truncate — and no `.tmp-*` file was left. Canary: a `model.conf` whose two keys exist nowhere else, a real
+AlayaCore, 8 frames / 1175 bytes captured across a set, an edit-less list write, an add and a prompt — no canary in
+any of them, nor in any HTTP route the page can reach, nor in the gateway's own log.
 
-And a canary run for what must never travel: a `model.conf` whose two keys are `sk-CANARY-…` strings that exist
-nowhere else, a real AlayaCore, and a socket client that captured every frame while it set a model, edited the
-list without a key, added a model with one, and sent a prompt — 8 frames, 1175 bytes, **no canary in any of
-them**. A model entry as the canvas receives it is
-`{"id":1,"name":"…","protocolType":"openai","baseUrl":"http://…","modelName":"…","contextLimit":262144,"hasKey":true}`.
-Every HTTP route the page can reach (`/health`, `/api/settings`, `/api/workflows`, `/api/canvases`, `/api/runs`,
-`/api/loras`, `/api/resources/status`, `/api/resources/replacement`, `/api/system/stats`, `/system_stats`) was
-fetched and searched: no canary. The gateway's own log has none either, after the redactor fix above. The two
-canaries *are* in `model.conf` on disk, which is where a key belongs.
-
-**Where** `internal/agent/{events.go,models.go,run.go,models_test.go}`, `internal/server/routes_agent.go`,
-`internal/server/agent_e2e_test.go`, `frontend/src/components/settings/{agent-models-section.tsx,agent-model-dialog.tsx,preferences-dialog.tsx}`,
-`frontend/src/lib/agent-models.ts`, `frontend/src/services/api/agent.ts`,
-`frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `frontend/tests/agent-models.test.ts`.
+**Where** `internal/agent/{models,events,run}.go` (`Session.mergeModelSync`, `Sessions.ModelSync`),
+`internal/server/routes_agent.go`, `frontend/src/components/settings/agent-model{s-section,-dialog}.tsx`,
+`frontend/src/lib/agent-models.ts`.
 
 
 ## 202. The workflow list has one frame, not three
@@ -7934,79 +7866,56 @@ not exercised against a live AlayaCore — the row was read off a replayed trans
 
 ## 225. A run's end is a message to the agent that asked for it
 
-**Decision** `POST /api/canvases/{id}/runs` takes an optional `askedBy: {session, node}`, filled in by the
-page when it submits a run because an agent called `generate`. The run record keeps it (`task.Ask`), and
-when the run reaches a terminal status the gateway says what became of it to that session — one sentence
-naming the node, the files or the reason — through `agent.Sessions.Tell`, which sends it as a prompt. It
-therefore arrives the way anything typed into the panel does: AlayaCore echoes it as a user message, draws
-it, and answers in a turn of its own.
+**Decision** `POST /api/canvases/{id}/runs` takes an optional `askedBy: {session, node}`, filled in by the page when
+it submits a run because an agent called `generate`. The run record keeps it (`task.Ask`), and when the run reaches a
+terminal status the gateway tells that session what became of it — one sentence naming the node, the files or the
+reason — through `agent.Sessions.Tell`, which sends it as a prompt. It therefore arrives the way anything typed into
+the panel does: AlayaCore echoes it as a user message, draws it, and answers in a turn of its own.
 
-The store reports a run once (`Store.SetOnFinish`, guarded by a flag that is never serialized), from
-whichever side reached a terminal status first: the worker that unwound it, or a cancel that took it out of
-the queue before a worker ever saw it.
+The store reports a run once (`Store.SetOnFinish`, guarded by a flag that is never serialized), from whichever side
+reached a terminal status first: the worker that unwound it, or a cancel that took it out of the queue before a
+worker ever saw it.
 
-The tool's own answer carries the same distinction, because the agent's next move depends on it. A press
-reports one of three things, from the moment the run exists rather than later: a **run id**, so a message is
-coming; a **refusal with the page's own reason** — no model set, nothing to generate from, stopped before it
-started — which is also a failed call, since a quiet success would leave the agent waiting for a message
-that will never come; or, if the page says nothing within 15 s, that **no run has been reported** and it may
-still be setting up (a reference uploading, a node hydrating), with both outcomes named. The middle of those
-is the reason this answer exists at all: "started" has to mean a run id, not the absence of an error.
+**Amended by #285** This entry used to describe a third answer to a press — "no run has been reported" after a 15 s
+wait, with both outcomes named. A press now has two answers and no clock of its own; the bound on a slow page is the
+bridge's 30 s. What stands is the ask, the notice as a debt, and the sentence arriving as a prompt.
 
-**Why** `generate` is answered the moment the run is queued, because a picture takes minutes and a tool call
-is not a progress bar. So the agent's turn can end — usually does end — with the work still going, and the
-tool's own answer said only "the node shows its own progress". The agent that started a two-minute video
-then waits for a message that never comes, and the user says "it's done" by hand. That is the whole defect.
+A refusal is a failed call rather than a quiet success, because a quiet success leaves the agent waiting for a
+message that will never come. "Started" has to mean a run id, not the absence of an error.
 
-Two shapes were rejected. Keeping the pairing in the page — the promise `generateNode` returns, and a send
-when it settles — is a hundred lines shorter and dies on the one occasion this exists for: reload the tab,
-or leave the canvas and come back, and the run goes on while the memory of who asked goes with the page.
-Deriving it instead from the tool call at the gateway is a timing heuristic: the call knows the session and
-the node but not the run (the page's own button creates that), so "the next run on this canvas" would
-attribute a user's own generation to an agent that happened to be idle.
+**Why** `generate` is answered the moment the run is queued — a picture takes minutes and a tool call is not a
+progress bar — so the agent's turn usually ends with the work still going. The tool's own answer once said only "the
+node shows its own progress": the agent that started a two-minute video waited for a message that never came, and
+the user said "it's done" by hand. That is the whole defect.
 
-It is sent as a *user* message rather than a frame of its own, because the conversation belongs to the agent
-and a finished run is the kind of thing a person would tell it. Anything else would need AlayaCore to grow a
-frame.
+Two shapes were rejected. Keeping the pairing in the page — the promise `generateNode` returns, and a send when it
+settles — is a hundred lines shorter and dies on the one occasion this exists for: reload the tab, or leave the
+canvas and come back, and the run goes on while the memory of who asked goes with the page. Deriving it at the
+gateway from the tool call is a timing heuristic: the call knows the session and the node but not the run (the
+page's own button creates that), so "the next run on this canvas" would attribute a user's own generation to an
+agent that happened to be idle.
 
-**Cost** One more optional field on the run body, threaded from the tool handler through `handleGenerateNode`
-and the four generation modes to each API helper (`askedBy` on `RunRequest`), one hook on the task store, and
-a callback the other way for "a run exists" (`onStart`, fed from the `onRun` hooks the canvas already had
-and from the video task's own return). The tool call now blocks until that word arrives — a second at most in
-practice, capped at 15 s against the MCP call's own 30.
+It is sent as a *user* message rather than a frame of its own, because the conversation belongs to the agent and a
+finished run is the kind of thing a person tells it. Anything else would need AlayaCore to grow a frame.
 
-What this serves is the canvas conversation. A node panel's agent is one-shot: its session is released with
-its answer, so a run it started has nobody left to tell and reports into the log.
-A session that is gone when the run ends hears nothing, and the log says so: the message is not queued for
-the next process. The ask is a *name*, which is what lets it survive a reload — and also what lets it
-outlive a conversation cleared mid-run, whose successor under the same name would be told about a run it
-never asked for. A text node's generate is not a run — that node's own agent writes the answer into it — so
-it is not reported, and the tool's answer says so instead of promising a message. `generate`'s description
-and answer now set the expectation ("you will be sent a message; do not poll"), which is the other half of
-the feature: an agent told nothing waits, and an agent told too little polls.
+**Cost** One optional field on the run body, threaded from the tool handler through `handleGenerateNode` and the
+four generation modes to each API helper, plus one hook on the task store and a callback the other way for "a run
+exists". What this serves is the canvas conversation: a node panel's agent is one-shot, so its session is released
+with its answer and a run it started reports into the log. A session that is gone when the run ends hears nothing,
+and the log says so — the message is not queued for the next process. The ask is a *name*, which is what lets it
+survive a reload and also what lets it outlive a conversation cleared mid-run, whose successor under the same name
+would be told about a run it never asked for. A text node's generate is not a run, so it is not reported, and the
+tool's answer says so instead of promising a message. `generate`'s description and answer set the expectation —
+"you will be sent a message; do not poll" — which is the other half: an agent told nothing waits, and an agent told
+too little polls.
 
-**Tested** `internal/task/task_test.go`: `TestTheEndOfARunIsReported` (a run that worked, one that failed,
-one nobody asked about — with `Ask` intact on the snapshot the hook receives) and
-`TestACancelledRunIsReportedOnce` (a queued cancel is reported by the cancel; a cancel that lands mid-run is
-reported once, not again by the worker that unwinds afterwards). `internal/server/run_notice_test.go`: the
-body parsing, and the three sentences. `internal/agent/session_test.go`:
-`TestTellSendsTheWordsAsAPrompt` (the words leave as one `UX` frame flushed with `UE`) and
-`TestTellReportsASessionThatIsGone`. `internal/server/agent_e2e_test.go`:
-`TestARunFinishingTellsTheAgentThatAskedForIt` — a real run on the fake ComfyUI, the socket relaying the
-echo and the fake agent's reply — and `TestARunNobodyAskedAboutTellsNoOne`, where nothing is said on the
-socket at all. `frontend/tests/api-runs.test.ts`: the body carries `askedBy`, and does not carry it when nobody asked.
-`frontend/tests/agent-generate.test.ts` (4): the three answers — a run id with no claim of failure, a refusal
-carrying the page's reason *and* "nothing to wait for", and the unmatched case naming both outcomes — plus
-the flag that makes a refusal a failed call. `go test ./internal/...`, `make check`, `npx vitest run` (210),
-`npm run check`, `npm run build`. In the browser: not exercised — the panel shows the notice because it shows every user message, and
-that path is covered, but the round trip was read from a socket, not off a screen.
-
-**Where** `internal/task/task.go` (`Ask`, `SetOnFinish`, `finishedLocked`, `finish`),
-`internal/server/run_notice.go`, `internal/server/routes_runs.go`, `internal/server/runs.go`,
-`internal/server/server.go`, `internal/server/routes_mcp.go`, `internal/agent/sessions.go` (`Tell`),
-`internal/server/agent_e2e_test.go`, `frontend/src/services/api/{runs,image,audio,video}.ts`,
-`frontend/src/pages/canvas/hooks/{use-canvas-agent-tools,use-generation-runs}.ts`,
-`frontend/src/pages/canvas/project.tsx`, `docs/protocol.md`, `docs/server.md`.
+**Where** `internal/task/task.go` (`Ask`, `SetOnFinish`, `finishedLocked`, `finish`), `internal/server/run_notice.go`,
+`internal/server/routes_{runs,mcp}.go`, `internal/agent/sessions.go` (`Tell`),
+`frontend/src/services/api/{runs,image,audio,video}.ts`,
+`frontend/src/pages/canvas/hooks/{use-canvas-agent-tools,use-generation-runs}.ts`. Tests:
+`TestTheEndOfARunIsReported`, `TestACancelledRunIsReportedOnce`, `TestTellSendsTheWordsAsAPrompt`,
+`TestTellReportsASessionThatIsGone`, `TestARunFinishingTellsTheAgentThatAskedForIt`,
+`TestARunNobodyAskedAboutTellsNoOne`.
 
 
 ## 226. The start script rebuilds the binaries too, not only the bundle
@@ -8165,78 +8074,60 @@ were read, not clicked.
 
 ## 229. A node's words are three fields with three meanings, and each question has one function
 
-**Decision** `content` is what a node holds; `prompt` is the words it will be asked next (the ones that
-made it, for a node a run made and nobody has retyped since); `composerContent` is what you type when it
-already holds something, so typing cannot throw the result away. The canvas asks three
-questions of those fields, and each has exactly one answer, in `lib/canvas/node-prompt-field.ts`:
-`nodeContentOf` (what it says), `nodePromptOf` (what was asked of it), `promptPatch` (where an instruction
-goes). The panel and the agent's `set_prompt` call `promptPatch`, so they cannot write different fields for
-the same words. `holdsResult` is no longer a whitelist of text and image: every content type answers by
-whether `content` is there.
+**Decision** `content` is what a node holds; `prompt` is the words it will be asked next (the ones that made it, for
+a node a run made and nobody has retyped since); `composerContent` is what you type when it already holds something,
+so typing cannot throw the result away. Three questions, one answer each, in `lib/canvas/node-prompt-field.ts`:
+`nodeContentOf` (what it says), `nodePromptOf` (what was asked of it), `promptPatch` (where an instruction goes). The
+panel and the agent's `set_prompt` both call `promptPatch`, so they cannot write different fields for the same words.
+`holdsResult` is no longer a whitelist of text and image: every content type answers by whether `content` is there.
 
-The agent gets the verb it was missing. `set_text(nodeId, text)` writes a text node's card — the same thing
-double-clicking the card does — and leaves its prompt alone, because rewriting an answer by hand does not
-make the question untrue. `set_prompt` keeps writing the question, and on a text node that already says
-something its answer says so: *that is the question it will answer next, not its text*.
+The agent gets the verb it was missing. `set_text(nodeId, text)` writes a text node's card — what double-clicking does
+— and leaves its prompt alone, because rewriting an answer by hand does not make the question untrue. `set_prompt`
+keeps writing the question, and on a text node that already says something its answer says so: *that is the question
+it will answer next, not its text*.
 
-`list_nodes` names the two kinds of words apart (`content:` / `prompt:`) and collapses a prompt's
-paragraphs onto one line, which is what "one line per node" always promised. `read_node` answers with what
-the node holds — a text node's card, every text of a batch, the picture itself — and no longer with the
-prompt that made it. `create_node` stops advertising `lora`, which it has never been able to make.
+`list_nodes` names the two kinds of words apart (`content:` / `prompt:`) and collapses a prompt's paragraphs onto one
+line, which is what "one line per node" always promised. `read_node` answers with what the node holds — a text node's
+card, every text of a batch, the picture itself — not with the prompt that made it. `create_node` stops advertising
+`lora`, which it has never been able to make.
 
-**Why** One function with a chain of fallbacks — `composerContent ?? prompt ?? content ?? texts[0]` —
-answered all three questions, and that is fine exactly as long as no node's content is words. Reading a
-picture answered with its prompt and nobody minded, because the picture came along in the same answer. A
-text node's content *is* words, so the chain answered "what does this node say" with the question that was
-asked to make it: the agent could read the prompt box and never the card, and when it was asked to change
-the text it wrote the only field it could see. That is the screenshot that started this — a text node still
-saying 宫崎骏风格的森林。 with 宫崎骏风格的森林场景，无文字… in the box below it. It was not misuse. The tools told
-one story and the canvas told another, and the tools won because that is what an agent acts on.
+**Why** One function with a chain of fallbacks — `composerContent ?? prompt ?? content ?? texts[0]` — answered all
+three questions, which is fine exactly as long as no node's content is words. Reading a picture answered with its
+prompt and nobody minded, because the picture came along in the same answer. A text node's content *is* words, so the
+chain answered "what does this node say" with the question that was asked to make it: the agent could read the prompt
+box and never the card, and when asked to change the text it wrote the only field it could see — a card still saying
+宫崎骏风格的森林。 over a box saying 宫崎骏风格的森林场景，无文字…. It was not misuse: the tools told one story and the
+canvas told another, and the tools won because that is what an agent acts on.
 
-The same chain hid three more of itself. An imported picture has `content` and no `prompt` at all, so the
-fallback made `read_node` answer with `/api/canvases/…/files/a.png` and `list_nodes` print it as the node's
-prompt — a file path where words were promised, and #228 has just made imports the common case. A film or a
-sound holds a result as plainly as a picture, but `holdsResult` said otherwise, so the next instruction
-overwrote `prompt` and the words that made it were gone; the artifact-protection rule (#91) applied to
-pictures only. And a config node's panel writes `composerContent` while `set_prompt` wrote `prompt` — both
-read, so it worked, but the claim that the tool writes where the panel writes was false for that type.
+The same chain hid three more of itself. An imported picture has `content` and no `prompt`, so the fallback made
+`read_node` answer with `/api/canvases/…/files/a.png` and `list_nodes` print a file path where words were promised —
+and #228 had just made imports the common case. A film or a sound holds a result as plainly as a picture, but
+`holdsResult` said otherwise, so the next instruction overwrote `prompt` and the words that made it were gone:
+artifact protection (#91) applied to pictures only. And a config node's panel wrote `composerContent` while
+`set_prompt` wrote `prompt` — both read, so it worked, but "the tool writes where the panel writes" was false there.
 
-**Cost** One new tool (`set_text`), one new module (`lib/canvas/canvas-agent-view.ts`, so the list's format
-is testable without a page), and the tool functions moved out of the hook
-(`lib/canvas/canvas-agent-tools.ts`) for the same reason: they are decisions, not wiring. The panel's
-`onPromptChange` prop and `project.tsx`'s `handleNodePromptChange` are gone — one writer for one field.
+**Cost** One new tool (`set_text`), one new module (`lib/canvas/canvas-agent-view.ts`, so the list's format is
+testable without a page), and the tool functions moved out of the hook into `lib/canvas/canvas-agent-tools.ts` for the
+same reason: they are decisions, not wiring. The panel's `onPromptChange` prop and `handleNodePromptChange` are gone —
+one writer for one field.
 
-What this does **not** do: it does not make a text node hold one field. A card written by an agent needs a
-question standing beside it, so the two fields stay; what goes away is five different stories about which
-one a word lives in. `composerContent` also stays, with one reason: a node that already holds something
-must be able to take an instruction without losing it.
+**What this does not do** It does not make a text node hold one field: a card written by an agent needs a question
+standing beside it, and `composerContent` stays because a node that already holds something must be able to take an
+instruction without losing it. What goes away is five different stories about which field a word lives in. `prompt`
+is a question, not evidence of provenance: editing a card by hand — or with `set_text` — leaves the question those
+words no longer answer, because that is still what running the node sends, and a text node has no run behind it, so
+#227's maker facts are stamped on media only. That is the line between this and #228: a file entering a node had ten
+fields describing bytes that were gone; a hand editing words has none.
 
-`prompt` is a question, not evidence of provenance, and the labels now say so: editing a card by hand —
-which the user can always do, and `set_text` does on their behalf — leaves the question those words no
-longer answer, because that is still what running the node sends. Nothing is left claiming to have made
-them: a text node has no run behind it, so #227's maker facts are stamped on media only, and there is no
-second field to scrub. That is the line between this and #228 — a file entering a node had ten fields
-describing bytes that were gone; a hand editing words has none.
-
-The placeholder had to change with it: 「请输入你想要将本段文本修改成什么」 promised a revision the code never
-did — generating a text node asks the question again and replaces the card (see the comment in
-`handleGenerateNode`), it does not hand the old answer over. The box now says what the button does
-(「说你想让它写什么，生成会替换现有文本」 / "Say what it should write; generating replaces this text"), and
-editing the text itself is the card — by hand, or with `set_text`.
-
-**Tested** `npx vitest run` (252: 13 for `set_text`/`set_prompt`/`read_node`/`generate`/`create_node` as
-called with a fake page, 12 for the field rules, 5 for the list's format). `npm run check` (i18n 847/833,
-no dead keys; exports: no export without a caller — `holdsResult` and `promptFieldOf` are internal now and
-the tests reach them through `promptPatch`). `npm run build`. `make check`, including the tools/list
-assertion, which now expects `set_text` in the vocabulary, and the system-prompt assertion, which now
-requires `canvas_set_text`. Not exercised in a browser: what is untested is what a person sees — the new
-placeholder text, and the agent's own choice between `set_text` and `set_prompt` in a live conversation.
+The placeholder had to change with it: 「请输入你想要将本段文本修改成什么」 promised a revision the code never did —
+generating a text node asks the question again and replaces the card. It now says what the button does (「说你想让它写
+什么，生成会替换现有文本」 / "Say what it should write; generating replaces this text"), and editing the words is the
+card.
 
 **Where** `frontend/src/lib/canvas/{node-prompt-field,canvas-agent-view,canvas-agent-tools}.ts`,
 `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
-`frontend/src/components/canvas/canvas-node-prompt-panel.tsx`, `frontend/src/pages/canvas/project.tsx`,
-`frontend/src/i18n/locales/{en-US,zh-CN}.ts`, `internal/server/{routes_mcp.go,agent_instructions.go}`,
-`internal/server/mcp_test.go`, `frontend/tests/{node-prompt-field,canvas-agent-view,canvas-agent-tools}.test.ts`.
+`frontend/src/components/canvas/canvas-node-prompt-panel.tsx`, `internal/server/{routes_mcp.go,agent_instructions.go}`,
+`frontend/tests/node-prompt-field.test.ts`.
 
 
 ## 230. A wire carries what a node holds — never what it was asked
@@ -8270,79 +8161,53 @@ holding a result take an instruction without losing it. What changed is who may 
 `frontend/src/components/canvas/canvas-node-generation.ts` (the refusal),
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/lib/canvas/canvas-agent-tools.ts`.
 
+
 ## 231. The config node is gone, and the panel framework that only it used
 
-**Decision** `config` is no longer a node type. What went with it: its definition and default size, its
-`CanvasConfigComposer` ("组装提示词") and `CanvasConfigNodePanel`, the `generationMode` field and the
-generation branches that read it, the connection rules that existed only to point a wire at one or draw a
-wire from one, `findRetrySourceNode` (a walk upstream that looked for one), the `hasSourceHandle` flag (false
-only there), `renderNodeContent` (the renderer hook only it used), `useBuiltinPanel` and its `writeBackToSelf`
-branch (a node borrowing the built-in panel to generate), the text node's "用文本生图" toolbar button (it built
-one), `kit/media.tsx` (whose only caller was the composer's image preview), four i18n namespaces
-(`canvas.composer`, `canvas.configNode`, `canvas.createMenu.config*`, `canvas.nodeTypes.config`,
-`canvas.sidePanel.filter.config`) and the `sentPrompt` plumbing that only its panel read.
+**Decision** `config` is no longer a node type. It went with its definition and default size, its
+`CanvasConfigComposer` ("组装提示词") and `CanvasConfigNodePanel`, the `generationMode` field and every branch that
+read it, the connection rules that existed only to point a wire at one or draw a wire from one, `findRetrySourceNode`,
+`hasSourceHandle`, `renderNodeContent`, `useBuiltinPanel` with its `writeBackToSelf` branch, the text node's
+"用文本生图" button, `kit/media.tsx`, five i18n namespaces and the `sentPrompt` plumbing only its panel read.
 
-With no type that could generate into a *new* node, the four run functions stop asking. **Generating writes
-in place** — which is what #77 decided and what the image run already did: the `isImageNode` / `reuseTextNode`
-/ `reuseVideoNode` / `reuseAudioNode` branches, the nodes they spawned, the connections they added and
-`pendingChildIds` (always `[nodeId]` now) are all gone.
+With no type that could generate into a *new* node, the four run functions stop asking: **generating writes in
+place**, which is what #77 decided and what the image run already did. The `isImageNode` / `reuseTextNode` /
+`reuseVideoNode` / `reuseAudioNode` branches, the nodes they spawned and `pendingChildIds` are gone.
 
-**Why** The config node was a card whose only job was to hold a prompt and make nodes. After #229 and #230
-every node holds its prompt: the box is the question, the card is the answer, and `composerContent` is what
-you type when the card is not to be thrown away. What it alone could do:
+**Why** The config node was a card whose only job was to hold a prompt and make nodes, and after #229 and #230
+every node holds its prompt: the box is the question, the card is the answer, `composerContent` is what you type
+when the card is not to be thrown away. What it alone could do:
 
-- *Keep the old result and make another* — duplicating the node does this, and the copy carries the prompt,
-  the model and the size with it.
+- *Keep the old result and make another* — duplicating the node does that, and the copy carries the prompt, the
+  model and the size.
 - *`@` to choose which wired references go into the request* — the one thing with no replacement, and the one
-  thing nobody used. It was also a trap: pressing generate after typing a prompt without any `@` silently
-  dropped every wired picture, text and video (LoRAs excepted) while the panel still said 参考图 N 张.
+  thing nobody used. It was also a trap: pressing generate after typing a prompt with no `@` silently dropped
+  every wired picture, text and video (LoRAs excepted) while the panel still said 参考图 N 张.
 
-Against that, it forced four special cases on everything else: a type branch in `promptFieldOf`, the only
-node with no source handle, the only type that generated into a new node, and a hub rule — *a node wired
-into a config node takes that config's other wires as its inputs* — that no decision ever explained, and
-which #230's refusal then had to mirror so the check saw the same wires the request did.
+Against that it forced four special cases on everything else: a type branch in `promptFieldOf`, the only node with
+no source handle, the only type that generated into a new node, and a hub rule — *a node wired into a config node
+takes that config's other wires as its inputs* — that no decision ever explained and that #230's refusal then had
+to mirror. It was also hard to find: 新建 never offered it; two gestures made one (drag a wire to empty canvas, or
+the text node's toolbar button), and the double-click menu called it 生成配置, a name nothing else used.
 
-It was also hard to find: the 新建 menu never offered it. Two gestures made one (drag a wire out to empty
-canvas, or the text node's toolbar button), and the double-click menu listed it under a name — 生成配置 —
-that nothing else used.
+**What this changes for a person** Generating replaces the node's content, always; a variant is a duplicate node or
+a second node fed by a wire. The text node's toolbar loses "用文本生图": wire the text node into an image node
+instead — the gesture the agent's instructions describe and the panel already supports.
 
-**What this changes for a person** Generating replaces the node's content, always. A variant is a duplicate
-node or a second node fed by a wire. The text node's toolbar loses "用文本生图": wire the text node into an
-image node instead — the same gesture the agent's instructions describe, and the one the panel already
-supports.
+**What this changes for the agent** `create_node` makes four types (`image`, `video`, `audio`, `text`), and
+`generate` no longer reads a `generationMode`. Nothing else: the tools for a config node were the tools for any node.
 
-**What this changes for the agent** `create_node` makes four types (`image`, `video`, `audio`, `text`).
-`generate` no longer reads a `generationMode`. Nothing else: the tools it had for the config node were the
-tools it has for any node.
+**What this does not do** No migration. A canvas written before this renders a config node as an unknown node
+(`canvas.node.missingNode`), which is what `CanvasNodeTypeId` was made open for: a saved canvas is data, and a type
+this build lacks is a missing node, not a refused file. Deleting that card is the user's call.
 
-**What this does not do** No migration. A canvas written before this that holds a config node renders it as
-an unknown node (`canvas.node.missingNode`), which is what `CanvasNodeTypeId` was made open for: a saved
-canvas is data, and a type this build does not have is a missing node rather than a refused file. Deleting
-that card is the user's call, and nothing else in their canvas changes.
+Left alone on purpose: `interactionToggle`, `forceInteractive`, `transparentBackground`, `showInCreateMenu` and
+`hidePanel` — the plugin framework #148 left behind. The config node used none of them, so they are unrelated debt,
+and removing them touches how a node takes pointer events. A separate decision.
 
-Also left alone, on purpose: `interactionToggle`, `forceInteractive`, `transparentBackground`,
-`showInCreateMenu` and `hidePanel` in the node definition — the plugin framework #148 left behind. The config
-node used none of them, so they are unrelated debt, and removing them touches how a node takes pointer
-events. A separate decision, not this one.
-
-**Tested** `make check`; `npx vitest run` (261 — the two config-node tests and the hub test are gone, the
-rest unchanged); `npm run check` (i18n 824/810, no dead keys, and the stale `canvas.composer.resources`
-exemption removed from the checker; exports: `buildNodeGenerationInputs`, `NodeGenerationInput`,
-`getInputSummary` and `kit/media`'s `Image` lost their last caller and are no longer exported or no longer
-exist); `npm run build` (the bundle lost ~24 kB). Not exercised in a browser: this one changes the generation
-path for all four modes, so the first thing to try is a picture, a video, an audio clip and a text answer
-each generated twice in place, plus opening a canvas written before it.
-
-**Where** `frontend/src/types/{canvas,canvas-node}.ts`, `frontend/src/constant/canvas.ts`,
-`frontend/src/components/canvas/{canvas-node,canvas-create-menus,canvas-node-hover-toolbar,canvas-side-panel-elements,canvas-agent-panel,canvas-node-generation}.tsx`,
-`frontend/src/components/canvas/nodes/builtin-nodes.tsx`,
-`frontend/src/lib/canvas/{canvas-resource-references,canvas-node-geometry,canvas-generation-helpers,node-prompt-field,node-settings-memory,canvas-agent-tools}.ts`,
-`frontend/src/pages/canvas/project.tsx`, `frontend/src/pages/canvas/hooks/use-generation-runs.ts`,
-`frontend/src/i18n/locales/{en-US,zh-CN}.ts`, `frontend/scripts/check-i18n.cjs`,
-`internal/server/{routes_mcp.go,mcp_test.go}`, `frontend/tests/{canvas-generation-context,canvas-agent-tools,node-prompt-field}.test.ts`.
-Deleted: `frontend/src/components/canvas/canvas-config-composer.tsx`,
-`frontend/src/components/canvas/canvas-config-node-panel.tsx`, `frontend/src/components/kit/media.tsx`.
-
+**Where** `frontend/src/lib/canvas/{builtin-nodes,node-prompt-field,canvas-agent-view}.ts`,
+`frontend/src/pages/canvas/project.tsx`, `frontend/src/pages/canvas/hooks/use-node-generation.ts`,
+`frontend/src/components/canvas/panels/`, `internal/server/{routes_mcp.go,agent_instructions.go}`.
 
 ## 232. The node definition loses the flags nothing set
 
@@ -8561,83 +8426,51 @@ a video mid-render, `Ctrl+C` and `./start.sh`, then watching the node say 等待
 
 ## 237. An answer is drawn as the document it is, and a table scrolls in its own box
 
-**Decision** The panel parses the text parts of an **assistant** message as a small Markdown subset, into
-tokens, and draws the tokens with React. A table's cells do not wrap: the table's own box scrolls sideways.
+**Decision** The panel parses the text parts of an **assistant** message as a small Markdown subset into tokens and
+draws the tokens with React. A table's cells do not wrap: the table's own box scrolls sideways.
 
-- **Tokens, never HTML.** `lib/markdown.ts` turns the text into `MarkdownBlock[]` / `MarkdownInline[]`;
-  `components/canvas/agent-markdown.tsx` maps them to elements. Nothing is ever set as `innerHTML` and no
-  parser was added. Two reasons, and the first is not style: the words are a model's, quoting files on the
-  canvas, in a page served over plain HTTP — a token tree cannot become a tag or an event handler, and
-  `<img src=x onerror=…>` is asserted to stay eleven characters of text. The second is that a citation has
-  to stay a button: `renderText` hands every run of text back to the panel's `withMentions`, so formatting
-  and citing walk the text together instead of one rewriting what the other produced.
-- **The subset is what an answer writes.** Headings, paragraphs, fenced code, quotes, rules, lists (nested,
-  loose, numbered from whatever the model started on), tables with alignment, and inline code / strong /
-  emphasis / strikethrough / links. Not in: images (a picture in this app is a node), raw HTML, footnotes,
-  math, reference-style links, task-list boxes. A construct outside the subset is not an error — it stays the
-  characters that arrived, which is also what a half-streamed `**` and a stray `|` end up as, and why an
-  unclosed fence is the code written so far rather than a broken message.
-- **A soft break is a break.** CommonMark makes a single newline a space; here it stays a line break, because
-  that is what every reply already drawn under `whitespace-pre-wrap` did. Joining them would silently reflow
-  the whole history of a conversation to fix a rule nobody asked for.
-- **A table is the reason this exists**, and it must not resize the card: cells are `whitespace-nowrap` and
-  the table is `w-max` inside a `max-w-full overflow-x-auto thin-scrollbar` box. Wide table, scrollbar under
-  it, transcript and input exactly where they were.
+- **Tokens, never HTML.** `lib/markdown.ts` produces `MarkdownBlock[]` / `MarkdownInline[]` and
+  `agent-markdown.tsx` maps them to elements; nothing is ever `innerHTML` and no parser was added. The words are a
+  model's, quoting files on the canvas, in a page served over plain HTTP — a token tree cannot become a tag or a
+  handler, and `<img src=x onerror=…>` is asserted to stay eleven characters of text. The second reason is that a
+  citation has to stay a button: `renderText` hands every run of text back to `withMentions`, so formatting and
+  citing walk the text together instead of one rewriting what the other produced.
+- **The subset is what an answer writes**: headings, paragraphs, fenced code, quotes, rules, lists (nested, loose,
+  numbered from whatever the model started on), tables with alignment, and inline code / strong / emphasis /
+  strikethrough / links. Not in: images (a picture here is a node), raw HTML, footnotes, math, reference links,
+  task boxes. A construct outside the subset is not an error — it stays the characters that arrived, which is also
+  what a half-streamed `**` and a stray `|` are, and why an unclosed fence is the code written so far.
+- **A soft break is a break.** CommonMark makes a newline a space; here it stays a line break, because that is what
+  every reply already drawn under `whitespace-pre-wrap` did. Joining them would reflow the whole history to fix a
+  rule nobody asked for.
+- **A table is the reason this exists** and must not resize the card: cells are `whitespace-nowrap`, the table is
+  `w-max` inside `max-w-full overflow-x-auto thin-scrollbar`, so a wide table scrolls under itself with the
+  transcript and the input exactly where they were.
 - **Only the assistant's text.** What the user typed is drawn as typed — their asterisks are theirs. Reasoning
-  (folded, one line) and errors stay plain too: neither is a document.
+  (folded, one line) and errors stay plain: neither is a document.
 
-**Why not a library** Measured in a scratch directory, minified and gzipped: `marked` 14.2 kB plus a
-sanitiser (+11.7 kB for DOMPurify, which is `MPL-2.0 OR Apache-2.0`) and it still produces HTML, so it cannot
-interleave a citation button; `markdown-it` 40.7 kB and 7 packages, same wall; `react-markdown` +
-`remark-gfm` 48.6 kB and **93 packages**, which is exactly what #35's audit spent its time removing; `snarkdown`
-is 1.0 kB and has no tables. Handwritten: 0 packages, and the built entry grew 537.8 → 545.1 kB (160.1 →
-164.2 kB gzipped) — the cost is a file to maintain and its tests, which is the price the rest of this panel
-already pays.
+**Why not a library** Measured in a scratch directory, minified and gzipped: `marked` 14.2 kB plus a sanitiser
+(+11.7 kB DOMPurify) and it still produces HTML, so it cannot interleave a citation button; `markdown-it` 40.7 kB and
+7 packages, same wall; `react-markdown` + `remark-gfm` 48.6 kB and **93 packages**, exactly what #35's audit removed;
+`snarkdown` 1.0 kB and no tables. Handwritten: 0 packages, entry 537.8 → 545.1 kB (160.1 → 164.2 kB gzipped), and the
+cost is a file and its tests — the price the rest of this panel already pays.
 
-**What a frame costs** An answer arrives one delta at a time and every delta re-renders the panel, so the
-cost that matters is per frame, not per message. Measured in jsdom with a 4 kB answer streaming at four
-characters a frame (absolute numbers are jsdom's and run high; the ratios are what the fix is about):
+**What a frame costs** Every delta re-renders, so the cost that matters is per frame. Measured in jsdom with a 4 kB
+answer streaming at four characters a frame (absolute numbers are jsdom's and high; the ratios are the point): one
+answer streaming 3.2 ms either way; **with ten finished 4 kB answers in the transcript, 73 ms before and 3.5 ms
+after**; with forty finished answers it never finished before and is 3.6 ms after. Three things made it flat, none of
+them a cache:
 
-| transcript | before | after |
-| --- | --- | --- |
-| 1 answer streaming | 3.2 ms | 3.2 ms |
-| + 10 finished 4 kB answers | **73 ms** | 3.5 ms |
-| + 40 finished | — (never finished) | 3.6 ms |
-
-Three things got it flat, and none of them is a cache:
-
-- **A finished message is not rebuilt.** `AnswerBody` / `PlainBody` are `memo`, and their props are exactly
-  what they read — text, the message's citations, the canvas's labels, the accent colour — all of them
-  stable once a message is finished. Before this, every frame also parsed and rebuilt every finished answer
-  in the transcript, which is what the 73 ms was.
-- **The canvas's labels are mapped once per render** (`citationLabels`), not once per run of text. The old
-  walk called the translator for every node on every run: 166 runs × 50 nodes per frame.
-- **The citation tables are prepared once per message** (`mentionResolver`). Sorting the canvas's labels
-  inside the per-run scan cost 6.5 µs a run — 1 ms of every frame — and it is the same answer every time.
-  `mentionSegments` became the resolver's returned function; the queue that hands out one citation per
-  occurrence stayed per call, because that is per text and not per message.
-
-**Deliberately not done** The answer being written is still parsed and rebuilt whole on every delta. At 4 kB
-that is 0.05 ms of parsing, so incremental block reuse would trade a real amount of machinery (stable block
-keys, diffing a growing tail) for a rounding error. Also no virtualised transcript: the memo already makes a
-long conversation cost the same per frame as a short one.
-
-**Tested** `npx vitest run` 288 (24 new in `tests/markdown.test.ts`: paragraphs and soft breaks, heading
-levels, a fence that keeps `**` and pipes verbatim, an unclosed fence mid-stream, rules against bullets,
-quotes, lists that keep their indent / their start number / their loose spacing, tables with alignment, without
-outer pipes, with an escaped `\|`, with a short row, with inline markup in a cell, and *not* a table without a
-column-mark row or with one of the wrong width, `snake_case` staying a name, `a * b * c` staying arithmetic,
-`\*` escaping, links to `https`/`mailto` opening and `javascript:` not, and raw HTML staying text).
-`npm run check` (i18n 822/808, no dead keys; 173 modules, no dead exports). `npm run build`. `make check` 19
-packages. The rendered markup was checked by hand — a reply with a heading, a three-column table, a nested
-ordered list, a quote and a fence — not by a component test: `vitest` here runs `tests/**/*.test.ts` in a
-`node` environment, so the renderer is exercised through the tokens it is given.
+- **A finished message is not rebuilt** — `AnswerBody` / `PlainBody` are `memo` and their props are exactly what they
+  read (text, the message's citations, the canvas's labels, the accent), all stable once a message is finished.
+  Rebuilding every finished answer on every frame is what the 73 ms was.
+- **The canvas's labels are mapped once per render** (`citationLabels`), not once per run of text — the old walk
+  called the translator for every node on every run: 166 runs × 50 nodes per frame.
+- **The citation tables are prepared once per message** (`mentionResolver`): sorting the labels inside the per-run
+  scan cost 6.5 µs a run, 1 ms of every frame, and it is the same answer every time.
 
 **Where** `frontend/src/lib/markdown.ts`, `frontend/src/components/canvas/agent-markdown.tsx`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/tests/markdown.test.ts`.
-
----
-
 
 ## 238. Stopping is a choice: the queued words can outlive the task
 
@@ -8687,73 +8520,53 @@ arrive as the next prompt (`delivered`, which the panel already uses to clear th
 
 ## 239. Speech is a hop: the gateway carries one file to the address the page names
 
-**Decision** The agent's prompt can be filled by talking. Holding `Ctrl`/`⌘` + `'`, or holding the microphone
-button in the panel, records while it is held and puts the transcript in **at the caret** when it is released.
-There is one speech server supported: an OpenAI-compatible `POST /v1/audio/transcriptions` that takes a WAV
-file and answers `{"text": …}`, with `http://127.0.0.1:18080/v1/audio/transcriptions` filled in as the default
-and the address as the only setting (`config.preferences.speech`).
+**Decision** The agent's prompt can be filled by talking: holding `Ctrl`/`⌘` + `'`, or holding the panel's
+microphone button, records while held and puts the transcript **at the caret** on release. The server speaks
+OpenAI-compatible `POST /v1/audio/transcriptions` (a WAV in, `{"text": …}` out).
 
-**Why the browser cannot make that request** Measured against the server this was built on (an audio.cpp
-build, `model=refine`, a Qwen3-ASR-0.6B): it answers **no CORS headers** — `OPTIONS` is a 404 and a `POST`
-comes back without `Access-Control-Allow-Origin` — so a page on the gateway's origin can send the request and
-can never read the answer. The address is also usually `127.0.0.1`, which is true of this machine and of no
-other: a canvas opened on a phone over the LAN would be asking the phone for a speech server. So the page
-posts to `/api/speech/transcriptions` on the gateway, and the gateway posts to the address the page named.
-The address travels **in the request** rather than being read out of `data/settings.json`: the gateway
-deliberately understands no key in the preferences document (`internal/settings`), and this route has no
-reason to become the first exception.
+**Amended by #246 and #252** The address stopped being the only setting: the model name is a setting, the credential
+lives on the server, and both now come from the active profile in `data/speech.json` rather than travelling in the
+request. The hop, the WAV, the gesture and the caret are unchanged.
 
-**Why only WAV, and why the encoder is ours** The same server refuses anything that is not a real WAV file —
-`MediaRecorder` produces webm/opus (Chrome) or mp4 (Safari) and both are refused by name, and renaming the
-file does not help because the bytes are what gets sniffed ("input is Matroska/WebM, not WAV"). So the panel
-captures raw samples through the Web Audio graph (`ScriptProcessorNode` — deprecated, and still the shortest
-path that starts inside the gesture with no second module to load) and writes the 44-byte header itself
-(`lib/wav.ts`). No resampling on this side: the server was measured transcribing 24, 44.1 and 48 kHz files
-with the reported duration intact, so the true rate in the header is less code and less to be wrong about.
+**Why the browser cannot make that request** Measured against the server this was built on (audio.cpp, `model=refine`,
+Qwen3-ASR-0.6B): it answers **no CORS headers** — `OPTIONS` is a 404 and a `POST` comes back without
+`Access-Control-Allow-Origin` — so a page on the gateway's origin can send the request and never read the answer. The
+address is also usually `127.0.0.1`, which is true of this machine and no other: a canvas opened on a phone over the
+LAN would be asking the phone for a speech server. So the page posts to `/api/speech/transcriptions` and the gateway
+posts onward. The address travelled **in the request** rather than from `data/settings.json`, because the gateway
+deliberately understands no key in the preferences document (`internal/settings`) and this route had no reason to
+become the first exception.
 
-**Why `Ctrl`/`⌘` + `'`** A quote is what a person uses to quote speech, and the chord collides with nothing
-here: `Space` is the canvas's temporary tool, `Shift` alone is additive selection, `Ctrl` alone is the
-temporary tool and the multi-select click, and a printable in the chord means it cannot be started by accident
-the way a held modifier can. `Ctrl+'` types nothing and is bound by no browser; `⌘+'` is Firefox's quick-find
-on macOS, which is why `Ctrl` is said first. Repeats are dropped (`event.repeat`) and the window losing focus
-ends the recording — the one failure worth code, a held key whose keyup arrives on a page that is not
-listening.
+**Why only WAV, and why the encoder is ours** The same server refuses anything that is not a real WAV —
+`MediaRecorder` produces webm/opus (Chrome) or mp4 (Safari), both refused by name, and renaming the file does not
+help because the bytes are sniffed ("input is Matroska/WebM, not WAV"). So the panel captures raw samples through
+the Web Audio graph (`ScriptProcessorNode` — deprecated, and still the shortest path that starts inside the gesture
+with no second module) and writes the 44-byte header itself (`lib/wav.ts`). No resampling here: the server was
+measured transcribing 24, 44.1 and 48 kHz with the reported duration intact, so the true rate in the header is less
+code and less to be wrong about.
 
-**Why the caret** Speaking is another way of typing, so it does what typing does: the words go in at the
-caret, replacing a selection, and the caret ends up after them (`lib/canvas/agent-dictation.ts`, a pure
-function of the draft and a range, which is the only way it can be tested without a DOM). The range is the
-box's own selection — a textarea keeps it while unfocused, which is exactly the state it is in, since the
-gesture started on the canvas — with the end of the draft as the answer for a box never touched. A gesture
-that produced less than 0.2 s of sound is dropped silently rather than being sent and refused.
+**Why `Ctrl`/`⌘` + `'`** A quote is what a person uses to quote speech, and the chord collides with nothing: `Space`
+is the canvas's temporary tool, `Shift` alone is additive selection, `Ctrl` alone is the temporary tool and the
+multi-select click, and a printable in the chord means it cannot start by accident the way a held modifier can.
+`Ctrl+'` types nothing and is bound by no browser; `⌘+'` is Firefox's quick-find on macOS, which is why `Ctrl` comes
+first. Repeats are dropped (`event.repeat`) and losing focus ends the recording — the one failure worth code, a held
+key whose keyup lands on a page that is not listening.
 
-**The language is a hint, and that was measured rather than assumed** `language` follows the interface
-(`zh`/`en`), which raised the obvious question — an English interface and a Chinese sentence. Tested on the
-same server: English audio transcribed correctly with a `zh`, a `Chinese` and a garbage `English-zh` hint alike,
-and Japanese audio transcribed correctly with `ja`, `zh`, `en` and auto; the field is advisory on this model
-("Recognition language code or label. Omit to detect language automatically"). A wrong hint does not corrupt an
-answer, so the interface language is a safe default and the field is one line to change if a server is ever
-found where it is not.
+**Why the caret** Speaking is another way of typing, so it does what typing does: the words go in at the caret,
+replacing a selection, and the caret ends after them (`lib/canvas/agent-dictation.ts`, a pure function of the draft
+and a range — the only way to test it without a DOM). The range is the box's own selection, which a textarea keeps
+while unfocused (exactly the state it is in, since the gesture began on the canvas), with the end of the draft as
+the answer for a box never touched. A gesture under 0.2 s of sound is dropped silently rather than sent and refused.
 
-**The cost of the hop** `make check` covers it: the audio arrives at the configured address as a multipart
-`file`, the fields the page sent are the ones that got there (and `url` is **not** among them — a destination
-that is echoed back to the server is a destination that could be pointed anywhere), a refusal comes back in
-the speech server's own words with the 4xx/5xx distinction kept, an unreachable address names the address, and
-a missing or non-http one is a 400 with nothing sent. `npx vitest run` covers the encoder (header, sizes,
-rates, clamping), the insertion (caret, selection, out-of-range) and the request body.
+**The language is a hint, measured rather than assumed** `language` follows the interface (`zh`/`en`), which raised
+the obvious question — an English interface and a Chinese sentence. Tested on the same server: English audio
+transcribed correctly under a `zh`, a `Chinese` and a garbage `English-zh` hint alike, and Japanese audio correctly
+under `ja`, `zh`, `en` and auto; the field is advisory on this model ("Recognition language code or label. Omit to
+detect language automatically"). A wrong hint does not corrupt an answer, so the interface language is a safe
+default and one line to change if a server is ever found where it is not.
 
-**Not verified here** A real microphone: there is no browser in this tree and no DOM in the tests, so the
-capture path, the permission prompt and the feel of the gesture are for a person to try. Two limits worth
-knowing: the very first press of a session waits on the permission prompt (a gesture that ends while the
-prompt is up records nothing, silently), and `getUserMedia` needs a secure context — `127.0.0.1` is one,
-`http://192.168.x.x` on the LAN is not, so on a phone the button works only over https or on localhost.
-
-**Where** `internal/server/routes_speech.go` (+`_test.go`), `routes_admin.go`, `frontend/src/lib/{wav,pcm-recorder}.ts`,
-`frontend/src/lib/canvas/agent-dictation.ts`, `frontend/src/services/api/speech.ts`,
-`frontend/src/components/canvas/{use-hold-to-talk.ts,canvas-agent-panel.tsx}`,
-`frontend/src/components/settings/preferences-dialog.tsx`, `frontend/src/stores/use-config-store.ts`,
-`frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
-`frontend/tests/{wav,agent-dictation,api-speech}.test.ts`.
-
+**Where** `frontend/src/lib/{wav.ts,canvas/agent-dictation.ts}`, `frontend/src/components/canvas/canvas-agent-panel.tsx`,
+`internal/server/routes_speech.go`, `docs/server.md`.
 
 ## 240. The binary is `comfyloft-server`, and nothing is called a gateway any more
 
@@ -8944,74 +8757,54 @@ and `TestAgentDirectoryHasNoSegmentOfItsOwn` (the path ends in `comfyloft-server
 
 ## 246. The speech server's model and key are settings; the key never leaves the server
 
-**Decision** Speech-to-text has three facts about the server at the other end, and each is where the protocol
-says nothing: the **address** (#239), the **model name** (a setting now, default `refine`, blank meaning "send
-no model"), and the **credential** — which is stored on this server, `data/speech-key.json` mode `0600`, and
-sent as `Authorization: Bearer` on the request this server makes. The page can ask whether one is stored
-(`GET /api/speech/key`), replace it, or clear it (`PUT /api/speech/key`); it never receives it. A refusal from
-the speech server now keeps its **status** as well as its words: 401, 413 and 429 pass through as themselves,
-and only a 5xx becomes 502. This replaces one sentence of #239 — the address is no longer "the only setting" —
-and leaves the rest of it standing: the hop, the WAV, the gesture and the caret are unchanged.
+**Decision** Three facts about the server at the other end, each where the protocol says nothing: the **address**
+(#239), the **model name** (a setting, default `refine`, blank meaning "send no model"), and the **credential** —
+stored on this server as `data/speech-key.json` mode `0600` and sent as `Authorization: Bearer` on the request this
+server makes. The page can ask whether one is stored (`GET /api/speech/key`), replace it, or clear it; it never
+receives it. A refusal from the speech server keeps its **status** as well as its words: 401, 413 and 429 pass
+through as themselves and only a 5xx becomes 502.
 
-**Why the model had to stop being a constant.** Measured against `127.0.0.1:18080` (audio.cpp) and against
-OpenAI's OpenAPI spec:
+**Amended by #252** The address, the model and the key are now one active profile in `data/speech.json`, and the key
+file of this entry is no longer read (left on disk, with one log line saying so). The reasoning below is why the key
+never entered the preferences document, which is unchanged.
 
-- `POST /v1/audio/transcriptions` is OpenAI's shape, copied by every OpenAI-compatible server, and its
-  `CreateTranscriptionRequest` is `required: [file, model]`. audio.cpp agrees and enforces it: no `model`
-  field answers `500 multipart transcription request requires a 'model' field`, an empty one the same, and
-  `model=whisper-1` answers `500 unknown model id: whisper-1`.
-- The name is a fact about one machine. This server's `GET /v1/models` lists `refine` (qwen3_asr, offline,
-  measured rtf 0.36 on a second of audio) and `stream` (SenseVoice-Small, streaming, rtf 0.04 — and it
-  answered a pure tone with "Okay.", where `refine` answered nothing). OpenAI's enum is `whisper-1`,
-  `gpt-transcribe`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe-diarize`, and two of
-  those carry an announced shutdown date of 2027-02-26. A name baked into the build fits one machine and, on
-  that machine, expires.
-- So `refine` is a default that matches the default address, and blank is honest for the one shape that names
-  nothing at all (`whisper.cpp`'s `/inference`). The empty case is not made into an error here: the server that
-  wants a model says so in its own words, and a name invented by this build would be worse than the silence.
+**Why the model had to stop being a constant** Measured against `127.0.0.1:18080` (audio.cpp) and against OpenAI's
+OpenAPI spec:
 
-**What is deliberately not a setting.** `additionalProperties: false` on OpenAI's request object means an
-extra field is an error, not a shrug (audio.cpp ignores everything it does not know — `response_format`,
-`temperature`, `prompt` and a `bogus_field` all answered 200). `response_format` defaults to `json`, which is
-the only format `gpt-4o-transcribe` accepts and the only one this build reads (`text`), so configuring it
-would be a way to break dictation. `language` is ISO-639-1 and follows the interface (`zh`/`en`), measured to
-be advisory (#239). The audio is 16 kHz mono WAV, which is on the allowed-format list and which the server
-resamples for itself. None of these is a preference; a field for any of them would be a field that can only be
-set wrong.
+- `POST /v1/audio/transcriptions` is OpenAI's shape, copied by every compatible server, and its
+  `CreateTranscriptionRequest` is `required: [file, model]`. audio.cpp agrees and enforces it: no `model` answers
+  `500 multipart transcription request requires a 'model' field`, an empty one the same, `model=whisper-1` answers
+  `500 unknown model id: whisper-1`.
+- The name is a fact about one machine. `GET /v1/models` there lists `refine` (qwen3_asr, offline, rtf 0.36 on a
+  second of audio) and `stream` (SenseVoice-Small, rtf 0.04 — and it answered a pure tone with "Okay.", where
+  `refine` answered nothing). OpenAI's enum is `whisper-1`, `gpt-transcribe`, `gpt-4o-transcribe`,
+  `gpt-4o-mini-transcribe`, `gpt-4o-transcribe-diarize`, two of them with an announced shutdown date of 2027-02-26. A
+  name baked into the build fits one machine and, on that machine, expires.
+- So `refine` is a default matching the default address, and blank is honest for the one shape that names nothing
+  (`whisper.cpp`'s `/inference`). The empty case is not an error here: a server that wants a model says so in its own
+  words, and a name invented by this build would be worse than the silence.
 
-**Why the key is not in the preferences document — measured, not assumed.** `data/settings.json` is served
-whole by two routes that need no authentication: `GET /config.js`, which the page loads before its bundle so
-the first frame is themed (#220), and `GET /api/settings`. It is also, when the operator names
-`RUNTIME_CONFIG_PATH`, written out as a file **for a static host with no server in the request path**. A
-credential in that document would be a credential for every client that can load the canvas, and a published
-one for the internet. This build already had the rule for the agent's model keys — `agent.Model` carries no
-`api_key`, only `hasKey`, and `config.preferences.apiKeyStored` says so on screen — and the speech key now
-follows it. `GET /api/speech/key` answers `{"stored":…}`, `PUT` takes `{"key":…}` (blank removes the file).
+**What is deliberately not a setting** `additionalProperties: false` on OpenAI's request object makes an extra field
+an error rather than a shrug (audio.cpp ignores what it does not know — `response_format`, `temperature`, `prompt`
+and a `bogus_field` all answered 200). `response_format` defaults to `json`, the only format `gpt-4o-transcribe`
+accepts and the only one this build reads, so configuring it would be a way to break dictation. `language` follows
+the interface and is advisory (#239). The audio is 16 kHz mono WAV, on the allowed list, and the server resamples for
+itself. A field for any of these would be a field that can only be set wrong.
 
-**The two costs of that choice.** The key cannot be shown, only replaced: a password field that autosaved would
-write a half-typed credential on every keystroke, so this is the one control in the preferences window with a
-Save button, and a blank field means "keep what is stored" (`apiKeyKeepHint`). And the field cannot be filled
-in from the page's own state, so the section asks the server once when it opens.
+**Why the key is not in the preferences document — measured, not assumed** `data/settings.json` is served whole by
+two routes that need no authentication: `GET /config.js`, which the page loads before its bundle so the first frame
+is themed (#220), and `GET /api/settings`. It is also, when the operator names `RUNTIME_CONFIG_PATH`, written out as
+a file **for a static host with no server in the request path**. A credential there is a credential for every client
+that can load the canvas, and a published one for the internet. The rule already existed for the agent's model keys
+(`agent.Model` carries `hasKey`, never `api_key`), and the speech key followed it.
 
-**What a stray credential costs nothing.** The audio.cpp build this was built against checks no `Authorization`
-at all: a request carrying `Bearer whatever` answered 200. So sending a stored key to a local server costs a
-header and nothing else, and a key is only ever stored because the user typed one.
+**The two costs of that choice** The key cannot be shown, only replaced: a password field that autosaved would write
+a half-typed credential on every keystroke, so this is the one control in the window with a Save button, and a blank
+field means "keep what is stored" (`apiKeyKeepHint`). And the field cannot be filled from the page's own state, so
+the section asks the server once when it opens.
 
-**Tested** `internal/server/routes_speech_test.go`: the model travels as given and a name this build has never
-heard of (`whisper-1`) arrives intact; the credential comes from the store and never from the request (a `key`
-field is dropped, not forwarded, and no header is invented when nothing is stored); the key file is written
-`0600`, `GET` never answers it, and a blank `PUT` removes the file; 401/413/429 pass through while 500 becomes
-502 with the server's own sentence. `frontend/tests/api-speech.test.ts`: no `key` field is on the wire, no
-`model` is sent when the field is blank, the model follows the config, the key routes are called with the right
-method and body, and a refusal is shown in the server's words. Verified live: `/api/speech/key` round-trips,
-`data/speech-key.json` is `-rw-------`, dictation through the server answered 200 both with and without a
-stored key, `/config.js` carries no key.
-
-**Where** `internal/server/routes_speech.go` (+`_test.go`), `internal/store/speech.go`, `internal/server/server.go`,
-`frontend/src/services/api/speech.ts`, `frontend/src/components/settings/preferences-dialog.tsx`,
-`frontend/src/stores/use-config-store.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
-`frontend/tests/api-speech.test.ts`, `docs/server.md`, `README.md`.
-
+**Where** `internal/server/routes_speech.go`, `internal/store/` (the key file this entry introduced),
+`frontend/src/components/settings/`, `docs/server.md`.
 
 ## 247. Sweep after #246: two gates the rename left red, a silent error, a map nobody read
 
@@ -9247,76 +9040,54 @@ drew.
 
 ## 252. Speech servers are a list, and the active one is what dictation uses
 
-**Decision** Speech-to-text has more than one server now. A list of **profiles** lives in `data/speech.json`
-(mode `0600`): each is a name, an address, a model name and a key, one of them is active, and the active one is
-where a recording goes. `GET /api/speech/profiles` answers `{"profiles":[{id,name,url,model,hasKey}],"active":<id>}`,
-`PUT /api/speech/profiles` takes the **whole list** back with one entry added, changed, removed or activated, and
-`POST /api/speech/transcriptions` no longer names a server at all. This replaces the single `asrUrl`/`asrModel`
-pair of settings and the single `data/speech-key.json` of #246, and it retires one sentence of #239: the address
-no longer travels with the request, because the list is the server's own file and not the preferences document.
+**Decision** Speech-to-text has more than one server. A list of **profiles** lives in `data/speech.json` (mode
+`0600`): a name, an address, a model name and a key each, one of them active, and the active one is where a recording
+goes. `GET /api/speech/profiles` answers `{"profiles":[{id,name,url,model,hasKey}],"active":<id>}`, `PUT
+/api/speech/profiles` takes the **whole list** back with one entry added, changed, removed or activated, and
+`POST /api/speech/transcriptions` names no server at all. This replaces the single `asrUrl`/`asrModel` pair and the
+single `data/speech-key.json` of #246, and it retires one sentence of #239: the address no longer travels with the
+request.
 
-**Why a list.** #246's own words were "the key is one value, not a keyring: this build talks to one speech
-server". The second half of that sentence stopped being true the moment the address, the model name and the key
-became settings: a workspace is used from a desk with a local audio.cpp on the CPU and from a café with a hosted
-whisper, and one field each means editing all three between them — or leaving an address pointing at a machine
-that is not there. Profiles are the shape the agent's models already have (#249), so the window has one list
-pattern and one dialog pattern rather than two.
+**Why a list** #246's own words were "the key is one value, not a keyring: this build talks to one speech server" —
+and that stopped being true the moment the address, the model and the key became settings. A workspace is used from a
+desk with a local audio.cpp on the CPU and from a café with a hosted whisper; one field each means editing all three
+between them, or leaving an address pointing at a machine that is not there. Profiles are the shape the agent's models
+already have (#249), so the window keeps one list pattern and one dialog pattern instead of two.
 
-**Why the list is the server's.** A profile *is* an address **and** a credential, and the preferences document
-is served whole by `GET /config.js` to every browser that loads the canvas and written out as a file for a static
-host when the operator names `RUNTIME_CONFIG_PATH` — measured, not assumed (#246). So the key cannot live in it,
-and a list with per-profile keys can only live where the keys are. The page is shown `hasKey` and never a key,
-exactly as `agent.Model` shows the agent's models. The form's only keys are the ones the user has just typed: a
-new profile's, or a replacement for a stored one.
+**Why the list is the server's** A profile *is* an address **and** a credential, and the preferences document is
+served whole by `GET /config.js` to every browser that loads the canvas, and written out as a file for a static host
+when the operator names `RUNTIME_CONFIG_PATH` — measured, not assumed (#246). So the key cannot live in it, and a list
+with per-profile keys can only live where the keys are. The page is shown `hasKey` and never a key, exactly as
+`agent.Model` is. The form's only keys are the ones the user has just typed.
 
-**The five rules that make one list safe to write from two windows.** The whole list goes back, in the page's
-order, so an entry that is missing is a profile that was deleted — the same rule `model_sync` takes, and one
-atomic rename rather than a sequence of edits that can half-apply. An entry that arrives **without a `key` field
-says nothing** about the stored key, which is how a stored key survives an edit to the address; `""` removes it,
-and removing one is a checkbox on the form, because a blank field cannot mean both "keep" and "delete". An **id
-the server does not have is refused** (`speech_profile_unknown`, 400) rather than adopted: two pages disagreeing
-is a reload, not a duplicate. **Ids are the server's to assign** — a page sends none for a new profile — so no
-client invents an id that another client's list already has. And **the active id is never 0 while a profile
-exists**: an id that names nothing becomes the first entry, so deleting the active profile leaves the microphone
-working instead of failing with nothing on screen explaining it.
+**The five rules that make one list safe to write from two windows** The whole list goes back in the page's order, so
+a missing entry is a deleted profile — the same rule `model_sync` takes, and one atomic rename rather than a sequence
+of edits that can half-apply. An entry that arrives **without a `key` field says nothing** about the stored key, which
+is how a key survives an edit to the address; `""` removes it, and removing one is a checkbox, because a blank field
+cannot mean both "keep" and "delete". An **id the server does not have is refused** (`speech_profile_unknown`, 400)
+rather than adopted: two pages disagreeing is a reload, not a duplicate. **Ids are the server's to assign** — a page
+sends none for a new profile — so no client invents an id another client's list already has. And **the active id is
+never 0 while a profile exists**: an id that names nothing becomes the first entry, so deleting the active profile
+leaves the microphone working instead of failing with nothing on screen explaining it.
 
-**What the request carries now.** `file` and `language`, and nothing else. The model name and the credential come
-from the active profile, so a form field cannot redirect a recording: the old route forwarded every field the
-page sent except `url` and `key`, which meant a `model` field could name a different model than the one the user
-configured. The body is now built from two named parts. `language` stays the page's because it is a fact about one
-utterance — the interface's language — and not about the server.
+**What the request carries now** `file` and `language`, and nothing else. The model and the credential come from the
+active profile, so a form field cannot redirect a recording — the old route forwarded every field the page sent except
+`url` and `key`, which meant a `model` field could name a model the user never configured. `language` stays the
+page's because it is a fact about one utterance, not about the server.
 
-**Two costs.** A profile's address, model and `hasKey` are on the server, so the window reads them when it opens
-(a failed read says so, and the Add button waits for the answer: a PUT that merges into a list the page has not
-seen would delete the profiles it does not know about). And `data/speech-key.json` from #246 is no longer read;
-it is left alone rather than deleted — a credential is not this process's to remove — and the log says once that
-it is dead (`speech: … is no longer read`).
+**Two costs** A profile's address, model and `hasKey` are on the server, so the window reads them when it opens — a
+failed read says so, and Add waits for the answer, since a PUT that merges into a list the page has not seen would
+delete the profiles it does not know about. And `data/speech-key.json` from #246 is no longer read; it is left alone
+rather than deleted (a credential is not this process's to remove) and the log says once that it is dead.
 
-**Tested** `internal/server/routes_speech_test.go`: the recording goes to the **active** profile and the inactive
-one is never called; the model and the `Authorization: Bearer` are the profile's even when the page's form names a
-different model, key and address; a profile with no key invites no header; a blank model sends no `model` field;
-no profile is a 400 `speech_profile_missing`; 401/413/429 pass through while 500 becomes 502; `speech.json` is
-`0600`, holds the key, and no answer contains it; an entry sent back without a key keeps the stored one and `""`
-removes it; an unknown id, a duplicated id, a fractional id, a non-list, a profile with no address and an `ftp`
-address are each a 400 with a code and leave the list untouched; the active id falls back to the first entry.
-`internal/store/store_test.go`: a hand-edited file with colliding, missing and unusable entries loads as three
-usable profiles with distinct ids, and ids are never reused across a reload.
-`frontend/tests/api-speech.test.ts` and `speech-profiles.test.ts`: the request names no server, model or key; the
-list is read and written as a whole; an untouched entry carries no key field; a typed key is trimmed and sent; a
-blank field sends nothing and `removeKey` sends `""`. Exactly two refusals are re-worded in the dictionary
-rather than passed on: `speech_profile_missing` (an empty list, which is a setting in this window) and
-`speech_profile_unknown` (another window wrote the list first, where "there is no speech profile 7" is not
-something a reader can act on). Everything else, including every refusal from the speech server itself, keeps the
-server's words. `frontend/tests/config-speech-migration.test.ts`: a stored document carrying the old `asrUrl` and
-`asrModel` hydrates to a config that has neither, and the rest of the document survives that. `make check` 19
-packages, `npx vitest run` 345, `npm run check` (864/850 keys), `npm run build`.
-
-**Where** `internal/store/speech.go` (+`store_test.go`), `internal/util/util.go` (`WriteFileAtomicMode`),
-`internal/server/routes_speech.go` (+`_test.go`), `internal/server/server.go`,
-`frontend/src/services/api/speech.ts`, `frontend/src/lib/speech-profiles.ts`,
-`frontend/src/components/settings/{speech-profiles-section,speech-profile-dialog,preferences-dialog}.tsx`,
-`frontend/src/stores/use-config-store.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
-`frontend/tests/{api-speech,speech-profiles,config-speech-migration}.test.ts`, `docs/server.md`, `README.md`.
+**Where** `internal/store/speech.go`, `internal/util/util.go` (`WriteFileAtomicMode`),
+`internal/server/routes_speech.go`, `frontend/src/services/api/speech.ts`, `frontend/src/lib/speech-profiles.ts`,
+`frontend/src/components/settings/speech-profile{s-section,-dialog}.tsx`, `frontend/src/stores/use-config-store.ts`.
+Tests: `routes_speech_test.go` (the recording goes to the active profile, the profile's model and bearer win over the
+form's, a blank model sends nothing, no profile is a 400, 401/413/429 pass through while 500 becomes 502,
+`speech.json` is `0600` and never in an answer, a keyless entry keeps the stored key and `""` removes it, every bad
+id is a 400 that leaves the list untouched), `store_test.go` (a hand-edited file with colliding, missing and unusable
+entries loads as distinct usable ids), `api-speech.test.ts`, `speech-profiles.test.ts`.
 
 
 ## 253. Twelve Go exports nothing could reach are gone, and a gate says so from now on
@@ -9773,6 +9544,7 @@ the button necessary-looking.
 
 **Cost** None: nothing referenced it — no test, no agent tool, no shortcut — and clicking the node still opens
 the panel.
+
 
 ## 263. A workflow's request contract is on the wire, and a step is a node's model
 
@@ -10713,81 +10485,63 @@ arrives, so a turn that starts typing never shows it — its answer is the progr
 `Working…` present from the instant the turn opened until it ended, absent from every idle sample, `Thinking…`
 in none of them. Not a claim about a re-render after a reload.
 
+
 ## 285. One press, one answer
 
-**Decision** A press of `canvas_generate` has exactly two answers, and both are facts: a run is out (its id, and
-the server will say how it ended), or it did not start and here is why. A press answers when the page answers; the
-bound on it is the bridge's own 30 s, after which the agent is told "the canvas did not answer" — not a promise, an
-unknown, and nothing was recorded. A finished run's notice is a debt: `Notified` is written down, `MarkNotified` is
-called only after `Tell` succeeded, and `flushRunNotices` pays whatever a session is owed when it opens. Every run
-ends: video and audio have a default ceiling (three hours, thirty minutes), and a ComfyUI that has not answered for
-five minutes ends the watch with a sentence saying so. And a node says whether anything is happening in it —
-`list_nodes` and `read_node` print "generating now" or "last run failed: …" — because that is the question a press
-with no answer leaves open.
+**Decision** A press of `canvas_generate` has exactly two answers, both facts: a run is out (its id, and the server
+will say how it ended), or it did not start and here is why. It answers when the page answers; the bound is the
+bridge's own 30 s, after which the agent is told "the canvas did not answer" — an unknown, not a promise, and
+nothing was recorded. A finished run's notice is a debt: `Notified` is persisted, `MarkNotified` is called only
+after `Tell` succeeded, and `flushRunNotices` pays what a session is owed when it opens. Every run ends: video and
+audio have default ceilings (three hours, thirty minutes), and a ComfyUI that has not answered for five minutes
+ends the watch with a sentence saying so. And a node says whether anything is happening in it — `list_nodes` and
+`read_node` print "generating now" or "last run failed: …".
 
-**Why** The conversation continues on what a press promises, and the whole of the promise is "a run exists, and you
-will be told how it ended". Measured on a real canvas (192.168.3.233, 03:32): one turn created three picture nodes,
-connected a text card into each, and pressed generate on each. The page processed the connects and the presses within
-3 ms — before React had committed the new connections — so the run saw no card, sent an empty prompt, and the server
-answered 400 in 2 ms. `runImageGeneration` caught that, marked the node failed, and returned normally: the press
-reported nothing to the tool, which waited out its own 15 s clock and answered "if it does not [start], nothing was
-produced". The three nodes then read `All images failed to generate` — the reason had been overwritten a line later
-— and the agent, told that silence was possible, ended its turn and never heard another word.
+**Why** The whole promise of a press is "a run exists, and you will be told how it ended". Measured on a real
+canvas (192.168.3.233): one turn created three picture nodes, connected a text card into each and pressed generate
+on each; the page processed the connects and the presses within 3 ms — before React had committed the new
+connections — so the run saw no card, sent an empty prompt, and the server answered 400 in 2 ms.
+`runImageGeneration` caught it, marked the node failed and returned normally: the press reported nothing, the tool
+waited out its own clock and answered "if it does not, nothing was produced". The three nodes read `All images
+failed to generate` — the reason had been overwritten a line later — and the agent, told silence was possible,
+ended its turn and never heard another word.
 
-**Why not the version with the promise, and the ledger it needed** The first attempt at this kept the third answer
-("no run reported yet") and made it a promise: the page would keep the press and say a late refusal, and a ledger
-would have made the promise true across a page that died. It worked, and it was scaffolding: a clock deciding what a
-sentence means, two reporters for one press, a state machine to patch the one case the clock could not cover, and a
-30 ms guess in the page when the calls of one turn turned out to arrive out of the order they were made. All of it
-existed to make a *page's silence* trustworthy. Deleting the promise deleted the scaffolding instead: a page that is
-slow is waited for, a page that is gone is answered by the bridge, and a run that took hold is covered by the notice
-that the server owes anyway. A tool call is answered once, by the side that actually knows.
+**Why not the version with the promise** The first attempt kept a third answer ("no run reported yet") and made it
+a promise: keep the press, say the late refusal, keep a ledger so the promise survived a page that died. It worked,
+and it was scaffolding — a clock deciding what a sentence means, two reporters for one press, a state machine for
+the case the clock could not cover, and a 30ms guess in the page. All of it existed to make a *page's silence*
+trustworthy. Deleting the promise deleted the scaffolding: a slow page is waited for, a dead page is answered by
+the bridge, and a run that took hold is covered by the notice the server owes anyway.
 
 **Why the ordering is a prompt rule and not a mechanism** The calls of one turn do not reach the page in the order
-the agent made them — measured, with the page's own console: a press read `connections 17` while the connect that
-mattered was still arriving, and a second press went 400 with the connect answered 16 ms later. No page-side ordering
-can fix an order it does not control, and serialising the server's publication (the one structural fix available)
-couples every call's latency to every earlier one, and lets a queued call time out before it is even published and
-then be executed anyway. So the system prompt says what is true of the transport: press only after the canvas has
-answered your connections. What a press that breaks it gets is a loud refusal with the reason, which is what the
-agent then repaired by itself, twice, in front of me.
+the agent made them — measured in the page's console: a press read `connections 17` while the connect that
+mattered was still arriving, and a second press went 400 with the connect answered 16 ms later. No page-side fix
+can order what it does not control, and serialising the server's publication couples every call's latency to every
+earlier one while letting a queued call time out before it is published and then run anyway. So the system prompt
+states the transport's truth: press only after the canvas has answered your connections. Breaking it gets a loud
+refusal with the reason, which the agent then repaired by itself, twice.
 
-**What is left in the page** Every hand that changes the canvas is wrapped in `flushSync`, so "it returned" and "the
-canvas has it" are the same moment — which is what makes the prompt rule above worth its sentence. Everything else
-the page once had for this (a settle-and-retry beat, a promise channel, a queue) is gone.
+**What is left in the page** Every hand that changes the canvas is wrapped in `flushSync`, so "it returned" and
+"the canvas has it" are the same moment — which is what makes the prompt rule above worth its sentence. The
+settle-and-retry beat, the promise channel and the queue are gone.
 
-**Cost** A press is now answered only when the page answers, so a slow press holds the agent's turn for as long as
-it takes (bounded by the bridge's 30 s, which is the only clock left). A notice can be delivered twice if the
-process dies inside the writer's debounce window; that direction is chosen, because a duplicate is a sentence the
-agent reads and a loss is a conversation that stops.
+**Cost** A slow press holds the agent's turn for as long as the page takes (bounded by the bridge's 30 s). A notice
+can be delivered twice if the process dies inside the writer's debounce window; that direction is chosen — a
+duplicate is a sentence the agent reads, a loss is a conversation that stops.
 
-**Tested** On an isolated `:8191` with the real AlayaCore, against a real ComfyUI (192.168.3.233) and against a stub
-that accepts `/prompt` and never finishes:
-- *a press that never became a run*: `POST /api/canvases/…/runs 400` and the same second
-  `generate on image-… did not start: workflow image-z-image-turbo requires a non-empty prompt. Nothing was
-  queued, so there is nothing to wait for — fix that and press it again.` (isError), where the build with the
-  promise answered nothing for fifteen seconds and then said nothing would come;
-- *a run nobody could be told about*: `agent: run task_535937ae… ended with nobody to tell (canvas:…: no agent
-  session … is open), and the notice is owed`, then, when the page opened 7 s later,
-  `agent: told canvas:…, late, that run task_535937ae… failed`, accepted by AlayaCore
-  (`agent << UX …"[comfyloft] … failed: generation timed out"`) and worked into a new turn;
-- *a run that never ends*: the stub accepted the prompt and never completed; six seconds later (the test's own
-  `REQUEST_TIMEOUT_MS`) `task … failed: generation timed out` and the notice;
-- *a real generation*: a picture was made on the real ComfyUI in 7 s, `agent: told … completed`, and two nodes
-  whose own prompt was empty were generated from the connected card alone — both accepted, 202;
-- `make check` (deadcode 508), `go test ./...`, `npx tsc --noEmit`, `npm run check` (i18n 860/827, exports 188
-  modules), `npx vitest run` (397), `npm run build` (561 kB): `TestANoticeNobodyHeardIsOwedUntilItIsPaid`,
-  `TestTheNoticeSurvivesASessionThatWasNotThere`, `TestWaitForHistoryGivesUpOnAComfyUIThatNeverComesBack`,
-  "a node says whether anything is happening in it", and the two "one press, one answer" cases.
+**Measured** On an isolated `:8191` with the real AlayaCore, against a real ComfyUI and against a stub that accepts
+`/prompt` and never finishes: a press that never became a run answered `400` and, in the same second, "generate on
+image-… did not start: … requires a non-empty prompt. Nothing was queued, so there is nothing to wait for — fix
+that and press it again"; a run with no session open logged "ended with nobody to tell …, and the notice is owed"
+and 7 s later, on the page opening, "told …, late", accepted by AlayaCore and worked into a new turn; the stub's
+run failed as "generation timed out" with its notice; a real generation finished in 7 s and told the agent. Tests:
+`TestANoticeNobodyHeardIsOwedUntilItIsPaid`, `TestTheNoticeSurvivesASessionThatWasNotThere`,
+`TestWaitForHistoryGivesUpOnAComfyUIThatNeverComesBack`, and the two "one press, one answer" cases.
 
-**Where** `internal/task/task.go` (`Notified`, `reported`, `MarkNotified`, `OwedTo`), `internal/server/run_notice.go`
-(`onRunFinished`, `flushRunNotices`), `internal/server/routes_agent.go`, `internal/generate/runner.go`
-(`unreachableBudget`), `internal/config/config.go` (`millisOrDefault`), `frontend/src/lib/canvas/agent-generate.ts`
-(two answers), `frontend/src/lib/canvas/canvas-agent-tools.ts` (`press`, and the run state in `read_node`),
-`frontend/src/lib/canvas/node-generation-facts.ts` (`runClause`), `frontend/src/lib/canvas/canvas-agent-view.ts`,
-`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts` (`committed`),
-`frontend/src/pages/canvas/hooks/use-generation-runs.ts`, `docs/server.md`, `tests/agent-generate.test.ts`,
-`tests/canvas-agent-tools.test.ts`, `tests/canvas-agent-view.test.ts`.
+**Where** `internal/task/task.go` (`Notified`, `MarkNotified`, `OwedTo`), `internal/server/run_notice.go`,
+`internal/generate/runner.go` (`unreachableBudget`), `internal/config/config.go` (`millisOrDefault`),
+`frontend/src/lib/canvas/{agent-generate,canvas-agent-tools,node-generation-facts,canvas-agent-view}.ts`,
+`frontend/src/pages/canvas/hooks/{use-canvas-agent-tools,use-generation-runs}.ts`.
 
 
 ## 286. The rules that tell the agent how this canvas is meant to be used
@@ -10881,3 +10635,4 @@ about a route #82 replaced with a socket before it was ever built — the one en
 component which did not exist.
 
 **Where** `docs/decisions.md`.
+
