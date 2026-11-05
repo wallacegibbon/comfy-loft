@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { CanvasTheme } from "@/lib/canvas-theme";
+import { nativeOptionStyle, nativeSelectStyle, type CanvasTheme } from "@/lib/canvas-theme";
 import { fetchLoras } from "@/services/api/loras";
 import type { CanvasNodeData, CanvasNodeMetadata } from "@/types/canvas";
 
@@ -124,6 +124,8 @@ export function LoraNodePanel({ node, theme, onChange }: { node: CanvasNodeData;
     }, [options, t]);
 
     const inputStyle = { borderColor: theme.node.stroke, background: theme.node.panel, color: theme.node.text };
+    // The closed select is styled like the inputs; its popup is the browser's and needs the scheme (`#298`).
+    const selectStyle = { ...inputStyle, ...nativeSelectStyle(theme) };
 
     return (
         <div className="flex flex-col gap-2.5 px-0.5 pt-2.5 text-xs" style={{ color: theme.node.text }}>
@@ -136,7 +138,7 @@ export function LoraNodePanel({ node, theme, onChange }: { node: CanvasNodeData;
 
             <select
                 className="w-full rounded-md border px-2 py-1.5 text-xs outline-none"
-                style={inputStyle}
+                style={selectStyle}
                 value={name}
                 onChange={(event) => {
                     const next = event.target.value;
@@ -144,11 +146,13 @@ export function LoraNodePanel({ node, theme, onChange }: { node: CanvasNodeData;
                     apply(next, strength);
                 }}
             >
-                <option value="">{t("canvas.lora.choose")}</option>
+                <option value="" style={nativeOptionStyle(theme)}>
+                    {t("canvas.lora.choose")}
+                </option>
                 {groups.map(([folder, items]) => (
                     <optgroup key={folder} label={folder}>
                         {items.map((option) => (
-                            <option key={option} value={option}>
+                            <option key={option} value={option} style={nativeOptionStyle(theme)}>
                                 {shortName(option)}
                             </option>
                         ))}

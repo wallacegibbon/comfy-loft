@@ -10840,3 +10840,30 @@ re-askable, and crop/split/upload/mask material is not — including the workflo
 (the material branch and `MaterialModelPicker`), `frontend/src/pages/canvas/hooks/use-image-editors.ts`
 (`cropImageNode`, `splitImageNode`), `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
 `frontend/tests/node-generatable.test.ts`.
+
+## 298. A native select's popup follows the palette
+
+**Decision** The two native `<select>`s on the canvas — the upscaler's model list in a step node's panel, and the
+LoRA card's file picker — take `nativeSelectStyle(theme)` / `nativeOptionStyle(theme)` from `canvas-theme.ts`:
+the `color-scheme` of the palette in use, plus the text and option colours stated on the element.
+
+**Why** That popup is the browser's, not ours: it is painted from the colour scheme the element declares, not
+from the card behind it. A select whose `color` came from the dark palette therefore opened a **light** list of
+**light** text — the upscaler's three weight files were unreadable (screenshot of the 放大 node's panel,
+2026-11-05) — and no stylesheet can reach that list, because the list is not in the document.
+
+**Rejected** Swapping the kit `Select` in for both. It would fix the colour and match the rest of the app, but it
+renders its popup through a portal at body level, and both call sites live inside the canvas's transformed
+layer — placement would then have to be taught about pan and zoom (`getPopupContainer`, `data-canvas-no-zoom`),
+which is a much bigger promise than "the list is readable".
+
+**Cost** The popup is still the OS's: its font, row height and shadow are not ours, and `color-scheme` is
+honoured by Chromium and Firefox rather than by every renderer — the per-option colours are the fallback for the
+rest.
+
+**Tested** `frontend/tests/native-select-style.test.ts` (new, 2): dark and light each answer their own scheme, and
+an option's text and background come from the same palette as the card. `npx tsc --noEmit`, `npm run check`
+(i18n 842, exports 186), `npx vitest run` (431), `make frontend`.
+
+**Where** `frontend/src/lib/canvas-theme.ts`, `frontend/src/components/canvas/canvas-tool-node-panel.tsx`,
+`frontend/src/components/canvas/nodes/lora-node.tsx`, `frontend/tests/native-select-style.test.ts`.

@@ -7,6 +7,7 @@ import { WorkflowModelPicker } from "@/components/model-picker";
 import { serverParameterLabel } from "@/lib/server-labels";
 import { videoModelModePatch } from "@/lib/canvas/video-model-mode";
 import { CanvasNodeReferenceBar } from "./canvas-node-reference-bar";
+import { nativeOptionStyle, nativeSelectStyle } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { channelModelOf, modelContractOf, type AiConfig, type ModelAccepts, type ModelParameter } from "@/stores/use-config-store";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData } from "@/types/canvas";
@@ -199,9 +200,9 @@ function ParameterControl({ parameter, value, onChange, theme }: { parameter: Mo
         return (
             <span className="flex min-w-0 items-center gap-1.5">
                 <span className="text-xs opacity-55">{label}</span>
-                <select className="h-8 max-w-[200px] rounded-full border bg-transparent px-2 text-sm" style={{ borderColor: theme.node.stroke, color: theme.node.text }} value={String(current ?? "")} onChange={(event) => onChange(event.target.value)}>
+                <select className="h-8 max-w-[200px] rounded-full border bg-transparent px-2 text-sm" style={nativeSelectStyle(theme)} value={String(current ?? "")} onChange={(event) => onChange(event.target.value)}>
                     {options.map((option) => (
-                        <option key={option} value={option}>
+                        <option key={option} value={option} style={nativeOptionStyle(theme)}>
                             {option}
                         </option>
                     ))}

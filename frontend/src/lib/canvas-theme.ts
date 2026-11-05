@@ -73,3 +73,26 @@ export const canvasThemes = {
 } as const;
 
 export type CanvasTheme = (typeof canvasThemes)[CanvasColorTheme];
+
+/** Which palette this is. The two are singletons in `canvasThemes`, so identity answers it. */
+function modeOf(theme: CanvasTheme): CanvasColorTheme {
+    return theme === canvasThemes.dark ? "dark" : "light";
+}
+
+/**
+ * What a native `<select>` on the canvas needs — and why it needs anything at all.
+ *
+ * Its popup is the browser's, not ours: it is painted from the colour scheme the element declares, not from
+ * the card behind it. A select whose text colour came from the palette therefore opened a **light** list of
+ * **light** text in dark mode — the upscaler's model names were unreadable, and nothing in the CSS could reach
+ * that list. `colorScheme` is the one property Chromium and Firefox paint the popup from; the option colours
+ * (`nativeOptionStyle`) cover renderers that take them from the element instead.
+ */
+export function nativeSelectStyle(theme: CanvasTheme) {
+    return { colorScheme: modeOf(theme), borderColor: theme.node.stroke, color: theme.node.text };
+}
+
+/** The same for one option: a popup row follows the card it belongs to, not the OS. */
+export function nativeOptionStyle(theme: CanvasTheme) {
+    return { background: theme.node.panel, color: theme.node.text };
+}
