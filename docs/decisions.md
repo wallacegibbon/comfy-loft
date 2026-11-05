@@ -10999,12 +10999,13 @@ canvas-ratio pills do nothing — the contract says so now, where before they we
 them is graph authoring (a `size.width/height` binding on that node, an `outputSize` rule for the edits, and a
 decision about which sizes the model is asked for), not a contract change, so it is its own entry.
 
-**Corrected (#303)** That held only for the entry, not for its variants. `t2i` declares
+**Corrected (#303, #306)** That held only for the entry, not for its variants. `t2i` declares
 `outputSize: {node: 13, latentNode: 10, latentSource: 14, fromSize: true, skipNativeSquare: true}`, so a size *is*
 written into node 13 and the latent is repointed at the encoded result — the fixed `EmptyImage(1024×1024)` is what
-runs when nothing is asked. `edit` declares an `outputSize` without `fromSize`, so its `editCanvasSize` (the
-canvas-ratio pills) is honoured while a size is not. What is still open is `inpaint`, `outpaint` and `angle`: they
-declare no output size at all, so there is nothing for a size to write into.
+runs when nothing is asked. `edit` declares an `outputSize` without `fromSize`: it reads `editCanvasSize` (the
+canvas-ratio pills) and not a size. The two keys are now offered one at a time, because a `fromSize` graph can
+never read the canvas one (#306). `inpaint` and `outpaint` declare no output size at all, and do not want one:
+their picture is the source's geometry, or the source plus the padding the caller asked for.
 
 **Tested** `internal/workflow/inputs_test.go`: a table toggling one declaration at a time, asserting the key appears
 exactly where it is read; `duration` is not an input; `loras` stays open. The shipped-workflow test now requires a
@@ -11123,3 +11124,40 @@ moment an exported node's send button re-wrapped the text `requestEdit` had alre
 **Where** `frontend/src/components/canvas/canvas-node-mask-edit-dialog.tsx` (`CanvasImageMaskEditPayload`),
 `frontend/src/pages/canvas/hooks/use-image-editors.ts` (`maskEditImageNode`),
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`.
+
+## 306. A size is rendered at the size it asks for, and one key says which size
+
+**Decision** `applyOutputSize` aligns a canvas to **16**, not 32 — in `snap` and in the `skipNativeSquare`
+comparison — and `editCanvasSize` is published only where a graph reads it, which is an `outputSize` *without*
+`fromSize`. The `resolution` param keeps its own 32: that is the encoder's rule, written in its tooltip.
+
+**Why** The canvas aligns to 16 everywhere else: the panel's step, the `snap16` bindings, and the VAE itself. This
+one path aligned to 32, twice as coarse, so a size the canvas had already made legal was moved a second time —
+3840×2160 came out 3840×2176, which is a different ratio and 8,355,840 pixels, more than the canvas's own
+8,294,400 ceiling. And a `fromSize` entry *took* `size` while the list also offered `editCanvasSize`, which that
+path can never read (`outputSize = ctx.Size`, unconditionally), so a leftover pill value travelled and was dropped —
+the accepted-and-ignored failure #302 has been deleting, one layer deeper.
+
+**How the fact was established** Not from documentation, and not from anyone's memory: the shipped `t2i` graph was
+queued on the ComfyUI the server points at (0.43.0), with node 13 set to 528×528 and the latent repointed at node
+14 — the exact two lines `applyOutputSize` writes — and the file came back **528×528**. 520×520 and 522×522 came
+back **512×512**, so the VAE floors to 16. 1360×768, which is a preset value and not a multiple of 32, came back
+1360×768. The probe also showed something worth knowing: the shipped graph takes its latent from the text encoder
+(node 5, sized by `resolution`), so `size: auto` is a `resolution²` run and only an explicit size repoints it.
+
+**Rejected** Retuning `imageSizePresets` so that every preset is a multiple of 32. That was the first plan, and it
+rested on an assumption: eight presets would have moved — 4k 16:9 would have become 3584×2016 — to satisfy a
+constraint the graph does not have. A display bent around an unverified limitation is its own kind of lie.
+
+**Cost** Nothing visible: no preset changes, no control appears or disappears. A caller that asks for a size that
+is not a multiple of 16 is rounded up to one instead of being floored by the VAE — the same adjustment as before,
+one step finer, and now the same step the panel promises.
+
+**Tested** `internal/workflow/outputsize_test.go`: 1360×768 and 3840×2160 are written into the canvas node exactly
+and the latent is repointed; 520×520 becomes 528×528; the native square is still kept, and a 16-aligned
+1040×1040 is no longer mistaken for it (which it was at 32, dropping the requested size). `inputs_test.go`: a
+`fromSize` entry accepts `size` and not `editCanvasSize`, a canvas-sized one the other way round. `go test ./...`,
+`make check`.
+
+**Where** `internal/workflow/bindings.go` (`applyOutputSize`), `internal/workflow/inputs.go` (`semanticSpecs`),
+`internal/workflow/outputsize_test.go`, `internal/workflow/inputs_test.go`, `docs/decisions.md` (#302's correction).

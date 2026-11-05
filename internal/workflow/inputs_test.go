@@ -372,6 +372,26 @@ func TestRequestKeysAreOfferedOnlyWhereTheyAreRead(t *testing.T) {
 		}
 	}
 
+	// `size` and `editCanvasSize` are two ways to say how big the canvas is, and a graph reads exactly one:
+	// a `fromSize` output size takes the request's size, anything else takes the canvas size. Offering both
+	// left the unread one to travel and be dropped — the same failure, one layer deeper (#306).
+	fromSize := base()
+	fromSize.OutputSize = &OutputSize{Node: "8", LatentNode: "9", FromSize: true}
+	if !hasInput(fromSize, "size") {
+		t.Errorf("a fromSize output size does not accept the size it reads: %v", fromSize.AcceptedInputs())
+	}
+	if hasInput(fromSize, "editCanvasSize") {
+		t.Errorf("a fromSize output size offers a canvas size it never reads: %v", fromSize.AcceptedInputs())
+	}
+	canvasSized := base()
+	canvasSized.OutputSize = &OutputSize{Node: "8", LatentNode: "9"}
+	if hasInput(canvasSized, "size") {
+		t.Errorf("a canvas-sized workflow offers a size it never reads: %v", canvasSized.AcceptedInputs())
+	}
+	if !hasInput(canvasSized, "editCanvasSize") {
+		t.Errorf("a canvas-sized workflow does not accept the canvas size: %v", canvasSized.AcceptedInputs())
+	}
+
 	// `duration` is gone: nothing ever read it, and the audio model takes its length in `seconds`.
 	if hasInput(base(), "duration") {
 		t.Error("duration is still an input")

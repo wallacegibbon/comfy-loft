@@ -428,7 +428,10 @@ func (e *Entry) semanticSpecs(bindings map[string]*Binding) []InputSpec {
 	if e.BackgroundPrompt != "" {
 		specs = append(specs, InputSpec{Key: "background", Type: "string", Label: "Background"})
 	}
-	if e.OutputSize != nil {
+	// Two ways to say how big the picture is, and a graph reads exactly one of them: a `fromSize` output size
+	// takes the request's `size`, anything else takes the canvas size. Offering both left the unused one to be
+	// accepted and dropped — the failure this list exists to prevent, one layer deeper (#306).
+	if e.OutputSize != nil && !e.OutputSize.FromSize {
 		specs = append(specs, InputSpec{Key: "editCanvasSize", Type: "size", Label: "Edit canvas size"})
 	}
 	if e.injectsLayout() {

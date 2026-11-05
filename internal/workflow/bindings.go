@@ -551,7 +551,7 @@ func applyOutputSize(next Graph, entry *Entry, ctx *Context, context map[string]
 	nativeResolution := int(math.Max(256, jsRound(resolution/32)*32))
 	skipNativeSquare := entry.OutputSize.SkipNativeSquare &&
 		outputSize.Width == outputSize.Height &&
-		int(jsRound(float64(outputSize.Width)/32)*32) == nativeResolution
+		int(jsRound(float64(outputSize.Width)/16)*16) == nativeResolution
 	if skipNativeSquare {
 		return nil
 	}
@@ -561,8 +561,13 @@ func applyOutputSize(next Graph, entry *Entry, ctx *Context, context map[string]
 	if !okSize || !okLatent {
 		return nil
 	}
+	// A canvas is rendered at a multiple of 16: the latent is an eighth of the picture and the model patches
+	// it 2x2, so the VAE floors anything else (measured on ComfyUI 0.43 through this graph: 528x528 -> 528x528,
+	// 520x520 -> 512x512). 32 was twice as coarse as the graph demands, and that extra factor moved sizes the
+	// canvas had already aligned to 16 — 3840x2160 came out 3840x2176 (#306). `resolution` above stays at 32:
+	// that is the encoder's own rule, spelled out in its tooltip ("at multiples of 32").
 	snap := func(value int) int {
-		return int(math.Max(256, jsRound(float64(value)/32)*32))
+		return int(math.Max(256, jsRound(float64(value)/16)*16))
 	}
 	sizeNode.Inputs()["width"] = snap(outputSize.Width)
 	sizeNode.Inputs()["height"] = snap(outputSize.Height)
