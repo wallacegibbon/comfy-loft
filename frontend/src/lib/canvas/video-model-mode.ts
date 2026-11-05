@@ -1,10 +1,5 @@
-import { channelModelOf, modelForWorkflow, workflowModelOptions, type AiConfig } from "@/stores/use-config-store";
+import { channelModelOf, workflowModelOptions, type AiConfig } from "@/stores/use-config-store";
 import type { CanvasNodeData } from "@/types/canvas";
-
-/** The video model a tool workflow answers to. The lookup itself is not video's — see `modelForWorkflow`. */
-export function videoModelForWorkflow(config: AiConfig, workflowId: string) {
-    return modelForWorkflow(config, workflowId);
-}
 
 /**
  * The video model that runs in a mode, found by the mode the workflow declares.
