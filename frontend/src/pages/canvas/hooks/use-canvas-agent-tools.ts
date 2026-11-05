@@ -40,6 +40,7 @@ export function useCanvasAgentTools({
     ungroupNodes,
     nodeContract,
     writeSettings,
+    stopNode,
 }: {
     nodesRef: RefObject<CanvasNodeData[]>;
     connectionsRef: RefObject<CanvasConnection[]>;
@@ -56,6 +57,7 @@ export function useCanvasAgentTools({
     ungroupNodes: CanvasHands["ungroupNodes"];
     nodeContract: CanvasHands["nodeContract"];
     writeSettings: CanvasHands["writeSettings"];
+    stopNode: CanvasHands["stopNode"];
 }) {
     // The refs and callbacks outlive a render, and a tool call can arrive between two of them.
     const hands = useRef<CanvasHands>({
@@ -74,6 +76,7 @@ export function useCanvasAgentTools({
         ungroupNodes,
         nodeContract,
         writeSettings,
+        stopNode,
     });
     hands.current = {
         nodes: () => nodesRef.current || [],
@@ -91,6 +94,7 @@ export function useCanvasAgentTools({
         ungroupNodes: committed(ungroupNodes),
         nodeContract,
         writeSettings: committed(writeSettings),
+        stopNode,
     };
 
     useEffect(

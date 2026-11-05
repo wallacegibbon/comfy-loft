@@ -4,6 +4,7 @@ import { runTool, type CanvasHands } from "../src/lib/canvas/canvas-agent-tools"
 import type { GenerateStart } from "../src/lib/canvas/agent-generate";
 import { registerBuiltinNodes } from "../src/components/canvas/nodes/builtin-nodes";
 import type { SettingsContract } from "../src/lib/canvas/node-settings";
+import type { StopOutcome } from "../src/lib/canvas/canvas-agent-tools";
 import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
 
 /**
@@ -24,7 +25,7 @@ function node(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): 
 }
 
 /** The page's hands, with every write recorded instead of performed. */
-function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [], contract: SettingsContract = {}) {
+function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [], contract: SettingsContract = {}, stopped: StopOutcome = { running: true, cancel: "cancelled" }) {
     const written = {
         prompts: [] as Array<[string, string]>,
         texts: [] as Array<[string, string]>,
@@ -35,6 +36,7 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [],
         grouped: [] as string[][],
         ungrouped: [] as string[][],
         settings: [] as Array<[string, CanvasNodeMetadata]>,
+        stopped: [] as string[],
     };
     const hands: CanvasHands = {
         nodes: () => nodes,
@@ -70,6 +72,12 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [],
         // whether a setting is written and how the answer reads.
         nodeContract: () => contract,
         writeSettings: (nodeId, patch) => void written.settings.push([nodeId, patch]),
+        // Stopping is the page's two endings (a watch, and the run's own record) collapsed into one answer;
+        // what these have to say is only what the tool tells the agent.
+        stopNode: async (nodeId) => {
+            written.stopped.push(nodeId);
+            return stopped;
+        },
     };
     return { hands, written };
 }
@@ -410,6 +418,62 @@ describe("resize_node: the card's box, not a zoom", () => {
 
         const unknown = await textOf(hands, "resize_node", { nodeId: "text-9", size: { width: 400 } });
         expect(unknown.answer.isError).toBe(true);
+    });
+});
+
+/**
+ * Stopping a run: the one thing an agent could not do once it had started one.
+ *
+ * Three answers, because the truth has three shapes and only one of them is a failure: the run was cancelled,
+ * there was nothing running (the postcondition the caller wanted already held), or the server did not confirm
+ * and the work may still be going — which is a failed call, since the caller asked for it to stop (docs/decisions.md #310).
+ */
+describe("stop_node: ending a run", () => {
+    const generating = (metadata: CanvasNodeMetadata = {}) => placed("image-1", "image", metadata);
+
+    test("cancels the run and says the node is idle again", async () => {
+        const { hands, written } = handsFor([generating({ runId: "run-1", status: "loading" })]);
+        const { answer, text } = await textOf(hands, "stop_node", { nodeId: "image-1" });
+
+        expect(answer.isError).not.toBe(true);
+        expect(written.stopped).toEqual(["image-1"]);
+        expect(text).toBe("stopped image-1: the run was cancelled and the node is idle again, holding what it held before");
+    });
+
+    test("a node that is not generating is not an error: there is nothing to stop", async () => {
+        const { hands } = handsFor([generating({ content: "/api/canvases/c/files/a.png", status: "success" })], [], {}, { running: false });
+        const { answer, text } = await textOf(hands, "stop_node", { nodeId: "image-1" });
+        expect(answer.isError).not.toBe(true);
+        expect(text).toContain("there was nothing to stop");
+    });
+
+    test("a cancel the server did not confirm is a failed call, and says what may still be running", async () => {
+        const { hands } = handsFor([generating({ runId: "run-1", status: "loading" })], [], {}, { running: true, cancel: "unknown", reason: "network down" });
+        const { answer, text } = await textOf(hands, "stop_node", { nodeId: "image-1" });
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("network down");
+        expect(text).toContain("may still be rendering");
+    });
+
+    test("a press caught before it submitted is said so: nothing was thrown away", async () => {
+        const { hands } = handsFor([generating({ status: "loading" })], [], {}, { running: true });
+        const { answer, text } = await textOf(hands, "stop_node", { nodeId: "image-1" });
+        expect(answer.isError).not.toBe(true);
+        expect(text).toContain("nothing had been submitted");
+    });
+
+    test("a run that ended before the stop arrived is said so, not claimed as a stop", async () => {
+        const { hands } = handsFor([generating({ runId: "run-1", status: "loading" })], [], {}, { running: true, cancel: "finished" });
+        const { answer, text } = await textOf(hands, "stop_node", { nodeId: "image-1" });
+        expect(answer.isError).not.toBe(true);
+        expect(text).toContain("already ended");
+    });
+
+    test("a text card generates nothing, so it is refused before the page is asked", async () => {
+        const { hands, written } = handsFor([textSaying(card)]);
+        const { answer } = await textOf(hands, "stop_node", { nodeId: "text-1" });
+        expect(answer.isError).toBe(true);
+        expect(written.stopped).toEqual([]);
     });
 });
 

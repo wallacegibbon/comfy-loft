@@ -201,6 +201,17 @@ func (s *Server) mcpTools() []mcpTool {
 			"additionalProperties": false
 		}`),
 	}, {
+		Name:        "stop_node",
+		Description: "Stop what this node is generating — its panel's stop button, without the question the button asks: a call is the sure part. The node keeps what it held before the run started, and is idle again; the work in progress is thrown away on the server too (the ComfyUI prompt is interrupted, so the GPU is free). Answers one of three things, and they are not the same: the run was cancelled; there was nothing running; or the server did not confirm the cancel, in which case the call failed and the run may still be rendering there. A text node generates nothing, so it has nothing to stop.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
+			},
+			"required": ["nodeId"],
+			"additionalProperties": false
+		}`),
+	}, {
 		Name:        "read_node",
 		Description: "Read what one node holds: a text node's words, or the image, video or audio itself — not a description of it, and not the words it will be asked next. A node something generated ends with a line naming the workflow that made it and the moment that run finished; both are facts the canvas recorded, so they are the answer to \"which model drew this, and when\" rather than a guess.",
 		InputSchema: json.RawMessage(`{

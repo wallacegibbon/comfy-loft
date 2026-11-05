@@ -11296,3 +11296,49 @@ and answered by the page only after both are reloaded.
 `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`, `frontend/src/pages/canvas/project.tsx`
 (`nodeContract`), `internal/server/routes_mcp.go`, `internal/server/agent_instructions.go`,
 `internal/server/mcp_test.go`, `frontend/tests/{node-settings,canvas-agent-tools,node-generation-facts}.test.ts`.
+
+## 310. A run the agent started is a run it can end
+
+**Decision** A seventeenth tool, `stop_node(nodeId)`: the panel's stop button without the question before it — a
+call *is* the sure part — and an answer with one of four shapes rather than one: the run was cancelled; there was
+nothing running; the press was caught before it reached the server; or the server did not confirm the cancel, which
+is a failed call because the caller asked for the run to stop and cannot be told that it did. In the page, stopping
+is two endings: the watch is aborted (which is what puts the node back to idle instead of leaving it spinning), and
+the run is cancelled **by its id** — the one path every watcher shares.
+
+**Why** The vocabulary had a start and no brake. An agent could press a three-minute render and then only wait: if
+the user changed their mind, the GPU kept drawing a picture nobody wanted, and the agent had nothing to offer but
+"it will finish eventually". That is also what made pressing safe to teach — the system prompt now says *press
+nothing you cannot stop*, which is only a rule once there is a way to stop.
+
+**What the page's own stop does not do, and this does** `stopGenerationByRunningId` aborts the request's controller
+and clears the node. For a run the page *submitted* that is enough: `waitForRun` was called with `cancelOnAbort:
+true`, so the abort cancels the run on the server. For a run the page *picked up again after a reload* it is not —
+the resume pollers pass `cancelOnAbort: false`, deliberately (leaving the page must not kill a render), and video's
+poller has no cancel path at all. So the button's stop on a resumed run aborted the watch and left ComfyUI
+rendering, with the node saying idle. The tool cancels by `runId` as well, which covers every watcher, and clears
+the node's `runId` so the next reload does not reattach to a run nobody is waiting for. The server's cancel is
+idempotent (`task.Store.Cancel` returns a terminal run unchanged), so the live path's second DELETE — the one
+`cancelOnAbort` sends — costs nothing and is swallowed as before.
+
+**Rejected** Reusing the button's function as the whole of it. It would have answered "stopped" for a resumed run
+that is still rendering — the accepted-and-ignored failure in its worst form, because the agent would then tell the
+user it was stopped. Also rejected: making `stop_node` a variant of `generate` with a flag. Start and stop are two
+intents with two answers, which is why `set_prompt` and `set_text` are two tools.
+
+**Cost** The atomic answer is impossible and the tool says so: a run can end between the cancel and the node's
+clear, so "it had already ended" is one of the shapes. A stop does not undo a partial artifact — a cancelled run
+writes nothing into the node, so what the node holds is what it held before, and the sentence says that rather than
+"deleted".
+
+**Tested** `npx vitest run` (471 — six new in `canvas-agent-tools.test.ts`): the four answers (cancelled, nothing
+running, caught before submitting, not confirmed with the reason), the run that ended first, and a text card refused
+before the page is asked. `internal/server/mcp_test.go` pins the seventeen names, in order, and the new prompt rule
+(`canvas_stop_node`, "Press nothing you cannot stop"). `go test ./...`, `make check` (503 exports),
+`npx tsc --noEmit`, `npm run check` (832/799), `make frontend`, `make build`. Not checked in a browser: the page on
+`:8190` predates this commit, so the tool is advertised and answered only after a restart and a reload.
+
+**Where** `frontend/src/lib/canvas/canvas-agent-tools.ts` (`stopNode`, `StopOutcome`),
+`frontend/src/pages/canvas/project.tsx` (`stopNodeRun`), `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
+`internal/server/routes_mcp.go`, `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`,
+`frontend/tests/canvas-agent-tools.test.ts`.

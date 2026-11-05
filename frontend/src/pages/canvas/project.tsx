@@ -8,8 +8,9 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/kit/button";
 import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
-import type { RunRequest } from "@/services/api/runs";
+import { cancelRun, type RunRequest } from "@/services/api/runs";
 import type { GenerateOptions, GenerateStart } from "@/lib/canvas/agent-generate";
+import type { StopOutcome } from "@/lib/canvas/canvas-agent-tools";
 import { createVideoGenerationTask, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
 import { channelModelOf, modelContractOf, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { imageModeFor } from "@/lib/canvas/image-mode";
@@ -511,6 +512,51 @@ function InfiniteCanvasPage() {
             });
         },
         [stopGenerationByRunningId, t],
+    );
+
+    /**
+     * Stop one node's run for a tool, without the question the button asks, and say what that did.
+     *
+     * Two things a run can be here, and both have to end for a stop to mean anything:
+     * - the watch this page holds. Aborting it is what puts the node back to idle instead of leaving it
+     *   spinning, and for a run the page *submitted* it also cancels the run as it goes.
+     * - the run itself, which is the server's. A watch the page picked up again after a reload deliberately
+     *   does not cancel (`cancelOnAbort: false` — leaving the page must not kill a render), so the run is
+     *   cancelled by its id as well. That is the one path every watcher shares, and a cancel for a run that has
+     *   already ended is refused by the run's own record rather than being an error.
+     *
+     * The node's `runId` goes with the stop: the node is idle because the work is over, and a reload that
+     * reattached to a run nobody is waiting for would start the "waiting" line again.
+     */
+    const stopNodeRun = useCallback(
+        async (nodeId: string): Promise<StopOutcome> => {
+            const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
+            if (!node) return { running: false };
+            const runId = node.metadata?.runId;
+            const watched = Array.from(generationRequestsRef.current.values()).some((request) => request.runningNodeId === nodeId || request.originNodeId === nodeId || request.targetNodeId === nodeId);
+            if (!runId && !watched) return { running: false };
+
+            stopGenerationByRunningId(nodeId);
+            let cancel: StopOutcome["cancel"];
+            let reason: string | undefined;
+            if (runId) {
+                const mode: CanvasNodeGenerationMode = node.type === CanvasNodeType.Video ? "video" : node.type === CanvasNodeType.Audio ? "audio" : "image";
+                try {
+                    const run = await cancelRun(buildGenerationConfig(effectiveConfig, node, mode), runId);
+                    cancel = run.status === "cancelled" ? "cancelled" : "finished";
+                } catch (error) {
+                    cancel = "unknown";
+                    reason = error instanceof Error ? error.message : String(error);
+                }
+            }
+            setNodes((prev) =>
+                prev.map((item) =>
+                    item.id === nodeId && item.metadata?.runId === runId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_IDLE, errorDetails: undefined, runId: undefined, stepProgress: undefined, progressUnavailable: undefined } } : item,
+                ),
+            );
+            return { running: true, ...(cancel ? { cancel } : {}), ...(reason ? { reason } : {}) };
+        },
+        [effectiveConfig, stopGenerationByRunningId],
     );
 
     useEffect(() => {
@@ -2091,6 +2137,7 @@ function InfiniteCanvasPage() {
         resizeNode: handleNodeResize,
         groupNodes: (nodeIds) => groupNodes(new Set(nodeIds)),
         ungroupNodes: (nodeIds) => ungroupNodes(new Set(nodeIds)),
+        stopNode: stopNodeRun,
         nodeContract,
         writeSettings: handleConfigNodeChange,
     });

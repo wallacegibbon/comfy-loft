@@ -33,6 +33,15 @@ export type CanvasHands = {
     setNodePrompt: (nodeId: string, prompt: string) => void;
     /** Write a text node's words, the way editing the card on the canvas does. */
     writeText: (nodeId: string, text: string) => void;
+    /**
+     * Stop what this node is generating, the way the panel's stop button does — and answer with what that did.
+     *
+     * The page owns two kinds of run: the one it submitted (whose watch can cancel it as it aborts) and the one
+     * it picked up again after a reload (whose watch deliberately does not). So the run is also cancelled by its
+     * id, which is the one path every watcher shares; a cancel for a run that has already ended is refused by
+     * the node's own record and comes back as `finished`.
+     */
+    stopNode: (nodeId: string) => Promise<StopOutcome>;
     connectNodes: (firstNodeId: string, secondNodeId: string, firstHandleType: "source" | "target") => boolean;
     deleteNodes: (nodeIds: string[]) => void;
     focusNode: (nodeId: string) => void;
@@ -61,6 +70,16 @@ export type CanvasHands = {
     nodeContract: (nodeId: string) => SettingsContract;
     /** Write the fields a settings call settles on, the way the node's own panel writes them. */
     writeSettings: (nodeId: string, patch: CanvasNodeMetadata) => void;
+};
+
+/** What stopping one node's run did, in the page's own words. */
+export type StopOutcome = {
+    /** Whether anything was in flight at all: a live watch, or a run the node still names. */
+    running: boolean;
+    /** What became of the run on the server, when there was one to cancel. */
+    cancel?: "cancelled" | "finished" | "unknown";
+    /** Why the server could not be asked, when it could not. */
+    reason?: string;
 };
 
 /** One tool's result: the content blocks the agent reads, and whether it failed rather than did something. */
@@ -93,6 +112,8 @@ export async function runTool(name: string, args: unknown, hands: CanvasHands, s
             return setNodeSettings(hands, args);
         case "generate":
             return pressGenerate(hands, args, session);
+        case "stop_node":
+            return stopNode(hands, args);
         case "delete_node":
             return deleteNode(hands, args);
         case "focus_node":
@@ -289,6 +310,45 @@ function setNodeSettings(hands: CanvasHands, args: unknown): ToolAnswer {
     hands.writeSettings(node.id, plan.patch);
     const clause = configuredClause({ ...node.metadata, ...plan.patch });
     return { content: [textBlock(`set ${plan.written.join(", ")} on ${node.id}${clause ? `; it is now ${clause}` : ""}`)], isError: false };
+}
+
+/**
+ * Stop what a node is generating — the panel's stop button, without the question before it.
+ *
+ * The panel asks "are you sure?" because a stop throws away work in progress and the press is one keystroke
+ * away; a call *is* the sure part, so this asks nobody and does it. What it must not do is claim more than it
+ * did: a run the server has already finished cannot be cancelled back into existence, and a server that did not
+ * answer leaves a run possibly still rendering — both are said, and the second is a failed call, because the
+ * caller asked for the run to stop and cannot be told that it did.
+ *
+ * The node keeps what it held before the run started: a stop is not a delete, and the picture that was there is
+ * still there.
+ */
+async function stopNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> {
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
+    if (!GENERATE_MODES.includes(node.type)) {
+        const what = node.type === CanvasNodeType.Text ? "it holds words and nothing generates them" : "nothing generates it";
+        return { content: [textBlock(`${node.id} is a ${node.type} node: ${what}, so there is nothing to stop`)], isError: true };
+    }
+
+    const outcome = await hands.stopNode(node.id);
+    if (!outcome.running) return { content: [textBlock(`${node.id} is not generating: there was nothing to stop`)], isError: false };
+    if (!outcome.cancel) {
+        // A press caught before it submitted: no run exists, so nothing was thrown away, and the node is idle.
+        return { content: [textBlock(`stopped ${node.id} before it reached the server: nothing had been submitted, and the node is idle again`)], isError: false };
+    }
+    if (outcome.cancel === "finished") {
+        return { content: [textBlock(`${node.id} was generating, and its run had already ended by the time the stop arrived: the node is idle again`)], isError: false };
+    }
+    if (outcome.cancel === "unknown") {
+        const why = outcome.reason ? ` (${outcome.reason})` : "";
+        return {
+            content: [textBlock(`stopped watching ${node.id}, but the server did not confirm the cancel${why}: the run may still be rendering there, and this node will not pick it up again. The canvas is free of it either way; the work is not`)],
+            isError: true,
+        };
+    }
+    return { content: [textBlock(`stopped ${node.id}: the run was cancelled and the node is idle again, holding what it held before`)], isError: false };
 }
 
 /**
