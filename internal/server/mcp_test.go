@@ -160,8 +160,8 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 	for _, tool := range tools {
 		names = append(names, tool.(map[string]any)["name"].(string))
 	}
-	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,set_text,generate,read_node,read_prompt,delete_node,focus_node,move_node,group_nodes,ungroup_nodes,resize_node" {
-		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, set_text, generate, read_node, read_prompt, delete_node, focus_node, move_node, group_nodes, ungroup_nodes, resize_node", names)
+	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,set_text,set_node_settings,generate,read_node,read_prompt,delete_node,focus_node,move_node,group_nodes,ungroup_nodes,resize_node" {
+		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, set_text, set_node_settings, generate, read_node, read_prompt, delete_node, focus_node, move_node, group_nodes, ungroup_nodes, resize_node", names)
 	}
 }
 
@@ -204,6 +204,10 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 		"carries nothing",
 		"canvas_set_text",
 		"canvas_read_prompt",
+		// #309: the run's shape is a setting too, and it is checked against what the workflow publishes.
+		"canvas_set_node_settings",
+		"canvas_read_prompt reads them back",
+		"Which model runs is not a setting",
 	}
 	for _, want := range wants {
 		if !strings.Contains(system, want) {

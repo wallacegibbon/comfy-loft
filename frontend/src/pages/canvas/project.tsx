@@ -11,7 +11,8 @@ import { toast } from "@/components/kit/toast";
 import type { RunRequest } from "@/services/api/runs";
 import type { GenerateOptions, GenerateStart } from "@/lib/canvas/agent-generate";
 import { createVideoGenerationTask, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
-import { useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
+import { channelModelOf, modelContractOf, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
+import { imageModeFor } from "@/lib/canvas/image-mode";
 import { uploadImage } from "@/services/image-storage";
 import { nanoid } from "nanoid";
 import { type CanvasBackgroundMode } from "@/lib/canvas-theme";
@@ -2049,6 +2050,32 @@ function InfiniteCanvasPage() {
         [handleConfigNodeChange],
     );
 
+    /**
+     * What a node's next run would accept, for the agent's `set_node_settings`.
+     *
+     * The keys come from the published contract of the *mode the run will use* — `imageModeFor` for a picture,
+     * the node's own video mode for a film — which is the same list the panel's rows ask before they draw
+     * themselves (#304). A sound's length bound is the model's own declaration, the one `clampAudioSeconds`
+     * clamps to. Read from the node's current metadata, so the answer is about the node as it stands.
+     */
+    const nodeContract = useCallback(
+        (nodeId: string) => {
+            const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
+            if (!node) return {};
+            const mode: CanvasNodeGenerationMode = node.type === CanvasNodeType.Video ? "video" : node.type === CanvasNodeType.Audio ? "audio" : "image";
+            const config = buildGenerationConfig(effectiveConfig, node, mode);
+            const contractMode = mode === "image" ? imageModeFor(config, config.model) : node.metadata?.videoMode || "";
+            return {
+                accepts: modelContractOf(effectiveConfig, config.model, contractMode)?.inputs,
+                duration: channelModelOf(effectiveConfig, config.model)?.model.duration,
+                // A film's pixels are derived from this tier and the shape, so `set_node_settings` judges a
+                // stated size against the tier the run will use — the node's own, or the canvas's default.
+                tier: mode === "video" ? config.vquality : undefined,
+            };
+        },
+        [effectiveConfig],
+    );
+
     // The agent's hands are the same functions the buttons press.
     useCanvasAgentTools({
         nodesRef,
@@ -2064,6 +2091,8 @@ function InfiniteCanvasPage() {
         resizeNode: handleNodeResize,
         groupNodes: (nodeIds) => groupNodes(new Set(nodeIds)),
         ungroupNodes: (nodeIds) => ungroupNodes(new Set(nodeIds)),
+        nodeContract,
+        writeSettings: handleConfigNodeChange,
     });
 
     // Memoize every callback and render function passed to CanvasNode.

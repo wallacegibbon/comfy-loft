@@ -10,6 +10,7 @@ import { generateAnswer, type GenerateOptions, type GenerateStart } from "@/lib/
 import { describeCanvas } from "@/lib/canvas/canvas-agent-view";
 import { configuredClause, generationClause, runClause } from "@/lib/canvas/node-generation-facts";
 import { nodeContentOf, nodePromptOf } from "@/lib/canvas/node-prompt-field";
+import { planNodeSettings, type NodeSettings, type SettingsContract } from "@/lib/canvas/node-settings";
 import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type Position } from "@/types/canvas";
 
 /**
@@ -51,6 +52,15 @@ export type CanvasHands = {
      * named here leaves, and a group left with no members goes away. Null when nothing was in a group.
      */
     ungroupNodes: (nodeIds: string[]) => { released: string[]; dissolved: string[] } | null;
+    /**
+     * What the node's model publishes, as a contract: the keys a run accepts, and a sound's length bound.
+     *
+     * Read from the same published list the panel's own rows ask (#304), so a setting this refuses is one the
+     * panel would not have offered either — the tool and the UI cannot disagree about what a node takes.
+     */
+    nodeContract: (nodeId: string) => SettingsContract;
+    /** Write the fields a settings call settles on, the way the node's own panel writes them. */
+    writeSettings: (nodeId: string, patch: CanvasNodeMetadata) => void;
 };
 
 /** One tool's result: the content blocks the agent reads, and whether it failed rather than did something. */
@@ -79,6 +89,8 @@ export async function runTool(name: string, args: unknown, hands: CanvasHands, s
             return setPrompt(hands, args);
         case "set_text":
             return setText(hands, args);
+        case "set_node_settings":
+            return setNodeSettings(hands, args);
         case "generate":
             return pressGenerate(hands, args, session);
         case "delete_node":
@@ -249,6 +261,34 @@ function setText(hands: CanvasHands, args: unknown): ToolAnswer {
 
     hands.writeText(node.id, text);
     return { content: [textBlock(`${node.id} now says: ${text.slice(0, 300)}`)], isError: false };
+}
+
+/**
+ * Set what a node's next run produces — its size, its length, the seed it is drawn with, the workflow's own
+ * knobs — in the fields the node's own panel writes, and answer with what the node is now set to.
+ *
+ * This is the half of the panel an agent could not reach: it could say *what* to draw and press the button,
+ * but not how big the picture is or how long the clip runs, so "a 16:9 hero shot, five seconds" was a
+ * sentence it had to hand back to the user. Everything about which value is legal lives in
+ * `planNodeSettings` — the same `planImageSize`, the same length bounds, and the same published contract the
+ * panel's rows ask — and this function is only the call and the answer.
+ *
+ * The answer repeats the node's own clause rather than the request, because a setting can be written and
+ * still not be the one a run uses (a seed with no `seedFixed`, say): what the agent needs back is what the
+ * node says about its next run, which is what `read_prompt` would tell it a moment later.
+ */
+function setNodeSettings(hands: CanvasHands, args: unknown): ToolAnswer {
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
+    // The id names the node; everything beside it is a setting, and a name that is neither is refused by the
+    // plan rather than ignored, which is what makes a typo (`setps`) an answer instead of a silent no-op.
+    const { nodeId: _named, ...settings } = argsOf(args);
+    const plan = planNodeSettings(node, settings as NodeSettings, hands.nodeContract(node.id));
+    if (!plan.ok) return { content: [textBlock(plan.reason)], isError: true };
+
+    hands.writeSettings(node.id, plan.patch);
+    const clause = configuredClause({ ...node.metadata, ...plan.patch });
+    return { content: [textBlock(`set ${plan.written.join(", ")} on ${node.id}${clause ? `; it is now ${clause}` : ""}`)], isError: false };
 }
 
 /**

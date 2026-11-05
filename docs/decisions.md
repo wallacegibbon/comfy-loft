@@ -11225,3 +11225,74 @@ members to (640, 320)`, and the plain `moved text-1 (text) to (10, 20)`). Not ch
 `frontend/src/pages/canvas/project.tsx` (`moveNodesTo`, `handleNodeMouseDown`),
 `frontend/src/lib/canvas/canvas-agent-tools.ts` (`moveNode`), `internal/server/routes_mcp.go` (`move_node`),
 `frontend/tests/{canvas-node-geometry,canvas-agent-tools}.test.ts`.
+
+## 309. A run's shape is a setting, and the tool states it in the request's own names
+
+**Decision** A sixteenth tool, `set_node_settings(nodeId, { size, quality, seconds, background, seed, format,
+instructions, params })`, writes the fields the node's own panel writes, and `read_prompt` reads them back in
+the same clause. Every value is checked by the function that already decides it — `planImageSize` for a size,
+`VIDEO_SECONDS_MIN/MAX` and a sound's declared `duration` for a length, `audioFormatOptions` for a container —
+and whether a key means anything at all is asked of the published contract, the three-state answer #304 gave
+the panel's rows. One refusal, never a partial write: a call that gets any setting wrong writes none and says
+which.
+
+Not here, on purpose: `model` and the Qwen `t2i`/`edit`/`inpaint`/`outpaint` mode (that is which run this is,
+not its shape, and the picker's value space is the family's own — a separate tool with its own validation),
+`loras` (the LoRA nodes connected to the node fill it in at press time), `layout`/`layoutEnabled` (the MOSS
+editor's regions), and masks, crops and outpaints (each is a new node built in a viewport).
+
+**Why** The agent could say *what* to draw and press the button, and nothing else: ~20 settings lived in the
+panel and none of them were reachable, so "a 16:9 hero shot, five seconds, seed 42" was a sentence it had to
+hand back. The rest of the panel's vocabulary was already in the request — `size`, `seconds`, `background`,
+`seed`, `format`, `lyrics` and the workflow's declared knobs are the keys `POST /runs` validates — so a second
+naming scheme would have been the lie. And the panels' own rule (#302/#304) applies unchanged: a setting the
+run would drop is refused at the tool, with the list the run does read, rather than written into a node and
+silently ignored.
+
+**What was measured before deciding** Two facts, both from the code the request runs, not from taste:
+- A seed travels only when the node also says it is fixed (`buildGenerationConfig` deletes `params.seed`
+  otherwise), so the tool writes `{seed, seedFixed}` together — the pair the panel's switch and box write
+  between them. Writing `params.seed` alone would have been accepted and dropped.
+- A picture's stored size is pixels, and the panel reads it back through `inferMediaRatio`/`readMediaDimensions`
+  — so a ratio is *not* a stored value. The tool resolves what it can (`planImageSize` accepts `WxH` only) and
+  refuses `16:9` with the pixels to say instead, which is also why the answer is the node's clause rather than
+  the request: what was written is what a later `read_prompt` will report.
+- A *film's* pixels are not a number it is given: `normalizeVideoSize` derives them from the quality tier and
+  the shape at submit, so a stored `1280x720` on a 1080p node runs 1920×1080. Writing a size without saying
+  that would be the accepted-and-replaced failure this build keeps deleting, so the tier is a setting of its own
+  (`quality`, the panel's 480/720/1080 pills) and a size the tier would not make is refused with the one it
+  does. The tier the check uses is the one the run will use — the node's own, or the canvas default — read from
+  `buildGenerationConfig`, not guessed.
+
+**Rejected** A `set_node_settings(settings: object)` that accepted anything and let the request's own pruning
+silently drop what the workflow does not read. That is exactly the failure #302 spent a decision deleting, seen
+from the agent's end: a tool that answers "set" while nothing changed. Also rejected: clamping a length into
+the declared range instead of refusing it. A clamp answers `isError: false` while doing something the caller
+did not ask for, which is #270's reason for refusing a contradictory resize.
+
+**Cost** The tool is the largest surface an agent has on a node, and it is the first one that could spoil work
+the user did by hand — a size or a seed is a choice, not a description. The system prompt carries the rule
+("a node the user sized is theirs"), and the answer always says what the node is now set to, so a wrong write
+is visible in the same turn. `read_prompt` grew a clause, which makes it longer; the settings it names are the
+ones a rewrite has to respect, and `list_nodes` stays free of them for #233's reason.
+
+**Tested** `npx vitest run` (465 — 36 new): `node-settings.test.ts` pins the writes (`1000x1000` written as
+`1008x1008`, the seed pair and its clearing, the transparent background, a film's size refused at the wrong tier and taken
+when the tier is stated with it, params merged over the node's own and refused by key, `loras`/`layout` naming
+their owner) and the refusals (a picture has no length and the message
+names what it keeps, a sound has no knobs, a text card/a group/a LoRA/a material node has no run to configure, a
+key outside the contract lists the ones it reads, no contract is silence not refusal, one wrong setting writes
+none, nothing stated is refused). `canvas-agent-tools.test.ts` pins the tool's two answers and that a refused
+call writes nothing. `node-generation-facts.test.ts` pins the read-back: settings named in request order, a
+node with settings and no picker still saying them, a seed without `fixed` not claimed, `auto` left out.
+`internal/server/mcp_test.go` pins the sixteen names and the new prompt rules. `go test ./...`, `make check`
+(503 exports), `npx tsc --noEmit`, `npm run check` (832/799), `make frontend`, `make build`. Not checked in a
+browser: the page on `:8190` is a build from before this commit, so the new tool is advertised by the server
+and answered by the page only after both are reloaded.
+
+**Where** `frontend/src/lib/canvas/node-settings.ts` (new), `frontend/src/lib/canvas/canvas-agent-tools.ts`
+(`set_node_settings`, two hands), `frontend/src/lib/canvas/node-generation-facts.ts` (`configuredClause`,
+`settingsClause`), `frontend/src/services/api/image.ts` (`planImageSize`, `sizeProblem`),
+`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`, `frontend/src/pages/canvas/project.tsx`
+(`nodeContract`), `internal/server/routes_mcp.go`, `internal/server/agent_instructions.go`,
+`internal/server/mcp_test.go`, `frontend/tests/{node-settings,canvas-agent-tools,node-generation-facts}.test.ts`.

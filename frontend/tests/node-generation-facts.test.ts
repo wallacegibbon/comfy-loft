@@ -38,6 +38,24 @@ describe("configuredClause", () => {
         expect(configuredClause(undefined)).toBe("");
         expect(configuredClause({ model: "  " })).toBe("");
     });
+
+    // #309: the settings that decide what comes out are facts about the node too, and an agent about to write
+    // one has to be able to read the one that is there.
+    test("names the settings that shape the run, in the order the request reads them", () => {
+        expect(configuredClause({ model: "default::image-qwen21", size: "1360x768", seed: "42", seedFixed: "true", background: "transparent" })).toBe("set to run image-qwen21, size 1360x768, seed 42, transparent background");
+    });
+
+    test("says the settings of a node with no picker, because they are still what its run would be", () => {
+        expect(configuredClause({ size: "1024x1024" })).toBe("size 1024x1024");
+    });
+
+    test("a seed is not a fact until the node says it is fixed, which is the pair a run reads", () => {
+        expect(configuredClause({ model: "image-z-image-turbo", seed: "42" })).toBe("set to run image-z-image-turbo");
+    });
+
+    test("auto is the absence of a choice, and the workflow's own knobs are named as they are", () => {
+        expect(configuredClause({ model: "image-qwen21", size: "auto", params: { steps: 8, cfg: 2.5, loras: [], layout: {} } })).toBe("set to run image-qwen21, params steps 8, cfg 2.5");
+    });
 });
 
 describe("generationClause", () => {

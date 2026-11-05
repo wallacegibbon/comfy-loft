@@ -88,13 +88,59 @@ function parseImageDimensions(value: string) {
     return { width: Number(match[1]), height: Number(match[2]) };
 }
 
-function validateImageSize(width: number, height: number) {
-    if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) throw new Error(apiText("positiveImageDimensions"));
-    if (width % IMAGE_SIZE_STEP !== 0 || height % IMAGE_SIZE_STEP !== 0) throw new Error(apiText("imageDimensionStep"));
-    if (Math.max(width, height) > IMAGE_MAX_EDGE) throw new Error(apiText("imageEdgeLimit"));
-    if (Math.max(width, height) / Math.min(width, height) > IMAGE_MAX_RATIO) throw new Error(apiText("imageRatioLimit"));
+type ImageSizeProblem = "format" | "positive" | "step" | "edge" | "ratio" | "pixels";
+
+const SIZE_PROBLEM_KEYS: Record<ImageSizeProblem, string> = {
+    format: "invalidImageSizeFormat",
+    positive: "positiveImageDimensions",
+    step: "imageDimensionStep",
+    edge: "imageEdgeLimit",
+    ratio: "imageRatioLimit",
+    pixels: "imagePixelLimit",
+};
+
+/**
+ * What a size is, or what is wrong with it — the one decision behind every reader.
+ *
+ * `validateImageSize` refuses, `resolveRequestSize` normalises, and the agent's `set_node_settings` asks before
+ * it writes a value into a node: three audiences, one answer. The alternative was a second opinion about sizes
+ * in the tool, where "1024x1000 is fine because the request aligns it" and "1024x1000 is refused" could both be
+ * true in the same build.
+ *
+ * `kind: "pixels"` is the size a run will get, aligned up to the step the panel's own inputs align to. A ratio
+ * is a shape rather than a size — only a run knows what short side the canvas gives it — so it is its own kind
+ * and the caller decides whether it can take one.
+ */
+type PlannedImageSize = { kind: "auto" } | { kind: "pixels"; size: string; width: number; height: number } | { kind: "ratio"; ratio: string } | { kind: "invalid"; problem: ImageSizeProblem };
+
+/** What is wrong with these pixel dimensions, or null when a run would take them. */
+function sizeProblem(width: number, height: number): ImageSizeProblem | null {
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) return "positive";
+    if (width % IMAGE_SIZE_STEP !== 0 || height % IMAGE_SIZE_STEP !== 0) return "step";
+    if (Math.max(width, height) > IMAGE_MAX_EDGE) return "edge";
+    if (Math.max(width, height) / Math.min(width, height) > IMAGE_MAX_RATIO) return "ratio";
     const pixels = width * height;
-    if (pixels < IMAGE_MIN_PIXELS || pixels > IMAGE_MAX_PIXELS) throw new Error(apiText("imagePixelLimit"));
+    if (pixels < IMAGE_MIN_PIXELS || pixels > IMAGE_MAX_PIXELS) return "pixels";
+    return null;
+}
+
+export function planImageSize(value: string): PlannedImageSize {
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed || trimmed.toLowerCase() === "auto") return { kind: "auto" };
+    const dimensions = parseImageDimensions(trimmed);
+    if (dimensions) {
+        const aligned = alignImageDimensions(dimensions.width, dimensions.height);
+        const problem = sizeProblem(aligned.width, aligned.height);
+        if (problem) return { kind: "invalid", problem };
+        return { kind: "pixels", size: `${aligned.width}x${aligned.height}`, width: aligned.width, height: aligned.height };
+    }
+    if (trimmed.includes(":")) return { kind: "ratio", ratio: trimmed };
+    return { kind: "invalid", problem: "format" };
+}
+
+function validateImageSize(width: number, height: number) {
+    const problem = sizeProblem(width, height);
+    if (problem) throw new Error(apiText(SIZE_PROBLEM_KEYS[problem]));
 }
 
 function alignImageDimensions(width: number, height: number) {
@@ -105,16 +151,13 @@ function alignImageDimensions(width: number, height: number) {
 }
 
 function resolveRequestSize(size: string) {
-    const value = size.trim();
-    if (!value || value.toLowerCase() === "auto") return undefined;
-    const dimensions = parseImageDimensions(value);
-    if (dimensions) {
-        const aligned = alignImageDimensions(dimensions.width, dimensions.height);
-        validateImageSize(aligned.width, aligned.height);
-        return `${aligned.width}x${aligned.height}`;
-    }
-    if (value.includes(":")) return resolveSize(value);
-    throw new Error(apiText("invalidImageSizeFormat"));
+    const planned = planImageSize(size);
+    if (planned.kind === "auto") return undefined;
+    if (planned.kind === "pixels") return planned.size;
+    // A ratio is the run's to resolve: the canvas gives it its own short side (and refuses one that is
+    // lopsided, on the same numbers as every other size).
+    if (planned.kind === "ratio") return resolveSize(planned.ratio);
+    throw new Error(apiText(SIZE_PROBLEM_KEYS[planned.problem]));
 }
 
 function withSystemPrompt(config: AiConfig, prompt: string) {

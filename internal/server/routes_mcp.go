@@ -171,6 +171,25 @@ func (s *Server) mcpTools() []mcpTool {
 			"additionalProperties": false
 		}`),
 	}, {
+		Name:        "set_node_settings",
+		Description: "Set what this node's next run produces: its size, how long it runs, the seed it is drawn with, a picture's background, a sound's container and words, and the workflow's own knobs. What it does not set is which run this is — the model and the mode it declares belong to the user's picker — so press generate afterwards to make it happen. Every setting is checked against what the node's workflow publishes: one it does not read is refused, and the refusal names the ones it does. A call that gets any of its settings wrong writes none of them, so what you asked for is either all there or not there at all. Answers with what the node is now set to, in the same words read_prompt gives.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeId": {"type": "string", "description": "The id list_nodes reported."},
+				"size": {"type": "string", "description": "The size in pixels a picture is made at, like 1360x768 — a shape such as 16:9 is not a size, so state the pixels. On a film it is the shape the tier makes numbers for: state 1280x720 for 16:9 at 720p, and a size the tier would not make is refused with the one it does. \"auto\" leaves it to the workflow. Sides are aligned up to 16, and a size outside what a picture may be (655360 to 8294400 pixels in total, longest side at most 3840, at most three times the shortest) is refused with the reason."},
+				"seconds": {"type": "number", "description": "How long a clip or a sound runs, in whole seconds. Refused outside the lengths the workflow declares, rather than clamped into them."},
+				"quality": {"type": "number", "description": "A film's quality tier, the short side in pixels — 480, 720, 1080. A film's size is derived from this tier and the shape it states, so a size the tier would not make is refused with the one it does. A picture has no such setting: its size is the size."},
+				"background": {"type": "string", "description": "A picture's own background: \"transparent\", or \"\" for the workflow's default. Only a workflow that declares a background prompt takes one."},
+				"seed": {"type": ["number", "string"], "description": "A fixed seed, 1 to 2147483647, so the same prompt draws the same thing again; the string \"random\" leaves it to the graph. A seed travels only while the node says it is fixed, so this writes that with it."},
+				"format": {"type": "string", "enum": ["mp3", "wav", "opus", "aac", "flac", "pcm"], "description": "A sound's container. A picture or a film has none."},
+				"instructions": {"type": "string", "description": "A sound's own words rather than its description — the lyrics a music workflow sings. Not the prompt: that is set_prompt."},
+				"params": {"type": "object", "description": "The workflow's own knobs, under the names its contract publishes — steps, cfg, sampler, resolution, horizontalAngle, upscale_model and the rest. A key its contract does not list is refused, and the refusal names the ones it reads. Two keys are never set here: loras comes from the LoRA nodes connected to this one, and layout from the MOSS layout editor.", "additionalProperties": true}
+			},
+			"required": ["nodeId"],
+			"additionalProperties": false
+		}`),
+	}, {
 		Name:        "generate",
 		Description: "Press one node's generate button — the same thing the node's own panel does. It starts the work and answers at once; the node shows its own progress and holds the result. A picture, a film or a sound takes minutes, so do not wait for it and do not poll the node: when the run ends you are sent a message saying how it went, and you can carry on. A text node generates nothing — write its words with set_text.",
 		InputSchema: json.RawMessage(`{

@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { runTool, type CanvasHands } from "../src/lib/canvas/canvas-agent-tools";
 import type { GenerateStart } from "../src/lib/canvas/agent-generate";
 import { registerBuiltinNodes } from "../src/components/canvas/nodes/builtin-nodes";
+import type { SettingsContract } from "../src/lib/canvas/node-settings";
 import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
 
 /**
@@ -23,7 +24,7 @@ function node(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): 
 }
 
 /** The page's hands, with every write recorded instead of performed. */
-function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = []) {
+function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [], contract: SettingsContract = {}) {
     const written = {
         prompts: [] as Array<[string, string]>,
         texts: [] as Array<[string, string]>,
@@ -33,6 +34,7 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [])
         moved: [] as Array<[string, { x: number; y: number }]>,
         grouped: [] as string[][],
         ungrouped: [] as string[][],
+        settings: [] as Array<[string, CanvasNodeMetadata]>,
     };
     const hands: CanvasHands = {
         nodes: () => nodes,
@@ -64,6 +66,10 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [])
             const released = nodes.filter((each) => (nodeIds.includes(each.id) ? Boolean(each.metadata?.groupId) : dissolved.includes(each.metadata?.groupId || ""))).map((each) => each.id);
             return dissolved.length || released.length ? { released, dissolved } : null;
         },
+        // The published contract is the page's to read and the panel's to ask; what these answer is only
+        // whether a setting is written and how the answer reads.
+        nodeContract: () => contract,
+        writeSettings: (nodeId, patch) => void written.settings.push([nodeId, patch]),
     };
     return { hands, written };
 }
@@ -409,6 +415,47 @@ describe("resize_node: the card's box, not a zoom", () => {
 
 /** A node with the id the test needs, since the group tools are about ids and relations between them. */
 const placed = (id: string, type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData => ({ ...node(type, metadata), id });
+
+/**
+ * The settings a run's shape is made of: the size, the length, the seed, the knobs.
+ *
+ * The tool writes what the node's panel writes and answers with the node's own clause, so what an agent is
+ * told afterwards is what `read_prompt` would say. What is checked here is the wiring — the plan's refusals
+ * and the field each setting names are `planNodeSettings`'s, tested where it lives (#309).
+ */
+describe("set_node_settings: how a node is set to run", () => {
+    const picture = (metadata: CanvasNodeMetadata = {}) => placed("image-1", "image", metadata);
+
+    test("writes the settings the plan settled on, and answers with the node's own clause", async () => {
+        const { hands, written } = handsFor([picture()], [], { accepts: ["size", "seed"] });
+        const { answer, text } = await textOf(hands, "set_node_settings", { nodeId: "image-1", size: "1024x1024", seed: 42 });
+
+        expect(answer.isError).not.toBe(true);
+        expect(written.settings).toEqual([["image-1", { size: "1024x1024", seed: "42", seedFixed: "true" }]]);
+        // The clause is the read-back: the node as its next run would see it.
+        expect(text).toBe("set size 1024x1024, seed 42 on image-1; it is now size 1024x1024, seed 42");
+    });
+
+    test("a key the workflow does not read is refused, and nothing is written", async () => {
+        const { hands, written } = handsFor([picture()], [], { accepts: ["seed"] });
+        const { answer, text } = await textOf(hands, "set_node_settings", { nodeId: "image-1", size: "1024x1024" });
+
+        expect(answer.isError).toBe(true);
+        expect(written.settings).toEqual([]);
+        expect(text).toContain("size means nothing to this workflow");
+        expect(text).toContain("seed");
+    });
+
+    test("a node it does not hold, and a node kind that has no run to configure", async () => {
+        const { hands } = handsFor([textSaying(card)], [], { accepts: ["size"] });
+        const unknown = await textOf(hands, "set_node_settings", { nodeId: "image-9", size: "1024x1024" });
+        expect(unknown.answer.isError).toBe(true);
+
+        const words = await textOf(hands, "set_node_settings", { nodeId: "text-1", size: "1024x1024" });
+        expect(words.answer.isError).toBe(true);
+        expect(words.text).toContain("its words");
+    });
+});
 
 /**
  * Moving a group, which is a move of the card and of what it holds.

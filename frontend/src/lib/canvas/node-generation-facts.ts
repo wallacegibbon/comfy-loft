@@ -53,16 +53,42 @@ export function generationClause(metadata: CanvasNodeMetadata | undefined): stri
  * It is read from the picker's own value, so it says nothing about a node that has never been given one —
  * a text node's model belongs to the agent, not to a workflow. The seconds are the node's, when it has
  * kept a duration of its own; the global default is not a fact about this node.
+ *
+ * The settings follow — the same fields `set_node_settings` writes (#309). They are facts about the node
+ * whether or not a model has been picked for it, which is why a node with a size and no picker still says so:
+ * an agent about to write a size has to be able to read the one that is there. `auto` is left out, because it
+ * is the absence of a choice rather than one.
  */
 export function configuredClause(metadata: CanvasNodeMetadata | undefined): string {
+    const settings = settingsClause(metadata);
     const model = (metadata?.model || "").trim();
-    if (!model) return "";
+    if (!model) return settings;
     // A picker value is `channel::model` or a bare model name; either way the tail is what the server is
     // asked for, and the channel is a local naming detail the reader cannot act on.
     const at = model.lastIndexOf("::");
     const name = (at >= 0 ? model.slice(at + 2) : model).trim();
+    return [`set to run ${name}`, ...(settings ? [settings] : [])].join(", ");
+}
+
+/** The params a settings clause leaves out: two the run fills in, and one it has already stated. */
+const UNSTATED_PARAMS: string[] = ["loras", "layout", "layoutEnabled", "seed"];
+
+function settingsClause(metadata: CanvasNodeMetadata | undefined) {
+    const parts: string[] = [];
+    const size = (metadata?.size || "").trim();
+    if (size && size.toLowerCase() !== "auto") parts.push(`size ${size}`);
     const seconds = (metadata?.seconds || "").trim();
-    return seconds ? `set to run ${name}, ${seconds} s` : `set to run ${name}`;
+    if (seconds) parts.push(`${seconds} s`);
+    // A seed is only a fact about the run when the node also says it is fixed — the pair `set_node_settings`
+    // writes together, and the one `buildGenerationConfig` reads before it puts a seed in the request.
+    const seed = (metadata?.seed || "").trim();
+    if (seed && metadata?.seedFixed === "true") parts.push(`seed ${seed}`);
+    if ((metadata?.background || "").trim().toLowerCase() === "transparent") parts.push("transparent background");
+    const quality = (metadata?.quality || metadata?.vquality || "").trim();
+    if (quality) parts.push(`quality ${quality}`);
+    const params = Object.entries(metadata?.params || {}).filter(([key, value]) => !UNSTATED_PARAMS.includes(key) && value !== "" && value != null);
+    if (params.length) parts.push(`params ${params.map(([key, value]) => `${key} ${value && typeof value === "object" ? JSON.stringify(value) : String(value)}`).join(", ")}`);
+    return parts.join(", ");
 }
 
 /**
