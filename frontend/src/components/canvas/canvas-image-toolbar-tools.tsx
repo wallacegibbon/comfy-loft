@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Brush, Camera, Grid2x2, Maximize2, Scissors, ZoomIn } from "lucide-react";
+import { Brush, Grid2x2, Maximize2, Rotate3d, Scissors, ZoomIn } from "lucide-react";
 
 import type { CanvasNodeData } from "@/types/canvas";
 import i18n from "@/i18n";
@@ -75,7 +75,9 @@ const imageToolDefinitions: ImageToolDefinition[] = [
         defaultVisible: true,
         label: () => i18n.t("canvas.imageTools.angle"),
         title: () => i18n.t("canvas.imageTools.angleTitle"),
-        icon: () => <Camera className="size-4" />,
+        // A camera says "take a picture", which is every other button here. The control behind this one is
+        // the viewpoint — azimuth, pitch, distance — so the glyph is a rotation in space.
+        icon: () => <Rotate3d className="size-4" />,
         run: (node, handlers) => handlers.onAngle(node),
     },
     {
