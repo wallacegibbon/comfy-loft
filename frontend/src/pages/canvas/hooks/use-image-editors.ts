@@ -15,9 +15,10 @@ import type { CanvasImageMaskEditPayload } from "@/components/canvas/canvas-node
 import type { CanvasOutpaintPayload } from "@/components/canvas/canvas-node-outpaint-dialog";
 import type { CanvasMossLayoutPayload } from "@/components/canvas/canvas-node-moss-layout-dialog";
 import type { CanvasImageSplitParams } from "@/components/canvas/canvas-node-split-dialog";
-import type { CanvasSuperResolveParams } from "@/components/canvas/canvas-node-super-resolve-dialog";
+import type { CanvasUpscaleParams } from "@/components/canvas/canvas-node-upscale-dialog";
 import type { CanvasImageAngleParams } from "@/components/canvas/canvas-node-angle-dialog";
-import { buildImageGenerationMetadata, imageMetadata } from "@/lib/canvas/canvas-node-factory";
+import { buildImageGenerationMetadata, buildStepNodeMetadata, imageMetadata, referenceUrl } from "@/lib/canvas/canvas-node-factory";
+import { IMAGE_ANGLE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 import { buildAngleLabel, buildAnglePrompt, buildGenerationConfig, isGenerationCanceled } from "@/lib/canvas/canvas-generation-helpers";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import { NODE_STATUS_ERROR, NODE_STATUS_LOADING, NODE_STATUS_SUCCESS } from "@/lib/canvas/canvas-node-status";
@@ -53,10 +54,9 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 position: { x: node.position.x + node.width + 96, y: node.position.y },
                 width,
                 height: width * (image.height / image.width),
-                metadata: {
-                    ...imageMetadata(image),
-                    prompt: node.metadata?.prompt,
-                },
+                // No prompt: a crop answered nothing. Copying the source's words here made the node look
+                // like a run that could be asked again, which a browser-side crop can never be (#297).
+                metadata: imageMetadata(image),
             };
             setNodes((prev) => [...prev, child]);
             setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
@@ -91,10 +91,8 @@ export function useImageEditors(deps: NodeEditorDeps) {
                         position: { x: startX + piece.column * (cellWidth + gap), y: startY + piece.row * (cellHeight + gap) },
                         width: cellWidth,
                         height: cellHeight,
-                        metadata: {
-                            ...imageMetadata(image),
-                            prompt: node.metadata?.prompt,
-                        },
+                        // Likewise no prompt: a piece of a picture was not generated either (#297).
+                        metadata: imageMetadata(image),
                     } satisfies CanvasNodeData;
                 }),
             );
@@ -300,8 +298,8 @@ export function useImageEditors(deps: NodeEditorDeps) {
         [effectiveConfig, finishGenerationRequest, isAiConfigReady, openPreferences, startGenerationRequest],
     );
 
-    const superResolveImageNode = useCallback(
-        async (node: CanvasNodeData, params: CanvasSuperResolveParams, titleKey: string) => {
+    const upscaleImageNode = useCallback(
+        async (node: CanvasNodeData, params: CanvasUpscaleParams) => {
             if (!node.metadata?.content) return;
             const childId = nanoid();
             const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
@@ -311,12 +309,16 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 {
                     id: childId,
                     type: CanvasNodeType.Image,
-                    title: t(titleKey),
-                    titleKey,
+                    title: t("canvas.upscale.title"),
+                    titleKey: "canvas.upscale.title",
                     position: { x: node.position.x + node.width + 96, y: node.position.y },
                     width: imageConfig.width,
                     height: imageConfig.height,
-                    metadata: { prompt: node.metadata?.prompt, status: NODE_STATUS_LOADING },
+                    // The workflow the dialog submitted, not the canvas's model: an upscale is
+                    // `image-esrgan-upscale` whatever the node being upscaled was made with. Written here,
+                    // while the node is already spinning, so its panel is its own rather than the default
+                    // model's (#263) and the model that was chosen is the one it reads back.
+                    metadata: { ...buildStepNodeMetadata(effectiveConfig, params.workflowId, params.params), prompt: node.metadata?.prompt, status: NODE_STATUS_LOADING },
                 },
             ]);
             setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
@@ -350,8 +352,6 @@ export function useImageEditors(deps: NodeEditorDeps) {
         [effectiveConfig, finishGenerationRequest, startGenerationRequest, t],
     );
 
-    const runSuperResolve = useCallback((node: CanvasNodeData, params: CanvasSuperResolveParams) => superResolveImageNode(node, params, "canvas.superResolve.title"), [superResolveImageNode]);
-    const runFastUpscale = useCallback((node: CanvasNodeData, params: CanvasSuperResolveParams) => superResolveImageNode(node, params, "canvas.superResolve.fastTitle"), [superResolveImageNode]);
     const generateAngleNode = useCallback(
         async (node: CanvasNodeData, params: CanvasImageAngleParams) => {
             if (!node.metadata?.content) return;
@@ -371,7 +371,14 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 dataUrl: node.metadata.content,
                 storageKey: node.metadata.storageKey,
             };
-            const generationMetadata = buildImageGenerationMetadata("edit", generationConfig, [sourceReference]);
+            // The angle workflow is what this run submits, so it is what the node is — not the model of the
+            // picture it re-renders, which is what `buildImageGenerationMetadata` would echo. The knobs go
+            // with it, so the panel shows the angle that was asked for instead of the workflow's defaults.
+            const reference = referenceUrl(sourceReference);
+            const generationMetadata = {
+                ...buildStepNodeMetadata(effectiveConfig, IMAGE_ANGLE_WORKFLOW, { horizontalAngle: params.horizontalAngle, pitchAngle: params.pitchAngle, cameraDistance: params.cameraDistance }),
+                ...(reference ? { references: [reference] } : {}),
+            };
             closeNodeTool();
             setRunningNodeId(childId);
             setNodes((prev) => [
@@ -407,5 +414,5 @@ export function useImageEditors(deps: NodeEditorDeps) {
         [effectiveConfig, finishGenerationRequest, openPreferences, startGenerationRequest, t],
     );
 
-    return { cropImageNode, splitImageNode, maskEditImageNode, outpaintImageNode, mossLayoutImageNode, runSuperResolve, runFastUpscale, generateAngleNode };
+    return { cropImageNode, splitImageNode, maskEditImageNode, outpaintImageNode, mossLayoutImageNode, upscaleImageNode, generateAngleNode };
 }

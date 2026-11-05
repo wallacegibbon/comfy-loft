@@ -357,6 +357,29 @@ export function workflowModelValue(config: AiConfig, value: string) {
     return base ? encodeChannelModel(found.channel.id, base.name) : value;
 }
 
+/**
+ * The model entry a workflow answers to, spelled the way the picker spells it — or `""` when the list has
+ * none.
+ *
+ * The canvas names a workflow when it drives one from a button (`tool-workflows.ts`), but a node records a
+ * *model*: that is the field the panel, the request builder and the agent read. This is the only place an id
+ * becomes that value, so a node a button created and a node whose model was picked cannot disagree about what
+ * they are. A workflow the list does not offer answers nothing, because the bare id is not a model — writing
+ * it would leave the node naming something no other code can resolve, which is the fallback that made an
+ * interpolation node show itself as text-to-video (#263).
+ *
+ * The first channel that offers it wins, which is the order a run resolves an id in.
+ */
+export function modelForWorkflow(config: AiConfig, workflowId: string) {
+    const id = workflowId.trim();
+    if (!id) return "";
+    for (const channel of config.channels) {
+        const model = channel.models.find((item) => item.workflowId === id && !item.baseModel);
+        if (model) return encodeChannelModel(channel.id, model.name);
+    }
+    return "";
+}
+
 /** Second-level dropdown: the workflow's default base model plus every variant. */
 export function baseModelOptions(config: AiConfig, value: string) {
     const found = channelModelOf(config, value);

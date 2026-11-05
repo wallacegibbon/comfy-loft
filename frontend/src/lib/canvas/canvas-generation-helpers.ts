@@ -86,6 +86,23 @@ const RUN_CONTENT_TYPES = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNod
  * left an audio or image node unable to re-attach at all, while video re-attached whatever its status
  * said (#235).
  */
+/**
+ * Whether this node is a *generator* here — something a press of the send button can ask — rather than a
+ * piece of material.
+ *
+ * Three states, read off two facts the node already records. No content: a fresh node, and the panel's job is
+ * to run the default model into it. Content plus a recorded `model`: a run of its own, and pressing send asks
+ * that model again. Content with no `model`: a crop, a split, an upload, a mask, or a node from a build that
+ * did not record what made it (#293) — there is nothing to re-run.
+ *
+ * The middle state is why this is one predicate and not a new field: `model` is already the node's answer to
+ * "what would run here", and a crop's honest answer is "nothing". Offering the button anyway repainted the
+ * material with the canvas's default model, which was the only thing it could do — and it was destructive.
+ */
+export function nodeCanGenerate(node: CanvasNodeData) {
+    return !node.metadata?.content || Boolean(node.metadata?.model);
+}
+
 export function hasResumableRun(node: CanvasNodeData) {
     return RUN_CONTENT_TYPES.includes(node.type as CanvasNodeType) && Boolean(node.metadata?.runId) && !node.metadata?.content;
 }

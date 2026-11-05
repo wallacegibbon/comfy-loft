@@ -4,6 +4,7 @@ import { ArrowUp, LoaderCircle, Maximize2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/kit/button";
+import { ModelPicker, WorkflowModelPicker } from "@/components/model-picker";
 import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
 import { Tooltip } from "@/components/kit/tooltip";
@@ -16,7 +17,8 @@ import { NODE_CONTROLS } from "./panels/node-controls";
 import { SentPromptDisclosure } from "./sent-prompt-disclosure";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData } from "@/types/canvas";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
-import { videoModelForMode } from "@/lib/canvas/video-model-mode";
+import { nodeCanGenerate } from "@/lib/canvas/canvas-generation-helpers";
+import { videoModelForMode, videoModelModePatch } from "@/lib/canvas/video-model-mode";
 import { CanvasNodeReferenceBar } from "./canvas-node-reference-bar";
 import { CanvasToolNodePanel } from "./canvas-tool-node-panel";
 
@@ -179,6 +181,32 @@ export function CanvasNodePromptPanel({
         setExpanded(true);
     };
 
+    // Material — content with no model recorded — is shown its own panel: what it is, and the one way out
+    // (`nodeCanGenerate`). A press of the send button here could only repaint the picture with the canvas's
+    // default model, which is both destructive and a claim the node never made. The picker is the way out and
+    // it starts empty: choosing a model *is* saying "generate here", and the composer appears with it.
+    if (!nodeCanGenerate(node)) {
+        return (
+            <div
+                data-canvas-no-zoom
+                className="rounded-2xl border p-3 shadow-2xl backdrop-blur"
+                style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+                onWheel={(event) => event.stopPropagation()}
+            >
+                <CanvasNodeReferenceBar nodeId={node.id} nodes={nodes} connectedNodes={connectedNodes} onDisconnect={onDisconnectReference} onStartSelection={onStartReferenceSelection} />
+                <div className="space-y-1 px-1 text-sm leading-5">
+                    <div>{t("canvas.promptPanel.material")}</div>
+                    <div className="text-xs leading-4 opacity-55">{t("canvas.promptPanel.materialHint")}</div>
+                </div>
+                <div className="mt-2 flex items-center justify-end">
+                    <MaterialModelPicker node={node} config={config} mode={mode} onConfigChange={onConfigChange} onOpenPreferences={() => openPreferences()} />
+                </div>
+            </div>
+        );
+    }
+
     // A node that runs a step is shown the step panel: an interpolation takes a clip and a multiplier, an
     // upscaler a picture and a model, an angle re-render a picture and three knobs. What that panel shows comes
     // from the workflow's own contract, not from what this panel knows about the workflows that take a prompt.
@@ -331,6 +359,40 @@ export function CanvasNodePromptPanel({
  */
 function defaultMode(type: CanvasNodeData["type"]): CanvasGenerationMode {
     return type === CanvasNodeType.Video ? "video" : type === CanvasNodeType.Audio ? "audio" : "image";
+}
+
+/**
+ * The one control a material node keeps: a model to generate with, and it starts empty.
+ *
+ * Empty on purpose. The panel used to show the canvas's default model here, which is what made a crop look
+ * like a node that had been given a model — and a press then repainted the crop with it. Choosing a model is
+ * the explicit act that turns this node into a generator, so the value is the user's or nothing.
+ *
+ * The picker is the kind's own (`WorkflowModelPicker` for a workflow, `ModelPicker` for audio), and a video
+ * pick carries its mode, exactly as the composer's control does.
+ */
+function MaterialModelPicker({
+    node,
+    config,
+    mode,
+    onConfigChange,
+    onOpenPreferences,
+}: {
+    node: CanvasNodeData;
+    config: AiConfig;
+    mode: CanvasNodeGenerationMode;
+    onConfigChange: (nodeId: string, patch: Partial<CanvasNodeData["metadata"]>) => void;
+    onOpenPreferences: () => void;
+}) {
+    const { t } = useTranslation();
+    const placeholder = t("settingsPanels.model.select");
+    if (mode === "video") {
+        return <WorkflowModelPicker config={config} value="" onChange={(model) => onConfigChange(node.id, videoModelModePatch(config, model))} capability="video" placeholder={placeholder} onMissingConfig={onOpenPreferences} className="max-w-[190px]" />;
+    }
+    if (mode === "audio") {
+        return <ModelPicker config={config} value="" onChange={(model) => onConfigChange(node.id, { model })} capability="audio" placeholder={placeholder} onMissingConfig={onOpenPreferences} className="max-w-[190px]" />;
+    }
+    return <WorkflowModelPicker config={config} value="" onChange={(model) => onConfigChange(node.id, { model })} capability="image" placeholder={placeholder} onMissingConfig={onOpenPreferences} className="max-w-[190px]" />;
 }
 
 function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: CanvasNodeGenerationMode): AiConfig {

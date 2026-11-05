@@ -11,7 +11,7 @@ import { serverProtocolRoot } from "@/services/api/runs";
  * answers to. Which of them appear in a model dropdown, and which are driven from a button, is our
  * decision, made in the client.
  */
-export type WorkflowParameter = {
+type WorkflowParameter = {
     key: string;
     label?: string;
     type?: string;

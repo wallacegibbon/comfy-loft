@@ -10646,6 +10646,87 @@ gone, the empty box remained. `npx tsc --noEmit`, `npx vitest run` (422), `go te
 `internal/server/routes_mcp.go` (`create_node`, `group_nodes`), `frontend/tests/canvas-node-geometry.test.ts`,
 `frontend/tests/canvas-agent-tools.test.ts`.
 
+## 293. A node a button creates records the workflow it submitted
+
+**Decision** `buildStepNodeMetadata(config, workflowId, params)` (`canvas-node-factory.ts`) is the one way an
+action records what the node it produced *is*: the model that workflow answers to — `modelForWorkflow(config,
+workflowId)`, new in `use-config-store.ts` — plus the knobs the run was given, filtered by the workflow's own
+`inputs` (`paramsAcceptedBy`). The 放大/超分 editor and the multi-angle editor use it, and they write it when the
+node appears rather than when the run ends.
+
+**Why** Both submit a workflow that is not the node's own model — an upscale is `image-esrgan-upscale` whatever
+the canvas is set to — so what they recorded was either nothing (`superResolveImageNode` wrote `prompt`/`status`,
+and `imageMetadata` contributes only `workflow`/`generatedAt`) or the *source picture's* model (the angle
+editor). A node with no `model` is drawn by `buildNodeConfig`'s fallback, so an upscaled picture came back as a
+Z-Image text-to-image card: prompt box, size/quality, a send button that repaints over the result, and no
+放大模型 knob — while the same card's info popover said `workflow: image-esrgan-upscale`. The video half of this
+was settled in #263; the image half never followed, which is why the node a button makes and the node whose model
+was picked by hand were two different cards for one workflow.
+
+**Rejected** Reading `metadata.workflow` at render to pick the panel. `model` is what the node is *set to run*
+and `workflow` is who *made* the artifact; a user who retargets a node makes them diverge, so the maker would
+override the target. Also rejected writing the bare workflow id when the list offers nothing: `channelModelOf`
+cannot resolve it, `resolveModelForCapability` falls back to the canvas default, and the #263 lie returns with an
+extra unrecognisable value stored on the node — so no model is claimed, and the knobs, which are what the run was
+told, are kept.
+
+**Cost** A node whose workflow is not in the model list records no model. The one way that survived is a
+workflow that declares a base model nobody installed, since a run is submitted by id and the dialog only asks
+whether ComfyUI can run it — and #295 deleted the other one, the resource centre's 启用 checkbox.
+
+**Also** `videoModelForWorkflow` is now a two-line delegation to `modelForWorkflow`, and `videoWorkflowId`, its
+only helper, is gone. `buildImageGenerationMetadata`'s step branch is deliberately untouched: it echoes the
+config's own model, which is correct for the editors that do run the node's model (mask, outpaint, MOSS layout).
+
+**Tested** `frontend/tests/step-node-metadata.test.ts` (new, 5): an upscale node names the upscaler and
+`modelIsStep` agrees (that is the panel), the chosen model file is recorded, an undeclared knob is dropped, an
+angle node names the angle workflow and its three knobs, a workflow nothing offers leaves no model claim, and a
+variant is never the answer. `npx tsc --noEmit`, `npm run check` (i18n, exports, format), `npx vitest run` (427),
+`make frontend`.
+
+**Where** `frontend/src/lib/canvas/canvas-node-factory.ts`, `frontend/src/stores/use-config-store.ts`,
+`frontend/src/lib/canvas/video-model-mode.ts`, `frontend/src/pages/canvas/hooks/use-image-editors.ts`,
+`frontend/tests/step-node-metadata.test.ts`.
+
+## 294. One upscale action, because there is one upscaler
+
+**Decision** The 超分 action is gone. `CanvasNodeUpscaleDialog` is the only upscale dialog: it asks for the one
+knob the only upscaler declares (`upscale_model`), shows the output size the chosen file implies, and submits
+`image-esrgan-upscale`. Deleted with the button: the workflow picker and its `preferredWorkflowId` bypass,
+`dit_model`, the target-short-edge `resolution` branch with its 2×/3×/4× segmented, the advanced-parameter
+collapse (and `components/kit/nav.tsx`, whose `Collapse` was its only user), the SeedVR2 branch of
+`prettyModel`, and the copy that promised quality — `AI 超分`, `Start super resolution`,
+`没有可用的超分工作流`.
+
+**Why** Two buttons ran one graph. They were two things when they were written: 放大 was a *browser-side*
+resize (the initial import's `canvas-node-upscale-dialog.tsx`, `resolveUpscaleSize`, high/bilinear/nearest, no
+request at all) and 超分 was the SeedVR2 graph, whose own knobs were `dit_model` and a target short edge. #65
+turned 放大 into a run of `image-esrgan-upscale` and pinned it with `preferredWorkflowId`, so from then on it
+borrowed the super-resolution dialog; #64 deleted `image-seedvr2-upscale` ("no caller left") and #123 the video
+one. What was left was a second title over the same run, whose only unique control — the workflow picker —
+listed exactly one entry, and a dialog whose remaining branches served a workflow that no longer existed.
+
+**Rejected** Keeping the generic dialog and deleting only the button. That is the same code with a one-item
+dropdown in front of it: a control that cannot change anything reads as a choice and is not one. When a second
+upscaler with knobs of its own arrives, the picker comes back with it — a smaller diff than this one, and with
+a workflow to justify every branch.
+
+**Cost** There is no super-resolution path, and this makes that explicit instead of hiding it behind a button.
+Enlarging stays a size tool, and the dialog now says so in a line of its own: upscaling makes the picture bigger,
+not clearer — for more detail, generate again on a larger canvas. `accepts` still says the upscaler takes
+exactly one image, so the run is refused at submission rather than a minute later inside ComfyUI.
+
+**Tested** `npx tsc --noEmit`; `npm run check` (i18n lost four dead keys — `common.yes`/`common.no` were the
+boolean branch of the deleted parameter form; exports: `Collapse` and `WorkflowParameter` had no callers left);
+`npx vitest run` (427); `make check`; `make frontend` (564 kB → 556 kB). The live `/api/workflows` row for
+`image-esrgan-upscale` was read again for the dialog's data: one `select` parameter, three files, no
+`resolution`.
+
+**Where** `frontend/src/components/canvas/canvas-node-upscale-dialog.tsx` (new; replaces
+`canvas-node-super-resolve-dialog.tsx`), `canvas-image-toolbar-tools.tsx`, `canvas-node-hover-toolbar.tsx`,
+`pages/canvas/project.tsx`, `pages/canvas/hooks/use-image-editors.ts` (`upscaleImageNode`),
+`i18n/locales/{zh-CN,en-US}.ts` (`canvas.upscale.*`).
+
 ## 295. The workflow visibility switch is gone, not fixed
 
 **Decision** `store.Visibility` and its file (`data/workflow-visibility.json`), `POST
@@ -10690,3 +10771,72 @@ reachable), `make build`, `make frontend`. The running server needs a restart to
 `internal/resource/{resource.go,status.go}`, `frontend/src/lib/server-models.ts`,
 `frontend/src/services/api/resources.ts`, `frontend/src/components/settings/resource-center-panel.tsx`,
 `frontend/src/services/api/workflows.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `docs/server.md`.
+
+## 296. The image toolbar does not offer to copy a prompt
+
+**Decision** The `copyPrompt` quick tool is gone: its definition in `imageToolDefinitions`, its handler in the
+hover toolbar, `hooks/use-copy-text.ts` (its only caller), the four strings it owned — `copyPrompt`,
+`copyPromptTitle`, `canvas.nodeToolbar.noPrompt`, `common.copied` — plus `common.promptCopied`, which its toast
+was passed, and the `copy-to-clipboard` dependency that the hook was the only user of.
+
+**Why** It copied `metadata.prompt` — the words the user typed — and nothing in the canvas consumes that copy:
+a run reads the node, the agent reads the node, and anyone who wants the words can select them where they
+already are. The image toolbar's job is to *do something to the picture* (mask, crop, split, upscale, angle);
+this was the one entry that only moved text to the clipboard, which the browser does from a selection.
+
+**Rejected** Keeping it for the node-info dialog. The prompt is already shown there as selectable text; a
+button that duplicates the browser's own copy is the same litter one corner over.
+
+**Cost** A habit changes. Nothing read `metadata.prompt` through this path, so nothing else moved.
+
+**Tested** `npx tsc --noEmit`; `npm run check` — i18n dropped to 840 keys and the checker named `common.copied`
+only once the hook went, which is how the last caller of a string surfaces; `npx vitest run` (426);
+`make frontend`. A saved quick-tool preference is filtered against the ids that exist
+(`IMAGE_QUICK_TOOLS_STORAGE_KEY`), so a stored `copyPrompt` is ignored rather than leaving a hole in the bar.
+
+**Where** `frontend/src/components/canvas/canvas-image-toolbar-tools.tsx`,
+`frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`, `frontend/src/hooks/use-copy-text.ts`,
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `frontend/package.json`.
+
+## 297. Material is not a generator
+
+**Decision** A node with content and no recorded `model` is drawn as *material*: the node panel says what it is,
+keeps the reference bar, and offers one control — a model picker that starts empty. No prompt box, no send
+button (`nodeCanGenerate`, `canvas-generation-helpers.ts`). The crop and split editors stop copying the
+source's `prompt` onto the piece they make.
+
+**Why** The composer's fallback answers "no model" with the canvas's default model, which is right for an empty
+node and wrong for a picture somebody cut out: a crop was drawn by the browser, an upload arrived from outside, a
+mask node is a byproduct of an edit. The panel claimed a model for all of them and offered a send button whose
+only possible effect was to repaint the material with that default — destructive, and a claim the node never
+made. The copied prompt made it worse by enabling the button: a crop of a Qwen picture was one press away from
+becoming a Z-Image render of its parent's words.
+
+**Three states, two facts** No content: the panel's job is to run the default model into it. Content plus
+`model`: a run of this node's own, and send asks it again. Content without `model`: material, nothing to re-run.
+No new field — no `origin`, no `madeBy: "manual"`. `model` is already the node's answer to "what would run
+here", and a crop's honest answer is "nothing"; a second field would be a second answer to that question, which
+is how #293's bug read from the other end.
+
+**What the panel keeps** The reference bar — a crop is a perfectly good source for another node's run — and the
+model picker, empty. Choosing a model is the explicit act that turns material into a generator, and the composer
+appears with it. It does not pre-select the default, because showing the default is exactly what made a crop
+look like it had a model.
+
+**Also live by the same rule** A node made by a build before #293 has content, `workflow` and no `model`. It is
+material here, which is the honest reading (it knows who made it, not what to run) and stops the button
+repainting it.
+
+**Cost** A piece of material can no longer be regenerated in place. What that path did was overwrite it with the
+default model, with no undo, and the canvas's own way — connect the material to a node as a reference — does not
+touch it.
+
+**Tested** `frontend/tests/node-generatable.test.ts` (new, 3): an empty node is a generator, a recorded model is
+re-askable, and crop/split/upload/mask material is not — including the workflow-only node above.
+`npx tsc --noEmit`, `npm run check` (i18n at 842 keys, exports at 186 modules), `npx vitest run` (429),
+`make check`, `make frontend`.
+
+**Where** `frontend/src/lib/canvas/canvas-generation-helpers.ts`, `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`
+(the material branch and `MaterialModelPicker`), `frontend/src/pages/canvas/hooks/use-image-editors.ts`
+(`cropImageNode`, `splitImageNode`), `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
+`frontend/tests/node-generatable.test.ts`.

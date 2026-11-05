@@ -1,0 +1,100 @@
+import { afterAll, expect, test } from "vitest";
+import type { AiConfig } from "../src/stores/use-config-store";
+
+// Config and i18n use browser storage during module initialization.
+const values = new Map<string, string>();
+const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+    },
+});
+afterAll(() => {
+    if (originalStorage) Object.defineProperty(globalThis, "localStorage", originalStorage);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+});
+
+const { defaultConfig, modelForWorkflow, modelIsStep } = await import("../src/stores/use-config-store");
+const { buildStepNodeMetadata } = await import("../src/lib/canvas/canvas-node-factory");
+const { IMAGE_ANGLE_WORKFLOW, IMAGE_UPSCALE_WORKFLOW } = await import("../src/lib/canvas/tool-workflows");
+
+/**
+ * A canvas set to Z-Image, with the two image tools the toolbar drives. The tools declare the inputs they
+ * accept, because that list is what a run is validated against — a knob outside it must not reach a node.
+ */
+const config: AiConfig = {
+    ...defaultConfig,
+    model: "default::image-z-image-turbo",
+    imageModel: "default::image-z-image-turbo",
+    channels: [
+        {
+            id: "default",
+            name: "Default",
+            baseUrl: "http://127.0.0.1:8190",
+            models: [
+                { name: "image-z-image-turbo", capability: "image", workflowId: "image-z-image-turbo", hasPrompt: true },
+                {
+                    name: "image-esrgan-upscale",
+                    capability: "image",
+                    workflowId: IMAGE_UPSCALE_WORKFLOW,
+                    tool: true,
+                    hasPrompt: false,
+                    inputs: ["prompt", "upscale_model"],
+                },
+                // The workflow's other base model: a variant is never what a workflow answers to.
+                { name: "img-esrgan-int8", capability: "image", workflowId: IMAGE_UPSCALE_WORKFLOW, baseModel: "esrgan_int8.safetensors" },
+                {
+                    name: "image-qwen21-angle",
+                    capability: "image",
+                    workflowId: IMAGE_ANGLE_WORKFLOW,
+                    tool: true,
+                    hasPrompt: true,
+                    inputs: ["prompt", "horizontalAngle", "pitchAngle", "cameraDistance", "seed"],
+                },
+            ],
+        },
+    ],
+};
+
+// What the 放大 / 超分 buttons run. The node used to record nothing, so its panel fell back to whatever the
+// canvas was set to and showed a text-to-image composer with a send button over a picture that had just been
+// upscaled (#263 for the video half of this).
+test("a node an upscale button creates is the upscaler, not the canvas's model", () => {
+    const metadata = buildStepNodeMetadata(config, IMAGE_UPSCALE_WORKFLOW, { upscale_model: "RealESRGAN_x4plus.pth" });
+    expect(metadata.model).toBe("default::image-esrgan-upscale");
+    expect(metadata.model).not.toBe(config.model);
+    expect(modelIsStep(config, metadata.model || "")).toBe(true);
+    // The chosen model file is part of what the run was told, so the panel reads it back instead of the default.
+    expect(metadata.params).toEqual({ upscale_model: "RealESRGAN_x4plus.pth" });
+});
+
+test("a knob the workflow does not declare is not written onto the node", () => {
+    const metadata = buildStepNodeMetadata(config, IMAGE_UPSCALE_WORKFLOW, { upscale_model: "RealESRGAN_x2plus.pth", seed: 7, size: "1024x1024" });
+    expect(metadata.params).toEqual({ upscale_model: "RealESRGAN_x2plus.pth" });
+});
+
+// The angle re-render submits its own workflow too; what it used to record was the model of the picture it
+// re-rendered, so its panel offered that model's controls and the angle it ran with was nowhere on the node.
+test("an angle node records the angle workflow and the camera it was asked for", () => {
+    const metadata = buildStepNodeMetadata(config, IMAGE_ANGLE_WORKFLOW, { horizontalAngle: 40, pitchAngle: -10, cameraDistance: 3 });
+    expect(metadata.model).toBe("default::image-qwen21-angle");
+    expect(metadata.params).toEqual({ horizontalAngle: 40, pitchAngle: -10, cameraDistance: 3 });
+});
+
+test("the model a workflow answers to is its base entry, not a variant", () => {
+    expect(modelForWorkflow(config, IMAGE_UPSCALE_WORKFLOW)).toBe("default::image-esrgan-upscale");
+    expect(modelForWorkflow(config, "image-not-installed")).toBe("");
+    expect(modelForWorkflow(config, "  ")).toBe("");
+});
+
+// A workflow the model list does not offer has no model to name. Writing the bare workflow id would be a
+// value nothing resolves, which is the fallback that made an interpolation node show as text-to-video — so the
+// node claims no model, and keeps the knobs, which are what the run was told.
+test("a workflow nothing offers leaves no model claim and keeps what the run was told", () => {
+    const metadata = buildStepNodeMetadata(config, "image-not-installed", { upscale_model: "RealESRGAN_x4plus.pth" });
+    expect(metadata.model).toBeUndefined();
+    expect(metadata.params).toEqual({ upscale_model: "RealESRGAN_x4plus.pth" });
+});

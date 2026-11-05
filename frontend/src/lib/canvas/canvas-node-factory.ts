@@ -2,7 +2,7 @@ import { getNodeSpec, NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { isInheritableNodeField, recallNodeSettings, rememberNodeSettings } from "@/lib/canvas/node-settings-memory";
 import { activeFileUrl } from "@/services/canvas-files";
-import { modelIsStep, type AiConfig } from "@/stores/use-config-store";
+import { modelForWorkflow, modelIsStep, paramsAcceptedBy, type AiConfig } from "@/stores/use-config-store";
 import type { UploadedImage } from "@/services/image-storage";
 import type { UploadedFile } from "@/services/file-storage";
 import type { RunFacts } from "@/services/api/runs";
@@ -87,6 +87,25 @@ function servedUrlOf(file: { url?: string; storageKey?: string }) {
 
 export function referenceUrl(image: ReferenceImage) {
     return image.storageKey || image.url || (!image.dataUrl.startsWith("data:") ? image.dataUrl : undefined);
+}
+
+/**
+ * The record of a node a *button* created: the workflow it submitted, and the knobs it was given.
+ *
+ * Every editor that makes a node out of an action submits a workflow of its own — an upscale is
+ * `image-esrgan-upscale` whatever the canvas is set to, an angle re-render is `image-qwen21-angle` — so
+ * echoing the config's model describes a run that never happened. The node is what it is from the moment it
+ * appears: a node that is already in the canvas and already spinning must say which workflow it is waiting
+ * on, and a run that fails must not leave it claiming to be something else (#263).
+ *
+ * A workflow the model list does not offer leaves no model claim rather than the bare id
+ * (`modelForWorkflow`). Its knobs are kept either way: they are what the run was told, and the field is the
+ * panel's to read back.
+ */
+export function buildStepNodeMetadata(config: AiConfig, workflowId: string, params?: Record<string, unknown>): CanvasNodeMetadata {
+    const model = modelForWorkflow(config, workflowId);
+    const accepted = paramsAcceptedBy(config, model, params);
+    return { ...(model ? { model } : {}), ...(accepted ? { params: accepted } : {}) };
 }
 
 export function buildImageGenerationMetadata(type: CanvasImageGenerationType, config: AiConfig, references: ReferenceImage[]): CanvasNodeMetadata {

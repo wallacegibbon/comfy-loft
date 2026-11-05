@@ -1,13 +1,9 @@
-import { channelModelOf, modelOptionName, workflowModelOptions, type AiConfig } from "@/stores/use-config-store";
+import { channelModelOf, modelForWorkflow, workflowModelOptions, type AiConfig } from "@/stores/use-config-store";
 import type { CanvasNodeData } from "@/types/canvas";
 
-function videoWorkflowId(config: AiConfig, model: string) {
-    return channelModelOf(config, model)?.model.workflowId || modelOptionName(model);
-}
-
+/** The video model a tool workflow answers to. The lookup itself is not video's — see `modelForWorkflow`. */
 export function videoModelForWorkflow(config: AiConfig, workflowId: string) {
-    const optionsList = workflowModelOptions(config, "video");
-    return optionsList.find((value) => videoWorkflowId(config, value) === workflowId) || "";
+    return modelForWorkflow(config, workflowId);
 }
 
 /**

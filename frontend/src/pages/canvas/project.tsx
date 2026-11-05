@@ -17,7 +17,6 @@ import { nanoid } from "nanoid";
 import { type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
-import { IMAGE_UPSCALE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 import { VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH, applyGeneratedVideo } from "@/lib/canvas/canvas-generated-video";
 import { NODE_STATUS_ERROR, NODE_STATUS_IDLE, NODE_STATUS_LOADING, NODE_STATUS_SUCCESS } from "@/lib/canvas/canvas-node-status";
 import { useContentIngress } from "@/pages/canvas/hooks/use-content-ingress";
@@ -42,7 +41,7 @@ import { CanvasNodeMaskEditDialog } from "@/components/canvas/canvas-node-mask-e
 import { CanvasNodeOutpaintDialog } from "@/components/canvas/canvas-node-outpaint-dialog";
 import { CanvasNodeMossLayoutDialog } from "@/components/canvas/canvas-node-moss-layout-dialog";
 import { CanvasNodeSplitDialog } from "@/components/canvas/canvas-node-split-dialog";
-import { CanvasNodeSuperResolveDialog } from "@/components/canvas/canvas-node-super-resolve-dialog";
+import { CanvasNodeUpscaleDialog } from "@/components/canvas/canvas-node-upscale-dialog";
 import { buildNodeGenerationContext, describeEmptyInputs, hydrateNodeGenerationContext, inputsHoldingNothing } from "@/components/canvas/canvas-node-generation";
 import { CanvasNodeHoverToolbar, CanvasNodeInfoModal } from "@/components/canvas/canvas-node-hover-toolbar";
 import { CanvasSelectionToolbar } from "@/components/canvas/canvas-selection-toolbar";
@@ -119,7 +118,7 @@ type CanvasGenerationRequest = {
 // editor is open" had no single answer, so each reset path cleared a different subset: delete and
 // clear closed five of the ten, Escape closed three. One nullable record instead makes "at most one
 // editor is open" an invariant the compiler can see, and leaves the resets a single thing to clear.
-type CanvasNodeTool = "info" | "crop" | "maskEdit" | "outpaint" | "mossLayout" | "split" | "upscale" | "superResolve" | "angle";
+type CanvasNodeTool = "info" | "crop" | "maskEdit" | "outpaint" | "mossLayout" | "split" | "upscale" | "angle";
 type CanvasNodeToolState = { kind: CanvasNodeTool; nodeId: string } | null;
 
 // Stable empty reference array prevents `... || []` from invalidating CanvasNode's React.memo on every render.
@@ -897,7 +896,6 @@ function InfiniteCanvasPage() {
     const mossLayoutNode = activeNodeTool?.kind === "mossLayout" ? activeNodeToolNode : null;
     const splitNode = activeNodeTool?.kind === "split" ? activeNodeToolNode : null;
     const upscaleNode = activeNodeTool?.kind === "upscale" ? activeNodeToolNode : null;
-    const superResolveNode = activeNodeTool?.kind === "superResolve" ? activeNodeToolNode : null;
     const angleNode = activeNodeTool?.kind === "angle" ? activeNodeToolNode : null;
     const contextMenuNode = contextMenu?.type === "node" ? nodeById.get(contextMenu.nodeId) || null : null;
     const previewNode = previewNodeId ? nodeById.get(previewNodeId) || null : null;
@@ -1854,7 +1852,7 @@ function InfiniteCanvasPage() {
         () => ({ setNodes, setConnections, setSelectedNodeIds, setSelectedConnectionId, setDialogNodeId, setRunningNodeId, closeNodeTool, startGenerationRequest, finishGenerationRequest }),
         [closeNodeTool, finishGenerationRequest, setConnections, setDialogNodeId, setNodes, setSelectedConnectionId, setSelectedNodeIds, setRunningNodeId, startGenerationRequest],
     );
-    const { cropImageNode, splitImageNode, maskEditImageNode, outpaintImageNode, mossLayoutImageNode, runSuperResolve, runFastUpscale, generateAngleNode } = useImageEditors(nodeEditorDeps);
+    const { cropImageNode, splitImageNode, maskEditImageNode, outpaintImageNode, mossLayoutImageNode, upscaleImageNode, generateAngleNode } = useImageEditors(nodeEditorDeps);
     const { interpolateVideoNode } = useVideoEditors(nodeEditorDeps);
 
     const handleFontSizeChange = useCallback((nodeId: string, fontSize: number) => {
@@ -2398,7 +2396,6 @@ function InfiniteCanvasPage() {
                     onCrop={(node) => openNodeTool("crop", node.id)}
                     onSplit={(node) => openNodeTool("split", node.id)}
                     onUpscale={(node) => openNodeTool("upscale", node.id)}
-                    onSuperResolve={(node) => openNodeTool("superResolve", node.id)}
                     onAngle={(node) => openNodeTool("angle", node.id)}
                     onViewImage={handleNodeViewImage}
                     onDelete={(node) => deleteNodes(new Set([node.id]))}
@@ -2488,32 +2485,17 @@ function InfiniteCanvasPage() {
                 {splitNode?.metadata?.content ? <CanvasNodeSplitDialog dataUrl={splitNode.metadata.content} open={Boolean(splitNode)} onClose={() => closeNodeTool()} onConfirm={(params) => void splitImageNode(splitNode!, params)} /> : null}
 
                 {upscaleNode?.metadata?.content ? (
-                    <CanvasNodeSuperResolveDialog
+                    <CanvasNodeUpscaleDialog
                         dataUrl={upscaleNode.metadata.content}
                         open={Boolean(upscaleNode)}
                         config={effectiveConfig}
-                        preferredWorkflowId={IMAGE_UPSCALE_WORKFLOW}
-                        title={t("canvas.superResolve.fastTitle")}
-                        actionLabel={t("canvas.editors.upscale")}
-                        note={t("canvas.superResolve.fastNote")}
                         onClose={() => closeNodeTool()}
                         onConfirm={(params) => {
                             closeNodeTool();
-                            if (upscaleNode) void runFastUpscale(upscaleNode, params);
+                            if (upscaleNode) void upscaleImageNode(upscaleNode, params);
                         }}
                     />
                 ) : null}
-
-                <CanvasNodeSuperResolveDialog
-                    dataUrl={superResolveNode?.metadata?.content || ""}
-                    open={Boolean(superResolveNode)}
-                    config={effectiveConfig}
-                    onClose={() => closeNodeTool()}
-                    onConfirm={(params) => {
-                        closeNodeTool();
-                        if (superResolveNode) void runSuperResolve(superResolveNode, params);
-                    }}
-                />
 
                 {angleNode?.metadata?.content ? (
                     <Suspense fallback={null}>

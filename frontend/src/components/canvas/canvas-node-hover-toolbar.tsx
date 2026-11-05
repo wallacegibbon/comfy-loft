@@ -5,12 +5,10 @@ import { useTranslation } from "react-i18next";
 
 import { Dialog } from "@/components/kit/dialog";
 import { Segmented } from "@/components/kit/segmented";
-import { toast } from "@/components/kit/toast";
 import { Tooltip } from "@/components/kit/tooltip";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
-import { useCopyText } from "@/hooks/use-copy-text";
 import { readSetting, writeSetting } from "@/stores/use-settings-store";
 import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 import type { CanvasNodeToolbarItem } from "@/types/canvas-node";
@@ -31,7 +29,6 @@ type CanvasNodeHoverToolbarProps = {
     onCrop: (node: CanvasNodeData) => void;
     onSplit: (node: CanvasNodeData) => void;
     onUpscale: (node: CanvasNodeData) => void;
-    onSuperResolve: (node: CanvasNodeData) => void;
     onAngle: (node: CanvasNodeData) => void;
     onViewImage: (node: CanvasNodeData) => void;
     onDelete: (node: CanvasNodeData) => void;
@@ -63,7 +60,6 @@ export function CanvasNodeHoverToolbar({
     onCrop,
     onSplit,
     onUpscale,
-    onSuperResolve,
     onAngle,
     onViewImage,
     onDelete,
@@ -76,7 +72,6 @@ export function CanvasNodeHoverToolbar({
     const [draftShowImageToolLabels, setDraftShowImageToolLabels] = useState(false);
     const [imageToolSettingsOpen, setImageToolSettingsOpen] = useState(false);
     const { t } = useTranslation();
-    const copyText = useCopyText();
 
     useEffect(() => {
         // Whatever was saved is untrusted: it may predate a tool, or name one that is gone.
@@ -103,15 +98,7 @@ export function CanvasNodeHoverToolbar({
     const hasAudio = isAudio && Boolean(node.metadata?.content);
     const isText = node.type === CanvasNodeType.Text;
     const quickImageToolIdSet = new Set(quickImageToolIds);
-    const copyImagePrompt = (target: CanvasNodeData) => {
-        const prompt = target.metadata?.prompt?.trim();
-        if (!prompt) {
-            toast.warning(t("canvas.nodeToolbar.noPrompt"));
-            return;
-        }
-        copyText(prompt, t("common.promptCopied"));
-    };
-    const imageTools = buildImageToolbarTools(node, { onMaskEdit, onCrop, onSplit, onUpscale, onSuperResolve, onAngle, onViewImage, onCopyPrompt: copyImagePrompt });
+    const imageTools = buildImageToolbarTools(node, { onMaskEdit, onCrop, onSplit, onUpscale, onAngle, onViewImage });
 
     function openImageToolSettings() {
         onKeep(activeNode.id);

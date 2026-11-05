@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
-import { Brush, Camera, Copy, Grid2x2, Maximize2, Scissors, Sparkles, ZoomIn } from "lucide-react";
+import { Brush, Camera, Grid2x2, Maximize2, Scissors, ZoomIn } from "lucide-react";
 
 import type { CanvasNodeData } from "@/types/canvas";
 import i18n from "@/i18n";
 
-type ImageNodeActionToolId = "copyPrompt" | "maskEdit" | "crop" | "split" | "upscale" | "superResolve" | "angle" | "view";
+type ImageNodeActionToolId = "maskEdit" | "crop" | "split" | "upscale" | "angle" | "view";
 export type ImageQuickToolId = "info" | "delete" | "download" | ImageNodeActionToolId;
 
 type ImageToolHandlers = {
@@ -12,10 +12,8 @@ type ImageToolHandlers = {
     onCrop: (node: CanvasNodeData) => void;
     onSplit: (node: CanvasNodeData) => void;
     onUpscale: (node: CanvasNodeData) => void;
-    onSuperResolve: (node: CanvasNodeData) => void;
     onAngle: (node: CanvasNodeData) => void;
     onViewImage: (node: CanvasNodeData) => void;
-    onCopyPrompt: (node: CanvasNodeData) => void;
 };
 
 type ImageToolDefinition = {
@@ -38,14 +36,6 @@ export const IMAGE_QUICK_TOOLS_STORAGE_KEY = "canvas-image-quick-tools-v8";
 const defaultBaseToolIds: ImageQuickToolId[] = ["info", "delete", "download"];
 
 const imageToolDefinitions: ImageToolDefinition[] = [
-    {
-        id: "copyPrompt",
-        defaultVisible: true,
-        label: () => i18n.t("canvas.imageTools.copyPrompt"),
-        title: () => i18n.t("canvas.imageTools.copyPromptTitle"),
-        icon: () => <Copy className="size-4" />,
-        run: (node, handlers) => handlers.onCopyPrompt(node),
-    },
     {
         id: "maskEdit",
         defaultVisible: true,
@@ -77,14 +67,6 @@ const imageToolDefinitions: ImageToolDefinition[] = [
         title: () => i18n.t("canvas.imageTools.upscaleTitle"),
         icon: () => <ZoomIn className="size-4" />,
         run: (node, handlers) => handlers.onUpscale(node),
-    },
-    {
-        id: "superResolve",
-        defaultVisible: true,
-        label: () => i18n.t("canvas.imageTools.superResolve"),
-        title: () => i18n.t("canvas.imageTools.superResolveTitle"),
-        icon: () => <Sparkles className="size-4" />,
-        run: (node, handlers) => handlers.onSuperResolve(node),
     },
     {
         id: "angle",
