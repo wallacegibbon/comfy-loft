@@ -404,7 +404,7 @@ func (r *Registry) Resolve(idOrName string) *Entry {
 	return nil
 }
 
-// ResolveForMode swaps in a variant's graph and bindings.
+// ResolveForMode swaps in a variant's graph, bindings and contract.
 func (r *Registry) ResolveForMode(entry *Entry, mode string) *Entry {
 	if entry == nil || mode == "" {
 		return entry
@@ -413,6 +413,20 @@ func (r *Registry) ResolveForMode(entry *Entry, mode string) *Entry {
 	if !ok || variant == nil {
 		return entry
 	}
+	return mergeVariant(entry, variant)
+}
+
+// mergeVariant is the entry one mode runs: the parent with the variant's graph, bindings, defaults, output
+// size, prompt handling and media contract swapped in.
+//
+// One merger, because a mode has exactly one description and two readers: the contract published for it, and
+// the entry a run of it is validated against. They used to differ — the published contract was computed from
+// the variant's bindings alone, so the keys a variant contributes through its own `outputSize` were missing
+// from the wire (`size` where it declares `fromSize`, `editCanvasSize` wherever it declares an output size at
+// all) while `ValidateInputs` accepted them. Harmless while the canvas sent everything; after #302 the canvas
+// drops what the contract does not list, so Qwen's size picker and its canvas-ratio pills stopped reaching the
+// graph (#303).
+func mergeVariant(entry *Entry, variant *Variant) *Entry {
 	merged := *entry
 	if variant.Workflow != nil {
 		merged.Workflow = variant.Workflow
@@ -426,19 +440,6 @@ func (r *Registry) ResolveForMode(entry *Entry, mode string) *Entry {
 	if variant.OutputSize != nil {
 		merged.OutputSize = variant.OutputSize
 	}
-	mergeVariantContract(&merged, variant)
-	return &merged
-}
-
-// mergeVariantContract lets a variant replace the media/mode contract of its parent. A variant
-// is a different graph, so inheriting the parent's limits would describe the wrong wiring.
-func mergeVariantContract(merged *Entry, variant *Variant) {
-	// The mode's contract is resolved in one place, so what a panel shows and what a run enforces
-	// are the same three fields.
-	contract := variantContractOf(merged, variant)
-	merged.Accepts = contract.Accepts
-	merged.Mode = contract.Mode
-	merged.FrameMode = contract.FrameMode
 	if variant.PromptInject != "" {
 		merged.PromptInject = variant.PromptInject
 	}
@@ -448,6 +449,18 @@ func mergeVariantContract(merged *Entry, variant *Variant) {
 	if variant.Outputs != nil {
 		merged.Outputs = variant.Outputs
 	}
+	// A variant is a different graph, so it may declare a different media/mode contract; inheriting the
+	// parent's would describe the wrong wiring.
+	if variant.Accepts != nil {
+		merged.Accepts = variant.Accepts
+	}
+	if variant.Mode != "" {
+		merged.Mode = variant.Mode
+	}
+	if variant.FrameMode != nil {
+		merged.FrameMode = variant.FrameMode
+	}
+	return &merged
 }
 
 // decorateWithMainModel applies a per-workflow main-model override, if any.

@@ -10999,6 +10999,13 @@ canvas-ratio pills do nothing — the contract says so now, where before they we
 them is graph authoring (a `size.width/height` binding on that node, an `outputSize` rule for the edits, and a
 decision about which sizes the model is asked for), not a contract change, so it is its own entry.
 
+**Corrected (#303)** That held only for the entry, not for its variants. `t2i` declares
+`outputSize: {node: 13, latentNode: 10, latentSource: 14, fromSize: true, skipNativeSquare: true}`, so a size *is*
+written into node 13 and the latent is repointed at the encoded result — the fixed `EmptyImage(1024×1024)` is what
+runs when nothing is asked. `edit` declares an `outputSize` without `fromSize`, so its `editCanvasSize` (the
+canvas-ratio pills) is honoured while a size is not. What is still open is `inpaint`, `outpaint` and `angle`: they
+declare no output size at all, so there is nothing for a size to write into.
+
 **Tested** `internal/workflow/inputs_test.go`: a table toggling one declaration at a time, asserting the key appears
 exactly where it is read; `duration` is not an input; `loras` stays open. The shipped-workflow test now requires a
 minimal request per workflow — words only where a prompt is bound, and a prompt refused where one is not. Fixtures
@@ -11010,3 +11017,32 @@ gained the bindings their requests rely on. `frontend/tests/api-image-runs.test.
 `frameModeDeclared`), `internal/workflow/entry.go` (`PromptInjectLayout`), `internal/server/routes_runs.go`,
 `workflows/registry.json`, `frontend/src/stores/use-config-store.ts` (`acceptedInputs`),
 `frontend/src/services/api/{image,video}.ts`, `frontend/src/lib/server-models.ts`, `docs/protocol.md`.
+
+## 303. A mode's published contract is the entry its run uses
+
+**Decision** One merger, `mergeVariant`, produces the entry a mode runs: the parent with the variant's graph,
+bindings, defaults, `outputSize`, prompt handling, outputs and media contract swapped in. `ResolveForMode` and
+`ResolveMode` return it, `mergeVariantContract` is gone, and the published per-mode contract is read off that same
+entry (`contractOf`). The keys a variant contributes through its own `outputSize` — `size` where it declares
+`fromSize`, `editCanvasSize` wherever it declares one at all — are now in the wire contract because the entry that
+computes them carries that `outputSize`.
+
+**Why** The projection computed a mode's list from a copy of the *parent* with the variant's bindings swapped in.
+That is not the entry `ValidateInputs` sees, and the difference was invisible while the canvas sent everything.
+#302 made the canvas send only what the contract lists, and the gap became a regression: `image-qwen21/t2i`
+publishes no `size` (its `outputSize` lives on the variant), so the size picker and the canvas-ratio pills stopped
+reaching the graph — a working feature turned into the dead control #302 was trying to remove. Two hand-written
+mergers (`ResolveForMode`, `ResolveMode`) that had already drifted from the projection are what made it possible;
+there is one now.
+
+**Cost** The wire payload grows by the keys the variants really take (`t2i` gains `size` and `editCanvasSize`,
+`edit` gains `editCanvasSize`). Nothing else changes: the same merges in the same order, minus the second copy.
+
+**Tested** `internal/workflow/render_test.go`: a mode's contract is the entry its run uses, byte for byte, and an
+`outputSize` with `fromSize` makes `size` readable while one without it publishes `editCanvasSize` and not `size`.
+`internal/workflow/inputs_test.go`: every shipped workflow's every mode publishes exactly what
+`ResolveForMode(...).AcceptedInputs()` accepts, plus the Qwen `t2i` case by name — the regression, pinned.
+`go test ./...`, `make check`.
+
+**Where** `internal/workflow/registry.go` (`mergeVariant`), `internal/workflow/loaders.go`,
+`internal/workflow/render.go` (`contractOf`), `internal/workflow/{render,inputs}_test.go`.

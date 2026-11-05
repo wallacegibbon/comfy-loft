@@ -2,6 +2,8 @@ package workflow
 
 import (
 	"encoding/json"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -72,8 +74,7 @@ func TestPublicProjectionGivesEachVariantItsOwnContract(t *testing.T) {
 	}
 
 	// The run path resolves a mode through the same helper, so the panel and the 400 agree.
-	merged := *entry
-	mergeVariantContract(&merged, entry.Variants.Values["t2i"])
+	merged := mergeVariant(entry, entry.Variants.Values["t2i"])
 	if merged.Accepts.Images.Max != 0 {
 		t.Errorf("ResolveForMode kept the entry's accepts: %+v", merged.Accepts.Images)
 	}
@@ -130,4 +131,61 @@ func TestPublicProjectionCarriesTheKeysARunMayTake(t *testing.T) {
 	if err := ValidateInputs(entry, map[string]any{"prompt": "x", "seed": 1.0}, InputLimits{}); err != nil {
 		t.Errorf("a key the projection offers was refused: %v", err)
 	}
+}
+
+// A mode's contract is read off the entry that mode runs, not off the variant's bindings alone.
+//
+// The keys a graph contributes are not only its bindings: an `outputSize` that follows the requested size
+// makes `size` readable, and any `outputSize` at all makes `editCanvasSize` readable. The projection used to
+// compute a mode's list from a copy of the parent with the variant's bindings swapped in, which is not the
+// entry a run is validated against — so Qwen's `t2i` published a contract without `size` while a run of it
+// accepted one. Nothing noticed until the canvas began dropping what the contract does not list (#302), and
+// then the size picker and the canvas-ratio pills quietly stopped reaching the graph (#303).
+func TestAModeContractIsTheEntryItsRunUses(t *testing.T) {
+	entry := &Entry{
+		ID:   "image-qwen21",
+		Name: "image-qwen21",
+		Type: "image",
+		Variants: OrderedMap[*Variant]{
+			Keys: []string{"t2i", "edit"},
+			Values: map[string]*Variant{
+				// Words only: the picture is the requested size, written into the latent's source node.
+				"t2i": {File: "t2i.json", OutputSize: &OutputSize{Node: "13", LatentNode: "10", FromSize: true}},
+				// An edit follows the canvas the caller picked, but not a raw size.
+				"edit": {File: "edit.json", OutputSize: &OutputSize{Node: "13", LatentNode: "10"}},
+			},
+		},
+	}
+
+	contracts := PublicProjection(entry).VariantContracts
+	for _, mode := range []string{"t2i", "edit"} {
+		want := mergeVariant(entry, entry.Variants.Values[mode]).AcceptedInputs()
+		got := contracts[mode].Inputs
+		if strings.Join(sortedInputs(got), ",") != strings.Join(sortedInputs(want), ",") {
+			t.Errorf("%s publishes %v but a run of it accepts %v", mode, got, want)
+		}
+	}
+	if !containsKey(contracts["t2i"].Inputs, "size") {
+		t.Errorf("an output size that follows the request did not make `size` readable: %v", contracts["t2i"].Inputs)
+	}
+	// The edit takes the canvas size, not a raw one: an `outputSize` without `fromSize` is where `editCanvasSize`
+	// comes from, and `size` stays out of the list rather than being offered and ignored.
+	if !containsKey(contracts["edit"].Inputs, "editCanvasSize") || containsKey(contracts["edit"].Inputs, "size") {
+		t.Errorf("an edit that follows the canvas published the wrong keys: %v", contracts["edit"].Inputs)
+	}
+}
+
+func sortedInputs(keys []string) []string {
+	out := append([]string{}, keys...)
+	sort.Strings(out)
+	return out
+}
+
+func containsKey(keys []string, key string) bool {
+	for _, candidate := range keys {
+		if candidate == key {
+			return true
+		}
+	}
+	return false
 }

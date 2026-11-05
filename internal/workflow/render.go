@@ -42,7 +42,7 @@ type PublicEntry struct {
 }
 
 // VariantContract is one mode's request contract: what the entry declares, overridden by what the
-// variant declares, exactly as `ResolveForMode` merges them for a run.
+// variant declares, exactly as `mergeVariant` merges them for a run.
 type VariantContract struct {
 	Accepts   *Accepts       `json:"accepts,omitempty"`
 	Mode      string         `json:"mode,omitempty"`
@@ -52,31 +52,10 @@ type VariantContract struct {
 	Inputs []string `json:"inputs,omitempty"`
 }
 
-// variantContractOf resolves one mode's effective contract. It is the single answer to "what does
-// this mode accept", used both by the wire projection and by `ResolveForMode` before validation.
-func variantContractOf(entry *Entry, variant *Variant) VariantContract {
-	contract := VariantContract{Accepts: entry.Accepts, Mode: entry.Mode, FrameMode: entry.FrameMode}
-	if variant == nil {
-		contract.Inputs = entry.AcceptedInputs()
-		return contract
-	}
-	// The mode's accepted keys are computed from the mode's own bindings, which is what a run of that
-	// mode is validated against.
-	merged := *entry
-	if !variant.RawBindings.IsZero() {
-		merged.RawBindings = variant.RawBindings
-	}
-	contract.Inputs = merged.AcceptedInputs()
-	if variant.Accepts != nil {
-		contract.Accepts = variant.Accepts
-	}
-	if variant.Mode != "" {
-		contract.Mode = variant.Mode
-	}
-	if variant.FrameMode != nil {
-		contract.FrameMode = variant.FrameMode
-	}
-	return contract
+// contractOf is what one graph accepts, read off the entry a run of it uses. Both readers ask this, so the
+// panel and a 400 cannot describe different graphs.
+func contractOf(entry *Entry) VariantContract {
+	return VariantContract{Accepts: entry.Accepts, Mode: entry.Mode, FrameMode: entry.FrameMode, Inputs: entry.AcceptedInputs()}
 }
 
 // Schema describes how a workflow maps request fields onto graph inputs.
@@ -125,7 +104,7 @@ func PublicProjection(entry *Entry) PublicEntry {
 	if entry.Variants.Len() > 0 {
 		out.VariantContracts = make(map[string]VariantContract, entry.Variants.Len())
 		for _, mode := range entry.Variants.Keys {
-			out.VariantContracts[mode] = variantContractOf(entry, entry.Variants.Values[mode])
+			out.VariantContracts[mode] = contractOf(mergeVariant(entry, entry.Variants.Values[mode]))
 		}
 	}
 	if entry.Category != "" {

@@ -64,21 +64,7 @@ func ResolveMode(entry *Entry, mode string) *Entry {
 	if !ok || variant == nil {
 		return entry
 	}
-	merged := *entry
-	if variant.Workflow != nil {
-		merged.Workflow = variant.Workflow
-	}
-	if !variant.RawBindings.IsZero() {
-		merged.RawBindings = variant.RawBindings
-	}
-	if variant.Defaults != nil {
-		merged.Defaults = variant.Defaults
-	}
-	if variant.OutputSize != nil {
-		merged.OutputSize = variant.OutputSize
-	}
-	mergeVariantContract(&merged, variant)
-	return &merged
+	return mergeVariant(entry, variant)
 }
 
 // ApplyModelAliases rewrites model file names through the alias resolver.

@@ -381,3 +381,38 @@ func TestRequestKeysAreOfferedOnlyWhereTheyAreRead(t *testing.T) {
 		t.Error("loras is not accepted")
 	}
 }
+
+// Every mode a shipped workflow publishes is the mode a run of it is validated against, key for key.
+//
+// This is the invariant the client leans on since #302: it sends only what the published contract lists, so a
+// published list that is missing a key the server would have accepted is a control that does nothing, and one
+// that carries a key the server refuses is a run that fails for a field the user never typed. Qwen's `t2i`
+// was the first kind — its size comes from the variant's own `outputSize`, which the projection did not read
+// (#303).
+func TestAPublishedModeContractIsWhatItsRunAccepts(t *testing.T) {
+	registry := NewRegistry(RegistryOptions{Dir: shippedWorkflowsDir, Logger: logx.NewWithWriter("test", io.Discard)})
+	if err := registry.Load(); err != nil {
+		t.Fatalf("load shipped registry: %v", err)
+	}
+	published := 0
+	for _, entry := range registry.Entries() {
+		projected := PublicProjection(entry)
+		for _, mode := range entry.VariantModes() {
+			resolved := registry.ResolveForMode(entry, mode)
+			want := resolved.AcceptedInputs()
+			got := projected.VariantContracts[mode].Inputs
+			if strings.Join(sortedInputs(got), ",") != strings.Join(sortedInputs(want), ",") {
+				t.Errorf("%s/%s publishes %v but a run accepts %v", entry.ID, mode, got, want)
+			}
+			published++
+		}
+	}
+	if published == 0 {
+		t.Fatal("no shipped workflow declares a mode; the assertion above proved nothing")
+	}
+	// The regression this came from: Qwen's words-only mode sizes its own picture.
+	t2i := registry.ResolveForMode(registry.Resolve("image-qwen21"), "t2i")
+	if t2i == nil || !hasInput(t2i, "size") {
+		t.Error("image-qwen21/t2i no longer reads `size`; its size picker would be a control that does nothing")
+	}
+}
