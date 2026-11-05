@@ -8619,8 +8619,9 @@ and `TestAgentDirectoryHasNoSegmentOfItsOwn` (the path ends in `comfyloft-server
 **Decision** Three facts about the server at the other end, each where the protocol says nothing: the **address**
 (#239), the **model name** (a setting, default `refine`, blank meaning "send no model"), and the **credential** —
 stored on this server as `data/speech-key.json` mode `0600` and sent as `Authorization: Bearer` on the request this
-server makes. The page can ask whether one is stored (`GET /api/speech/key`), replace it, or clear it; it never
-receives it. A refusal from the speech server keeps its **status** as well as its words: 401, 413 and 429 pass
+server makes. The page can ask whether one is stored, replace it, or clear it; it never receives it. (Those were
+two routes, `GET` and `PUT /api/speech/key`; #252 deleted them with the key file, so nothing answering that path
+exists today — a reader following it would be following a route that is gone.) A refusal from the speech server keeps its **status** as well as its words: 401, 413 and 429 pass
 through as themselves and only a 5xx becomes 502.
 
 **Amended by #252** The address, the model and the key are now one active profile in `data/speech.json`, and the key
