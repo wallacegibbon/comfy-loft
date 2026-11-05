@@ -1,3 +1,21 @@
+# Decisions
+
+One entry per decision, numbered, oldest first. The number is an **address**: 53 places in the code cite one,
+so entries are never renumbered and never deleted — an entry whose subject is gone is compressed to a tombstone
+saying what it was and why it must not come back.
+
+Three things worth knowing before quoting one:
+
+- **This is a record, not a specification.** What is true now is the code and `git show`; an entry says what was
+  decided, why the obvious alternative was rejected, and what that cost.
+- **A sentence carrying a version, a model name or a number is a measurement of that day.** Where the fixture is
+  named (ComfyUI 0.43.0, `image-moss-sft-8step`, seed 424242) re-run it; where it is not, treat the number as
+  folklore and check before relying on it.
+- **Entries before #240 say "gateway".** The process is `comfyloft-server` and the word is historical: do not
+  reuse it in new code, comments or prose.
+
+The shape of a new entry is #287: the decision, the counterfactual, the cost, and a measurement with its fixture.
+
 # Design decisions
 
 Why the code looks the way it does. Each entry states the decision, the reason, and what it
@@ -4347,69 +4365,44 @@ workflow row is called `resources`. Beside `workflows/` at the root it also stat
 
 ## 130. A pack's dependencies are derived from its graphs, not written down three times
 
-**Decision** `resources.json` no longer says which files a pack needs. A pack is now an id, a label, a
-description, a list of workflow ids, and a list of *alternates*; everything else is read off the
-workflows' graphs. `schema` is 2, and the fields `resources`, `optionalResources` and
-`workflowDependencies` are gone.
+**Decision** `resources.json` no longer says which files a pack needs. A pack is an id, a label, a description, a
+list of workflow ids and a list of *alternates*; everything else is read off the workflows' graphs. `schema` is 2,
+and `resources`, `optionalResources` and `workflowDependencies` are gone.
 
-**Why the hand-written lists had to go** They were three descriptions of one fact, and all three had
-drifted from the graphs:
+**Why the hand-written lists had to go** They were three descriptions of one fact, and all three had drifted:
 
-- **Six packs declared every resource optional.** `resources == optionalResources`, so
-  `required = resources − optionalResources` was empty: the panel showed "已齐全" for MOSS, H3, Z-Image
-  and upscale packs *even with every weight deleted*, and because `total` was 0 the row had no checkbox,
-  so the pack could not be installed from the panel at all. A pack that says it is complete and cannot
-  be installed is worse than one that says nothing.
-- **Eight of the nine node packs had no entry point.** Only `frame_interpolation_node` appeared in any
-  pack. `qwenmultiangle`, `inpaint_cropandstitch`, `kjnodes` and all five H3 packs were installable only
-  by hand, while their workflows were offered in the canvas — this was true in the initial import too
-  (`925ce37`), so it was never a regression, just a hole nobody's list closed.
-- **The tables missed real dependencies.** No pack listed `kjnodes` for the H3 workflows that run
-  `ModelPreviewOverrideKJ`, and `video-h3-*` omitted all five packs its graphs need. Conversely the
-  Outpaint LoRA was listed for `image-qwen21` (whose default graph is *edit*) only because someone
-  remembered the variant.
+- **Six packs declared every resource optional** — `resources == optionalResources`, so `required =
+  resources − optionalResources` was empty: the panel showed "已齐全" for MOSS, H3, Z-Image and upscale *with
+  every weight deleted*, and because `total` was 0 the row had no checkbox, so the pack could not be installed
+  from the panel at all. A pack that says it is complete and cannot be installed is worse than one that says
+  nothing.
+- **Eight of the nine node packs had no entry point.** Only `frame_interpolation_node` appeared in any pack;
+  `qwenmultiangle`, `inpaint_cropandstitch`, `kjnodes` and all five H3 packs were installable only by hand while
+  their workflows were offered in the canvas — true in the initial import too (`925ce37`), so never a regression,
+  just a hole nobody's list closed.
+- **The tables missed real dependencies**: no pack listed `kjnodes` for the H3 workflows that run
+  `ModelPreviewOverrideKJ`, `video-h3-*` omitted all five packs its graphs need, and the Outpaint LoRA was listed
+  for `image-qwen21` (whose default graph is *edit*) only because someone remembered the variant.
 
-**What "derived" means** A graph names files through loader inputs and names nodes through `class_type`.
-The catalogue knows which resource owns a target (`loras/Moss_image/…` is matched as a whole target, not
-as a file name, because two LoRAs can share a name in different folders) and which classes a pack
-provides. Two shapes needed care: `ApplyVDNH3Advanced.vdn_checkpoint` names a *directory*
-(`stage-dmd-step-250`) and is matched as a prefix, and a loader class can be owned by a node pack
-(`SelfLiftH3Sampler`, `ApplyVDNH3Advanced`, `LoraLoaderBypassModelOnly`), so the class lookup runs for
-loader nodes too. Variants are unioned: outpaint's LoRA is a dependency of the workflow even though the
-default mode never loads it.
+**What "derived" means** A graph names files through loader inputs and nodes through `class_type`. The catalogue
+knows which resource owns a target (`loras/Moss_image/…` matched as a whole target, not a file name, because two
+LoRAs can share a name in different folders) and which classes a pack provides. Two shapes needed care:
+`ApplyVDNH3Advanced.vdn_checkpoint` names a *directory* (`stage-dmd-step-250`) and is matched as a prefix, and a
+loader class can be owned by a node pack (`SelfLiftH3Sampler`, `ApplyVDNH3Advanced`, `LoraLoaderBypassModelOnly`),
+so the class lookup runs for loader nodes too. Variants are unioned: outpaint's LoRA is a dependency of the
+workflow even though the default mode never loads it.
 
-**What the pack row now says** Required is the intersection over the pack's workflows — a file every one
-of them loads; optional is everything else the pack can install, which includes alternates no graph names
-(the second precision of a base model, the other two RealESRGAN checkpoints). H3 therefore requires 20
-items (including its five node packs) and offers one optional LoRA; MOSS requires three and offers four.
-A pack with no workflows — `core` — requires nothing, which is what makes it informational.
+**What the pack row now says** Required is the intersection over the pack's workflows — a file every one of them
+loads; optional is everything else the pack can install, including alternates no graph names (the second precision
+of a base model, the other two RealESRGAN checkpoints). H3 therefore requires 20 items, five of them node packs;
+MOSS requires three and offers four. A pack with no workflows — `core` — requires nothing, which is what makes it
+informational.
 
-**Two data corrections fell out of the audit**
+**A data correction that fell out of the audit** `provides` is not "every class this pack registers", it is "every
+class our graphs need from this pack": `h3_audio_t8_node` claimed classes no graph of ours uses, and a pack that
+claims more than it provides hides a missing pack behind a satisfied check.
 
-- `provides` is not "every class this pack registers", it is "every class our graphs need from this pack".
-  `h3_audio_t8_node` claimed `MiniMaxH3SigmaShift`, `ModelAttentionBackend` and
-  `LoraLoaderBypassModelOnly` — all three ship with ComfyUI (`comfy_extras/nodes_minimax_h3.py`,
-  `nodes_model_advanced.py`, `nodes_lora_debug.py`), so the pack was being blamed for the host's own
-  nodes and looked broken on any ComfyUI whose version moved them. `kjnodes` claimed only
-  `DrawMaskOnImage` and now also claims the three classes our H3 and inpaint graphs actually load from it
-  (`ModelPreviewOverrideKJ`, `MiniMaxChunkFeedForward`, `MiniMaxH3MemoryEfficientSageAttentionPatch`);
-  `h3_vhs_node` gained `VHS_LoadVideo`, and is now `vhs_node` because RIFE uses it as well.
-- `resources/payload` imports test (`payload_imports_test.go`) is deleted with the payload it checked.
-
-**Tested** `gofmt`, `go vet`, `go test ./internal/...`, `tsc --noEmit`, 132 canvas tests. New tests:
-`derive_test.go` pins the three matching rules (whole-target, directory prefix, loader class owned by a
-pack) plus unresolved reporting and variant union; `catalogue_test.go` reads the real `resources.json` and
-`workflows/registry.json` and fails if a pack names a workflow the registry lacks, if a graph loads a file
-no resource owns, if a runnable pack requires nothing, if a catalogued resource is in no pack and no graph,
-if a pack claims a core class, or if a node pack is not pinned to a full commit. Verified against the live
-catalogue: no graph resolves to an unresolved name, and the four packs that used to show a false green now
-count 3, 3, 3 and 20 required items.
-
-**Where** `resources.json`, `internal/resource/{derive.go (new),derive_test.go (new),
-catalogue_test.go (new),resource.go,status.go,helpers.go,jobs.go,bake_test.go,resource_test.go}`,
-`canvas/web/src/{services/api/resources.ts,components/settings/resource-center-panel.tsx,
-lib/resource-copy-zh.ts}`, `internal/resource/payload_imports_test.go` (deleted).
-
+**Where** `internal/resource/catalogue.go`, `resources.json`, `internal/resource/catalogue_test.go`.
 
 ## 131. `core` stops being a pack
 
@@ -4984,69 +4977,44 @@ logs no console errors.
 
 ## 147. The MCP edge is a bridge process, not a URL
 
-**Decision** AlayaCore reaches the canvas tools through `bin/comfyloft-mcp`, a second small binary that
-speaks JSON-RPC on stdin/stdout and forwards each call to the gateway on a **loopback-only** listener.
-The session is not in any address: the gateway spawns AlayaCore with `COMFYLOFT_MCP` and
-`COMFYLOFT_SESSION` in its environment, AlayaCore hands that environment to the bridge it starts, and the
-bridge puts the session in `X-Comfyloft-Session`. `mcp.conf` is one static file for every session, and the
-agent's configuration lives in one directory per host, `~/.config/comfyloft-server/<host>/alayacore/`.
+**Decision** AlayaCore reaches the canvas tools through `bin/comfyloft-mcp`, a second small binary that speaks
+JSON-RPC on stdin/stdout and forwards each call to the server on a **loopback-only** listener. The session is in no
+address: the server spawns AlayaCore with `COMFYLOFT_MCP` and `COMFYLOFT_SESSION` in its environment, AlayaCore hands
+that environment to the bridge it starts, and the bridge puts the session in `X-Comfyloft-Session`. `mcp.conf` is one
+static file for every session, and the agent's configuration lives in one directory per host,
+`~/.config/comfyloft-server/<host>/alayacore/`.
 
-**Why the names are one word** `COMFYLOFT_*` and `X-Comfyloft-*`, not `COMFY_LOFT_*`: an environment
-variable cannot contain a hyphen, so the hyphenated spelling would force three words with one of them
-wrong — which is #146's whole argument, and these are the first identifiers written since it was made.
+**Why the names are one word** `COMFYLOFT_*` and `X-Comfyloft-*`, not `COMFY_LOFT_*`: an environment variable cannot
+contain a hyphen, so the hyphenated spelling would force three words with one of them wrong (#146's argument, and
+these are the first identifiers written since it was made).
 
-**Why the URL had to carry identity, and why it no longer does** MCP carries no identity of its own and
-the bridge is configured with one URL per server, so with an HTTP-only endpoint the URL was the only place
-left: `/mcp/<sanitised-session>-<sha1[:4]>`. That derivation was a chain of its own — sanitising is lossy,
-so two sessions could collide, so a hash was appended, so the URL carried the session id while being
-unreadable and unguessable-but-not-secret. AlayaCore supports stdio servers, which deletes the chain at the
-root: the identity is a file descriptor's parent's environment, not a string in a path.
+**Why the URL had to carry identity, and why it no longer does** MCP carries no identity of its own and the bridge is
+configured with one URL per server, so with an HTTP-only endpoint the URL was the only place left:
+`/mcp/<sanitised-session>-<sha1[:4]>`. That derivation was a chain of its own — sanitising is lossy, so two sessions
+could collide, so a hash was appended, so the URL carried the session id while being unreadable and
+unguessable-but-not-secret. AlayaCore supports stdio servers, which deletes the chain at the root: identity is a file
+descriptor's parent's environment, not a string in a path.
 
-**What the loopback listener is for** The old route sat on the main mux, which is served on whatever
-`COMFYLOFT_SERVER_HOST` names — and a tool that creates nodes and starts generations was reachable from the network
-with no token. The bridge endpoint is now a second listener bound to `127.0.0.1` on an ephemeral port, known
-only to the processes it was written into. Requiring a custom header also means a browser cannot reach it
-cross-site without a CORS preflight this server never answers.
+**What the loopback listener is for** The old route sat on the main mux, served on whatever `COMFYLOFT_SERVER_HOST`
+names — a tool that creates nodes and starts generations, reachable from the network with no token. The bridge
+endpoint is now a second listener bound to `127.0.0.1` on an ephemeral port, known only to the processes it was
+written into, and the custom header means a browser cannot reach it cross-site without a CORS preflight this server
+never answers.
 
-**Two binaries, and the rule that went with them** `make build` produces `comfyloft-server` and
-`comfyloft-mcp`. The old "one self-contained binary" rule is retired: it was never true of the *release*
-(the canvas bundle, `workflows/`, `resources.json` and the external AlayaCore were always beside it), and
-with two binaries a mixed install is possible — so the bridge sends `X-Comfyloft-Bridge` and the gateway
-refuses a version it does not speak, naming which half to rebuild. What must stay true is what the rule was
-actually protecting: both are static, cgo-free, and need no runtime.
+**Two binaries, and the rule that went with them** `make build` produces `comfyloft-server` and `comfyloft-mcp`. The
+old "one self-contained binary" rule is retired: it was never true of the *release* (the bundle, `workflows/`,
+`resources.json` and AlayaCore were always beside it), and with two binaries a mixed install is possible — so the
+bridge sends `X-Comfyloft-Bridge` and the server refuses a version it does not speak, naming which half to rebuild.
+What the rule was protecting still holds: both are static, cgo-free, and need no runtime.
 
-**One config directory, per host** `mcp.conf` names the address the agent dials, so a machine reachable at
-two addresses needs two answers, and `<host>` is that address (a wildcard bind means loopback, as it always
-did for the URL). Inside it, nothing is per session: `model.conf` is the operator's, `mcp.conf` is written by
-the gateway on every start — the `command` is an absolute path that moves with the release directory, and a
-stale one fails as `handshake: EOF`, which names the symptom and not the cause. Per-session config copies are
-gone; the `runtime.conf` that AlayaCore writes is now shared, and concurrent writes are AlayaCore's own
-problem to solve.
+**One config directory, per host** `mcp.conf` names the address the agent dials, so a machine reachable at two
+addresses needs two answers and `<host>` is that address (a wildcard bind means loopback, as it always did). Inside
+it, nothing is per session: `model.conf` is the operator's, and `mcp.conf` is written on every start — its `command`
+is an absolute path that moves with the release directory, and a stale one fails as `handshake: EOF`, which names the
+symptom and not the cause.
 
-**What did not move** The conversation. It is the user's words and it belongs beside the canvas it belongs
-to, which is where #144's directory layout will put it; until then it stays in `data/agent/sessions/`.
-`clearLegacyAgentState` still sweeps the old per-session directories under `data/agent/`, and keeps
-`sessions`.
-
-**Costs, named** The shim is a second artifact to build, ship and verify-static. The wire contract between
-the two binaries has to stay dumb (one `POST /mcp`, two headers, JSON-RPC verbatim) so a new bridge against
-a not-yet-restarted gateway is survivable. And MCP servers are started *lazily*, on the first turn: a bridge
-that cannot start fails that turn rather than the boot, so its diagnostics go to stderr and its errors have to
-name the side — unknown session, unknown tool, unreachable gateway, version mismatch are four different
-stories.
-
-**Tested** `make check`, `make build`, `make verify-static` (both binaries static), `go test ./...` including
-new tests that the bridge relays whole lines and answers its own failures (`internal/mcpstdio`), that one
-static `mcp.conf` serves two sessions with the session arriving in the environment, that the endpoint is
-loopback-only, and that a bridge from another build is refused with both versions named. End to end in a
-browser, with the real AlayaCore and a real model: `MCP servers initialized: 1 servers, 7 tools loaded`,
-then a tool call answered — the model's reply described the empty canvas it had just been told about.
-
-**Where** `cmd/{comfyloft-server,comfyloft-mcp}/main.go`, `internal/mcpstdio/**`,
-`internal/server/{mcp_server.go,routes_mcp.go,agent_config.go,server.go,routes_agent.go}`,
-`internal/agent/{spawn.go,sessions.go}`, `internal/config/config.go`, `Makefile`, `start.sh`,
-`README.md`, `docs/server.md`.
-
+**Where** `cmd/comfyloft-mcp/`, `internal/mcpstdio/`, `internal/server/{mcp_server.go,agent_config.go}`,
+`internal/agent/spawn.go`.
 
 ## 148. There is no plugin mechanism; a node type is a built-in
 
@@ -5351,80 +5319,43 @@ a tab left on a canvas that no longer existed got `404`, went to `/`, and create
 
 ## 155. Preferences live with the workspace, and the browser stores nothing
 
-**Decision** The last thing the canvas kept in the browser — its preferences — moves to
-`data/settings.json`, served as one document:
+**Decision** The last thing the canvas kept in the browser — its preferences — lives in `data/settings.json`, served
+as one document: `GET /api/settings` returns the whole thing (`{}` until something is saved) and `PUT /api/settings`
+replaces it with `{settings: {...}}`. The server checks two things — a JSON object under 1 MiB — and never reads a
+key; the shape belongs to the canvas, the division #152 drew for a canvas document. There are no per-key endpoints: a
+partial update needs a merge, and a merge is where preferences quietly lose keys.
 
-| Method | Path | Purpose |
-| ------ | ---- | ------- |
-| `GET` | `/api/settings` | The whole document. `{}` until something is saved. |
-| `PUT` | `/api/settings` | Replace it. `{settings: {...}}`. |
+Every `localStorage` key and the last IndexedDB database are gone — theme, `ai_config_store` and its pre-local-only
+backup, locale, the side panel's width/open/node-view, `last_canvas`, the resource setup flag and the image
+quick-tools key — all of them now fields inside that one document.
 
-The gateway checks two things — that the bytes are a JSON object under 1 MiB — and never reads a key.
-The shape belongs to the canvas, the same division #152 drew for a canvas document. There are no
-per-key endpoints: a partial update would need a merge, and a merge is where preferences quietly lose
-keys.
+**Why** #154 made the canvas a directory and left the preferences behind, which produced the oddest state this app
+had: the same workspace, on the phone in the next room, opened English and light with the right canvases in it.
+Preferences are the workspace's, not the browser's.
 
-Every `localStorage` key and the last IndexedDB database are gone:
+**Why a first-paint file, and why the server writes it** A document that only arrives over HTTP cannot be applied
+before the first frame, so every dark workspace opened white for a moment and every English one opened in Chinese.
+The bundle is static, so the one thing a page can read synchronously is a script tag: `start.sh` used to write
+`dist/config.js` with the address, and the server now writes it — on every start and after every settings save — with
+the address *and* the document. That also fixed something nobody had noticed: `index.html` had an inline script
+reading `localStorage["infinite-canvas:theme_store"]`, a key nothing has written since #143 renamed them, so the first
+paint had been guessing for several releases. `AppProviders` now applies the theme in a `useLayoutEffect`, before the
+paint rather than after it.
 
-| Was | Now |
-| --- | --- |
-| `comfyloft:theme_store` (zustand `persist`) | `settings.theme`, published by one subscription |
-| `comfyloft:ai_config_store` (+ its `…:pre-local-only-backup` blob) | `settings.config` |
-| `comfyloft:locale` | `settings.locale` |
-| `canvas-side-panel-{width,open,node-view}` | the same names inside `settings` |
-| `comfyloft:last_canvas` | `settings.lastCanvas` |
-| `resource-setup-skipped`, the image quick-tools key | the same names inside `settings` |
+**Superseded in part by #220** The script is no longer a file written into the bundle: it is a route (`GET
+/config.js`) computed from `data/settings.json`, and `RUNTIME_CONFIG_PATH` only writes a copy for a canvas a static
+host publishes.
 
-**Why** #154 made the canvas a directory and left the preferences behind, which produced the oddest
-state this app had: the same workspace, on the phone in the next room, opened English and light with the
-right canvases in it. Preferences are the workspace's, not the browser's.
+**Why there is no request at startup** The document is already in `config.js`, so `load()` is the fallback for an
+operator who serves no first-paint file, and the store **refuses to save until it has a document from one of the
+two**. Without that guard, a server run without `RUNTIME_CONFIG_PATH` would replace the workspace's preferences with
+this build's defaults on the first keystroke.
 
-**Why a first-paint file, and why the gateway writes it** A document that only arrives over HTTP cannot
-be applied before the first frame, so every dark workspace opened white for a moment and every English
-one opened in Chinese. The bundle is static, so the one thing a page can read synchronously is a script
-tag: `start.sh` used to write `dist/config.js` with the gateway address, and the gateway now writes it —
-on every start and after every settings save — with the address *and* the settings document. That also
-fixed something nobody had noticed: `canvas/index.html` had an inline script reading
-`localStorage["infinite-canvas:theme_store"]`, a key nothing has written since #143 renamed them, so the
-first paint had been guessing for several releases. The script is deleted; `AppProviders` applies the
-theme in a `useLayoutEffect`, before the paint rather than after it.
+**Cost, named** Two people sharing one server share the theme, the language and "the canvas I was in". For a local
+workbench that is the point; for anything else it is a decision to make again.
 
-**Superseded in part by #220** The script is no longer a file the gateway writes into the bundle: it is a
-route (`GET /config.js`) computed from `data/settings.json`, and `RUNTIME_CONFIG_PATH` only writes a copy for
-a canvas a static host publishes.
-
-**Why there is no request at startup** The document is already in `config.js`, so `load()` is the
-fallback for an operator who serves no first-paint file, and the store **refuses to save until it has a
-document from one of the two**. Without that guard, a gateway run without `RUNTIME_CONFIG_PATH` would
-replace the workspace's preferences with this build's defaults on the first keystroke.
-
-**Cost, named** Two people sharing one gateway share the theme, the language and "the canvas I was in".
-For a local workbench whose whole premise is one workspace, that is the intended reading; a per-device
-scent would need a second storage mechanism, and this entry's point is that there is only one.
-
-**Deleted** `services/local-storage-usage.ts`, `components/settings/config-local-storage.tsx`, the
-settings dialog's `本地存储` tab and its `ConfigTabKey`, the kit's `Alert` (that panel was its only
-caller), and `RETIRED_CONFIG_KEYS` with `withoutRetiredKeys` — a filter that existed to drop keys out of
-persisted blobs that no longer exist (#151).
-
-**Tested** `internal/settings` (8 tests: empty-until-saved, byte round-trip, replace-not-merge, only an
-object, the size cap, an unreadable file reported rather than treated as empty, no temporary files, the
-directory created), four route tests including the first-paint file's content and its rewrite on save,
-`npm run check` (895/881 keys, 168 modules, prettier, `tsc`), 127 canvas tests, `make check`,
-`make verify-static`, `make web`.
-
-**In the browser, with `localStorage` cleared** The theme and the language came back light and English on
-reload from `config.js` alone, with `Object.keys(localStorage)` empty before and after; switching the
-theme and the language wrote `settings.json` (`theme`, `locale`, `lastCanvas`, `config`) and rewrote
-`config.js`; the console stayed empty.
-
-**Where** `internal/settings/{settings.go,settings_test.go}` (new),
-`internal/server/{routes_settings.go,runtime_config.go,settings_e2e_test.go}` (new),
-`internal/{server/{server.go,routes_admin.go,e2e_test.go},config/config.go}`,
-`canvas/src/{services/api/settings.ts,stores/use-settings-store.ts}` (new),
-`canvas/src/{stores/{use-config-store.ts,use-theme-store.ts,canvas/use-canvas-side-panel-store.ts},lib/canvas/last-canvas.ts,i18n/index.ts,constant/runtime-config.ts,components/{layout/{app-providers,client-root-init,user-status-actions}.tsx,settings/{app-config-modal,resource-setup-gate}.tsx,canvas/canvas-node-hover-toolbar.tsx,kit/feedback.tsx}}`,
-`canvas/index.html`, `canvas/src/i18n/locales/*`, `start.sh`, `docs/server.md`.
-
+**Where** `internal/server/routes_settings.go`, `internal/settings/`, `frontend/src/stores/`,
+`frontend/src/components/layout/app-providers.tsx`.
 
 ## 156. Media belongs to the canvas, and the gateway stops keeping scratch space
 
@@ -6778,70 +6709,38 @@ lasso share that parent and those two numbers.
 
 ## 193. The card skins, the progress-ring skins and the unlock flow are gone
 
-**Decision** The canvas has one card look and one charge light. Four things left whole:
+**Decision** The canvas has one card look and one charge light. Four mechanisms left whole:
 
-- **Card skins.** Six palettes — `warm`, `cream`, `mist`, `forest`, `angel`, `fish` — each overriding a dozen
-  `canvasThemes[].node` colours per light/dark, two of which also replaced the card fill with a gradient and
-  painted character art inside the card; a second table did the same to the toolbar palette; a `Map` cached
-  the theme × skin pair. All of it went, with `getCanvasTheme()`'s second argument, `getCardBackground()`,
-  `useEffectiveCardSkin()`, the `data-card-skin` attribute and `globals.css`'s
-  `[data-card-skin="cream"] button:disabled` rule. `theme.node.fill` is the card background again, and
-  `use-canvas-theme.ts` is a hook, not a palette resolver: `canvasThemes[theme]`.
-- **The character animation.** The two art skins carried a rig beside and inside the card — a lantern jellyfish
-  with an "AT field" halo, an angel with falling feathers — plus *Character animation while generating* and its
-  left/right toggle, reachable only while one of those two skins was selected. Deleted with the skins:
-  `fish-guard-*` and `angel-*` in `globals.css` (about 380 lines of keyframes and rules), `public/skins/` (four
-  images, 2.3 MB), `theme.fishWhipEnabled` / `theme.fishWhipSide` and the art-skin branches in `canvas-node.tsx`
-  (a backdrop, the inline artwork, the blessing, the halo, the two mascot rigs).
-- **Progress-ring skins.** Seven palettes × two themes, each with its own stroke widths, blur radii, tail length
-  and breathing period, and one of them — `tide` — a second rendering path that filled the card with rising
-  water. The ring stays, with the palette and the numbers it shipped with (`cyan`, `balancedStyle`): the glow is
-  the run's progress, not a preference. `lib/canvas/progress-ring-skins.ts` and `config.progressRingSkin` are
-  gone; `tide` went with the other six.
-- **The unlock flow.** A PBKDF2-SHA256 verifier in the client bundle gated exactly one skin; unlocking posted to
-  `POST /api/skin-unlocks`, which `store.Skins` persisted to `data/skin-unlocks.json`, and
-  `useSkinUnlockPersistence` merged the server's list into the store and pushed back every local unlock the
-  server did not have. Both routes, the store, its two tests, the hook, the service and the password dialog are
-  gone. `theme` in `use-theme-store` is now one field.
+- **Card skins** — six palettes (`warm`, `cream`, `mist`, `forest`, `angel`, `fish`), each overriding a dozen
+  `canvasThemes[].node` colours per light/dark, two of them replacing the card fill with a gradient and painting
+  character art inside it; a second table did the same to the toolbar, and a `Map` cached the theme × skin pair.
+- **The character animation** — the two art skins carried a rig beside and inside the card (a lantern jellyfish with
+  an "AT field" halo, an angel with falling feathers) plus a *Character animation while generating* toggle reachable
+  only while one of them was selected: `fish-guard-*` and `angel-*` in `globals.css` (about 380 lines), `public/skins/`
+  (four images, 2.3 MB), `theme.fishWhipEnabled`/`fishWhipSide`, and the art-skin branches in `canvas-node.tsx`.
+- **Progress-ring skins** — seven palettes × two themes, each with its own stroke widths, blur radii, tail length and
+  breathing period, one of them (`tide`) a second rendering path that filled the card with rising water.
+  `lib/canvas/progress-ring-skins.ts` and `config.progressRingSkin` are gone.
+- **The unlock flow** — a PBKDF2-SHA256 verifier in the client bundle gating exactly one skin; unlocking posted to
+  `POST /api/skin-unlocks`, which `store.Skins` persisted to `data/skin-unlocks.json`, and a hook merged the server's
+  list into the store and pushed back every local unlock the server did not have. Both routes, the store, its two
+  tests, the hook, the service and the password dialog are gone.
 
-45 i18n keys per locale went with them (870/856 → 825/811). `lib/design-tokens.ts` went too: its last reader was
-the progress-ring preview grid, so the `stone` table had no importer left and the two comments that pointed at it
-now point at Tailwind's `stone` scale.
+45 i18n keys per locale went with them (870/856 → 825/811), and `lib/design-tokens.ts` too: its last reader was the
+progress-ring preview grid, so the `stone` table had no importer left.
 
 **Why** Every one of those mechanisms changed a colour or a timing constant on the same renderer, and the "skins"
-differed by appearance alone — seven rings that all meant "charging", six cards that all meant "a card". They cost
-a cache keyed by theme × skin, two override tables to keep in step with the base palette, a stylesheet section
-larger than the rest of the canvas chrome, 2.3 MB of art, an HTTP route and a file on disk, for a choice the
-canvas does not need. The unlock flow is the loudest case: the verifier shipped in the bundle it gated, so the
-password protected nothing — its only real effect was that `fish` could not be selected until a record existed.
+differed by appearance alone — seven rings that all meant "charging", six cards that all meant "a card". They cost a
+cache keyed by theme × skin, two override tables to keep in step with the base palette, a stylesheet section larger
+than the rest of the canvas chrome, 2.3 MB of art, an HTTP route and a file on disk, for a choice the canvas does not
+need.
 
-**Why the character animation did not survive on its own** It was good to watch, but its only door was the
-card-skin picker: the switch appeared under the `fish`/`angel` entry. With the skins gone it could not be turned
-on and nothing would trigger it, which is dead code with a name. If it comes back it should come back as its own
-setting with its own door, not as a property of a palette.
+**What stays, and why that is not the same thing** The ring itself stays, with the palette and the numbers it shipped
+with (`cyan`, `balancedStyle`): the glow is the run's progress, not a preference. `theme.node.fill` is the card
+background again, and `use-canvas-theme.ts` is a hook rather than a palette resolver.
 
-**Cost** The only appearance choice left is light/dark. Bringing any of the six looks back means writing the
-tables again rather than flipping a flag, which is the point. A workspace whose saved settings still name a
-`cardSkin`, `fishWhipSide` or `progressRingSkin` keeps those keys until the next save — nothing reads them, and
-no migration was written for them (the same no-backward-compatibility rule as #190).
-
-**Tested** `npm run check` (i18n 825/811, no dead keys, export check clean), `npx vitest run` (21 files, 155
-tests), `make check`, `CGO_ENABLED=1 go test -race ./cmd/... ./internal/...`, `make verify-static`, and
-`npm run build`. A grep of the tree for `skin`, `cardSkin`, `progressRingSkin` and `fishWhip` over Go, TS, TSX,
-CSS and the check scripts returns nothing. `TestSkinsUnlockAndValidate` and `TestSkinsReadLegacyStringEntries`
-went with the store; `internal/server`'s settings round-trip test lost the `cardSkin` key it happened to carry.
-Not exercised in a browser: the two surviving paths are the ones the default settings already used — `warm` had
-an empty override table and `cyan` was the default ring — so what the default workspace rendered is what it
-renders now.
-
-**Where** `frontend/src/components/canvas/canvas-node.tsx`,
-`frontend/src/components/canvas/canvas-node-progress-ring.tsx`,
-`frontend/src/components/settings/preferences-dialog.tsx`, `frontend/src/lib/canvas-theme.ts`,
-`frontend/src/lib/canvas/use-canvas-theme.ts`, `frontend/src/stores/use-theme-store.ts`,
-`frontend/src/stores/use-config-store.ts`, `frontend/src/styles/globals.css`, `frontend/src/i18n/locales/*`,
-`frontend/src/components/layout/client-root-init.tsx`, `internal/store/preferences.go`,
-`internal/server/routes_admin.go`, `internal/server/server.go`.
-
+**Where** `frontend/src/lib/canvas/use-canvas-theme.ts`, `frontend/src/components/canvas/canvas-node.tsx`,
+`frontend/src/styles/globals.css`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
 
 ## 194. A dropdown's list outranks the dialog that opened it
 
@@ -7212,6 +7111,7 @@ direction would fire on correct work. Two answers are one clause longer.
 **Where** `frontend/src/lib/canvas/canvas-node-generation.ts` (`repeatedConnectedText`),
 `frontend/src/lib/canvas/canvas-agent-tools.ts` (`connect`, `set_prompt`),
 `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`, `frontend/tests/canvas-generation-context.test.ts`.
+
 
 ## 204. The viewport follows what the answer is about
 
@@ -7974,6 +7874,7 @@ file replaced.
 **Where** `frontend/src/services/api/runs.ts` (`factsOf`), `frontend/src/lib/canvas/node-generation-facts.ts`
 (`generationClause`), `frontend/src/lib/canvas/{generated-media,canvas-agent-view,canvas-agent-tools}.ts`,
 `frontend/src/types/canvas.ts`, `frontend/tests/api-runs.test.ts`.
+
 
 ## 228. A file enters the canvas as a node, never into a node
 
@@ -9203,61 +9104,39 @@ and, with no file, `speech: no profile configured, so dictation will say so`. `m
 
 **Decision** A model's `input_modalities` is edited by one switch — does this model declare anything at all — and,
 when it does, four checkboxes: image, video, audio, document. Switch off writes no line, on-and-empty writes `[]`,
-and the boxes write the list. The field is stated in every model a page is shown, `null` included, so "not
-declared" and "no media" never have to be guessed apart. `null` sent back removes the line; a list replaces it; a
-field not mentioned keeps what is stored.
+and the boxes write the list. The field is stated in every model a page is shown, `null` included, so "not declared"
+and "no media" never have to be guessed apart. `null` sent back removes the line; a list replaces it; a field not
+mentioned keeps what is stored.
 
-**Why the three states are the whole problem.** AlayaCore reads a missing line as *the protocol decides* (an
+**Why the three states are the whole problem** AlayaCore reads a missing line as *the protocol decides* (an
 OpenAI-format endpoint takes image, audio and video; an Anthropic one image and document), `[]` as *declared, no
-media*, and a list as itself. A row of checkboxes on its own can only say two things, so whichever of the first two
-it collapses, one of them becomes unreachable — and the worse direction is the silent one: a model whose `[]` travels
-as an absent field comes back through `model_sync` as a model that takes everything its protocol carries. AlayaCore
-keeps those two apart for the same reason (`json:"input_modalities"` with no `omitempty`, and `input_modalities` in
-`fatalParseKeys`), and the wire here follows: `agent.Model.InputModalities` has no `omitempty`, like
-`serialToolCalls` (#249), so `"inputModalities":null` is always present and always means "not declared".
+media*, and a list as itself. A row of checkboxes alone can only say two things, so whichever of the first two it
+collapses becomes unreachable — and the worse direction is the silent one: a model whose `[]` travels as an absent
+field comes back through `model_sync` as a model that takes everything its protocol carries. AlayaCore keeps those
+two apart for the same reason (`json:"input_modalities"` with no `omitempty`, and the key in `fatalParseKeys`), and
+this wire follows: `agent.Model.InputModalities` has no `omitempty`, like `serialToolCalls` (#249), so
+`"inputModalities":null` is always present and always means "not declared".
 
-**Why there is no `text` box.** Text is never filtered — a message is text, and there is no way to send one without
-it — so `[]` and `["text"]` are one model, in AlayaCore's own words. A box that changes nothing would suggest the
-opposite, so the vocabulary offered is the four media words and a stored `["text"]` is kept spelled as it is: the
-dialog edits the four boxes inside the list it was handed and leaves every other word where it was. A sixth word
-from a newer AlayaCore would travel the same way, which is why the server checks only that the value is an array of
-strings: the vocabulary is AlayaCore's, and it names a bad word itself when the list is written.
+**Why there is no `text` box** Text is never filtered — a message is text, and there is no way to send one without it
+— so `[]` and `["text"]` are one model in AlayaCore's own words. A box that changes nothing would suggest the
+opposite, so the vocabulary offered is the four media words, and a stored `["text"]` is kept spelled as it is: the
+dialog edits the four boxes inside the list it was handed and leaves every other word where it was. A sixth word from
+a newer AlayaCore travels the same way, which is why the server checks only that the value is an array of strings —
+the vocabulary is AlayaCore's, which names a bad word itself when the list is written.
 
-**Why switching on starts empty.** The two mistakes are not symmetric. A medium the endpoint does not accept makes
-it reject the whole request — and keep rejecting, because the part is in the conversation the agent replays every
-turn. A medium it would have accepted is only replaced by a note saying it was not delivered, which the user can
-see in the answer and undo in one click. Pre-ticking the protocol's defaults would put the silent failure on the
-common path (most models are text-only), so the boxes start unticked and say what unticked means.
+**Why switching on starts empty** The two mistakes are not symmetric. A medium the endpoint does not accept makes it
+reject the whole request, and keep rejecting, because the part is in the conversation the agent replays every turn. A
+medium it would have accepted is only replaced by a note saying it was not delivered, which the user sees in the
+answer and undoes in one click. Pre-ticking the protocol's defaults would put the silent failure on the common path —
+most models are text-only — so the boxes start unticked and say what unticked means.
 
-**Cost** Adding a media type to AlayaCore means adding a word to `INPUT_MEDIA` in `frontend/src/lib/agent-models.ts`
-and a label to each dictionary — until then such a value is preserved but not offered. The switch is one more
-control than a checkbox row, and the model list does not summarise what a model declares: the declaration is only
-visible in the dialog, so a model quietly receiving notes rather than images is found by opening it.
+**Cost** Adding a media type to AlayaCore means a word in `INPUT_MEDIA` (`frontend/src/lib/agent-models.ts`) and a
+label in each dictionary; until then such a value is preserved but not offered. The switch is one control more than a
+checkbox row, and the model list does not summarise what a model declares, so a model quietly receiving notes rather
+than images is found by opening it.
 
-**Cost, the upgrade.** An agent process from before the option neither reports the line nor keeps it —
-`model_sync` re-formats `model.conf` from the struct that process holds, so a rename through it deletes a
-declaration it never parsed. Measured against the pre-upgrade build: a model whose file said
-`input_modalities: ["text","image"]` was announced with `inputModalities: null`, and the edit wrote the file
-without the line. Nothing here can repair that from the outside (the server does not parse `model.conf`); the
-answer is that agent processes are per session, so restarting the server replaces them.
-
-**Tested** `internal/agent/models_test.go`: `[]`, a list and an absent line stay three different things through
-`info()` and out to the page (`"inputModalities":null` is stated, `[]` is not `null`); a page's list replaces the
-stored one, `[]` stays `[]`, `null` removes the line, and a page that does not mention the field keeps it;
-`input_modalities` that is a string, an object or an array of numbers is refused by name. `frontend/tests/agent-models.test.ts`:
-the draft keeps `[]` apart from `null` in both directions, an edit sends a list, `[]` and `null` as themselves, a
-model the form did not open says nothing about the field, and `withModality` toggles without duplicating while
-keeping words it does not know. Verified live against AlayaCore `ea3978c1` on a throwaway instance: the line was
-written as `input_modalities: ["text","image"]`, then `[]`, then removed, each announced back unchanged
-(`models` frame) with `{"type":"command","ok":true}`. `make check` 20 packages, `npx vitest run` 351,
-`npm run check` (872 zh keys, 858 en), `npm run build`.
-
-**Where** `internal/agent/events.go`, `internal/agent/models.go`, `internal/agent/models_test.go`,
-`frontend/src/lib/agent-models.ts`, `frontend/src/components/settings/agent-model-dialog.tsx`,
-`frontend/src/services/api/agent.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
-`frontend/scripts/check-i18n.cjs` (the `config.preferences.modality` namespace), `frontend/tests/agent-models.test.ts`,
-`docs/server.md`.
-
+**Where** `frontend/src/components/settings/agent-model-dialog.tsx`, `frontend/src/lib/agent-models.ts`,
+`internal/agent/models.go`, `internal/agent/models_test.go`.
 
 ## 257. The prompt panel has no ✨: rewriting a prompt is the agent's job
 
@@ -9372,6 +9251,7 @@ that owns it.
 **Where** `frontend/src/components/settings/audio-settings-panel.tsx`,
 `frontend/src/lib/canvas/{server-models.ts,build-generation-config.ts}`,
 `frontend/src/services/api/audio.ts`, `frontend/tests/{audio-duration,server-models}.test.ts`.
+
 
 ## 260. The audio panel has no voice and no speed
 
@@ -9488,8 +9368,8 @@ the panel.
 
 1. `GET /api/workflows` carries the request contract: `accepts` (per media kind, `max: 0` meaning "takes none"),
    `mode` (`text` / `frames` / `reference`), `frameMode`, and `variantContracts` (one per mode) for a workflow with
-   variants. These are the exact fields `PlanMedia` validates against, resolved by the same helper
-   (`variantContractOf`) that `ResolveForMode` uses, so the panel and the 400 cannot disagree.
+   variants. These are the fields `PlanMedia` validates against, resolved by the same `variantContractOf` that
+   `ResolveForMode` uses, so the panel and the `400` cannot disagree.
 2. A workflow the canvas also drives from a button (interpolate, upscale, angle) is **tagged, not dropped** from the
    model list. A node can be one — that is how an interpolation node exists — but `defaultModelOptions` keeps it out
    of the "default model for new nodes" setting, because a default must run from a prompt.
@@ -9497,49 +9377,39 @@ the panel.
    it still needs (from `accepts`), its knobs (from `parameters`), and no prompt box, no size/second/mode controls.
    Its run sends only those knobs and its media by kind, so nothing is accepted-and-ignored.
 
-**What was wrong** The interpolation node created by the toolbar's Interpolate button showed **H3 text-to-video**: its
+**What was wrong** The interpolation node the toolbar's Interpolate button created showed **H3 text-to-video**: its
 `metadata.model` was the workflow id `video-rife`, which the model list filtered out, so `resolveModelForCapability`
-could not find it and fell back to the configured default video model. The same fallback then drew the rest of the
-lie — a red "text-to-video does not accept images" warning over a clip that was the thing it ran on, and
-`720p · 1:1 · 6s · First & last frame` for a workflow with no size, no seconds and no mode. Two sources of truth were
-the cause: the registry declared `mode` and `accepts` for every H3 workflow and none of it reached the client, so the
-canvas re-derived it from ids (`video-model-mode.ts`, `isH3T2V`, the `videoMode: "interpolate"` invented value that
-`videoModeLabel` then bent back into "First & last frame").
+fell back to the configured default video model. That fallback drew the rest of the lie — a red "text-to-video does
+not accept images" warning over a clip that was the thing it ran on, and `720p · 1:1 · 6s · First & last frame` for a
+workflow with no size, no seconds and no mode. Two sources of truth were the cause: the registry declared `mode` and
+`accepts` for every H3 workflow and none of it reached the client, so the canvas re-derived it from ids
+(`video-model-mode.ts`, `isH3T2V`, the invented `videoMode: "interpolate"` that `videoModeLabel` bent back into
+"First & last frame").
 
 **Why the contract and not a name list** A name list is what drifted: `video-h3-frames` was spelled in the client to
-decide a mode, `video-rife` was spelled in a second list to decide visibility, and neither could know about a
-workflow added tomorrow. `mode` and `accepts` are already the registry's own words — `video-h3-t2v` says
-`mode: "text"`, `accepts: {images: {max: 0}}` — so `videoModelModePatch` became a one-line read of `mode` and the
-tool panel a render of `accepts` + `parameters`.
+decide a mode, `video-rife` in a second list to decide visibility, and neither could know about a workflow added
+tomorrow. `mode` and `accepts` are already the registry's words — `video-h3-t2v` says `mode: "text"`,
+`accepts: {images: {max: 0}}` — so `videoModelModePatch` became a one-line read of `mode` and the tool panel a render
+of `accepts` + `parameters`.
 
 **Why not fold H3 into one entry with `variants`** It would work — `ResolveForMode` + `mergeVariantContract` are
-exactly that mechanism, and `image-qwen21` uses it (`edit`/`inpaint`/`outpaint`/`t2i`, each with its own `accepts`).
-But the four H3 workflows are four *ids* in every saved canvas, so folding them means an alias or a hydrate
-migration, and after this change the client already gets the same mode switch from `mode` for free. Two traps found
-while checking: `mergeVariantContract` does not merge `Parameters` (a variant cannot declare its own knobs), and
-`video-h3-character-swap` declared no `mode` — now `"reference"`, its behaviour made explicit.
+exactly that, and `image-qwen21` uses it — but the four H3 workflows are four *ids* in every saved canvas, so folding
+them means an alias or a hydrate migration, and the client already gets the same mode switch from `mode` for free.
+Two traps found while checking: `mergeVariantContract` does not merge `Parameters` (a variant cannot declare its own
+knobs), and `video-h3-character-swap` declared no `mode` — now `"reference"`, its behaviour made explicit.
 
-**What stays hardcoded** The composer's own H3 branches (`isH3T2V`, the frames/reference mode switch in
-`video-settings-panel.tsx`): they still recognise `video-h3-*` to decide *which mode options to offer*, which is now
-a UI question about one family of workflows rather than a fact about the run. `accepts.note` is deliberately not on
-the wire — it is English registry data, and the panel's copy comes from `i18n` (#66).
+**What stays hardcoded** The composer's own H3 branches (`isH3T2V`, the frames/reference switch in
+`video-settings-panel.tsx`) still recognise `video-h3-*` to decide *which mode options to offer* — a UI question
+about one family, not a fact about the run. `accepts.note` is deliberately not on the wire: it is English registry
+data, and the panel's copy comes from `i18n` (#66).
 
 **Also** A step writes no settings onto its node: `videoRunMetadata` / `buildImageGenerationMetadata` keep `model` +
 `params` + `references` and drop size/seconds/resolution/mode, so a node cannot claim a 720p it was never asked for.
 
-**Tested** `internal/workflow/render_test.go` (the row carries `accepts`; each mode carries its own contract, and
-the run path resolves the same one), `frontend/tests/server-models.test.ts` (a tool is tagged, says `hasPrompt: false`, and
-carries its contract), `frontend/tests/api-video-runs.test.ts` (a step submits `{multiplier: 3}` + `media.video` and no
-prompt), `frontend/tests/api-image-upscale.test.ts` (an upscaler submits `{upscale_model}` + `media.image`). `go test ./...`,
-`npx vitest run` (373), `npm run check` (870/856 keys, 182 modules) pass.
-
-**Where** `internal/workflow/render.go`, `internal/workflow/registry.go`, `workflows/registry.json`,
+**Where** `internal/workflow/{render,registry}.go`, `workflows/registry.json`,
 `frontend/src/services/api/{workflows,video,image}.ts`, `frontend/src/lib/server-models.ts`,
 `frontend/src/lib/canvas/{tool-workflows,video-model-mode,video-run-metadata,canvas-node-factory}.ts`,
-`frontend/src/stores/use-config-store.ts`, `frontend/src/hooks/use-local-server-sync.ts`,
-`frontend/src/components/canvas/{canvas-tool-node-panel,canvas-node-prompt-panel}.tsx`,
-`frontend/src/components/{model-picker.tsx,settings/preferences-dialog.tsx}`,
-`frontend/src/pages/canvas/{project.tsx,hooks/*.ts}`, `frontend/scripts/check-i18n.cjs`.
+`frontend/src/components/canvas/canvas-tool-node-panel.tsx`.
 
 
 ## 264. A card that frames a picture is the picture's shape
@@ -10482,62 +10352,57 @@ run failed as "generation timed out" with its notice; a real generation finished
 
 ## 286. The rules that tell the agent how this canvas is meant to be used
 
-**Decision** The canvas's system prompt grew by three paragraphs and one rewritten one, and the two tools that
-write words gained a sentence each:
-- *Candidates are one card.* "When the user wants several pictures of the same thing to choose from, make one text
-  node holding the words, make the picture nodes, and connect the card into each of them with canvas_connect —
-  leave their own prompts empty — then press each one with canvas_generate — and press only after the canvas has
-  answered your connections: the calls of one turn do not always arrive in the order you made them." Editing the
-  card and pressing again is a new set from the new words; another candidate is a new node, because pressing
-  replaces what a node holds.
+**Decision** The canvas's system prompt (`canvasInstructions`) grew by three paragraphs, one was rewritten, and the
+two tools that write words gained a sentence each:
+
+- *Candidates are one card.* "…make one text node holding the words, make the picture nodes, and connect the card
+  into each of them with canvas_connect — leave their own prompts empty — then press each one with canvas_generate —
+  and press only after the canvas has answered your connections: the calls of one turn do not always arrive in the
+  order you made them." Editing the card and pressing again is a new set from the new words; another candidate is a
+  new node, because pressing replaces what a node holds.
 - *Nothing about negations.* A rule saying "write only what should be there, never a negation, never a row of NOs"
-  was written, measured, and **removed**: the prompt does not mention negatives at all — not to forbid them, not to
-  define them, and not to quote them. `set_text` and `set_prompt` say nothing about them either.
-- *Placement leaves room.* "When you make a node or move one, leave room: read the card sizes list_nodes reports,
-  and put the cards side by side or one under another, not on top of each other."
+  was written, measured and **removed**: the prompt mentions negatives nowhere — not to forbid them, not to define
+  them, not to quote them — and neither do `set_text` and `set_prompt`.
+- *Placement leaves room.* "…read the card sizes list_nodes reports, and put the cards side by side or one under
+  another, not on top of each other."
 - *Asking about a node is answered by showing it.* The old paragraph began "The viewport is the user's" and buried
   the rule in an aside; it now begins with the trigger — "When the user asks about a node … call canvas_focus_node
   on it before you answer, and write its title with an @ in front" — and keeps "Naming a node is not showing it."
-- *One clause in "Say a thing once".* "when the words are new **and only that node needs them**, they belong in its
-  own prompt" — otherwise it contradicted the card.
+- *One clause in "Say a thing once"*: "when the words are new **and only that node needs them**", which is where the
+  rule used to contradict the card.
 
 **Why** Measured on a real canvas (192.168.3.233): the agent wired three nodes to one text card and pressed generate
 in one turn — the idiom this prompt now describes — so the shape is right and the prompt is the place to say it. The
-placement rule is the one the user asked for out of a real conversation: three 240-high pictures landed at
-y=-120/80/280 and overlapped, and they said so. The focus rule already existed and was too soft to survive the
-sentence after it ("one node per answer is enough"), which is why a question about a node came back as an id.
+placement rule came out of a real conversation where three 240-high pictures landed at y=-120/80/280 and overlapped.
+The focus rule existed and was too soft to survive the sentence after it ("one node per answer is enough"), which is
+why a question about a node came back as an id.
 
-**Why these words, and for the smaller model too** The same rules are read by a cloud model and by whatever local
-one serves `generic-model`, so every paragraph is written the same way: the trigger first, the tool named in the
-sentence, the imperative before the reason, and no aside nested inside an aside. Length was the other constraint —
-8 paragraphs, 537 words — and the shape is the mitigation: a model that reads only each paragraph's first sentence
-still has every rule.
+**Why these words, and for the smaller model too** A cloud model and whatever local one serves `generic-model` read
+the same paragraphs, so each is written the same way: the trigger first, the tool named in the sentence, the
+imperative before the reason, no aside inside an aside. The shape is the mitigation — a model that reads only each
+paragraph's first sentence still has every rule.
 
-**Why the prompt says nothing about negations** Because it did not work, and because saying it may have made it
-worse. Three times, against the local `generic-model`, with a card whose own text already ends in "NO text, NO
-words, NO letters …", the agent copied that row into the words it wrote — the example in front of it beats a rule
-about examples. Strengthening the paragraph twice and repeating it in the two tools that write words changed nothing.
-Worse, the rule had to *quote* the words it forbade ("no text", "NO words"), which puts them in the prompt for a model
-to imitate. The operator's instruction settled it: do not ask it not to write them, do not mention them at all. What
-happens on a canvas whose own cards show the habit is therefore the cards' business; a card that does not show it
-teaches nothing. Enforcing it would be a code rule in `set_text` (refuse or strip a trailing row), which nobody has
-asked for.
+**Why the prompt says nothing about negations** Because it did not work, and saying it may have made it worse. Three
+times, against the local `generic-model`, with a card whose own text already ends in "NO text, NO words, NO letters
+…", the agent copied that row into the words it wrote: the example in front of it beats a rule about examples.
+Strengthening the paragraph twice and repeating it in both tools changed nothing, and the rule had to *quote* the
+words it forbade, putting them in the prompt for a model to imitate. The operator's instruction settled it: do not
+ask it not to write them, do not mention them at all. Enforcing it would be a code rule in `set_text` (refuse or
+strip a trailing row), which nobody has asked for.
 
-**Cost** 391 → 624 words, six paragraphs → nine. The order is changed: candidates and placement sit right after
-"prefer a connection to a copy", because they are that rule applied, and focus — the rule the user asked for — moved
-one place down.
+**Cost** 6 paragraphs / 391 words → 8 paragraphs, 563 words as this is written (#285's ordering clause landed after
+this change). The order changed too: candidates and placement sit right after "prefer a connection to a copy",
+because they are that rule applied, and focus — the rule the user asked for — moved one place down.
 
-**Tested** `TestAgentSpawnCarriesTheCanvasRule` now names one phrase per rule, in the order the prompt states them
-(a paragraph that loses its rule is a behaviour that quietly goes back to the model's taste). Live, on an isolated
-`:8191` with the real AlayaCore and the real ComfyUI: "用那张森林提示词卡，给我两个候选图" produced the whole idiom
-in one turn — one card, two picture nodes, two connections, two presses, no prompt on either node, both runs
-`completed`, and the canvases placed side by side without touching the card; and pressing generate on a node the
-agent had hollowed out (no prompt, no connection) came back in the same second as
-`generate on image-… did not start: workflow image-z-image-turbo requires a non-empty prompt`. The negation rule is
-the one that was measured three times and removed, as above. `make check` (deadcode 508), `go test ./...`,
-`npx tsc --noEmit`, `npm run check` (i18n 860/827, exports 188), `npx vitest run` (398), `npm run build` (560.63 kB).
+**Measured** `TestAgentSpawnCarriesTheCanvasRule` names one phrase per rule, in the order the prompt states them: a
+paragraph that loses its rule is a behaviour that quietly goes back to the model's taste. Live on an isolated
+`:8191` with the real AlayaCore and ComfyUI: "用那张森林提示词卡，给我两个候选图" produced the whole idiom in one turn —
+one card, two picture nodes, two connections, two presses, no prompt on either node, both runs completed, the cards
+side by side without touching the card. A press on a node the agent had hollowed out (no prompt, no connection)
+answered in the same second: "generate on image-… did not start: workflow image-z-image-turbo requires a non-empty
+prompt".
 
-**Where** `internal/server/agent_instructions.go` (the eight paragraphs), `internal/server/mcp_test.go`.
+**Where** `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`.
 
 
 ## 287. An entry says the decision and the refusal, not the process
@@ -10579,3 +10444,4 @@ bytes are; below that size an entry is mostly its decision and its refusal alrea
 losing a nuance to save a few kilobytes. Paths were corrected mechanically where one of two renames was the only
 reason a `Where` line failed, and left alone where the file is one the entry records as deleted — a tombstone whose
 path no longer resolves is saying what it means.
+
