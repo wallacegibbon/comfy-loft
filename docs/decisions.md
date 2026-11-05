@@ -28,6 +28,7 @@ the test binary only; the shipped binary stays static.
 
 ---
 
+
 ## 2. Zero third-party dependencies
 
 **Decision** `go.mod` has no `require` block. The WebSocket client is hand-written
@@ -43,6 +44,7 @@ close). Reconnect logic lives in the caller.
 **Where** `go.mod`, `internal/comfy/ws.go`, `internal/resource/jobs.go` (`extractArchive`).
 
 ---
+
 
 ## 3. The Go module is the repository root
 
@@ -61,6 +63,7 @@ plus protection from a stray `.go` file inside an npm package.
 
 ---
 
+
 ## 4. Workflow graphs stay generic JSON
 
 **Decision** Graph files are `map[string]any` end to end. Typed accessors (`Node.ClassType()`,
@@ -76,6 +79,7 @@ access to `internal/workflow`.
 
 ---
 
+
 ## 5. Bindings keep their raw JSON
 
 **Decision** A binding is a thin typed view (`Binding.raw`) over the object in `registry.json`.
@@ -89,6 +93,7 @@ parameter in a generated request.
 **Where** `internal/workflow/bindings.go`.
 
 ---
+
 
 ## 6. Request-scoped copies only
 
@@ -106,6 +111,7 @@ inference time.
 
 ---
 
+
 ## 7. Order-preserving maps for anything the UI renders in sequence
 
 **Decision** `variants`, `variantLabels` and `bindings` use `workflow.OrderedMap`, not Go maps.
@@ -118,6 +124,7 @@ reshuffle the canvas image-mode selector on every refresh.
 **Where** `internal/workflow/ordered.go`.
 
 ---
+
 
 ## 8. Backend messages are English; localization lives only in the frontend
 
@@ -133,6 +140,7 @@ a process whose only consumer is a dashboard, and would make logs unreadable in 
 **Where** `internal/httpx`, `docs/server.md` (Language policy).
 
 ---
+
 
 ## 9. Model-facing Chinese stays Chinese
 
@@ -150,6 +158,7 @@ carries a comment saying so.
 **Where** `internal/prompt/*`, `internal/workflow/infer.go`.
 
 ---
+
 
 ## 10. Job statuses and progress are a wire contract with the panel
 
@@ -173,6 +182,7 @@ which is exactly what happened once.
 
 ---
 
+
 ## 11. The gateway installs nothing with pip
 
 **Decision** Runtime Python packages are reported (`runtimeDeps` in `/api/resources/status`) and
@@ -188,6 +198,7 @@ torch/numpy overwritten underneath ComfyUI.
 
 ---
 
+
 ## 12. Only three external binaries, everything else in-process
 
 **Decision** `nvidia-smi` (GPU), `zenity` (file picker), `ffprobe` (video duration). Downloads,
@@ -202,6 +213,7 @@ in-process is done in-process; the three that remain wrap information only the O
 **Where** `internal/sysinfo/sysinfo.go`, `internal/setup/setup.go`, `internal/server/server.go`.
 
 ---
+
 
 ## 13. `type: "bake"` resources are never installed
 
@@ -220,6 +232,7 @@ change — pinned by `internal/resource/bake_test.go`.
 
 ---
 
+
 ## 14. The asset root is discovered, not hardcoded
 
 **Decision** `COMFYLOFT_SERVER_ROOT` → working directory → executable directory, accepting the first that
@@ -236,6 +249,7 @@ that happens, state lands in `./data`.
 
 ---
 
+
 ## 15. Gates: `make check` must not need a C toolchain
 
 **Decision** `make check` = gofmt check + `go vet` + tests (CGO off). `make check-full` adds
@@ -250,6 +264,7 @@ worker mutates it).
 **Where** `Makefile`.
 
 ---
+
 
 ## 16. The gateway never starts or stops ComfyUI
 
@@ -266,6 +281,7 @@ A gateway that restarts it would race with whatever the user is doing.
 **Where** `internal/comfy/client.go`, `start.sh`, `README.md` (process table).
 
 ---
+
 
 ## 17. Everything written for a human is English
 
@@ -290,51 +306,41 @@ decisions #8, #9 and #216.
 
 ---
 
+
 ## 18. `@ant-design/pro-components` is dropped, not worked around
 
-**Decision** The canvas does not depend on `@ant-design/pro-components`. `AppProviders`
-wraps the tree in antd's `ConfigProvider` + `App` and nothing else.
+**Decision** The canvas does not depend on `@ant-design/pro-components`; `AppProviders` wraps the tree in antd's
+`ConfigProvider` + `App` and nothing else. In be1eea5.
 
-**Why** Every published build of that package declares `antd: ^4.24.15 || ^5.11.2` as a peer
-while this app runs antd 6, so `npm ci` aborted with ERESOLVE and the only way to install was
-`legacy-peer-deps=true` for the whole subtree — a flag that also silences the _next_ real peer
-conflict. The single import was `ProConfigProvider`, a wrapper that only re-provides antd's
-theme and locale context (plus an SWR provider nothing used); the app has no Pro component, so
-there was nothing to keep. Removing it lets installs go back to strict peer resolution, drops
-130 packages and ~29 kB of gzipped JS.
+**Why** Every published build declares `antd: ^4.24.15 || ^5.11.2` as a peer while this app runs antd 6, so
+`npm ci` aborted with ERESOLVE and the only way in was `legacy-peer-deps=true` for the whole subtree — a flag
+that also silences the *next* real peer conflict. The single import was `ProConfigProvider`, which only
+re-provides antd's theme and locale context; the app has no Pro component. Removing it restored strict peer
+resolution and dropped 130 packages.
 
-**Cost** Anyone who later wants ProTable/ProForm has to add the package back, and antd 6
-support becomes a prerequisite for that work.
+**Cost** Anyone who later wants ProTable/ProForm has to add it back, which makes antd 6 support a prerequisite
+for that work.
 
-**Where** `canvas/web/package.json`,
-`canvas/web/src/components/layout/app-providers.tsx`. The rendered output is
-unchanged — the built page still emits `class="css-1tzwyuk ant-app"` and
-`--ant-color-bg-base:#000`, i.e. the same antd hashed theme as before the removal.
-
----
+**Where** `frontend/package.json`, `frontend/src/components/layout/app-providers.tsx`.
 
 ## 19. `COMFYLOFT_SERVER_HOST` is bound as given; there is no `ALLOW_REMOTE`
 
-**Decision** The gateway listens on whatever `COMFYLOFT_SERVER_HOST` says, loopback or LAN address, with no
-second switch. `ALLOW_REMOTE` is gone, and so is the startup refusal it gated. What remains is
-a warning when the address is reachable from the network. (The `GATEWAY_TOKEN` this entry still
-mentioned went in #110; the warning is now the only thing that says the port is open.)
+**Decision** The server listens on whatever `COMFYLOFT_SERVER_HOST` says — loopback or a LAN address — with no
+second switch. `ALLOW_REMOTE` and the startup refusal it gated are gone; what remains is a warning when the
+address is reachable from the network. Since #110 removed the token, that warning is the only thing that says the
+port is open.
 
-**Why** A workbench whose gateway is on `192.168.3.232:8190` so a phone can use it _is_ the
-local setup — calling that "remote" and making the user flip a flag to reach their own machine
-was a gate with no bug behind it. It also failed quietly in the worst way: the canvas started,
-the gateway exited, and the UI showed "gateway disconnected". The real risk is not the bind
-address but an unauthenticated `/api/*`, and that is what the warning names.
+**Why** A workbench whose server is on `192.168.3.232:8190` so a phone can use it *is* the local setup. Calling
+that "remote" and making the user flip a flag to reach their own machine was a gate with no bug behind it, and it
+failed quietly in the worst way: the canvas started, the server exited, and the UI showed "gateway disconnected".
+The real risk is not the bind address but an unauthenticated `/api/*`, which is what the warning names.
 
-**Cost** One keystroke less between a machine and the network. Anyone who wants the old
-behaviour back has `COMFYLOFT_SERVER_HOST=127.0.0.1`, which is still the default. `CORS_ORIGINS` no longer
-accepts `*` under any condition — the canvas origin is matched by host, so the wildcard was
-only ever an accident waiting to happen.
+**Cost** One keystroke less between a machine and the network. The old behaviour is still one variable away
+(`COMFYLOFT_SERVER_HOST=127.0.0.1`, the default). `CORS_ORIGINS` no longer accepts `*` under any condition: the
+canvas origin is matched by host, so the wildcard was only ever an accident waiting to happen.
 
 **Where** `internal/config/config.go`, `internal/httpx/middleware.go` (`sameHostOrigin`),
-`main.go`, `.env.example`, `docs/server.md`.
-
----
+`cmd/comfyloft-server/main.go`, `.env.example`, `docs/server.md`.
 
 ## 20. Workflow metadata is English in the registry and translated by id in the canvas
 
@@ -376,6 +382,7 @@ input (#9), and `name` / `source.name` / `lora.filter` are identifiers and patte
 
 ---
 
+
 ## 21. Model installs are a configured fact, and they are off until stated
 
 **Decision** `INSTALL_INTO_COMFY=1` is required to install models. Without it
@@ -409,6 +416,7 @@ that is the point, not a limitation to work around.
 
 ---
 
+
 ## 22. ComfyUI is the only backend, and workflow JSON is the product model
 
 **Decision** The gateway speaks ComfyUI and nothing else. There is no backend abstraction, no
@@ -440,6 +448,7 @@ only hide them.
 `workflows/*.json`.
 
 ---
+
 
 ## 23. antd stays; the two ways it leaks are quarantined
 
@@ -487,6 +496,7 @@ file headers say so.
 
 ---
 
+
 ## 24. Transient messages go through one facade, not antd
 
 **Decision** Showing a transient message is `toast.success / error / warning / info / loading`
@@ -522,6 +532,7 @@ that keep `modal` still destructure it correctly.
 
 ---
 
+
 ## 25. Confirmations are a kit primitive, and antd's static helpers are gone
 
 **Decision** Asking "really?" is `confirm({ title, content, okText, cancelText, danger, onOk })`
@@ -550,31 +561,21 @@ antd dialogs around it, and will need a touch-up if the surrounding design moves
 
 ---
 
+
 ## 26. Unit tests run on vitest, because bun was never installed
 
-**Decision** `npm test` is `vitest run`. The three suites under `tests/` import from `vitest`
-instead of `bun:test`, and `vitest.config.ts` exists so the tests do not drag in the app's build
-plugins. `bun.lock`, `pnpm-lock.yaml` and `pnpm-workspace.yaml` are deleted: `Makefile` sets
-`NPM ?= npm`, so `package-lock.json` is the only lockfile that was ever authoritative — the
-other two were stale duplicates that would have installed different trees.
+**Decision** `npm test` is `vitest run`; the suites under `tests/` import from `vitest`, and `vitest.config.ts`
+exists so the tests do not drag in the app's build plugins. `bun.lock`, `pnpm-lock.yaml` and
+`pnpm-workspace.yaml` are deleted — `Makefile` sets `NPM ?= npm`, so `package-lock.json` was the only lockfile
+that ever decided what installed. In cf2e72c.
 
-**Why** `bun test` could not run here at all (`bun: command not found`), so the suite was
-vestigial: it had never been executed, and its state was unknown. Running it once made that
-concrete — **4 of 15 assertions were failing**, in `tests/model-selection.test.ts`. They assert
-the _cloud-mode_ contract (an explicit but unavailable model selection is preserved so readiness
-blocks the request), while `resolveModelForCapability` implemented the opposite: a model the
-registry no longer knows falls back to its capability default. Since `LOCAL_ONLY` defaulted to
-true, those four were wrong on every build this repository ever produced. They were first gated
-behind `test.skipIf(LOCAL_ONLY)`; decision #27 then deleted cloud mode outright, so the four
-assertions and the gate are gone too. The suite is 11 passing, no skips.
+**Why** `bun test` could not run here at all (`bun: command not found`), so the suite was vestigial: never
+executed, state unknown. Running it once made that concrete — 4 of 15 assertions were failing, and had been
+wrong on every build this repository produced. A suite nobody can run is not coverage; it is a document that
+looks like coverage.
 
-**Cost** The suite covers only pure functions — viewport focus, thumbnail choice, model
-selection. There are no component or canvas interaction tests, so the overlay guards and the
-kit primitives (toast, confirm) are still verified by hand.
-
-**Where** `canvas/web/package.json`, `vitest.config.ts`, `tests/*.test.ts`.
-
----
+**Cost** The suite covers pure functions only — viewport focus, thumbnail choice, model selection. There are no
+component or canvas interaction tests, so overlay guards and kit primitives are still verified by hand.
 
 ## 27. Cloud mode is deleted, not hidden
 
@@ -626,6 +627,7 @@ to branch on the flag.
 
 ---
 
+
 ## 28. Model call scripts are gone; everything is OpenAI-compatible
 
 **Decision** `services/api/model-plugin.ts` is deleted, along with the `script` field on
@@ -668,6 +670,7 @@ out of reachable paths already; the win is comprehensibility, not bytes.
 
 ---
 
+
 ## 29. Dialogs are a kit primitive too; no antd `Modal` is left
 
 **Decision** All 27 `<Modal>` call sites now render `@/components/kit/dialog`. Its props are the
@@ -708,6 +711,7 @@ closing contains no `ant-modal` at all. The antd chunk went 739 kB → 714 kB (2
 
 ---
 
+
 ## 30. Buttons keep antd's prop names, and antd's reset stylesheet is gone
 
 **Decision** `kit/button.tsx` takes `type` / `size` / `icon` / `iconPlacement` / `danger` /
@@ -745,6 +749,7 @@ step buys removability rather than bytes.
 antd import lost `Button`.
 
 ---
+
 
 ## 31. `Select` is the radix primitive, and `mode="tags"` was never a select
 
@@ -792,6 +797,7 @@ four call sites (`pages/assets/index.tsx`, `components/canvas/canvas-side-panel.
 
 ---
 
+
 ## 32. Drawers are a side of `kit/dialog`
 
 **Decision** `kit/drawer.tsx` reuses the dialog's header / scrolling body / optional footer and
@@ -807,6 +813,7 @@ raise one.
 **Where** `components/kit/drawer.tsx` and the three call sites.
 
 ---
+
 
 ## 33. antd is gone; here is what that cost and what it returned
 
@@ -856,6 +863,7 @@ what the dialog does.
 
 ---
 
+
 ## 34. Unused translations are pruned by namespace, never by key _(superseded by #38)_
 
 **Decision** A locale namespace is deleted only when its feature was deleted outright _and_ no
@@ -874,6 +882,7 @@ route.
 **Where** `src/i18n/locales/{zh-CN,en-US}.ts`.
 
 ---
+
 
 ## 35. What the dependency audit removed, and what it kept against its own rule
 
@@ -918,6 +927,7 @@ why that entry insists on the reference graph: several of them were not dead, on
 
 ---
 
+
 ## 36. One HTTP layer, replacing axios and three copies of the error reader
 
 **Decision** `services/api/http.ts` owns the transport. `httpJson` / `httpBlob` / `httpVoid` wrap
@@ -955,6 +965,7 @@ because a browser can demonstrate the result but cannot enumerate the branches.
 
 ---
 
+
 ## 37. An export is a promise, and ninety-eight were not keeping one
 
 **Decision** A symbol is exported only when another module imports it. Where nothing outside the
@@ -989,6 +1000,7 @@ distinguish a narrower module from one that happens to have no callers today.
 **Where** `canvas/web/src/**`, and the commit that removed the sixteen dead symbols.
 
 ---
+
 
 ## 38. Unused translation keys are pruned by key, with reachability decided on the AST
 
@@ -1026,6 +1038,7 @@ an over-delete _before_ the build, and the DOM scan catches whatever it cannot s
 **Where** `src/i18n/locales/{zh-CN,en-US}.ts`.
 
 ---
+
 
 ## 39. All UI copy lives in the dictionaries — including the panel that kept its own
 
@@ -1066,6 +1079,7 @@ dictionary's shape for its types. Both are visible where they are written down.
 `src/i18n/locales/{zh-CN,en-US}.ts` (`resources.*`).
 
 ---
+
 
 ## 40. There is no landing page; `/` is a redirect to a canvas
 
@@ -1121,6 +1135,7 @@ switching used to mean leaving the canvas for the list page), `components/canvas
 
 ---
 
+
 ## 41. `npm run check` is the third gate, because the compiler cannot see these two bugs
 
 **Decision** Two scripts in `canvas/web/scripts/` run as `npm run check:i18n` and
@@ -1160,6 +1175,7 @@ actually means here.
 
 **Where** `canvas/web/scripts/check-i18n.cjs`, `scripts/check-exports.cjs`,
 `package.json`.
+
 
 ## 42. Ten "which node has which dialog open" states become one
 
@@ -1202,6 +1218,7 @@ almost all of them mechanical renames the compiler checked.
 
 **Where** `canvas/web/src/pages/canvas/project.tsx`.
 
+
 ## 43. The node editors are a module with a nine-key contract, not a closure
 
 **Decision** Nine editors moved out of `project.tsx` into
@@ -1239,6 +1256,7 @@ screen, and that proving an editor correct no longer means standing up a 3,459-l
 
 **Where** `canvas/web/src/pages/canvas/hooks/`, `canvas/web/src/lib/canvas/`.
 
+
 ## 44. `handleGenerateNode` was 440 lines and four of them did not talk to each other
 
 **Decision** The four generation modes — image, video, audio, text — moved out of `handleGenerateNode`
@@ -1271,6 +1289,7 @@ stamping in `catch` — because they are about the canvas, not about one request
 the two registry calls go in as `GenerationRunDeps`, the same shape as `NodeEditorDeps` (#43).
 
 **Where** `canvas/web/src/pages/canvas/hooks/use-generation-runs.ts`.
+
 
 ## 45. Retry joins the generation module, and `project.tsx` drops under 3,000
 
@@ -1306,6 +1325,7 @@ type-checked, but the runtime path itself remains unexercised — worth one clic
 node that has actually failed.
 
 **Where** `canvas/web/src/pages/canvas/hooks/use-generation-runs.ts`.
+
 
 ## 46. Three pieces of housekeeping, and what two of them turned out to be
 
@@ -1374,6 +1394,7 @@ than created and shown empty.
 **Where** `components/settings/`, `stores/canvas/`, `services/localforage-databases.ts`,
 `services/local-storage-usage.ts`.
 
+
 ## 47. Content ingress is a module: `File | string` in, node out
 
 **Decision** Eight callbacks that turn something the user handed us into a node moved to
@@ -1407,6 +1428,7 @@ is now exactly zero, which is a stronger statement than "tsc passes".
 image, selected, composer open, and was deleted afterwards. Console empty.
 
 **Where** `canvas/web/src/pages/canvas/hooks/use-content-ingress.ts`.
+
 
 ## 48. Three small correctness fixes found by a full read of the frontend
 
@@ -1470,6 +1492,7 @@ one, and the local gateway reports neither.
 **Where** `stores/canvas/use-canvas-side-panel-store.ts`, `components/canvas/canvas-side-panel.tsx`,
 `components/settings/resource-center-panel.tsx`, `i18n/locales/`.
 
+
 ## 49. An unreadable store is preserved, refused, and explained
 
 **Decision** Both `persist` storage adapters catch their own parse failure instead of letting it
@@ -1517,6 +1540,7 @@ afterwards and checked: two nodes, correct title, no banner, console empty.
 
 **Where** `stores/use-storage-recovery-store.ts`, `lib/persist-recovery.ts`,
 `components/layout/storage-recovery-banner.tsx`, both persisted stores.
+
 
 ## 50. Every floating panel is 1000×646, or it is not a panel
 
@@ -1570,6 +1594,7 @@ confirmation: 520×161, unchanged.
 
 **Where** `components/kit/dialog.tsx` and the thirty call sites.
 
+
 ## 51. The editors' canvases fill the panel instead of guessing at the viewport
 
 **Decision** The four editors that sized their image area against the _viewport_ now size it against
@@ -1602,6 +1627,7 @@ column was 320 then too; the arithmetic, not the change, is what shows it. The r
 
 **Where** `components/canvas/canvas-node-{crop,mask-edit,split}-dialog.tsx`,
 `components/canvas/canvas-node-hover-toolbar.tsx`.
+
 
 ## 52. The persisted format has a version, and a migration that can refuse
 
@@ -1659,6 +1685,7 @@ original blob was restored afterwards and checked.
 **Where** `stores/canvas/canvas-persist.ts`, `stores/asset-persist.ts`, both stores,
 `tests/persist-migration.test.ts`.
 
+
 ## 53. One run protocol; media type is data, not routing
 
 **Decision** Every generation is a `run`: `POST /api/runs` returns an id, and status, progress,
@@ -1703,6 +1730,7 @@ guarding the behaviour until their node type migrates.
 `/v1/*` and this table's "today" column.
 
 **Where** `docs/protocol.md`, `internal/server/runs.go`, `internal/task`, `internal/server/routes_*.go`.
+
 
 ## 54. Media rules are registry data, not handler branches
 
@@ -1755,6 +1783,7 @@ image generation still passes end to end.
 **Where** `internal/workflow/media.go`, `internal/workflow/entry.go`, `internal/server/routes_video.go`,
 `internal/server/routes_generation.go`, `workflows/registry.json`.
 
+
 ## 55. The run protocol exists on the wire
 
 **Decision** `POST /api/runs` + `/api/uploads` are the gateway's own shape, not a translation of
@@ -1799,6 +1828,7 @@ two-image batch, and a cancel that emptied the ComfyUI queue.
 **Where** `internal/server/routes_runs.go`, `internal/server/runs.go`, `internal/upload`,
 `internal/task`, `docs/protocol.md`.
 
+
 ## 56. A run's inputs are typed and checked at submission
 
 **Decision** `inputs` is a closed, typed surface. `GET /api/workflows/{id}/schema` publishes it, and
@@ -1840,6 +1870,7 @@ and a valid audio run still completes.
 **Where** `internal/workflow/inputs.go`, `internal/workflow/render.go`,
 `internal/server/routes_runs.go`, `internal/task/task.go`, `workflows/registry.json`.
 
+
 ## 57. The protocol exchanges workflow runs, not graphs
 
 **Decision** The gateway's unit of exchange is a _run of a registered workflow_: `{workflow, inputs,
@@ -1871,6 +1902,7 @@ protocol; it is the shortest description of what we are and are not.
 
 **Where** `docs/server.md`, `docs/protocol.md`, `internal/comfy/client.go` (the endpoints we borrow),
 `internal/workflow/bindings.go` (the translation), `internal/server/routes_runs.go`.
+
 
 ## 58. The canvas's first node lives on the run protocol
 
@@ -1913,6 +1945,7 @@ sends: a run reached `succeeded` 30/30 and the downloaded mp3 played; `opus` cam
 **Where** `canvas/web/src/services/api/runs.ts`, `services/api/audio.ts`,
 `pages/canvas/hooks/use-generation-runs.ts`, `pages/canvas/project.tsx`,
 `lib/canvas/canvas-generation-helpers.ts`.
+
 
 ## 59. A video run carries roles, frames and its own post-step
 
@@ -1965,6 +1998,7 @@ user stop.
 `canvas/web/src/services/api/video.ts`, `services/api/runs.ts`, `pages/canvas/project.tsx`,
 `docs/protocol.md`.
 
+
 ## 60. An interrupted image batch reattaches to its run
 
 **Decision** An image node keeps the id of the batch run that is producing it (`metadata.imageRunId`,
@@ -1989,6 +2023,7 @@ exercised against the real gateway during the image migration.
 
 **Where** `canvas/web/src/pages/canvas/hooks/use-generation-runs.ts`,
 `lib/canvas/canvas-generation-helpers.ts`, `pages/canvas/project.tsx`, `types/canvas.ts`.
+
 
 ## 61. The last generation adapters, and why one of them is not a run
 
@@ -2025,6 +2060,7 @@ machine, since the SeedVR2 custom node is not installed there.
 
 **Where** `canvas/web/src/services/api/video.ts`, `services/api/image.ts`,
 `pages/canvas/hooks/use-video-editors.ts`, `docs/protocol.md`, `docs/server.md`.
+
 
 ## 62. Frame interpolation is a workflow, not a run input
 
@@ -2080,6 +2116,7 @@ reports.
 `internal/workflow/loaders.go`, `internal/server/routes_video.go`, `internal/server/routes_runs.go`,
 `canvas/web/src/services/api/video.ts`.
 
+
 ## 63. An input is a key that reaches something
 
 **Decision** A binding key becomes an accepted input only when a caller can actually set it: either
@@ -2108,6 +2145,7 @@ are rejected as unknown inputs, while the self-named `seed` is still accepted. E
 workflow's schema was re-read through the live gateway.
 
 **Where** `internal/workflow/inputs.go`, `docs/protocol.md`.
+
 
 ## 64. The model list belongs to the client
 
@@ -2142,6 +2180,7 @@ the setup status totals and in `missing.nodes` (models and tools alike), and a w
 **Where** `internal/workflow/entry.go`, `internal/workflow/render.go`, `internal/setup/scan.go`,
 `internal/server/routes_admin.go`, `internal/resource/status.go`, `workflows/registry.json`,
 `resources/index.json`, `canvas/web/src/lib/canvas/tool-workflows.ts`.
+
 
 ## 65. The image upscaler is a run, and a tool workflow takes exactly one item
 
@@ -2185,6 +2224,7 @@ submitted a run, and produced a 4096×4096 PNG node.
 `canvas/web/src/services/api/image.ts`,
 `canvas/web/src/components/canvas/canvas-node-super-resolve-dialog.tsx`.
 
+
 ## 66. Everything under `workflows/` is English _(the one path it kept was not the author's, see #117)_
 
 **Decision** The graphs, `registry.json` and their defaults contain no Chinese. Chinese for a shipped
@@ -2214,6 +2254,7 @@ in the resource panel, with no key indirection. That is #67; it could not be fix
 alone.
 
 **Where** `workflows/*.json`, `workflows/registry.json`, `canvas/web/src/i18n/locales/zh-CN.ts`.
+
 
 ## 67. The resource catalogue is English; its Chinese lives beside the app _(one of the two paths was not upstream's, see #117)_
 
@@ -2248,6 +2289,7 @@ including the LoRA whose path stays Chinese.
 
 **Where** `resources/index.json`, `canvas/web/src/lib/resource-copy-zh.ts`,
 `canvas/web/src/components/settings/resource-center-panel.tsx`.
+
 
 ## 68. There is no `/v1/models`; a workflow reports the ids it answers to
 
@@ -2291,6 +2333,7 @@ returned three images.
 `canvas/web/src/hooks/use-local-gateway-sync.ts`,
 `canvas/web/src/lib/gateway-models.ts`, `canvas/web/src/services/api/image.ts`
 (`fetchChannelModels`).
+
 
 ## 69. `/v1` is gone
 
@@ -2336,6 +2379,7 @@ page load syncs its models, generates an image, and lists the workflows with no 
 `canvas/web/src/services/api/{image,video,audio}.ts`, `docs/protocol.md`, `docs/server.md`,
 `README.md`.
 
+
 ## 70. Saved names are keys, not translations
 
 **Decision** A name the app generates is stored as a translation key, and rendered in the reader's
@@ -2378,6 +2422,7 @@ browser: the existing canvas, created in Chinese, shows "Audio" and "Local Comfy
 `canvas/web/src/pages/canvas/hooks/use-image-editors.ts`,
 `canvas/web/src/pages/canvas/project.tsx`.
 
+
 ## 71. There is one channel, and it is the gateway the page came from
 
 **Decision** The canvas has exactly one model channel. Its address is the gateway that served the page
@@ -2405,6 +2450,7 @@ original blob is left in `localStorage` under `…:pre-local-only-backup`.
 **Tested** `npm run check`, `npx vitest run` (the config-store merge cases), and in the browser: a cleared
 config syncs the gateway's workflow list, the editor shows one channel, and its address field does not
 exist.
+
 
 ## 72. The gateway address has no `/v1`
 
@@ -2443,6 +2489,7 @@ network capture shows every gateway request on `/api/...` with no `/v1` path any
 `canvas/web/src/stores/use-config-store.ts`. (The `lib/local-session.ts` this list used to
 name went in #109, and `POST /api/prompts/chat` — the endpoint #73 gave the prompt path — went in #76
 when prompts became the agent's socket.)
+
 
 ## 73. Text is a prompt route, not a model
 
@@ -2494,6 +2541,7 @@ and the browser's own capture shows no `/v1` path on the gateway.
 `canvas/web/src/pages/canvas/project.tsx`,
 `canvas/web/src/stores/use-config-store.ts`,
 `canvas/web/src/components/canvas/{canvas-config-node-panel,canvas-node-prompt-panel}.tsx`.
+
 
 ## 74. The prompt endpoint is called what it is, and text has no model
 
@@ -2549,108 +2597,41 @@ caption route returned a prompt with no `engine` field.
 `canvas/web/src/components/settings/app-config-modal.tsx`,
 `canvas/web/src/types/canvas.ts`.
 
+
 ## 75. Prompts are served by AlayaCore, and one instance belongs to one person
 
-**Status** decided, not implemented. Today the four `/api/prompts/*` recipes and their in-process
-chat client are still what runs; this entry records the target so the code that replaces them does
-not have to re-litigate it.
+**Status** Implemented, and the wire moved: #82 made the conversation a socket, so the `POST /api/prompts/chat`
+this entry planned does not exist. Read the rest as the shape; `internal/server/routes_agent.go` is the wire.
 
-**Decision** The gateway stops calling a chat-completion endpoint and starts **spawning the agent**:
-one request → one `alayacore --rawio` process → one event stream → process released. Nothing else
-lives longer than that; the canvas's panels do not keep an agent alive. The prompt
-surface collapses to a single route (`POST /api/prompts/chat`), and `internal/prompt` (the chat
-client, the four recipes, the H3 skill assembly, the sanitisers, the speaker tags) goes away. No dual
-backend and no fallback: a second path would be two configuration stories and two code paths for one
-feature.
+**Decision** One request → one `alayacore --rawio` process → one event stream → process released. Nothing
+outlives a request; no panel keeps an agent alive. No dual backend and no fallback: a second path would be two
+configuration stories for one feature.
 
-**Why this is not over-engineering here** This repository is part of the AlayaCore ecosystem, so the
-binary is a prerequisite the way ComfyUI already is: nothing to install, nothing to version by hand.
-What it buys: the canvas no longer has to be told a base URL, key and model (they are in the agent's
-`model.conf`, which the user already has); the gateway's guessing at "which thinking parameter does
-this endpoint want" is replaced by the agent's per-model `reasoning_0/1/2`; and four routes, four
-response shapes and four error vocabularies become one. What it costs: process-level failures (spawn,
-crash, hang, stderr-only errors), a protocol dependency with a `message_version`, and more tokens per
-request (the agent's own system prompt, and one extra step if a skill has to be read). Spawning is not
-itself expensive — a rawio session reaches `SM session ready` in ~30 ms on this machine, so releasing
-the process after each request is cheaper than keeping one warm.
+**Tenancy is the security model** One instance serves one person and uses one config directory
+(`AGENT_CONFIG_PATH`, default `os.UserConfigDir()/comfyloft-server/alayacore`). The config path, the skill
+container and the tool list are gateway settings, never fields of a request — a request that could name its own
+`--config-path` would pick whose files to read, and one that could name its own tool list would undo the single
+switch that decides whether the agent may run commands. Serving a second user would need real identity, not a
+shared secret: `GATEWAY_TOKEN` was injected into the page, so anyone who could open the canvas could read it,
+which is why #110 removed it.
 
-**Tenancy is the security model** The gateway is **single-tenant**: one instance serves one person and
-uses **one** AlayaCore config directory — `os.UserConfigDir()/comfyloft-server/alayacore` by default
-(`~/.config/...` on Linux, the right place on macOS and Windows), overridable with
-`AGENT_CONFIG_PATH`. The gateway does not create or validate it: the agent creates what it needs on
-first spawn, and a fresh directory comes with AlayaCore's own Ollama default, which exists to be
-_seen_ — see "The model is visible and selectable" below. There is no per-request identity, so there
-is nothing to map a second user onto — and therefore no per-user credential to leak: a caller of
-`:8190` spends that instance's own keys, exactly as it already spends that instance's GPU on
-`POST /api/runs`.
+**Why this is not over-engineering here** AlayaCore is part of this project the way ComfyUI is: nothing to
+install. It takes a base URL, a key, a model and four `/api/prompts/*` recipes out of the canvas, and a spawn
+reaches `SM session ready` in ~30 ms — cheaper than keeping one warm.
 
-**If the gateway ever serves more than one user**, each user must have their own AlayaCore config
-directory, and that requires real identity (a login/session the gateway can resolve a request to) —
-not a shared secret. `GATEWAY_TOKEN` would not be that answer: it is injected into the page, so
-anyone who can open the canvas can read it. Until then, one directory, and the rule that makes it
-safe: **the config path, the skill container and the tool list are gateway settings and never fields
-of a request.** They are the user's to change — there is no separate operator in a one-person install
-— but they are changed in the gateway's own settings, not per call: a request that could name its own
-`--config-path` would turn "every user has their own directory" into "the caller picks whose directory
-to read", and a request that could name its own tool list would let the caller undo the one switch
-that decides whether the agent can run commands.
+**Cost** Process-level failures (spawn, crash, hang, stderr-only errors), a `message_version` dependency, and
+more tokens per request: the agent's own system prompt, plus one step when a skill has to be read.
 
-**Security posture, stated plainly** No token is required to enable the agent, because there is no
-token at all (#110). `COMFYLOFT_SERVER_HOST` defaults to loopback and binding anything else emits a startup
-warning. The one built-in tool the spawn enables is `read_file`, and it is not a field of a request:
-the H3 rewrite loads its `SKILL.md` with it, which is what changes the risk class of an exposed port
-from "uses your quota" to "reads your files".
+**Cancel and lifetime** Cancel belongs to the agent, which is the process that knows what a half-finished step
+means, so the gateway adds no timeout and no reaper. The process is bound to no window, so there is no idle
+agent to reap and no TTL.
 
-**Cancel belongs to the agent** Its `CI cancel` command winds a task down on its own terms — it is
-the process that knows what a half-finished step means — so the gateway does not layer its own
-timeout on top, and it does not invent a reaper either. A request that ends early sends `cancel` and
-stops reading; the process exits when it says it has.
+**Still open** Where the H3 wording lives: an Agent Skill read with `read_file` (one extra step, and read access)
+or `--system` assembled at spawn (one step, no file access) — the answer waits on a measured comparison. The
+agent's settings page, when it comes, must write through `CI model_sync`, never by parsing `model.conf`: that
+file's format belongs to AlayaCore.
 
-**Nothing binds to a window** The process lives for one operation and no longer: spawn when the
-request arrives, release on `done`/`error`/cancel. It is not tied to a panel's lifetime, so there is
-no idle agent to reap, no TTL, no "the panel is still open but the process was reclaimed" state to
-hide, and no per-node processes for the config nodes that are always on screen. A spawn costs ~30 ms,
-which is why re-opening one for every ✨ press is the cheap end of the trade.
-
-**One route, one stream** A prompt and a command are the same kind of thing to AlayaCore — frames on
-its stdin — so they are one route (`POST /api/agent/chat`) and one stream: what the request carries is
-written to the agent (a `command` + `args` for a setting change, a `prompt` and images for a question,
-either or both), and what the agent says comes back. Two routes would have been two ways to say one
-thing.
-
-**The model and the level are the user's, and the gateway only shows them** Everywhere the canvas
-uses the agent there is a model `<select>` and a reasoning-level control. The gateway does not track,
-remember, re-send or validate either of them. It displays what the agent says — `SM model` and `SM
-reasoning_level`, forwarded as they arrive — and when the user changes one, the canvas sends the
-agent's own command (`model_set`, `reasoning_level_set`) and the agent's answer comes back on the same
-stream. Whether a
-setting survives a session is AlayaCore's business: it persists the model in `runtime.conf` and does
-what it likes with the level, and the canvas shows whatever it reports next.
-
-**The list arrives with the answer, not before it** `SM model_list` and `SM model` are part of the
-startup broadcast of every spawn, ahead of the model call. The gateway forwards them as one `models`
-event with **every `api_key` stripped**, and the canvas renders the select from the last such event.
-There is no listing route, no probe and no gateway-side cache: an empty picker before the first
-request in a page is the honest state, and one request fills it.
-
-**The event surface is a whitelist** `delta` (Ax text), `reasoning`, `step` (SM `task`), `done`,
-`error` (+ an optional one-line `tool` state). Everything else the agent emits stays on the gateway:
-`SM model_list` carries every `api_key` from `model.conf` verbatim, and `mcp`/`theme`/`video_config`/
-`CO` have no meaning for a canvas node. The gateway is an adapter, not a pipe.
-
-**Borrowed, not invented** `internal/wire` (frame codec, tests) and `internal/core` (spawn, stderr
-tail, kill order, binary discovery) come from the Go backend of the AlayaFace project, which is the
-same adapter for a different client. `message_version` is validated at startup, because the codec now
-exists in three repos and drift between them is a real failure mode.
-
-**Still open** Where the H3 wording lives: (a) an Agent Skill loaded with `read_file` (one extra model
-step, and the agent gains read access), or (b) `--system` assembled by the gateway and passed at spawn
-(single step, no file access). The decision waits on a measured comparison of the two outputs.
-
-**Also noted for later** The canvas will eventually grow a settings page for the agent's models. It
-must write through the agent's command plane (`CI model_sync` with the model array, `CI model_set` to
-switch) rather than parsing `model.conf` from Go: the file format (`protocol_type`, `reasoning_0/1/2`,
-…) belongs to AlayaCore, and going through the agent is what keeps it there.
+**Where** `internal/agent/{spawn,wire,run,sessions}.go`, `internal/server/routes_agent.go`, `internal/ws`.
 
 ## 76. The prompt recipes are deleted; the agent route is the only one
 
@@ -2681,6 +2662,7 @@ every key from `model.conf`, and a transcript is worth having without them.
 a prompt streamed `models`/`reasoning`/`delta`/`done` with the frame log, a command-only request changed
 the reasoning level and logged its `CI`/`CO` pair, and the browser generated text, switched models and
 optimised an image prompt through the one route.
+
 
 ## 77. Regenerating an image answers in that node; a variant is a node you make
 
@@ -2725,6 +2707,7 @@ merge spread it over the defaults — so every field deleted from `AiConfig` (`p
 `use-config-store.ts` now drops those names at the merge, from one list, with the reason attached.
 Nothing reads them and the values need no migration: the setting they describe is gone.
 
+
 ## 78. A mask belongs to the node that shows it
 
 **Decision** The mask annotation node carries the mask the workflow consumes: `metadata.mask` holds
@@ -2756,6 +2739,7 @@ sending a picture where a mask belongs: one honest re-mark, and that node is fix
 (`81e7d561…`, 1.48 MB) — the bug, reproduced. With the mask bound to the node, re-running pressed
 generate, opened no editor, kept the node count at 30, and uploaded `7b985050…` again, byte-identical.
 
+
 ## 79. A reference makes it one answer per press; only text-to-image draws
 
 **Decision** An image run with references generates exactly one image, whatever 画布生图张数 says. Only
@@ -2778,6 +2762,7 @@ artifact, with the bound mask (`7b985050…`). The count could not be observed o
 rule in this environment — a Z-Image text-to-image run with 画布生图张数 = 3 also fetched only
 `outputs/0`, so the workflows here return a single artifact per run regardless of `count`. The
 no-reference path is the same expression it was before this change.
+
 
 ## 80. An agent's life belongs to the client that opened it
 
@@ -2825,6 +2810,7 @@ questions on that session both answered ("收到", then "还在") from the same 
 (prompt → `AF`/`AF`/`UF` → answer) streamed as `tool_call`/`tool_result`/`delta` with one `done`.
 The e2e tests state the idempotency, the second turn and the tool relay against a fake agent.
 
+
 ## 81. A one-shot question has no name, so it cannot reach a canvas's agent
 
 **Decision** The words the canvas asks for without continuing — a text node's body, a rewritten prompt, a
@@ -2854,6 +2840,7 @@ for a name that was never connected is `409 session_not_connected`; a prompt on 
 session id answers, leaves that session connected, and the session still answers afterwards. From the
 browser, clicking 优化提示词 logged `POST /api/agent/once 200` with 20 deltas, and the process exited by
 itself (`lived=14886ms`) — a one-shot agent does not outlive its answer.
+
 
 ## 82. The conversation is a socket; a shortcut stays a POST
 
@@ -2911,6 +2898,7 @@ it did not zoom. The Go tests cover the same ground without a model: idempotent 
 name, second turn on one socket, tool relay, `close` releasing, a dropped socket keeping the agent, a
 killed process reporting itself, and the one-shot never reaching a conversation.
 
+
 ## 83. One session per surface, and the model is the session's
 
 **Decision** Every agent use is a session: one process, one socket, one name chosen by the client — the
@@ -2946,6 +2934,7 @@ send) while the second still read 未连接 / 连接; pressing send on the first
 `released session=node:config-… reason=close` with the button back to 连接 and no `alayacore` process
 left running. The client tests hold the
 other half: a session's model does not leak into another's, and asking for words opens no second socket.
+
 
 ## 84. A session's tools are its own, and the workspace is how a call says so
 
@@ -2990,6 +2979,7 @@ rest: the handshake and tool list, a call run by the canvas and answered with wh
 canvas called a failure, a session nobody is watching, a name the gateway never advertised, a notification
 accepted with no body, and a session's directory built for it and removed with it.
 
+
 ## 85. A tool runs in the page, once, for whichever agent asked
 
 **Decision** The canvas answers the gateway's `tool` events itself: one hook mounted where the nodes are
@@ -3017,6 +3007,7 @@ the gateway logged `tool answered session=canvas callId=tool-1 isError=false` in
 turn and a page reload repeated it (`callId=tool-2`). The node titles that disagree with their prompts are
 the canvas's own data — a title is a snapshot taken when the node was made.
 
+
 ## 86. A tool makes a node exactly the way the button does
 
 **Decision** `create_node` calls the same function the canvas's own 文本 / 图片 / 视频 buttons call, with the
@@ -3042,6 +3033,7 @@ refusal names what it can make.
 viewport with the text already in it, selected, with the selection toolbar over it — visible in a
 screenshot taken right after — and the panel showed one step, `调用 canvas_create_node`, and the id.
 
+
 ## 87. The tool URL is the address the gateway actually listens on
 
 **Decision** `mcp.conf` names the workspace at the gateway's **bind** address — `COMFYLOFT_SERVER_HOST:COMFYLOFT_SERVER_PORT`,
@@ -3060,6 +3052,7 @@ the generated file. A gateway bound to `192.168.3.232:8192` wrote
 `url: http://192.168.3.232:8192/mcp/probe-lan-8a8315a4` and its agent logged
 `MCP servers initialized: 1 servers, 3 tools loaded`; with the old `127.0.0.1` URL the same setup cannot
 connect at all (`curl http://127.0.0.1:8192/` → connection refused).
+
 
 ## 88. A tool answers with content, and the gateway only carries it
 
@@ -3092,6 +3085,7 @@ grain with wear marks, diffuse window light from the left — details that are i
 canvas's text. `TestMCPCarriesTheBlocksThePageProduced` holds the carrier property: text, image and resource
 blocks come out of `tools/call` byte-for-byte as the page sent them.
 
+
 ## 89. Generating is the button, not a second way to run
 
 **Decision** `generate(nodeId)` calls the same `handleGenerateNode` the node's own panel calls, with the mode
@@ -3116,6 +3110,7 @@ with `pressed generate on image-1793524968642-jq17f (image)`, and the gateway st
 `POST /api/runs 202` and the run in the queue (`image-z-image-turbo running`). The node count went 39 → 40 and
 the new node sits on the canvas with its prompt.
 
+
 ## 90. The transcript follows the newest message only while the reader is at the bottom; `@` points at a node
 
 **Decision** The agent panel keeps itself at the newest message only while the reader is at the bottom. A
@@ -3135,6 +3130,7 @@ messages grew it to 1360px with `scrollTop` still 0 and `gap 1070` — the reade
 scrolling back to the end, the next message put it at 1145 of 1435 with `gap 0` again. `@` in the composer
 showed "点击一个节点来引用 · ESC 取消", clicking the teapot node put `@a brass compass on a marble table` in the
 draft, and the prompt the gateway logged carried `【画布引用】- image-1793524968642-jq17f (image) …`.
+
 
 ## 91. Changing a prompt and running it again are the manual path, so the agent gets both
 
@@ -3158,6 +3154,7 @@ count the canvas is set to), the node's prompt box showed the new words, its pic
 by candlelight, and the canvas still had **40 nodes** — the same 40 as before. The agent then called
 `read_node` and reported "已直接在原节点上触发生成（没有新建节点）".
 
+
 ## 92. A connection is a drag, so the agent gets the same call
 
 **Decision** `connect(fromNodeId, toNodeId)` adds one connection through the same function a drag adds it with
@@ -3178,6 +3175,7 @@ image-1793524968642-jq17f 连到它上面，然后在配置节点上生成一张
 config node's panel showed 参考图 1 张 with the kettle in it, the run went out and succeeded with one artifact,
 and the canvas went from 40 nodes / 29 connections to 42 / 31 — a new image node holding the variant.
 
+
 ## 93. A pick is a way of typing, so it gives the caret back
 
 **Decision** Choosing a node with `@` puts the focus back in the composer with the caret just after the label it
@@ -3192,6 +3190,7 @@ to save typing, not to interrupt it.
 **Tested** In a browser: typing "看看 @" then clicking the kettle node left `看看 @a rusty copper kettle on a
 dark  ` in the box, `document.activeElement` a TEXTAREA, and `selectionStart` 37 — the end of what was
 inserted. Escaping a pick left `看看 @ 再看 @` untouched with the caret at 9, still in the box.
+
 
 ## 94. The agent panel is the user's window: it opens from the corner it sits in, and it resizes
 
@@ -3216,6 +3215,7 @@ opened the panel; closing the panel showed the button again in the same corner. 
 took the panel from 380×480 to 536×446, and a drag towards the top-left clamped it at 320×360 (the minimum
 width), with the size in the panel's own inline style rather than the class list.
 
+
 ## 95. A popup over the canvas has to say so twice: the marker, and the height
 
 **Decision** A dropdown opened from inside the canvas carries `data-canvas-no-zoom` (so the canvas does not read
@@ -3235,6 +3235,7 @@ canvas, and above it.
 它 changed the panel to `Test / qwen3.8-27b` and the gateway logged `command="model_set"`; the level select
 showed 不思考/普通思考/深度思考, and picking 不思考 logged `command="reasoning_level_set"`.
 
+
 ## 96. `@` needs no space in front of it
 
 **Decision** Any `@` that lands at the caret in the composer asks for a node pick. The earlier rule — only after
@@ -3249,6 +3250,7 @@ typed. A gesture that refuses to start on the input it was made for is worse tha
 **Tested** In a browser: the draft `看看@` (no space before the `@`) showed "点击一个节点来引用 · ESC 取消";
 clicking the kettle node replaced it with `看看@a rusty copper kettle on a dark  `, focus back in the textarea at
 the end of what was inserted.
+
 
 ## 97. The system menu was four questions in one trench coat
 
@@ -3268,6 +3270,7 @@ owns no subject) rather than adding one.
 row; the dock lists … 上传资产 / 导出当前画布 …, and `导出当前画布` was present in the accessibility tree next to
 `上传资产`. The title menu reads 无限画布 1 (42 个节点) / 重命名 / 新建画布 / 我的画布 / **删除当前画布** (red).
 A grep for `打开画布菜单` in the accessibility tree returns nothing: no hamburger is left.
+
 
 ## 98. The side panel is a board over the canvas, not a column beside it
 
@@ -3303,6 +3306,7 @@ canvas. `elementFromPoint(120, 300)` returned a button inside the aside, and `(9
 so the board takes the pointer it covers. A clean storage (all three keys removed, reload) opened with the board
 shut and width 280 and wrote nothing until it was toggled; after opening it, a reload kept it open.
 
+
 ## 99. The memory readout is ComfyUI's, or it is nothing
 
 **Decision** `/api/system/stats` no longer samples the gateway's own host. It asks ComfyUI's
@@ -3333,6 +3337,7 @@ account buttons: no readout, no zeros. `POST /api/system/free-memory` there retu
 `503 comfy_unreachable`. Go: `TestSystemStatsReportComfysMachine`,
 `TestSystemStatsAreAbsentWhenComfyReportsNoDevices`, `TestSystemStatsAreAbsentWhenComfyIsGone`, and the
 `sysinfo.FromComfy` unit tests (units, `nil` for no device, index fallback).
+
 
 ## 100. The conversation is a file, and the process is only what works on it
 
@@ -3375,6 +3380,7 @@ the socket, reconnect, and the new process replays the question and the answer);
 now reports the session's disappearance; the workspace tests read the new `agent/workspaces/` path.
 `make check`, `make test-race`, `npm run check`, `vitest 125` green.
 
+
 ## 101. A replayed citation shows the words, not the block
 
 **Decision** The block the canvas puts in front of a cited prompt — `【画布引用】` and one line per node —
@@ -3404,6 +3410,7 @@ line is left alone; a prompt without a block is returned unchanged. In a browser
 edited to carry exactly the block from the report, the page was reloaded, and the panel drew
 `@补全背景 描述一下这张图片的背景。`.
 
+
 ## 102. `editCanvasRatio` was UI state wearing a workflow input's clothes
 
 **Decision** The image settings popover no longer writes `editCanvasRatio`. Which ratio pill is lit is read
@@ -3429,6 +3436,7 @@ the first. Old canvases are repaired on load rather than left to fail, which is 
 `{editCanvasRatio, editCanvasSize, resolution, seed}` reads back as
 `{editCanvasSize, resolution, seed}`, and a node with nothing stored is untouched.
 
+
 ## 103. Deleting a canvas forgets its conversation
 
 **Decision** `DELETE /api/agent/session/{session}` releases the process if one is running, removes the
@@ -3450,6 +3458,7 @@ was opened with its panel (workspace created), given a session file, then delete
 and its confirmation — the gateway logged
 `DELETE /api/agent/session/canvas%3APrivX2hRZQHWmyUJmmsP6 200`, and both the file and the workspace were
 gone while the other canvas's conversation was untouched.
+
 
 ## 104. The transcript is the agent's, and only a conversation keeps a file
 
@@ -3482,6 +3491,7 @@ words as sent) and `TestOneShotSessionKeepsNoFile` (a socket without the flag pr
 `sessionFile("node:n1")` does not exist). In a browser against a real AlayaCore: after a reload the replayed
 conversation still drew, and a new turn showed the typed sentence once — with the answer appearing under it
 as it streamed — while nothing was added by the submit handler.
+
 
 ## 105. Sending is never blocked, and the queue is visible
 
@@ -3520,6 +3530,7 @@ gateway log shows the pair:
 `<< SM {"type":"steering","data":{"phase":"queued"…` then `…"phase":"delivered"}`. The header now lists only
 `关闭` and `发送`.
 
+
 ## 106. A mention in a message is a link to its node
 
 **Decision** `@title` inside a message in the agent panel is drawn in the accent colour and clicked like a row
@@ -3543,6 +3554,7 @@ picker, sent the message, and the mention drew in the accent colour inside other
 `translate(-827.5px, -173px)` — the same transform a side-panel click produces — with the node selected.
 
 ---
+
 
 ## 107. A route nobody calls is not an API
 
@@ -3592,6 +3604,7 @@ deleted route; `TestTaskNotFoundShape` went with the route it tested.
 
 ---
 
+
 ## 108. The conversation is the socket, so the one-shot run has no caller
 
 **Decision** `agent.Run`, `readTurn`, `withAgent` and `finish` are gone, with the three tests that drove
@@ -3616,6 +3629,7 @@ flushed. One test is new: a detached watcher makes the pump drop events rather t
 it would fail in a browser.
 
 ---
+
 
 ## 109. A presence signal nobody reads is a timer, so it is gone
 
@@ -3660,6 +3674,7 @@ bundle in a browser: the canvas loads, and the network log contains no `/api/ses
 
 ---
 
+
 ## 110. There is no token, because the client that would send it cannot keep one
 
 **Decision** `GATEWAY_TOKEN`, the `X-Gateway-Token` branch in `Guard`, and the variable's row in
@@ -3690,6 +3705,7 @@ would not have been that answer either. `GATEWAY_TOKEN` in an existing `.env` is
 `/api/workflows` answers `200` with and without the header even with `GATEWAY_TOKEN` set in its
 environment, while a cross-site `POST /api/resources/refresh` still gets `403` from the origin guard.
 
+
 ## 111. A session's name becomes a file name, so the readable part is capped
 
 **Decision** `agentWorkspaceKey` cuts its readable prefix at 40 bytes and appends an 8-hex and a `-`:
@@ -3709,6 +3725,7 @@ with an 8-hex suffix, deterministically; two names that agree for their first 49
 and a name carrying `/`, `:`, `*`, `?` and CJK becomes dashes without starting with a dot.
 
 ---
+
 
 ## 112. A spawn is not worth the whole gateway's lock
 
@@ -3735,6 +3752,7 @@ no test connected twice; `TestConnectWhileATurnStreamsReadsTheState` does, and t
 rather than a comment.
 
 ---
+
 
 ## 113. A vendored pack is checked against its own imports
 
@@ -3770,6 +3788,7 @@ as this repository can go without ComfyUI's interpreter.
 
 ---
 
+
 ## 114. The chat the panel stopped keeping, and the code that still carried it
 
 **Decision** Out of the canvas frontend: `chatSessions` / `activeChatId` (persisted in every project,
@@ -3802,6 +3821,7 @@ which is the migration running on a real stored blob; the built bundle contains 
 once — inside the migration that deletes it.
 
 ---
+
 
 ## 115. The three gates that could not see, and what they see now
 
@@ -3840,6 +3860,7 @@ turning `include` on surfaced ten real type errors in the test files, all fixed.
 
 ---
 
+
 ## 116. Startup repairs what a kill left behind, and every knob is documented
 
 **Decision** Three gaps found by walking the tree against its own documents:
@@ -3876,6 +3897,7 @@ would also be indistinguishable from the leftovers, which is why the pattern is 
 `agent/canvas-legacy01/` were gone after the restart, `data/agent/` held only `sessions/`, and `/health`
 answered.
 
+
 ## 117. One of the two Chinese paths was not the author's after all _(the other path is gone too, see #119)_
 
 **Decision** `image-qwen21-outpaint.json` loads its LoRA as `qwen-image-2.1-outpaint-v2.safetensors`, and
@@ -3907,6 +3929,7 @@ workflow's dropdown: `internal/generate/lora.go` compiles the filter with `(?i)`
 caught the first draft of the new index `note`, which had quoted the old folder name.
 
 **Where** `workflows/image-qwen21-outpaint.json`, `resources/index.json`, #66, #67.
+
 
 ## 118. The H3 pack stops being the one we cannot check
 
@@ -3949,6 +3972,7 @@ one; a source that offers neither header still needs the bytes downloaded once.
 **Where** `resources/index.json`, `workflows/video-h3-ref2va-drama.json`,
 `canvas/web/src/lib/resource-copy-zh.ts`.
 
+
 ## 119. Guanlan leaves: an optional download nobody needs
 
 **Decision** `moss_guanlan_lora` is gone from `resources/index.json` — the resource, its entry in the
@@ -3980,6 +4004,7 @@ convenient to list.
 that would have caught a zh dictionary key left pointing at a resource that no longer exists.
 
 **Where** `resources/index.json`, `canvas/web/src/lib/resource-copy-zh.ts`.
+
 
 ## 120. taeh3 stops being a binary of unknown origin
 
@@ -4021,6 +4046,7 @@ only.
 
 **Where** `resources/index.json`, `canvas/web/src/lib/resource-copy-zh.ts`,
 `resources/payload/vae_approx/`.
+
 
 ## 121. Every vendored pack says which commit it is, and which files we changed
 
@@ -4082,6 +4108,7 @@ change.
 
 **Where** `resources/index.json`, `internal/resource/resource.go`.
 
+
 ## 122. Two of the four local patches are gone
 
 **Decision** `minimax-h3-audio-t8` is re-vendored at **v1.79.2** (`93cefbf5d15f`), and
@@ -4125,49 +4152,27 @@ input-name check above is the closest thing available without it.
 **Where** `resources/payload/custom_nodes/minimax-h3-audio-t8`, `.../ComfyUI-SolAttn_triton/__init__.py`,
 `resources/index.json`.
 
-## 123. SeedVR2 leaves: the video upscaler nobody maintains, for a job we do not have
 
-**Decision** `video-seedvr2-upscale` is gone — the registry entry, the graph, its three resources, the
-vendored pack, the runtime-dependency entry, the two loader specs, the `SEEDVR2` model-dir alias, and the
-canvas action that drove it (toolbar button, dialog, API call, hook, i18n, Chinese copy, tests). The
-catalogue is 55 resources and 17 workflows; `resources/payload` is node packs only.
+## 123. SeedVR2 is gone: a video upscaler nobody maintains, for a job we do not have
 
-**Why it went** Three facts, in the order they mattered:
+**Decision** `video-seedvr2-upscale` is gone — the registry entry, the graph, its three resources, the vendored
+pack, the runtime-dependency entry, the loader specs, the `SEEDVR2` model-dir alias, and the canvas action that
+drove it. Removed in 45bc79e.
 
-1. **The job is not one we have.** `video-seedvr2-upscale` took any clip and returned a bigger one. Nobody
-   asked for that; the H3 workflows already produce their own video at the resolution they need.
-2. **Upstream is dormant.** `numz/ComfyUI-SeedVR2_VideoUpscaler` is the official port — its README says so
-   — but the last push was 2025-12-24, with 140 open issues and 24 open pull requests. Recent reports are
-   unanswered, including one from 2026-09-18 that matters for a ComfyUI we keep updating: the pack's
-   compatibility shims register phantom `flash_attn` / `bitsandbytes` modules. It is not archived, so
-   nothing warns a user; it simply rots.
-3. **Nothing better exists for that job.** A code search inside `comfyanonymous/ComfyUI` for `seedvr2`
-   returns zero hits across code, issues, PRs and commits — core never absorbed it — and no fork picked it
-   up (the search returns wrappers and integrations, not successors).
+**Why it went** 1. The job is not one we have: H3 workflows already produce video at the resolution they need.
+2. Upstream is dormant — last push 2025-12-24, 140 open issues, and its compatibility shims register phantom
+`flash_attn` / `bitsandbytes` modules that rot silently under a ComfyUI we keep updating. 3. Core never absorbed
+it, and no fork picked it up.
 
-**What was checked before deleting, because "find a better one" was the tempting answer**
-Two actively maintained packs do H3 video upscaling: `LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler`
-(805★, MIT, last push 2026-09) and `bbaudio-2025/Comfyui-MMH3-UltimateUpscale` (248★, MIT, 2026-10). Both
-are **latent-in, latent-out**: their main nodes declare `model`, `conditioning`, `negative?`, `latent` and
-return `latent`. They enhance a clip *inside* the generation graph; they cannot take an exported mp4. So
-they are not replacements for a file→file workflow — they are a better second pass, and #121's numbers
-already show we benefit from LBH's work: `SelfLiftH3Sampler` loads
-`minimax_h3_latent_upscaler_3d_fp16.safetensors`, which is LBH's model.
+**Do not answer "find a better one" with** the two maintained H3 upscaler packs (LBH, MMH3). Both are
+latent-in/latent-out: they declare `model`, `conditioning`, `negative?`, `latent` and return `latent`, so they
+enhance a clip *inside* a generation graph and cannot take an exported mp4. "Replace the upscaler" and "keep the
+upscale button" are different questions: the first has an answer we already use (#121 loads LBH's model), the
+second has none and does not need one.
 
-That distinction is the whole decision: **"replace the upscaler" and "keep the upscale button" are
-different questions.** The first has a good answer we already use. The second has none, and does not need
-one.
+**Cost** A user holding an arbitrary clip and wanting it bigger has no path. If that becomes a requirement the
+honest way back is a file→file workflow of our own, not this pack.
 
-**Cost** A user holding an arbitrary clip and wanting it bigger has no path any more. If that becomes a
-requirement, the honest way back is a fork of the Apache-2.0 upstream with the torch shim fixed — not
-re-vendoring a dormant pack and hoping.
-
-**Tested** `make check` (imports and bytecode gates included), `tsc --noEmit`, and the canvas suite:
-132 tests, one fewer than before because the deleted `createVideoUpscaleTask` case went with the function.
-
-**Where** `workflows/registry.json`, `resources/index.json`, `resources/payload/custom_nodes/`,
-`internal/resource/status.go`, `internal/workflow/loaders.go`, `internal/setup/paths.go`,
-`canvas/web/src/{lib/canvas,components/canvas,pages/canvas,services/api,i18n}`.
 ## 124. The no-VDN path leaves, and takes the last unlicensed pack with it
 
 **Decision** The three `-novdn` workflows, their graph, the LightX2V 8-step LoRA, the SolAttn pack, the
@@ -4212,40 +4217,20 @@ every pack reference resolves, and the 8 payload directories are exactly the 8 v
 `canvas/web/src/lib/canvas/video-model-mode.ts`, the two node panels, `video-settings-panel.tsx`,
 `i18n/locales/*`, `lib/resource-copy-zh.ts`, `internal/workflow/media_test.go`.
 
-## 125. Krea2 leaves: the second text-to-image family nobody opened
 
-**Decision** The `krea2` pack is gone — four resources, the `image-krea2-turbo` workflow and its graph, the
-Chinese copy, and 29.92 GiB of weights. The catalogue is 13 workflows, 49 resources and 8 packs.
+## 125. Krea2 is gone: the second text-to-image family nobody opened
 
-**Why** It occupied the same slot as Z-Image Turbo and had never been used. Both are 8-step, CFG-1
-distillation models of the same size class with a text-to-image graph; the difference is which images they
-were trained on. The evidence is one-sided:
+**Decision** The `krea2` pack is gone — four resources, `image-krea2-turbo` and its graph, the Chinese copy,
+29.92 GiB of weights. Removed in e1410b2.
 
-| | Z-Image Turbo | Krea2 Turbo |
-|---|---|---|
-| disk | 25.04 GiB (bf16 + int8) | 29.92 GiB (fp8 + int8) |
-| outputs in `output/` | **1030** | **0** |
+**Why** It occupied Z-Image Turbo's slot: both are 8-step, CFG-1 distillations of the same size class, differing
+only in what they were trained on. The evidence is one-sided — 1030 outputs in `output/` from Z-Image, 0 from
+Krea2 — and three of its four weight files existed for this workflow alone.
 
-Sampling five Z-Image artefacts plus the newest one, every embedded graph names
-`z_image_turbo_bf16.safetensors` at 8 steps and CFG 1 — so the int8 variant has never run either, though
-it is the low-VRAM fallback and stays.
+**What it costs to say no** 29.92 GiB resident for a second aesthetic, in a pack the resource panel installs
+again in minutes. Z-Image (drafts), Qwen-Image 2.1 (edit, inpaint, outpaint, angle) and MOSS-Image (photoreal)
+do different jobs; Krea2 was the only removable duplicate.
 
-**What "another aesthetic" costs** 29.92 GiB resident for a second look, when the pack can be installed
-from the resource panel in a few minutes and removed again. Three of the four files only existed for this
-workflow: `qwen3vl_4b_fp8_scaled` (4.88 GiB, a vision-language encoder used nowhere else),
-`qwen_image_vae`, and the int8 base model that no graph declared a dependency on.
-
-**What is left for images** Z-Image Turbo (fast drafts, the one actually used), Qwen Image 2.1 (edit,
-inpaint, outpaint, multi-angle) and MOSS-Image (the three-recipe photoreal family). Those three do
-different jobs; Krea2 was the only removable duplicate.
-
-**Tested** `make check`, `tsc --noEmit`, 132 canvas tests, and the integrity pass: 13 registry entries all
-point at graphs that exist, every pack reference resolves, 8 payload directories for 8 vendored node
-resources. `internal/generate`'s "a LoRA outside the family is rejected" fixture was renamed from
-`krea2/anime.safetensors` to `other-family/anime.safetensors` — it needs a foreign name, not that one.
-
-**Where** `resources/index.json`, `workflows/registry.json`, `workflows/image-krea2-turbo.json` (deleted),
-`canvas/web/src/lib/resource-copy-zh.ts`, `README.md`, `internal/generate/generate_test.go`.
 ## 126. The node packs are no longer bundled
 
 **Decision** `resources/payload` is gone. All nine node resources install by downloading the
@@ -4295,6 +4280,7 @@ exercises the new code.
 **Where** `internal/resource/jobs.go`, `internal/resource/install_extract_test.go` (new),
 `resources/index.json`, `canvas/web/src/lib/resource-copy-zh.ts`, `resources/payload/` (deleted).
 
+
 ## 128. `resources/index.json` becomes `catalogue.json` _(the name given in it was wrong, see #129)_
 
 **Decision** The resource index moved from `resources/index.json` to `catalogue.json` at the repository
@@ -4325,6 +4311,7 @@ returns only #121–#127, which describe history.
 `internal/config/config.go`, `internal/config/config_test.go`, `internal/resource/*_test.go`,
 `canvas/web/{src,tests}`, `README.md`, `docs/server.md`, `docs/known-issues.md`.
 
+
 ## 129. The file is `resources.json`, not `catalogue.json`
 
 **Decision** Renamed. #128 moved the index out of `resources/` and called it `catalogue.json`; the name was
@@ -4350,6 +4337,7 @@ workflow row is called `resources`. Beside `workflows/` at the root it also stat
 
 **Where** `resources.json` (moved), `internal/resource/`, `internal/config/`, `canvas/web/`,
 `README.md`, `docs/server.md`, `docs/known-issues.md`.
+
 
 ## 130. A pack's dependencies are derived from its graphs, not written down three times
 
@@ -4416,6 +4404,7 @@ catalogue_test.go (new),resource.go,status.go,helpers.go,jobs.go,bake_test.go,re
 `canvas/web/src/{services/api/resources.ts,components/settings/resource-center-panel.tsx,
 lib/resource-copy-zh.ts}`, `internal/resource/payload_imports_test.go` (deleted).
 
+
 ## 131. `core` stops being a pack
 
 **Decision** The `core` pack is gone from `resources.json`. The panel now lists seven packs, all of them
@@ -4440,6 +4429,7 @@ still renders as a green row with an install checkbox.
 `canvas/web/src/{components/settings/resource-center-panel.tsx,
 i18n/locales/{en-US,zh-CN}.ts,lib/resource-copy-zh.ts}`, `canvas/web/tests/resource-copy-zh.test.ts`,
 `README.md`.
+
 
 ## 132. A node pack that is on disk but not loaded is not "missing"
 
@@ -4470,6 +4460,7 @@ to do it. A half-extracted pack would also read as `待重启`; restarting is th
 `canvas/web/src/{services/api/resources.ts,components/settings/resource-center-panel.tsx,
 i18n/locales/{en-US,zh-CN}.ts}`.
 
+
 ## 133. The tick means "and also download this", so it says so
 
 **Decision** The optional section is called `可选版本` / "Optional versions", its checkbox carries a tooltip that
@@ -4491,6 +4482,7 @@ the same rule that hides the pack's install button, and its tooltip explains tha
 disabled (nothing left to download), `h3` and `interp` disabled for the restart reason, everything else as before.
 
 **Where** `canvas/web/src/{components/settings/resource-center-panel.tsx,i18n/locales/{en-US,zh-CN}.ts}`.
+
 
 ## 134. A blocked mode does not hide the workflow
 
@@ -4522,6 +4514,7 @@ modeProblems: {inpaint: 2}`, every other workflow unchanged. `gofmt`, `go vet`, 
 `canvas/web/src/{services/api/{resources,workflows}.ts,lib/gateway-models.ts,stores/use-config-store.ts,
 components/image-settings-panel.tsx,components/canvas/canvas-image-settings-popover.tsx,
 components/settings/resource-center-panel.tsx,i18n/locales/{en-US,zh-CN}.ts}`.
+
 
 ## 135. "Install this pack" installs the pack
 
@@ -4558,6 +4551,7 @@ qwenmultiangle]`, `optionalIds = []`, and every pack reporting `present == total
 **Where** `internal/resource/{status.go,derive.go}`, `resources.json`,
 `canvas/web/src/components/settings/resource-center-panel.tsx`.
 
+
 ## 136. The brush ring was behind the dialog it lives in
 
 **Decision** The mask editor's brush ring moved from `z-[1100]` to `z-[1500]`, and the canvas only hides the
@@ -4584,6 +4578,7 @@ behind the dialog, so those can never be opened from inside one. `tsc --noEmit`,
 
 **Where** `canvas/web/src/components/canvas/canvas-node-mask-edit-dialog.tsx`,
 `canvas/web/tests/overlay-z-index.test.ts` (new).
+
 
 ## 137. `infinite-canvas/` becomes `canvas/`
 
@@ -4619,6 +4614,7 @@ identity inside the subtree, not this repository's name for it.
 
 **Where** `canvas/` (moved, 290 tracked files), `Makefile`, `start.sh`, `.gitignore`, `README.md`,
 `docs/{decisions,gateway,known-issues}.md`.
+
 
 ## 138. The project is Comfy Loft
 
@@ -4665,6 +4661,7 @@ separate decision with its own consequences, not a rename.
 
 **Where** `README.md`, `docs/server.md`, `main.go`.
 
+
 ## 139. The old product names leave the canvas shell too
 
 **Decision** The browser tab says `Comfy Loft` in both languages, the canvas manager is titled `Canvas` /
@@ -4698,6 +4695,7 @@ tests, `go test ./internal/...`, and a rebuilt bundle whose `<title>` is `Comfy 
 names now returns nothing outside `canvas/plugins/**`.
 
 **Where** `canvas/web/{index.html,src/i18n/locales/{zh-CN,en-US}.ts}`.
+
 
 ## 140. The plugin SDK and its packages stop being named after upstream
 
@@ -4735,6 +4733,7 @@ risk plugins built before this commit for no visible gain.
 **Where** `canvas/plugins/canvas/**` (48 files), `canvas/web/{package.json,package-lock.json}`,
 `canvas/{CHANGELOG.md,SECURITY.md}` (deleted).
 
+
 ## 141. The credits section names the origin and the licence, and stops there
 
 **Decision** `README.md` opens with a short Credits block and nothing more: this is a fork of
@@ -4765,6 +4764,7 @@ claims a licence file says something it does not is worse than one that says not
 holds — a Chinese check over the file returns the one pre-existing protocol example.
 
 **Where** `README.md`, `canvas/LICENSE`, `docs/decisions.md`.
+
 
 ## 142. The third-party agent plugin goes, and the browser keys stay
 
@@ -4802,6 +4802,7 @@ in `known-issues.md` was re-measured (55 files, 411 lines).
 
 **Where** `canvas/plugins/infinite-canvas/` (deleted), `docs/known-issues.md`, `docs/decisions.md`, `README.md`.
 
+
 ## 143. The browser keys and the export marker are renamed too
 
 **Decision** The persisted identities now carry this project's name: `comfy-loft:canvas_store`,
@@ -4835,6 +4836,7 @@ and no `infinite-canvas:` key. A fresh browser therefore starts with an empty ap
 stores/canvas/{use-canvas-store,use-plugin-store}.ts,i18n/index.ts,services/localforage-databases.ts,
 types/canvas-export.ts,lib/canvas/canvas-export.ts,components/assets/asset-transfer.ts}`,
 `canvas/plugins/canvas/sdk/src/jsx-runtime.ts`.
+
 
 ## 144. The asset library is deleted, not hidden
 
@@ -4886,6 +4888,7 @@ tombstone, the same courtesy `/config` gets), and a file dropped on the canvas s
 
 **Where** `canvas/web/src/{stores/use-asset-store.ts,stores/asset-persist.ts,components/assets/**,components/kit/{tag-input,tag,nav,display}.tsx,components/canvas/canvas-side-panel.tsx,components/canvas/canvas-node-hover-toolbar.tsx,components/canvas/canvas-top-bar.tsx,pages/canvas/project.tsx,pages/panel-entries.tsx,router.tsx,types/canvas.ts,i18n/locales/*,styles/globals.css,tests/persist-migration.test.ts}`.
 
+
 ## 145. The deleted library gets one exit, and then it is gone
 
 **Decision** `lib/canvas/legacy-asset-store.ts` reads the `comfy-loft:asset_store` record back,
@@ -4920,6 +4923,7 @@ the image alive; discarding removes the record and the next sweep collects the i
 `legacy` root in `sweepUnusedCanvasFiles`, and `tests/legacy-asset-store.test.ts`.
 
 **Where** `canvas/web/src/{lib/canvas/legacy-asset-store.ts,lib/canvas/canvas-file-cleanup.ts,components/layout/legacy-assets-banner.tsx,layouts/user-layout.tsx,i18n/locales/*}`,`canvas/web/{tests/legacy-asset-store.test.ts,scripts/check-exports.cjs}`.
+
 
 ## 146. The project's machine identity is `comfyloft`
 
@@ -4970,6 +4974,7 @@ logs no console errors.
 **Where** `go.mod`, 61 Go files' import paths, `canvas/plugins/canvas/{sdk,html,markdown,panorama,registry,sticky-note,svg,template}/**`,
 `canvas/web/{package.json,package-lock.json,src/{i18n/index.ts,lib/canvas/canvas-export.ts,services/localforage-databases.ts,stores/**,types/canvas-export.ts}}`,
 `docs/server.md`.
+
 
 ## 147. The MCP edge is a bridge process, not a URL
 
@@ -5036,6 +5041,7 @@ then a tool call answered — the model's reply described the empty canvas it ha
 `internal/agent/{spawn.go,sessions.go}`, `internal/config/config.go`, `Makefile`, `start.sh`,
 `README.md`, `docs/server.md`.
 
+
 ## 148. There is no plugin mechanism; a node type is a built-in
 
 **Decision** The plugin system is gone — loader, runtime, store, manager dialog, the SDK and its eight
@@ -5089,6 +5095,7 @@ Touched: `node-registry.ts`, `builtin-nodes.tsx`, `canvas-node.tsx`, `project.ts
 `internal/server/routes_mcp.go`, `scripts/check-exports.cjs`, `docs/known-issues.md`, `README.md`,
 `.gitignore`.
 
+
 ## 149. The canvas frontend is `canvas/`, not `canvas/web/`
 
 **Decision** Every file under `canvas/web/` moved up one level and `canvas/web/` is gone. `canvas/` is the
@@ -5118,6 +5125,7 @@ console is clean.
 **Where** `canvas/**` (moved), `Makefile`, `start.sh`, `.gitignore`, `canvas/vite.config.ts`,
 `canvas/tests/resource-copy-zh.test.ts`, `README.md`, `docs/server.md`.
 
+
 ## 150. The two upstream leftovers go too
 
 **Decision** `canvas/vercel.json` and `canvas/components.json` are deleted. #149 left them alone because
@@ -5135,6 +5143,7 @@ two files dead also found this one alive, which is the reason it was checked at 
 **Tested** `npm run check` (i18n, exports, prettier, `tsc`), 143 canvas tests, `make web`.
 
 **Where** `canvas/vercel.json`, `canvas/components.json` (deleted).
+
 
 ## 151. There are no users yet, so the compatibility layers go
 
@@ -5169,6 +5178,7 @@ above.
 **Where** `canvas/src/{lib/canvas/{legacy-asset-store.ts,canvas-file-cleanup.ts},components/layout/legacy-assets-banner.tsx,layouts/user-layout.tsx,i18n/locales/*}`,
 `canvas/{tests/legacy-asset-store.test.ts,scripts/check-exports.cjs}`,
 `internal/{server/{agent_config.go,server.go},config/config.go}`.
+
 
 ## 152. A canvas is a directory, and the gateway owns it
 
@@ -5223,6 +5233,7 @@ whole `make check`, and `docs/server.md` now documents the layout, the five endp
 (new), `internal/server/{server.go,routes_admin.go,e2e_test.go}`, `internal/config/{config.go,config_test.go}`,
 `docs/server.md`, `README.md`, `.env.example`, `.gitignore`.
 
+
 ## 153. There is no API key, because there is nothing to authenticate to
 
 **Decision** `apiKey` is gone: the field on `AiConfig` and on `ModelChannel`, the two `"local"` defaults,
@@ -5268,6 +5279,7 @@ gateway, and the run and upload request shapes are covered by `tests/api-runs.te
 `hooks/use-local-gateway-sync.ts`, `components/settings/{app-config-modal,channel-editor-drawer}.tsx`,
 `components/layout/client-root-init.tsx`, `i18n/locales/*`, `tests/model-selection.test.ts`,
 `internal/httpx/middleware.go`.
+
 
 ## 154. The canvas store is a cache, and one queue writes it
 
@@ -5329,6 +5341,7 @@ a tab left on a canvas that no longer existed got `404`, went to `/`, and create
 (new/rewritten), `pages/canvas/{entry.tsx,project.tsx}`, `components/{canvas/{canvas-manager-dialog,canvas-project-card,canvas-top-bar,canvas-delete-projects-dialog}.tsx,layout/{user-layout,client-root-init}.tsx}`,
 `services/{file-storage,image-storage}.ts`, `lib/canvas/node-title.ts`, `i18n/locales/*`,
 `tests/{canvas-save-queue,node-title}.test.ts`, `scripts/check-exports.cjs`, `internal/httpx/middleware.go`.
+
 
 ## 155. Preferences live with the workspace, and the browser stores nothing
 
@@ -5406,6 +5419,7 @@ theme and the language wrote `settings.json` (`theme`, `locale`, `lastCanvas`, `
 `canvas/src/{stores/{use-config-store.ts,use-theme-store.ts,canvas/use-canvas-side-panel-store.ts},lib/canvas/last-canvas.ts,i18n/index.ts,constant/runtime-config.ts,components/{layout/{app-providers,client-root-init,user-status-actions}.tsx,settings/{app-config-modal,resource-setup-gate}.tsx,canvas/canvas-node-hover-toolbar.tsx,kit/feedback.tsx}}`,
 `canvas/index.html`, `canvas/src/i18n/locales/*`, `start.sh`, `docs/server.md`.
 
+
 ## 156. Media belongs to the canvas, and the gateway stops keeping scratch space
 
 **Decision** A run and an upload are canvas-scoped, and their bytes live in the canvas directory:
@@ -5469,6 +5483,7 @@ empty console.
 `canvas/src/components/canvas/canvas-manager-dialog.tsx`, `canvas/src/pages/canvas/project.tsx`,
 `canvas/src/i18n/locales/*`, `canvas/package.json`, `docs/server.md`.
 
+
 ## 157. The gateway's liveness is learnt from the traffic, not probed
 
 **Decision** The heartbeat is gone. `services/api/gateway-status.ts` no longer has a timer, a
@@ -5505,6 +5520,7 @@ cleared on the next poll, `window.__noReload` survived (no reload), and the new 
 
 **Where** `canvas/src/services/api/{gateway-status.ts,http.ts}`, `canvas/src/hooks/use-local-gateway-sync.ts`,
 `canvas/src/i18n/locales/*`, `canvas/tests/api-*.test.ts` (the stubs).
+
 
 ## 158. A tab that is out of date says so instead of winning
 
@@ -5552,6 +5568,7 @@ answer.
 `canvas/src/components/canvas/canvas-conflict-dialog.tsx` (new), `canvas/src/pages/canvas/project.tsx`,
 `canvas/src/i18n/locales/*`, `canvas/tests/canvas-save-queue.test.ts`.
 
+
 ## 159. The frontend is `frontend/`, and the build target says so
 
 **Decision** `canvas/` is now `frontend/`, and the npm targets are `make frontend`, `frontend-deps`,
@@ -5578,6 +5595,7 @@ bundle" in its help text, because that is what it builds.
 **Tested** `make frontend` (a fresh build into `frontend/dist`), `make frontend-check`, `npm run check`,
 127 canvas tests, `make check`, `make verify-static`, and `./start.sh`: the page, `config.js` and the API
 all answer, and the canvas loads in the browser with nothing in the console.
+
 
 ## 160. The newest connection reads the agent, and an empty turn is a failure
 
@@ -5621,6 +5639,7 @@ prompt that had produced nothing.
 `internal/server/agent_e2e_test.go`, `internal/agent/session_test.go`,
 `frontend/src/services/api/prompts.ts`, `frontend/src/i18n/locales/*`,
 `frontend/tests/api-prompts.test.ts`.
+
 
 ## 161. A run goes into the canvas, and one function is the only place that says where
 
@@ -5681,6 +5700,7 @@ Not clicked in a browser yet: the generate path from the node itself.
 `frontend/tests/api-runs.test.ts`, `frontend/tests/api-video-runs.test.ts`,
 `frontend/tests/api-image-upscale.test.ts`.
 
+
 ## 162. A stub that matches a URL's suffix cannot fail
 
 **Decision** The canvas tests that answer a run route their stubs by the **whole** URL and answer `404` to
@@ -5707,6 +5727,7 @@ the point, but it is friction, and it is why the stub lives next to the cases ra
 the artifact is fetched from anywhere but `GET /api/canvases/{id}/files/{name}`.
 
 **Where** `frontend/tests/api-image-upscale.test.ts`, `frontend/tests/api-video-runs.test.ts`.
+
 
 ## 163. A citation is an id, and two nodes may share a name
 
@@ -5763,6 +5784,7 @@ it made two `canvas_read_node` calls and wrote its answer as a table of `text-aa
 **Where** `frontend/src/lib/canvas/agent-references.ts`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/tests/agent-references.test.ts`.
 
+
 ## 164. A replaced socket reconnects, and it does not release the agent
 
 **Decision** Only the connection that is still reading a session may release it, and a browser told `closed`
@@ -5805,6 +5827,7 @@ tab A reconnects and answers "我还在。"; the gateway logs a third `socket op
 **Where** `internal/agent/sessions.go`, `internal/server/routes_agent.go`, `frontend/src/services/api/agent.ts`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `internal/server/agent_e2e_test.go`.
 
+
 ## 165. A save that ran out of retries waits for the next edit
 
 **Decision** A save whose retry schedule is spent stops; the next edit is what starts a new one.
@@ -5825,6 +5848,7 @@ again" — 3 attempts, 3 errors, still dirty, and a fourth attempt after a new e
 
 **Where** `frontend/src/lib/canvas/save-queue.ts`, `frontend/tests/canvas-save-queue.test.ts`.
 
+
 ## 166. Preferences are written one at a time
 
 **Decision** One settings document on the wire at a time, in the order it was edited.
@@ -5841,6 +5865,7 @@ request, in order; a failure is retried by the next change rather than from the 
 alternative is a lost edit rather than a late one.
 
 **Where** `frontend/src/stores/use-settings-store.ts`.
+
 
 ## 167. The upload ceiling is the one that was configured
 
@@ -5860,6 +5885,7 @@ accepts it.
 
 **Where** `internal/httpx/form.go`, `internal/httpx/httpx.go`, `internal/server/server.go`.
 
+
 ## 168. Shutdown stops the task cleaner instead of waiting for its next tick
 
 **Decision** Shutdown signals the cleaner and then waits for it: `stop` and `done` are two channels.
@@ -5877,6 +5903,7 @@ after SIGTERM it was still running.
 build was still running six seconds later.
 
 **Where** `cmd/comfyloft-server/main.go`.
+
 
 ## 169. A file that could not be added says so, and media too big to hand over is not sent
 
@@ -5897,6 +5924,7 @@ loses the whole conversation rather than one read.
 
 **Where** `frontend/src/pages/canvas/hooks/use-content-ingress.ts`,
 `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`, `frontend/src/i18n/locales/*.ts`.
+
 
 ## 170. The default language is English
 
@@ -5929,6 +5957,7 @@ language keeps it, because `bootLocale()` reads the saved document first.
 
 **Where** `frontend/src/i18n/index.ts`, `frontend/index.html`, `frontend/scripts/check-i18n.cjs`,
 `docs/decisions.md` #20 and #41 (their wording no longer rests on the fallback being Chinese).
+
 
 ## 171. A file's name is the document's, so an import keeps it
 
@@ -5981,6 +6010,7 @@ finding — a file's name is the document's, and an import must not rewrite it.
 `frontend/src/lib/canvas/canvas-export.ts`, `frontend/src/components/canvas/canvas-manager-dialog.tsx`,
 `frontend/src/stores/canvas/use-canvas-store.ts`.
 
+
 ## 172. One canvas, one zip, and the gateway unpacks it
 
 **Decision** An export is one canvas: a zip holding `canvas.json` (the document), `manifest.json` (format and
@@ -6031,6 +6061,7 @@ node and title, the file kept its name and its bytes, and `canvas.json` on disk 
 `frontend/src/services/api/canvases.ts`, `frontend/src/stores/canvas/use-canvas-store.ts`,
 `frontend/src/components/canvas/canvas-manager-dialog.tsx`, `frontend/src/types/canvas-export.ts`,
 `frontend/src/lib/canvas/canvas-document.ts`.
+
 
 ## 173. A generated file is the file the run wrote
 
@@ -6086,6 +6117,7 @@ honest for a document no build can produce any more. `canvas-export.ts` lost the
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/services/{image-storage,file-storage}.ts`,
 `frontend/src/lib/canvas/canvas-generation-helpers.ts`.
 
+
 ## 174. A reference is named, not copied
 
 **Decision** A run's media map takes the file a reference already is. A node's picture, a mask, an upscale
@@ -6118,6 +6150,7 @@ poll) and `media: {image: ["up-abcdef12.png"]}`, while a source with none still 
 **Where** `frontend/src/services/canvas-files.ts` (`mediaIdOf`), `frontend/src/services/api/image.ts`,
 `frontend/src/services/api/video.ts`.
 
+
 ## 175. A cancellation is a value, not a sentence
 
 **Decision** Every service rethrows a request the caller cancelled *as itself* (`throwIfCanceled`) before it
@@ -6140,6 +6173,7 @@ assert on `name === "AbortError"` paths; `npm run check` and `npx vitest run` (1
 **Where** `frontend/src/services/api/http.ts` (`throwIfCanceled`), `frontend/src/services/api/{image,video,audio,runs,agent}.ts`,
 `frontend/src/lib/canvas/canvas-generation-helpers.ts`.
 
+
 ## 176. A dialog with no safe default cannot be dismissed
 
 **Decision** The conflict dialog has no close button, its backdrop does nothing, and Escape does nothing. The
@@ -6158,6 +6192,7 @@ appeared with only its two buttons; Escape left it on screen; "keep this one" sa
 moved, the other tab's node replaced) and closed it.
 
 **Where** `frontend/src/components/kit/dialog.tsx`, `frontend/src/components/canvas/canvas-conflict-dialog.tsx`.
+
 
 ## 177. The last save before a page leaves is sent with keepalive, when it fits
 
@@ -6179,6 +6214,7 @@ request that usually still arrives.
 
 **Where** `frontend/src/services/api/http.ts`, `frontend/src/services/api/{canvases,settings}.ts`,
 `frontend/src/lib/canvas/save-queue.ts`, `frontend/src/stores/{canvas/use-canvas-store,use-settings-store}.ts`.
+
 
 ## 178. A canvas's conversation is a file in the canvas
 
@@ -6212,6 +6248,7 @@ it on the next connection.
 `internal/server/agent_conversations.go`, `internal/server/{agent_config,routes_agent}.go`,
 `frontend/src/services/api/agent.ts`, `docs/server.md`.
 
+
 ## 179. An image is stored, or it fails — never kept as an address
 
 **Decision** `uploadImage` has one path: a `File`/`Blob` is stored as a canvas file, and a string is downloaded
@@ -6232,6 +6269,7 @@ load, so the old branch would have resolved — the test fails against the previ
 of rejecting`) and passes now.
 
 **Where** `frontend/src/services/image-storage.ts`, `frontend/tests/image-storage.test.ts`.
+
 
 ## 180. One run is one picture, and a node holds one result
 
@@ -6272,26 +6310,20 @@ hooks/use-generation-runs.ts}`, `frontend/src/components/canvas/{canvas-node,can
 canvas-image-settings-popover,canvas-node-hover-toolbar}.tsx`, `frontend/src/components/image-settings-panel.tsx`,
 `frontend/src/stores/use-config-store.ts`, both locales.
 
+
 ## 181. The start script rebuilds a bundle older than its sources
 
 **Decision** `./start.sh` compares `frontend/dist/index.html` with `frontend/src`, `frontend/public`,
-`index.html`, `vite.config.ts`, `package.json` and `package-lock.json`, and runs `make frontend` when the
-bundle is missing or older. It does this before the gateway starts, so the gateway's write of
-`dist/config.js` still lands in the file the browser reads first.
+`index.html`, `vite.config.ts`, `package.json` and `package-lock.json`, and runs `make frontend` when the bundle
+is missing or older — before the gateway starts, so the gateway's write of `dist/config.js` still lands in the
+file the browser reads first. In 46b1b08.
 
 **Why** The rule was "the bundle is build output, so remember to run `make frontend`", and forgetting it is
 invisible: the page loads, the old code runs, and a fix looks like it did nothing. That is not a rule worth
-remembering — it is a rule that punishes remembering nothing. The build is two seconds when it happens at all.
+remembering; it is a rule that punishes remembering nothing. The build takes two seconds.
 
-**Cost** Starting without changing anything still touches the filesystem to check, and a source tree whose
-mtime moved without its content changing rebuilds a bundle that did not need it. Both are cheaper than a
-stale page.
-
-**Tested** A copy of the workspace with a bundle older than its sources: `./start.sh` printed "building the
-canvas bundle (missing, or older than its sources)", built, and served; a second start printed nothing and
-served the same bundle.
-
-**Where** `start.sh`, `README.md`.
+**Cost** Every start touches the filesystem, and a source tree whose mtime moved without its content changing
+rebuilds a bundle that did not need it. Both are cheaper than a stale page.
 
 ## 182. The agent can delete a node, and point at one
 
@@ -6321,6 +6353,7 @@ then `delete_node` on an unknown id (an `isError` answer naming it), `delete_nod
 
 **Where** `internal/server/routes_mcp.go`, `internal/server/mcp_test.go`,
 `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`, `frontend/src/pages/canvas/project.tsx`.
+
 
 ## 183. The agent is told to connect rather than copy
 
@@ -6356,6 +6389,7 @@ there's nothing to keep in step and no ambiguity about which version you meant".
 `internal/server/routes_mcp.go`, `internal/agent/spawn.go`, `internal/agent/args_test.go`,
 `internal/server/mcp_test.go`, `docs/server.md`.
 
+
 ## 184. The agent can move a node
 
 **Decision** `move_node(nodeId, position)` puts one node's top-left corner where the tool says — the same
@@ -6379,6 +6413,7 @@ and the DOM transform (`translate(640px, -260px)`) and the saved `canvas.json` a
 `position` answered `move_node needs a position: {x, y} in canvas coordinates` as an error, an unknown id
 answered with the node lookup's own message, moving the node onto an empty group node set
 `metadata.groupId` to it, and moving it back out cleared it.
+
 
 ## 185. The prompt box holds the user's words; the request is composed when it is sent
 
@@ -6419,6 +6454,7 @@ picture; the saved node then held `prompt: ""`, `sentPrompt: "【Text 1】\na re
 `frontend/src/components/canvas/canvas-node-generation.ts` (unchanged by this: it already appended),
 `frontend/tests/canvas-generation-context.test.ts`.
 
+
 ## 186. The agent's history can be thrown away
 
 **Decision** The agent panel's header carries one more button (`canvas.agent.clearHistory`): it asks first,
@@ -6444,6 +6480,7 @@ answered `DELETE /api/agent/session/canvas%3A…` 200, released the old process 
 new one (`pid=374193`), the file was gone, and the panel showed its empty state with no messages while the
 canvas kept its two nodes and its picture. The next message wrote a fresh file whose first entry was that
 new message, and the answer did not mention the earlier turn.
+
 
 ## 187. Clearing the history waits for an idle agent, and the gateway is what decides
 
@@ -6479,6 +6516,7 @@ confirm, then `DELETE … 200`, release, new pid — left the file gone and the 
 `internal/server/routes_agent.go`, `internal/server/agent_e2e_test.go`,
 `frontend/src/services/api/agent.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`, both
 locales.
+
 
 ## 188. The bottom dock is gone; its commands live in the canvas menu
 
@@ -6522,6 +6560,7 @@ canvas** opened the existing confirmation.
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/lib/canvas/canvas-node-geometry.ts`,
 `frontend/tests/canvas-focus-viewport.test.ts`, both locales.
 
+
 ## 189. The bridge is found beside the gateway, on PATH, or nowhere honest
 
 **Decision** `mcpBridgePath` looks for `comfyloft-mcp` in the order the agent's own binary is found
@@ -6542,6 +6581,7 @@ binary that has none beside it (which is what `go run` looks like), and `MCP_BIN
 MCP tests (which go through `writeMCPConf`) still pass.
 
 **Where** `internal/server/agent_config.go`, `internal/server/agent_config_test.go`.
+
 
 ## 190. Preferences and Add workflows are two windows, and the Gateway tab is gone
 
@@ -6610,6 +6650,7 @@ the same frame, no close button, and the skip footer with the new hint.
 `frontend/src/pages/panel-entries.tsx`, `frontend/src/i18n/locales/*`, `frontend/scripts/check-*.cjs`,
 `frontend/tests/overlay-z-index.test.ts`, `docs/server.md`.
 
+
 ## 191. The left column: one width, three stacked boxes
 
 **Amended by #195** The middle box holds two lists now — the canvases in the workspace and the nodes in this
@@ -6675,6 +6716,7 @@ and shut.
 `frontend/src/components/canvas/canvas-mini-map.tsx`,
 `frontend/src/components/canvas/canvas-refresh-shell.tsx`.
 
+
 ## 192. Canvas content goes under the chrome, and only popovers go over it
 
 **Decision** The board has one layering order, and it is about what a thing *is*, not what it is attached
@@ -6725,6 +6767,7 @@ lasso share that parent and those two numbers.
 
 **Where** `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`,
 `frontend/src/components/canvas/canvas-selection-toolbar.tsx`.
+
 
 ## 193. The card skins, the progress-ring skins and the unlock flow are gone
 
@@ -6792,6 +6835,7 @@ renders now.
 `frontend/src/components/layout/client-root-init.tsx`, `internal/store/preferences.go`,
 `internal/server/routes_admin.go`, `internal/server/server.go`.
 
+
 ## 194. A dropdown's list outranks the dialog that opened it
 
 **Decision** The listbox in `kit/select-primitive` sets `z-[1500]`, and no caller passes a layer of its own any
@@ -6820,6 +6864,7 @@ and `npm run build` all pass.
 
 **Where** `frontend/src/components/kit/select-primitive.tsx`, `frontend/src/components/kit/select.tsx`,
 `frontend/src/components/model-picker.tsx`, `frontend/src/components/canvas/agent-settings-controls.tsx`.
+
 
 ## 195. The left column has two lists, and the panel opens downward
 
@@ -6910,6 +6955,7 @@ workspace's one canvas):
 `frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/pages/canvas/project.tsx`,
 `frontend/src/lib/canvas/node-prompt-field.ts`, both locales, `frontend/scripts/check-i18n.cjs`.
 
+
 ## 196. The canvas menu holds this canvas's commands
 
 **Decision** The menu on the canvas's name is about the canvas on screen and nothing else: the four sections it
@@ -6951,6 +6997,7 @@ that menu. `npm run check` (i18n 823/809; `canvas.switchProject`, `canvas.delete
 **Where** `frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/pages/canvas/project.tsx`,
 `frontend/src/components/canvas/canvas-delete-projects-dialog.tsx`, both locales.
 
+
 ## 197. One button opens the column, and its icon is the geometry
 
 **Decision** The top bar's left column has one button. The grid button beside the panel toggle — "My Canvases",
@@ -6977,6 +7024,7 @@ panel" / "Expand panel". `npm run check` (i18n: `canvas.projects` removed, no de
 **Where** `frontend/src/components/canvas/canvas-top-bar.tsx`,
 `frontend/src/stores/canvas/use-canvas-side-panel-store.ts`, both locales.
 
+
 ## 198. The canvas list does not move under the pointer
 
 **Decision** The rows of the canvases list are ordered by when each canvas was **created**, newest first, and
@@ -7000,6 +7048,7 @@ was.
 
 **Where** `frontend/src/lib/canvas/last-canvas.ts`,
 `frontend/src/components/canvas/canvas-side-panel-canvases.tsx`, `frontend/tests/last-canvas.test.ts`.
+
 
 ## 199. The list's header row has a height of its own
 
@@ -7030,6 +7079,7 @@ is the four-pixel difference the report was seeing. `npm run check`, `npx vitest
 **Where** `frontend/src/components/canvas/canvas-side-panel-parts.tsx`,
 `frontend/src/components/canvas/canvas-side-panel-elements.tsx`,
 `frontend/src/components/canvas/canvas-side-panel-canvases.tsx`.
+
 
 ## 200. A rename has a button that finishes it
 
@@ -7070,6 +7120,7 @@ change). `npm run check` (zh 825 / en 811 keys), `npx vitest run` (156), `npm ru
 
 **Where** `frontend/src/components/canvas/canvas-side-panel-canvases.tsx`,
 `frontend/src/i18n/locales/zh-CN.ts`, `frontend/src/i18n/locales/en-US.ts`.
+
 
 ## 201. The agent's models are edited through the agent, and the key stays on the gateway
 
@@ -7158,6 +7209,7 @@ canaries *are* in `model.conf` on disk, which is where a key belongs.
 `frontend/src/lib/agent-models.ts`, `frontend/src/services/api/agent.ts`,
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `frontend/tests/agent-models.test.ts`.
 
+
 ## 202. The workflow list has one frame, not three
 
 **Decision** Only the top level of the resource panel is drawn as a frame. A pack is still a bordered card; the
@@ -7186,6 +7238,7 @@ card is the only frame: the collapsed list of seven packs, the expanded pack, th
 resource rows and a hidden workflow beside two enabled ones were screenshotted before and after and compared.
 
 **Where** `frontend/src/components/settings/resource-center-panel.tsx`, `frontend/src/styles/globals.css`.
+
 
 ## 203. A prompt is said once: the box or the text node, never both
 
@@ -7249,6 +7302,7 @@ own words with the two ways out (drop the connection, or clear the box). Nothing
 `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
 `frontend/tests/canvas-generation-context.test.ts`, `docs/server.md`.
 
+
 ## 204. The viewport follows what the answer is about
 
 **Decision** The viewport rule in `canvasInstructions` now names three triggers — *the node that changed, the
@@ -7275,6 +7329,7 @@ earlier). I'll just reply."), so the limit held without a second sentence. `make
 
 **Where** `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`, `docs/server.md`.
 
+
 ## 205. A connection's id is not a timestamp
 
 **Decision** `addConnection` — the one function a drag, the reference bar and the agent's `connect` all end
@@ -7299,6 +7354,7 @@ three times. `tsc --noEmit`, `prettier --check`, `npx vitest run` (22 files, 169
 `make check`, `go test -race`.
 
 **Where** `frontend/src/pages/canvas/project.tsx`.
+
 
 ## 206. `connect` carries an example of both directions
 
@@ -7331,6 +7387,7 @@ and the existing one pins "say them twice"), `go test ./internal/server/`. Not e
 path changed, only the text of a description, and the example is read by the model rather than run by the page.
 
 **Where** `internal/server/routes_mcp.go`, `internal/server/mcp_test.go`.
+
 
 ## 207. The agent window is part of the canvas document
 
@@ -7365,6 +7422,7 @@ write before the page goes, so the debounce is a save-rate choice rather than a 
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/src/pages/canvas/project.tsx`,
 `frontend/tests/canvas-document.test.ts`, `frontend/tests/canvas-agent-window.test.ts`.
 
+
 ## 208. A save's version check and its write are one step
 
 **Decision** `canvas.Store.Write` takes `Store.writeMu` for the read-check-write, so the rev a save is
@@ -7385,6 +7443,7 @@ goroutines, one winner, seven conflicts, and the surviving document is a whole o
 (5 winners) and passes with it; `go test -race` on the package is clean.
 
 **Where** `internal/canvas/canvas.go`, `internal/canvas/canvas_test.go`.
+
 
 ## 209. The document that carried duplicate connection ids was repaired where it lives
 
@@ -7411,6 +7470,7 @@ four DOM ids are distinct, and one click now lights one path.
 
 **Where** `canvases/3df8b7a65088/canvas.json` (not tracked), `frontend/src/pages/canvas/project.tsx` (#205).
 
+
 ## 210. An import skips directory entries
 
 **Decision** `importArchive` (`internal/server/canvas_import.go`) ignores a zip entry that is a directory.
@@ -7429,6 +7489,7 @@ so the ordinary way of moving an export (unzip it, zip it again) produced an arc
 live gateway was checked both ways — `422 import_unexpected_entry` before, `200` and a fetchable file after.
 
 **Where** `internal/server/canvas_import.go`, `internal/server/canvas_e2e_test.go`.
+
 
 ## 211. A run that panics fails its task, not the gateway
 
@@ -7449,6 +7510,7 @@ matter.
 the second one queued behind it completes.
 
 **Where** `internal/task/task.go`, `internal/task/task_test.go`.
+
 
 ## 212. A WebSocket write has a deadline
 
@@ -7472,6 +7534,7 @@ not something a unit test can build without a fake transport.
 
 **Where** `internal/ws/ws.go`.
 
+
 ## 213. An export asks whether the file is there before zipping it
 
 **Decision** `exportCanvas` and `exportCanvasNodes` (`frontend/src/lib/canvas/canvas-export.ts`) go through
@@ -7489,6 +7552,7 @@ screen (a broken reference) rather than a corrupt one it cannot explain.
 `saveAs` and the browser's download machinery, which vitest does not run.
 
 **Where** `frontend/src/lib/canvas/canvas-export.ts`.
+
 
 ## 214. An answer stops listening for its abort when the turn ends
 
@@ -7508,6 +7572,7 @@ module-level `WebSocket` map and the failure is a listener that is not there, wh
 reach through the socket.
 
 **Where** `frontend/src/services/api/agent.ts`.
+
 
 ## 215. The H3 rewrite is not asked for an output language
 
@@ -7530,6 +7595,7 @@ carries the H3 instruction without the clause. Not exercised against an agent: t
 string, and what the agent does with it is the skill's business.
 
 **Where** `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.
+
 
 ## 216. A comment about Chinese data is still a comment
 
@@ -7554,6 +7620,7 @@ CJK in `frontend/src` outside the two dictionaries reports those 60 lines and no
 **Where** `frontend/src/lib/canvas/agent-references.ts`, `node-title.ts`,
 `frontend/src/components/canvas/sent-prompt-disclosure.tsx`,
 `frontend/src/stores/use-config-store.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`.
+
 
 ## 217. An editor exports a picture it decoded in CORS mode
 
@@ -7585,6 +7652,7 @@ against a tainted canvas in a browser: jsdom's canvas does not taint, so the arg
 `frontend/src/components/canvas/canvas-node-mask-edit-dialog.tsx`,
 `frontend/src/pages/canvas/hooks/use-image-editors.ts`.
 
+
 ## 218. A node's `content` is the URL it is shown from, and `storageKey` is the reference
 
 **Decision** `imageMetadata`, `videoMetadata` and `audioMetadata` (`canvas-node-factory.ts`) put the URL a
@@ -7609,6 +7677,7 @@ reference, which is no worse than before.
 document, the fallback for a file without a URL), `npm run check`, `npx vitest run` (179), `npm run build`.
 
 **Where** `frontend/src/lib/canvas/canvas-node-factory.ts`, `frontend/src/lib/canvas/canvas-document.ts`.
+
 
 ## 219. The gateway serves the canvas bundle, from its own origin
 
@@ -7653,6 +7722,7 @@ browser against a real ComfyUI.
 `frontend/src/constant/app-mode.ts`, `frontend/vite.config.ts`, `start.sh`, `Makefile`, `README.md`,
 `docs/server.md`.
 
+
 ## 220. The first paint is computed from the settings document, not copied into the bundle
 
 **Decision** `GET /config.js` is a route: it renders `data/settings.json` — plus a gateway address when
@@ -7693,6 +7763,7 @@ template in the bundle. `go test ./internal/...`, `make check`, `npm run check`,
 (`RuntimeConfigPath`), `start.sh`, `Makefile`, `frontend/index.html`, `frontend/public/config.js`,
 `frontend/src/constant/runtime-config.ts`, `docs/server.md`, `README.md`.
 
+
 ## 221. A message is a list of parts, drawn in the order the frames arrived
 
 **Decision** The panel's transcript is built by one reducer, `transcriptEvent`, and a message is a **list of
@@ -7729,6 +7800,7 @@ dropped. `npx vitest run` (198), `npm run check`, `npm run build`.
 
 **Where** `frontend/src/lib/canvas/agent-transcript.ts`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/tests/agent-transcript.test.ts`.
+
 
 ## 222. A tool step says how it ended, reasoning is folded, and the agent's notices are drawn
 
@@ -7779,6 +7851,7 @@ by rendering a replayed transcript, not against a live AlayaCore. `go test ./int
 `frontend/src/components/canvas/canvas-agent-panel.tsx` (`ToolStepLine`, `ReasoningBlock`),
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
 
+
 ## 223. The replayed conversation is the frames, relayed as they come
 
 **Decision** `Event.History` is `[]Event` — the replayed frames carried as the events a live turn sends — and
@@ -7811,6 +7884,7 @@ run` (198), `npm run check`, `npm run build`.
 **Where** `internal/agent/events.go` (`Event.History`, `replayed`), `internal/agent/sessions.go`
 (`Connected.History`), `internal/server/routes_agent.go`, `internal/server/agent_e2e_test.go`,
 `frontend/src/services/api/agent.ts`, `frontend/src/lib/canvas/agent-transcript.ts`.
+
 
 ## 224. The panel draws the agent's own numbers: how full the context is, and how fast it is going
 
@@ -7856,6 +7930,7 @@ not exercised against a live AlayaCore — the row was read off a replayed trans
 `frontend/src/services/api/agent.ts` (`AgentUsage`, `adopt`),
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
 `docs/server.md`.
+
 
 ## 225. A run's end is a message to the agent that asked for it
 
@@ -7933,6 +8008,7 @@ that path is covered, but the round trip was read from a socket, not off a scree
 `frontend/src/pages/canvas/hooks/{use-canvas-agent-tools,use-generation-runs}.ts`,
 `frontend/src/pages/canvas/project.tsx`, `docs/protocol.md`, `docs/server.md`.
 
+
 ## 226. The start script rebuilds the binaries too, not only the bundle
 
 **Decision** `./start.sh` runs `make build` when `bin/comfyloft-server` or `bin/comfyloft-mcp` is missing or
@@ -7962,6 +8038,7 @@ with no sources and started under `env -i PATH=/usr/bin:/bin` → starts, no too
 with `bin/comfyloft-mcp` removed → exit 1 with the sentence above. The script is not part of `make check`.
 
 **Where** `start.sh`, `README.md`.
+
 
 ## 227. A node remembers the run that made it: the workflow, and when it finished
 
@@ -8033,6 +8110,7 @@ sentences are unit-tested.
 `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`, the two locales,
 `internal/server/routes_mcp.go` (the two tool descriptions).
 
+
 ## 228. A file enters the canvas as a node, never into a node
 
 **Decision** A node is never handed a file. Every file the user brings — dropped, pasted, or chosen in the
@@ -8083,6 +8161,7 @@ were read, not clicked.
 `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`,
 `frontend/src/components/canvas/canvas-image-toolbar-tools.tsx`,
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
+
 
 ## 229. A node's words are three fields with three meanings, and each question has one function
 
@@ -8159,100 +8238,37 @@ placeholder text, and the agent's own choice between `set_text` and `set_prompt`
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts`, `internal/server/{routes_mcp.go,agent_instructions.go}`,
 `internal/server/mcp_test.go`, `frontend/tests/{node-prompt-field,canvas-agent-view,canvas-agent-tools}.test.ts`.
 
+
 ## 230. A wire carries what a node holds — never what it was asked
 
-**Decision** A node gives away its content and only its content. Every reader that is not the node itself —
-a wire into another node, the reference bar, the @ list, the side panel, the export, the agent's citation
-block, the "make a picture from this text" button — answers through `nodeContentOf`. A node's prompt is
-private: it is what the node was asked, it is read only by the node (its own panel, its own run, its own
-Info popover), and it never travels down a wire. There is no fallback and no substitution: a node that holds
-nothing gives nothing.
+**Decision** A node gives away its content and only its content: `nodeContentOf`, one function, every reader
+(wire, reference bar, @ list, side panel, export, agent's citation). A node's prompt is private — read only by
+the node itself (its panel, its run, its Info popover) — and it never travels down a wire. No fallback, no
+substitution: a node that holds nothing gives nothing.
 
-What follows from that:
+**Why** The rule is one sentence of the user's, and ten places broke it the same way — `content || prompt`, and
+in the @ list `content || composerContent || prompt` — because #229 gave the canvas `nodeContentOf` and then only
+taught the agent's tools to use it. What came out was not cosmetic: an empty picture node's prompt arrived as a
+`【参考文本】` block inside the downstream request, a text node with no card still counted as a text resource, the
+export wrote the question into the `.txt`, and the agent — reading two answers to "where do a text node's words
+live" — wrote `set_prompt` and then `set_text` with the same words.
 
-- `readNodeTextInput` is gone. It returned `content || prompt` for a text node and `prompt` for everything
-  else, which is how an empty picture node came to offer the words it was asked as though they were
-  something it held.
-- A run refuses a wire that would carry nothing, and names the node: `inputsHoldingNothing` +
-  `describeEmptyInputs` in `canvas-node-generation.ts`, asked at the top of `handleGenerateNode` and again by
-  the agent's `generate` before it presses. A person reads a toast in their own language; the agent reads a
-  sentence through #225's refusal channel, which already says "there is nothing to wait for, and why". The
-  refusal tells empty, still being made and last run failed apart, because what to do about them is
-  different. The tool asks as well because a text node's press reports nothing back: it streams, so there is
-  no run id to report, and without the pre-check the agent would be told an answer was on its way when
-  nothing had started. (#231 then took away the one type that made this rule need a hub walk.)
-- `applyPromptResult` (the panel's optimize path) writes the prompt and nothing else. It was the last place
-  the pre-#229 model survived: one sentence written into `content`, `prompt` and `composerContent` at once.
-- `generateImageFromTextNode` reads `nodeContentOf` and no longer stamps the same words on the text node's
-  `prompt`, which nothing had asked it.
-- The panel says `nothingToSend` instead of returning silently when there is nothing typed and nothing on
-  the other end holding words. An empty node is not an input, so that is the state a half-wired canvas
-  reaches, and a button that does nothing is the one answer nobody can act on.
-- `runTool`'s unknown-tool answer names the real cause: the page in front of the user was built before the
-  tool list the agent was given. The old wording — "this canvas has no tool called set_text" — sent an agent
-  hunting for a naming bug that was not there.
-- The agent's system prompt states the rule in one paragraph, next to "say a thing once", because that is
-  the paragraph it already reads when it is about to wire something up.
+**The trap, stated so it is not re-entered** A run refuses a wire that would carry nothing, and names the node
+(`inputsHoldingNothing` / `describeEmptyInputs`), because a wire that carries an empty prompt silently changes
+what a picture is made from. `list_nodes` still prints `prompt:` — the agent is the operator's hands, not
+another node — while `read_node` answers with content only.
 
-**Why** The rule is the user's, and it is one sentence: *the node above hands its content down the wire; its
-prompt is private*. Ten places broke it, all with the same shape — `content || prompt`, and in the @ list
-`content || composerContent || prompt` — because #229 gave the canvas `nodeContentOf` and then only taught
-the agent's tools to use it. What that produced was not cosmetic:
-
-- an empty picture node's prompt became a `【参考文本】` block inside the downstream request: the user wired a
-  reference and got a sentence;
-- an unwritten text card's question did the same;
-- a text node with no card still counted as a text resource, so the @ list offered its question as its words;
-- the export wrote the question into the `.txt`;
-- the agent's citation line quoted the prompt of the node the user had pointed at.
-
-And it is what the screenshot after #229 shows: asked to take the text out of three pictures, the agent wrote
-`set_prompt` and then `set_text` with the same words. Its own reasoning says why — *"the connection adds the
-text node's text (not its prompt) to the image generation, so I need to also update the text content"* — which
-is a correct reading of a canvas that had told it two different things about where a text node's words live.
-The first `set_text` had been refused by a page older than its tool list, so it did the thing that still
-worked, and then the thing that was right. Both landed, and the card and the box ended up saying the same
-sentence: no longer a lie about what the node holds, but a question nobody asked.
-
-**Cost** `readNodeTextInput` deleted; three exports added (`inputsHoldingNothing`, `describeEmptyInputs`,
-`generationInputCandidates`), all with a caller; the `EmptyInput` type stays internal. One i18n key pair
-(`connectionHoldsNothing`) and one more (`nothingToSend`). A stale page now says what it is instead of what it
-is not.
+**Cost** `readNodeTextInput` deleted; three exports with a caller each; two i18n keys. No migration: a text node
+whose words were only ever in `prompt` now shows an empty card and gives nothing away, which is the strict
+reading the user chose over letting the typing box also write the card.
 
 **What this does not do** It does not collapse a text node to one field. The card and the question stay two
-fields, for the reason #229 gave: a card needs the question it answered to stand beside it, and
-`composerContent` is what lets a node holding a result take an instruction without losing it. What changes is
-who may read which.
+fields (#229): a card needs the question it answered to stand beside it, and `composerContent` is what lets a node
+holding a result take an instruction without losing it. What changed is who may read which.
 
-There is no migration. A text node whose words were only ever in `prompt` now shows an empty card and gives
-nothing away — the words are still in its panel box, so the fix is to write them on the card (double-click,
-or `set_text`), or to let the node answer the question. That is the strict reading the user chose over the
-alternative that let the typing box also write the card: the card is the answer to a run, and typing in the
-box must not pretend to be one.
-
-`list_nodes` still prints `prompt:`. The agent is not another node — it is the operator's hands, and #229
-labelled the field as the question it will be asked next so the agent can use it deliberately. `read_node`,
-which is how the agent *reads a node*, still answers with content only.
-
-`retryNode` composes its own request and keeps the old quiet behaviour: a retry of a node whose upstream has
-been emptied runs with what is there. It is a recovery gesture on a node that already ran, and refusing it is
-a different decision from refusing a first press — one to make on purpose, not by inheritance.
-
-**Tested** `npx vitest run` (265: 13 new — a wire from an unwritten card carries nothing, a picture carries
-itself and not its words, a wired node that holds nothing is named with its state, a group is read by what is
-inside it, `generate` refuses before pressing for both a picture and a text node, and a tool name the page
-does not know). `npm run check`
-(i18n 849/835, no dead keys; exports: no export without a caller). `npm run build`. `make check`, whose
-system-prompt assertion now also requires the wire rule. Not exercised in a browser: the toast wording, the
-refusal naming a node the user is looking at, and whether the strict card reads well on a canvas written
-before this.
-
-**Where** `frontend/src/components/canvas/canvas-node-generation.ts` (the rule and the refusal),
-`frontend/src/pages/canvas/project.tsx` (the refusal in front of every run, and the text-to-picture button),
-`frontend/src/lib/canvas/{canvas-resource-references,canvas-export,canvas-agent-tools}.ts`,
-`frontend/src/components/canvas/{nodes/builtin-nodes.tsx,canvas-side-panel-elements.tsx,canvas-node-reference-bar.tsx,canvas-node-prompt-panel.tsx,canvas-agent-panel.tsx}`,
-`frontend/src/i18n/locales/{en-US,zh-CN}.ts`, `internal/server/{agent_instructions.go,mcp_test.go}`,
-`frontend/tests/{canvas-generation-context,canvas-agent-tools}.test.ts`.
+**Where** `frontend/src/lib/canvas/node-prompt-field.ts` (`nodeContentOf`),
+`frontend/src/components/canvas/canvas-node-generation.ts` (the refusal),
+`frontend/src/pages/canvas/project.tsx`, `frontend/src/lib/canvas/canvas-agent-tools.ts`.
 
 ## 231. The config node is gone, and the panel framework that only it used
 
@@ -8327,6 +8343,7 @@ each generated twice in place, plus opening a canvas written before it.
 Deleted: `frontend/src/components/canvas/canvas-config-composer.tsx`,
 `frontend/src/components/canvas/canvas-config-node-panel.tsx`, `frontend/src/components/kit/media.tsx`.
 
+
 ## 232. The node definition loses the flags nothing set
 
 **Decision** `CanvasNodeDefinition` drops `interactionToggle`, `forceInteractive`, `transparentBackground`,
@@ -8350,6 +8367,7 @@ canvas in the browser — cards, borders, the two creation menus, clicking a nod
 
 **Where** `frontend/src/types/{canvas,canvas-node}.ts`,
 `frontend/src/components/canvas/{canvas-node,canvas-create-menus}.tsx`, `frontend/src/pages/canvas/project.tsx`.
+
 
 ## 233. A prompt is read on purpose: `read_prompt`, and out of the list
 
@@ -8386,6 +8404,7 @@ exercised in a browser: what to look for is one live conversation — "这张图
 **Where** `internal/server/{routes_mcp.go,agent_instructions.go,mcp_test.go}`,
 `frontend/src/lib/canvas/{canvas-agent-tools,canvas-agent-view}.ts`,
 `frontend/tests/{canvas-agent-tools,canvas-agent-view}.test.ts`.
+
 
 ## 234. A watch is not the job: neither end gives up on a run that is still out
 
@@ -8439,6 +8458,7 @@ progress and finish, not turn red.
 `frontend/src/components/canvas/{canvas-node,canvas-node-hover-toolbar}.tsx`,
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
 `frontend/tests/api-runs.test.ts`, `internal/generate/{runner.go,generate_test.go}`.
+
 
 ## 235. One name for the run, one rule for surviving a reload
 
@@ -8494,6 +8514,7 @@ sound alike.
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
 `frontend/tests/{canvas-resumable-runs,api-runs,api-video-runs,model-selection}.test.ts`.
 
+
 ## 236. A restart costs the progress bar, not the run
 
 **Decision** The gateway picks up the runs it was watching when it stopped.
@@ -8536,6 +8557,7 @@ a video mid-render, `Ctrl+C` and `./start.sh`, then watching the node say 等待
 `internal/task/task_test.go`, `internal/generate/generate_test.go`.
 
 ---
+
 
 ## 237. An answer is drawn as the document it is, and a table scrolls in its own box
 
@@ -8616,6 +8638,7 @@ ordered list, a quote and a fence — not by a component test: `vitest` here run
 
 ---
 
+
 ## 238. Stopping is a choice: the queued words can outlive the task
 
 **Decision** A cancel carries AlayaCore's optional `keep_steering` argument, and the panel offers the choice
@@ -8660,6 +8683,7 @@ arrive as the next prompt (`delivered`, which the panel already uses to clear th
 **Where** `internal/agent/sessions.go`, `internal/server/routes_agent.go`, `internal/agent/session_test.go`,
 `frontend/src/services/api/agent.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`,
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`.
+
 
 ## 239. Speech is a hop: the gateway carries one file to the address the page names
 
@@ -8730,6 +8754,7 @@ prompt is up records nothing, silently), and `getUserMedia` needs a secure conte
 `frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
 `frontend/tests/{wav,agent-dictation,api-speech}.test.ts`.
 
+
 ## 240. The binary is `comfyloft-server`, and nothing is called a gateway any more
 
 **Decision** The service is `comfyloft-server`. The binary, the package (`cmd/comfyloft-server`), the
@@ -8779,6 +8804,7 @@ found.
 `.env.example`, `docs/{server,protocol,known-issues,decisions}.md`, `README.md`, `frontend/src/**`,
 `frontend/{scripts,tests}/**`.
 
+
 ## 241. The server's address is the page's, never the document's
 
 **Decision** `config.baseUrl` and every channel's `baseUrl` are filled from `LOCAL_SERVER_BASE_URL` — the origin
@@ -8806,6 +8832,7 @@ assertions, `✓` on the models) so it pins the bug rather than the fix. `npm ru
 
 **Where** `frontend/src/stores/use-config-store.ts`, `frontend/tests/server-address.test.ts`.
 
+
 ## 242. A page that cannot have a microphone says so, instead of throwing
 
 **Decision** Before a gesture asks for the microphone, the panel asks whether this page can have one:
@@ -8831,6 +8858,7 @@ browser is not in this tree — the run that reported the error is the test.
 
 **Where** `frontend/src/lib/pcm-recorder.ts`, `frontend/src/components/canvas/use-hold-to-talk.ts`,
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`.
+
 
 ## 243. The agent's directory belongs to the machine, not to the bind address
 
@@ -8860,6 +8888,7 @@ stable). `make check` 19 packages, `npx vitest run` 314, `npm run check`, `npm r
 
 **Where** `internal/config/config.go`, `internal/config/config_test.go`.
 
+
 ## 244. A test server keeps its own agent directory
 
 **Decision** `newTestServer` passes `config.WithAgentConfigPath(<temp dir>)`, and the two helpers that used to
@@ -8880,6 +8909,7 @@ environment's answer. One mechanism, applied last, is easier to reason about tha
 `npx vitest run` 314, `npm run check`, `npm run build`, `make build`.
 
 **Where** `internal/config/config.go`, `internal/server/e2e_test.go`, `internal/server/{mcp_test,agent_e2e_test}.go`.
+
 
 ## 245. No segment: the agent's configuration is `comfyloft-server/alayacore`
 
@@ -8910,6 +8940,7 @@ and `TestAgentDirectoryHasNoSegmentOfItsOwn` (the path ends in `comfyloft-server
 `~/.config/comfyloft-server/alayacore/model.conf`.
 
 **Where** `internal/config/config.go`, `internal/config/config_test.go`.
+
 
 ## 246. The speech server's model and key are settings; the key never leaves the server
 
@@ -8981,6 +9012,7 @@ stored key, `/config.js` carries no key.
 `frontend/src/stores/use-config-store.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
 `frontend/tests/api-speech.test.ts`, `docs/server.md`, `README.md`.
 
+
 ## 247. Sweep after #246: two gates the rename left red, a silent error, a map nobody read
 
 **Decision** Four things the sweep found and fixed, and one it did not touch.
@@ -9025,6 +9057,7 @@ prettier and `tsc` clean), `npm run build` 556.94 kB, `make build`.
 
 **Where** `frontend/scripts/{check-i18n,check-exports}.cjs`, `internal/httpx/httpx.go` (+`_test.go`),
 `internal/generate/preview.go`, `docs/{known-issues,server}.md`, `README.md`.
+
 
 ## 248. An agent is asked to quit, never killed, and shutdown asks every agent
 
@@ -9078,6 +9111,7 @@ stopping the server: the agent exits on the frame, logging a clean `exit pid=…
 
 **Superseded in part by #250**: the release is end of input and then a kill, and `quit` is not on that path.
 `CloseAll` and the per-frame write lock are what remains of this entry, and both stand.
+
 
 ## 249. The model form has every field of the entry, and the reasoning blocks are JSON the user types
 
@@ -9139,6 +9173,7 @@ run` 330, `npm run check` (853 zh / 839 en), `npm run build` 560.88 kB.
 `frontend/tests/agent-models.test.ts`, `frontend/scripts/check-i18n.cjs` (two hand-resolved keys),
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`.
 
+
 ## 250. A release ends input, waits two seconds, and then kills; `quit` is not on that path
 
 **Decision** Ending an agent is two steps: close its stdin, wait `releasePatience` (2 s), and kill it if it is
@@ -9171,6 +9206,7 @@ alive. The test double dropped the `quit` answer it had gained in #248, since no
 and the package's tests went from 3.9 s to 1.5 s with it.
 
 **Where** `internal/agent/spawn.go` (+`release_test.go`, `session_test.go`), `docs/decisions.md` #248.
+
 
 ## 251. A dictation gesture stops itself at a minute
 
@@ -9207,6 +9243,7 @@ drew.
 `frontend/src/components/canvas/use-hold-to-talk.ts`,
 `frontend/src/components/canvas/canvas-agent-panel.tsx`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
 `frontend/tests/agent-dictation.test.ts`.
+
 
 ## 252. Speech servers are a list, and the active one is what dictation uses
 
@@ -9281,6 +9318,7 @@ packages, `npx vitest run` 345, `npm run check` (864/850 keys), `npm run build`.
 `frontend/src/stores/use-config-store.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
 `frontend/tests/{api-speech,speech-profiles,config-speech-migration}.test.ts`, `docs/server.md`, `README.md`.
 
+
 ## 253. Twelve Go exports nothing could reach are gone, and a gate says so from now on
 
 **Decision** Delete the eleven exported Go symbols `docs/known-issues.md` listed — and the twelfth that surfaced
@@ -9342,6 +9380,7 @@ from another file`. `make check` 20 packages (the tool is now vetted and tested 
 `internal/{comfy,config,httpx,resource,setup,store,workflow}/*.go`, `docs/known-issues.md` (entry 2 leaves it),
 `docs/server.md`, `README.md`.
 
+
 ## 254. One writer for every write: five copies of temp-file-then-rename became one
 
 **Decision** `internal/canvas`, `internal/settings`, `internal/server` (the first-paint script and `mcp.conf`) and
@@ -9374,6 +9413,7 @@ file beside it untouched. `make check` 20 packages including the new dead-export
 
 **Where** `internal/util/util.go` (+`util_test.go`), `internal/canvas/canvas.go`, `internal/settings/settings.go`,
 `internal/server/{runtime_config,agent_config}.go`.
+
 
 ## 255. Both requests that leave this server say where they are going, in the log
 
@@ -9427,6 +9467,7 @@ and, with no file, `speech: no profile configured, so dictation will say so`. `m
 `internal/store/speech.go`, `internal/store/store_test.go`, `internal/server/routes_speech.go`, `docs/server.md`.
 
 ---
+
 
 ## 256. `input_modalities` is a switch and four boxes, because the file has three states
 
@@ -9487,6 +9528,7 @@ written as `input_modalities: ["text","image"]`, then `[]`, then removed, each a
 `frontend/scripts/check-i18n.cjs` (the `config.preferences.modality` namespace), `frontend/tests/agent-models.test.ts`,
 `docs/server.md`.
 
+
 ## 257. The prompt panel has no ✨: rewriting a prompt is the agent's job
 
 **Decision** The two sparkle buttons are gone — 优化提示词/H3 优化 on video nodes and 优化提示词 on image
@@ -9538,6 +9580,7 @@ prettier + tsc), `npm run build` 561.56 kB. The deleted files: `prompt-optimize-
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `frontend/tests/{api-prompts,canvas-agent-tools,node-generation-facts}.test.ts`,
 `docs/server.md` (two paragraphs that still described `internal/prompt` as the home of the H3 instructions).
 
+
 ## 258. The sent-prompt count is characters, and now it is the count it says
 
 **Decision** `SentPromptDisclosure` counts `[...sent].length` — code points — where it counted `sent.length`.
@@ -9560,6 +9603,7 @@ loading and the types.
 
 **Where** `frontend/src/components/canvas/sent-prompt-disclosure.tsx`,
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts` (`sentPrompt`).
+
 
 ## 259. A music run is told how long it may be
 
@@ -9621,6 +9665,7 @@ test that stays: the repository has no component test and this entry does not st
 `frontend/src/lib/audio-generation.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts` (`settingsPanels.audio.seconds`),
 `frontend/tests/{audio-duration,server-models}.test.ts`.
 
+
 ## 260. The audio panel has no voice and no speed
 
 **Decision** The audio settings panel lost its Voice group (13 OpenAI voice names) and its Speed group (0.75×, 1×,
@@ -9662,6 +9707,7 @@ them orphaned (180 modules, none without a caller).
 `frontend/src/stores/use-config-store.ts` (type, default, the model list's normaliser), `frontend/src/types/canvas.ts`,
 `frontend/src/lib/canvas/{canvas-generation-helpers,canvas-node-factory,node-settings-memory}.ts`,
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`.
+
 
 ## 261. A button's label gives way where the button ends
 
@@ -9713,29 +9759,20 @@ app: `npx vitest run` (368), `npm run check` (863/849 keys, 180 modules, prettie
 `frontend/src/components/canvas/canvas-audio-settings-popover.tsx`,
 `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.
 
+
 ## 262. The video node's Edit button is gone
 
-**Decision** The video node's hover toolbar no longer carries an `Edit` item. Everything it did was already
-somewhere else, and the "somewhere else" is the same panel.
+**Decision** The video node's hover toolbar no longer carries an `Edit` item. Removed in 34a8686, with the
+`onToggleDialog` prop, the `MessageSquare` import and `common.edit` in both dictionaries.
 
-**What it was** `onToggleDialog(node)` — open (or close) the node's prompt panel. A click on a node body opens
-exactly that panel (`project.tsx`: a mouse-up that did not move anything calls `setDialogNodeId`), so the button was
-a second way to do the one thing a click does. It was also the only button whose label promised an *edit* and whose
-action was a **generate**: inside that panel, `↑` re-runs the node and replaces its clip in place. A user who pressed
-"Edit" on a finished clip to look at it found the thing that would overwrite it.
+**Why it read wrong** It opened the prompt panel — which a click on the node body already opens — so it was a
+second way to do the one thing a click does. Worse, its label promised an *edit* while its panel's `↑` re-runs
+the node and replaces the clip in place: a user pressing "Edit" to look at a finished clip found the thing that
+would overwrite it. #263 makes "runs a step" and "answers a prompt" visibly different, which is most of what made
+the button necessary-looking.
 
-**What went with it** The `onToggleDialog` prop, the `MessageSquare` import, and `common.edit` in both dictionaries
-(the i18n check refuses a dead key, which is how the last trace of it would have been found anyway).
-
-**Cost** None measured: nothing referenced the button — no test, no agent tool, no keyboard shortcut — and clicking
-the node still opens the panel. The panel itself still re-runs in place, which is its own question (#263 makes the
-difference between "runs a step" and "answers a prompt" visible, which is most of what made this button read wrong).
-
-**Tested** `npm run check` (863→862 keys, i18n/dead keys, exports, prettier, tsc) and `npx vitest run` (368) pass
-with the button gone.
-
-**Where** `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`, `frontend/src/pages/canvas/project.tsx`,
-`frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
+**Cost** None: nothing referenced it — no test, no agent tool, no shortcut — and clicking the node still opens
+the panel.
 
 ## 263. A workflow's request contract is on the wire, and a step is a node's model
 
@@ -9796,6 +9833,7 @@ prompt), `tests/api-image-upscale.test.ts` (an upscaler submits `{upscale_model}
 `frontend/src/components/{model-picker.tsx,settings/preferences-dialog.tsx}`,
 `frontend/src/pages/canvas/{project.tsx,hooks/*.ts}`, `frontend/scripts/check-i18n.cjs`.
 
+
 ## 264. A card that frames a picture is the picture's shape
 
 **Decision** The image node's free-resize toggle is gone. `keepRatio` is now one read of the node
@@ -9846,6 +9884,7 @@ the rule it now follows is a field on the definition rather than arithmetic in t
 `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`, `frontend/src/pages/canvas/project.tsx`,
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
 
+
 ## 265. A branch for a workflow the registry does not have
 
 **Decision** The two places that still named `video-h3-fast` are gone: the filter inside
@@ -9871,6 +9910,7 @@ which the compiler refuses), `npm run check` (866/852 keys, 182 modules, prettie
 
 **Where** `frontend/src/components/model-picker.tsx`,
 `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.
+
 
 ## 266. The composer asks what a workflow declares, not which workflow it is
 
@@ -9924,6 +9964,7 @@ what changed is which branch a control takes, with the shipped registry's declar
 `frontend/src/lib/canvas/video-model-mode.ts`, `frontend/src/components/video-settings-panel.tsx`,
 `frontend/src/components/canvas/{canvas-video-settings-popover,canvas-node-prompt-panel}.tsx`,
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts`, `frontend/tests/{server-models,model-selection}.test.ts`.
+
 
 ## 267. A step is a tool, and the mode sent is one the model declares
 
@@ -9983,6 +10024,7 @@ prompt beside its knobs), `npm run build` (569.95 kB).
 `frontend/src/components/canvas/{canvas-node-prompt-panel,canvas-tool-node-panel,canvas-image-settings-popover}.tsx`,
 `frontend/tests/{model-selection,api-image-upscale}.test.ts`.
 
+
 ## 268. The mode a stale node falls back to is the one that asks least
 
 **Decision** `imageModeFor` no longer names a fallback mode. When the node's `imageMode` is not one the model
@@ -10004,6 +10046,7 @@ its contract says (`images.max: 0`), and a two-mode family whose cheapest is `be
 second case is the proof that no mode's name is left in the code.
 
 **Where** `frontend/src/lib/canvas/image-mode.ts`, `frontend/tests/model-selection.test.ts`.
+
 
 ## 269. A knob is named by the dictionary, like every other registry string
 
@@ -10035,6 +10078,7 @@ registry's English exactly as before.
 **Where** `frontend/src/lib/server-labels.ts`, `frontend/src/components/canvas/canvas-tool-node-panel.tsx`,
 `frontend/src/components/canvas/canvas-node-super-resolve-dialog.tsx`, `frontend/src/i18n/locales/zh-CN.ts`,
 `frontend/scripts/check-i18n.cjs`.
+
 
 ## 270. The agent can see a card's box, and set it
 
@@ -10087,6 +10131,7 @@ tools, and what changed is a tool's decision plus one line of `list_nodes`.
 `frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`,
 `frontend/tests/{canvas-agent-tools,canvas-agent-view}.test.ts`.
 
+
 ## 271. `layout` is the node's word, not a mode
 
 **Decision** `requestGeneration` reads the layout attachment from the node's own choice
@@ -10114,6 +10159,7 @@ layout. The first of those fails against #267's line, which is what makes it a r
 description. `npx tsc --noEmit`, `npm run check` (886/853, 183 modules), `npm run build` (572.73 kB).
 
 **Where** `frontend/src/services/api/image.ts`, `frontend/tests/api-image-upscale.test.ts`.
+
 
 ## 272. What the browser said
 
@@ -10158,6 +10204,7 @@ here.
 
 **Where** Nothing. The server is running the rebuilt binary on `:8190`; the page was reloaded against it.
 
+
 ## 273. A node panel asks its kind for its controls instead of branching
 
 **Decision** The controls a node's panel shows beside its prompt are a static table, one component per
@@ -10199,6 +10246,7 @@ chooser), so that panel was not looked at; it is the same three lines as the vid
 
 **Where** `frontend/src/components/canvas/panels/{node-controls,node-controls-props,image-controls,video-controls,audio-controls,text-controls}.tsx`,
 `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.
+
 
 ## 274. The keys a run may take are on the wire, and the canvas prunes to them
 
@@ -10254,6 +10302,7 @@ upscaler, `multiplier` only on the interpolation, `transition_step` only on the 
 `frontend/src/lib/server-models.ts`, `frontend/src/stores/use-config-store.ts`,
 `frontend/tests/{server-models,model-selection,api-image-upscale}.test.ts`.
 
+
 ## 275. `negative` is a key only a graph with a negative text encoder can take
 
 **Decision** `InputSpecs` now adds `negative` only when a binding reads that field — a `negative` binding with
@@ -10269,10 +10318,14 @@ the key was accepted and dropped — the same lie #274 removed from the other di
 key the server refused. A key the contract offers is a key a client may build a control for, and a control that
 provably does nothing is worse than no control.
 
-**Why the control is not what was added** Nothing in the UI needed this. Measured on the real server: at `cfg 1`
-the negative branch is not evaluated at all (ComfyUI's cfg-1 skip), so two different negative strings give
-byte-identical pictures on MOSS and Qwen-Image and identical 22-frame video on H3, while `cfg 2` changes the
-whole image. Every shipped image graph runs `cfg 1` and the H3 sampler's own default of 5 is overridden to 1, so
+**Why the control is not what was added** Nothing in the UI needed this. ComfyUI drops the branch: `cfg 1` means
+`uncond_ = None` in `sampling_function` and `negative_cond = None` in `CFGGuider`, so a negative string has no
+route to a prediction. Measured on `192.168.3.233`, ComfyUI 0.43.0, `image-moss-sft-8step`, seed 424242: at
+`cfg 1` two unrelated negatives ("worst quality, bad anatomy, watermark, jpeg artifact" and "purple elephant, oil
+painting, 1900s sepia photograph") give **pixel-identical** output — 0 of 3,145,728 channel bytes differ; the PNG
+files differ only because ComfyUI embeds the workflow JSON, negative included. At `cfg 2` the same pair differs
+by a mean of 64/255. Every shipped image graph runs `cfg 1` and the H3 sampler's own default of 5 is overridden
+to 1, so
 a negative box would be a box that changes nothing until cfg is raised — and raising cfg is exactly what these
 distilled models are not trained for (the node's declared parameter range is 1..10, the graphs pin 1). When a
 non-distilled model arrives, `negative` and `cfg` are one decision made together; today `negative` is silently
@@ -10298,6 +10351,7 @@ it), `make check` (deadcode 506), `npx tsc --noEmit`, `npm run check` (189 modul
 Z-Image, ESREGAN, the angle workflow, the four H3 ones, RIFE or the music one.
 
 **Where** `internal/workflow/inputs.go`, `internal/workflow/shipped_negative_test.go`.
+
 
 ## 276. A server built in a test is closed in that test
 
@@ -10327,6 +10381,7 @@ failing, now 8/8 passing), `go test -count=3 ./internal/server/` (green), `go te
 (deadcode 506).
 
 **Where** `internal/server/e2e_test.go`.
+
 
 ## 277. A click on a clip is a click on the node
 
@@ -10365,6 +10420,7 @@ from 0 as before; a wheel over a paused clip moves the canvas zoom 100% → 112%
 (574.92 kB), `go test ./...`, `make check` (deadcode 506).
 
 **Where** `frontend/src/components/canvas/canvas-node.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
+
 
 ## 278. A text card is words, and nothing asks it anything
 
@@ -10419,6 +10475,7 @@ from each, 186 modules), `npm run build` 558.77 kB, `make check` (deadcode 506),
 `frontend/src/services/api/agent.ts`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`,
 `internal/server/{routes_mcp.go,agent_instructions.go}`, `docs/server.md`.
 
+
 ## 279. A tool answer is one frame, and the socket admits as much
 
 **Decision** `internal/ws.maxMessage` is the agent's frame bound (`agent.MaxFrameSize`, 64 MiB) rather than a
@@ -10449,6 +10506,7 @@ be stated in one place and read in two), `go test ./...`, `make check` (deadcode
 `npm run check`, `npx vitest run` (378), `npm run build` (558.77 kB).
 
 **Where** `internal/ws/ws.go`, `internal/ws/ws_test.go`, `frontend/src/lib/canvas/canvas-agent-tools.ts`.
+
 
 ## 280. Whether a session keeps a conversation is the name's business, not the client's
 
@@ -10484,6 +10542,7 @@ written.
 `internal/agent/sessions.go` (a comment that named the wrong caller of `List`),
 `frontend/src/services/api/agent.ts`, `frontend/src/components/canvas/canvas-agent-panel.tsx`,
 `internal/server/agent_e2e_test.go`, `docs/decisions.md` (#104).
+
 
 ## 281. A tool line leads with how it went, and names what it was about
 
@@ -10535,6 +10594,7 @@ with the real AlayaCore: a `read_file` call drew `✓ calling read_file frontend
 
 **Where** `frontend/src/components/canvas/canvas-agent-panel.tsx` (`ToolStepLine`),
 `frontend/src/lib/canvas/tool-argument.ts`, `frontend/tests/tool-argument.test.ts`.
+
 
 ## 282. A folded thought shows its two ends
 
@@ -10590,6 +10650,7 @@ overflows horizontally once the button has a width. `make check` (deadcode 506),
 **Where** `frontend/src/components/canvas/canvas-agent-panel.tsx` (`ReasoningBlock`),
 `frontend/src/lib/canvas/reasoning-preview.ts`, `frontend/tests/reasoning-preview.test.ts`.
 
+
 ## 283. The summarize threshold is the operator's, and it is a flag or nothing
 
 **Decision** `AGENT_AUTO_SUMMARIZE` (0–100, unset = 0) is read by `config.Load` and carried to every spawn as
@@ -10630,39 +10691,27 @@ to start with `startup failed: AGENT_AUTO_SUMMARIZE must be 0 (off) or 1-100 (a 
 `internal/agent/spawn.go` (`SpawnOptions.AutoSummarize`, `args`), `internal/agent/args_test.go`,
 `internal/server/routes_agent.go` (`agentOptions`), `docs/server.md`, `.env.example`.
 
+
 ## 284. The running line says the work, not the thought
 
-**Decision** While an answer is streaming and has not said anything yet, the transcript shows one line under its
-parts: a turning circle and `处理中… / Working…`. The folded reasoning row above it keeps its own title
-(`思考 / Thinking`, #282). The two rows no longer share a word.
+**Decision** While an answer is streaming and has said nothing yet, the transcript shows one line under its
+parts: a turning circle and `Working… / 处理中…`. The folded reasoning row above it keeps its own title
+(`Thinking`, #282). The two rows no longer share a word.
 
-**Why** They were both labelled "Thinking": the fold titled the thought, the line said a turn was in progress, and
-side by side in the same bubble they read as one thing drawn twice — the reader cannot tell which one opens. They
-also are not the same claim. The line is true of the whole turn, and a turn that is running `canvas_move_node` is not
-thinking; the fold's title is true only of that part, which is what it holds. One word each: the fold names what is
-inside it, the line says the agent is still going.
+**Why** Both were labelled "Thinking", side by side in one bubble, so they read as one thing drawn twice and the
+reader could not tell which one opens. They are also not the same claim: the line is true of the whole turn —
+a turn running `canvas_move_node` is not thinking — while the fold's title is true only of what the fold holds.
 
-**Why the line stays at all** The start of a turn has neither of the other two things — no fold, no call — so without
-it the bubble is empty text over a panel that looks stuck, and the only other evidence is the stop button at the
-composer, a panel's height away. It also carries the turn's shape for a reader who scrolls back mid-answer: the last
-row of the transcript tells them whether anything is still arriving.
+**Why the line exists at all** The start of a turn has no fold and no call yet, so without it the bubble is empty
+text over a panel that looks stuck, and the only other evidence is the stop button a panel's height away.
 
-**Cost** "Working" does not say what work. That is #281's tool lines and the fold's ends; a word that tried to say
-both again would be the duplicate this decision removes. The line also disappears the moment the first word of the
-answer arrives — the condition is "nothing said yet" — so a turn that goes straight to text never shows it, which is
-correct: its answer is the progress.
+**Cost** "Working" does not say what work: that is #281's tool lines and the fold's ends, and a word that tried
+to say both would be the duplicate this removes. The line also vanishes the moment the first word of the answer
+arrives, so a turn that starts typing never shows it — its answer is the progress.
 
-**Tested** On an isolated `:8191` with the real AlayaCore and a real turn, the panel's HTML was sampled every
-~0.2 s across the whole turn: `Working…` was present from the instant the turn opened until it ended, absent for the
-sixteen idle samples before it and every sample after it, and `Thinking…` appeared in none of the 100+ samples. Two
-screenshots of the same turn: running, the bubble read
-`> Thinking 用户想要把三个图片节点排成水平直线，间距 40px。当前三个图片节点的位置：… 视频节点：(880, 0)` above
-`◌ Working…`; finished, the folds and the three `✓ calling canvas_move_node` rows with no status line under them.
-`make check` (deadcode 506), `go test ./...`, `npx tsc --noEmit`, `npm run check` (i18n 861/828, exports 188 modules),
-`npx vitest run` (394), `npm run build` (560.20 kB).
-
-**Where** `frontend/src/components/canvas/canvas-agent-panel.tsx` (the streaming-and-silent line),
-`frontend/src/i18n/locales/{zh-CN,en-US}.ts` (`canvas.agent.working`, renamed from `canvas.agent.thinking`).
+**Measured** On an isolated `:8191` with the real agent, the panel was sampled every ~0.2 s across a whole turn:
+`Working…` present from the instant the turn opened until it ended, absent from every idle sample, `Thinking…`
+in none of them. Not a claim about a re-render after a reload.
 
 ## 285. One press, one answer
 
@@ -10740,6 +10789,7 @@ that accepts `/prompt` and never finishes:
 `frontend/src/pages/canvas/hooks/use-generation-runs.ts`, `docs/server.md`, `tests/agent-generate.test.ts`,
 `tests/canvas-agent-tools.test.ts`, `tests/canvas-agent-view.test.ts`.
 
+
 ## 286. The rules that tell the agent how this canvas is meant to be used
 
 **Decision** The canvas's system prompt grew by three paragraphs and one rewritten one, and the two tools that
@@ -10798,3 +10848,36 @@ the one that was measured three times and removed, as above. `make check` (deadc
 `npx tsc --noEmit`, `npm run check` (i18n 860/827, exports 188), `npx vitest run` (398), `npm run build` (560.63 kB).
 
 **Where** `internal/server/agent_instructions.go` (the eight paragraphs), `internal/server/mcp_test.go`.
+
+
+## 287. An entry says the decision and the refusal, not the process
+
+**Decision** Every entry carries four things and no more: the decision, the counterfactual (why not the obvious
+alternative), what it costs, and a measurement bound to the machine it was measured on. Process narration, the
+list of gates that ran and the numbers they printed do not belong — `git show` is better at all three and cannot
+go stale. An entry whose subject no longer exists is not deleted but compressed to a tombstone: what it was, why
+it went, and what must not come back.
+
+**Why** Measured over the 285 entries before this one: `**Decision**` sections were 45.1% of the file, `Why`
+20.1%, `Cost` 7.7%, `Tested` 15.4%, `Where` 6.7%. A file that is 45% prose restating what was built is read by
+an agent *one grep at a time* — ~2.8 KB per hit, half of it the diff it could have had from git. 69 entries froze
+a snapshot of the day's numbers (`deadcode 508`, `561 kB`, `vitest 397`), and 238 of 860 `Where` paths no longer
+exist.
+
+**What this is not** It is not pruning. Of the entries that looked like narration, every one sampled carried a
+refusal that had been measured or an alternative that had been rejected: the padding is inside entries, not
+between them. Nor is it deletion of superseded entries — #123, #125 and #262 describe things that no longer
+exist, and the reason they must not come back exists nowhere else. Numbers are addresses (53 code comments cite
+them), so nothing is renumbered and no entry leaves a hole.
+
+**A measurement is not a rule** A sentence with a model name, a version or a number is what was true that day.
+The fix is a fixture — `ComfyUI 0.43.0`, `seed 424242`, the workflow — beside the rule it supports, never the
+number alone. #275 said "byte-identical" about pictures that differ in their PNG bytes and agree to the last
+pixel, because ComfyUI embeds the workflow (negative included) in the file; an agent quoting it as a rule would
+have been right by accident.
+
+**Found on the way** #75 opened "decided, not implemented… the four `/api/prompts/*` recipes are still what runs"
+about a route #82 replaced with a socket before it was ever built — the one entry in the file that named a live
+component which did not exist.
+
+**Where** `docs/decisions.md`.
