@@ -167,7 +167,7 @@ describe("what has no run to choose", () => {
 
     test("a call with neither a model nor a mode says what it needs", () => {
         const plan = planNodeModel(image, {}, catalog());
-        expect(!plan.ok && plan.reason).toContain("needs a model, a mode, or both");
+        expect(!plan.ok && plan.reason).toContain("name a model, a mode, or both");
     });
 
     test("a mode alone on a node that runs no model names the model it needs", () => {
@@ -249,6 +249,6 @@ describe("describeModelCatalogs: what this canvas can run", () => {
         // Two channels' copies are one workflow: the count is of workflows, not of entries.
         expect(text).toContain("2 workflows in all");
         expect(text).toContain("A base model is a file inside a family");
-        expect(text).toContain("set_node_settings refuses a key it does not read");
+        expect(text).toContain("set_node refuses a key it does not read");
     });
 });

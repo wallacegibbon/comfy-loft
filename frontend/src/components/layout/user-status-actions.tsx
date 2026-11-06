@@ -19,9 +19,8 @@ type UserStatusActionsProps = {
 /**
  * The right-hand end of the top bar: the two windows that are settings-ish, then the toggles.
  *
- * Preferences and Add workflows used to be two tabs of one window behind one gear, so the gear's own
- * label was a choice ("Settings") that described neither. They are separate windows now, and each has the
- * button that opens it (#190).
+ * Preferences and Add workflows are separate windows, and each has the button that opens it — the gear's own
+ * label would describe neither, which is why there is no gear.
  */
 export function UserStatusActions({ variant = "default", onOpenShortcuts }: UserStatusActionsProps) {
     const { i18n, t } = useTranslation();

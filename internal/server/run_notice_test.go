@@ -76,7 +76,7 @@ func TestRunNoticeNamesTheNodeAndWhatHappened(t *testing.T) {
 		{
 			name:  "a picture",
 			task:  &task.Task{Object: task.ObjectImage, Status: "completed", Outputs: one, Ask: &task.Ask{Session: "canvas:a", Node: "n12"}},
-			wants: []string{"image generation on n12", "has finished", "1 file", "canvas_read_node"},
+			wants: []string{"image generation on n12", "has finished", "1 file", "canvas_read_media"},
 		},
 		{
 			name:  "a batch",

@@ -2,12 +2,13 @@ import { heldKeys } from "@/lib/canvas/node-settings";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata } from "@/types/canvas";
 
 /**
- * Which run this node is — the half of the panel `set_node_settings` does not write.
+ * Which run this node is — the half of `set_node` that decides *what* the run is rather than its shape.
  *
- * `set_node_settings` settles the *shape* of a run: how big, how long, with what seed. This settles which run
- * it is at all: the workflow, and the mode a family of workflows is asked in. They are two tools because they
- * are two decisions, and because only one of them can have a consequence the caller did not intend: a size is
- * a number, a model is a different picture.
+ * `set_node` settles both in one call, and this is the half that cannot be reasoned about alone: it resolves
+ * the workflow, and the mode a family of workflows is asked in, before any size or length can be judged — the
+ * contract those values are checked against is the new model's. The two are separate plans because a size is a
+ * number and a model is a different picture: the plan that can change what a node *is* also has to say which
+ * settings the new run stops reading.
  *
  * The vocabulary is the canvas's own, not the picker's storage format. A node's `model` holds
  * `channel::model` (`default::image-qwen21`), which is a naming detail of the channels; every sentence in this
@@ -68,7 +69,7 @@ export type ModelCatalogs = Record<ModelCapability, ModelCatalog>;
 type ModelPlan = { ok: true; patch: CanvasNodeMetadata; model: ModelOption; mode: string; stale: string[] } | { ok: false; reason: string };
 
 /** What a caller may state: the model, the mode, or both. */
-export type ModelChoice = { model?: unknown; mode?: unknown };
+type ModelChoice = { model?: unknown; mode?: unknown };
 
 /**
  * Resolve a caller's model and mode into the fields the node's picker writes, or say why it cannot.
@@ -86,7 +87,7 @@ export function planNodeModel(node: CanvasNodeData, choice: ModelChoice, catalog
     if (choice.model !== undefined && typeof choice.model !== "string") return { ok: false, reason: "model needs the name of one, as list_nodes and read_prompt report it" };
     const requested = typeof choice.model === "string" ? choice.model.trim() : "";
     const wanted = typeof choice.mode === "string" ? choice.mode.trim() : "";
-    if (!requested && !wanted) return { ok: false, reason: "set_model needs a model, a mode, or both" };
+    if (!requested && !wanted) return { ok: false, reason: "model was empty: name a model, a mode, or both" };
 
     const current = node.metadata?.model ? resolve(node.metadata.model, catalog) : undefined;
     let chosen: ModelOption | undefined;
@@ -185,7 +186,7 @@ export const MODEL_CAPABILITIES: ModelCapability[] = ["image", "video", "audio"]
  * So the listing is grouped by what the workflow makes, and **steps are their own line**: an upscaler or an
  * interpolation is offered by the pickers, because a node can be one, but it is not something a prompt makes,
  * and counting it as a picture model is how the wrong number gets said out loud. What each workflow *reads* is
- * not here: that is the contract of the node it runs on, and `set_node_settings` refuses a key outside it.
+ * not here: that is the contract of the node it runs on, and `set_node` refuses a key outside it.
  */
 export function describeModelCatalogs(catalogs: ModelCatalogs): string {
     const lines: string[] = [];
@@ -217,7 +218,7 @@ export function describeModelCatalogs(catalogs: ModelCatalogs): string {
     }
     lines.push("");
     lines.push(
-        `${count(total.size, "workflow")} in all, each one of them something a node can be set to with set_model. What a workflow reads is the contract of the node that runs it — set_node_settings refuses a key it does not read. A base model is a file inside a family, not a workflow: each family is pointed at one of the files its own picker lists.`,
+        `${count(total.size, "workflow")} in all, each one of them something a node can be set to with set_node. What a workflow reads is the contract of the node that runs it — set_node refuses a key it does not read. A base model is a file inside a family, not a workflow: each family is pointed at one of the files its own picker lists.`,
     );
     return lines.join("\n");
 }

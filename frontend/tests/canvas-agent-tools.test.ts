@@ -27,8 +27,15 @@ function node(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): 
 }
 
 /** The page's hands, with every write recorded instead of performed. */
-function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [], contract: SettingsContract = {}, stopped: StopOutcome = { running: true, cancel: "cancelled" }, catalog: ModelCatalog = { options: [], accepts: () => undefined }) {
+function handsFor(
+    nodes: CanvasNodeData[],
+    connections: CanvasConnection[] = [],
+    contract: SettingsContract | ((run?: { model?: string; mode?: string }) => SettingsContract) = {},
+    stopped: StopOutcome = { running: true, cancel: "cancelled" },
+    catalog: ModelCatalog = { options: [], accepts: () => undefined },
+) {
     const written = {
+        contracts: [] as Array<[string, { model?: string; mode?: string } | undefined]>,
         prompts: [] as Array<[string, string]>,
         texts: [] as Array<[string, string]>,
         generated: [] as Array<[string, string]>,
@@ -94,8 +101,12 @@ function handsFor(nodes: CanvasNodeData[], connections: CanvasConnection[] = [],
             return dissolved.length || released.length ? { released, dissolved } : null;
         },
         // The published contract is the page's to read and the panel's to ask; what these answer is only
-        // whether a setting is written and how the answer reads.
-        nodeContract: () => contract,
+        // whether a setting is written and how the answer reads. A function is asked about the run a call is
+        // about to make, which is the contract a stated size has to be judged by.
+        nodeContract: (nodeId, run) => {
+            written.contracts.push([nodeId, run]);
+            return typeof contract === "function" ? contract(run) : contract;
+        },
         writeMetadata: (nodeId, patch) => void written.settings.push([nodeId, patch]),
         // The catalog is the page's reading of the published models; the tools' own decisions are tested in
         // `node-model.test.ts`, so these answer with the fixture the test handed in.
@@ -169,17 +180,113 @@ describe("set_prompt: the question a node will be asked", () => {
     });
 });
 
-describe("read_node: what the node holds", () => {
-    test("a text node answers with its words", async () => {
+/**
+ * Four questions, four readers, and the rule that keeps them apart.
+ *
+ * A node says four things: what its next run is set to (`read_node`), the words it will be asked
+ * (`read_prompt`), the words it holds (`read_text`), and the picture, film or sound itself (`read_media`). They
+ * used to be two tools cut by payload size, one of which carried the bytes, so "when was this made" cost a
+ * picture: 20 reads carried 54.9 MiB in one session, 99.7% of the conversation. One question, one reader, and
+ * the only expensive one has a name that says so.
+ */
+describe("read_node: what the next run is set to", () => {
+    test("the settings, in the same words set_node writes them", async () => {
+        const { hands } = handsFor([placed("image-1", "image", { model: "default::image-qwen21", imageMode: "edit", size: "1360x768", seed: "42", seedFixed: "true" })], [], { accepts: ["size", "seed"] });
+        const { answer, text } = await textOf(hands, "read_node", { nodeId: "image-1" });
+
+        expect(answer.isError).not.toBe(true);
+        expect(text).toBe("image-1 (image) is set to run image-qwen21 as edit, size 1360x768, seed 42");
+    });
+
+    test("a node nothing is set to run says so", async () => {
+        const { hands } = handsFor([placed("image-1", "image", { content: "/api/canvases/c/files/a.png" })]);
+        const { text } = await textOf(hands, "read_node", { nodeId: "image-1" });
+
+        expect(text).toBe("image-1 (image) is not set to run anything: no model has been picked for it");
+    });
+
+    // What the workflow takes and what is wired in front of it: the half of a run that no setting can state.
+    test("says what a press would need, before the press rather than after the refusal", async () => {
+        const angle = placed("image-1", "image", { prompt: "turn it to the left" });
+        const contract = { media: { images: { min: 1, max: 1 }, videos: { min: 0, max: 0 }, audios: { min: 0, max: 0 }, minTotal: 0 } };
+
+        const short = await textOf(handsFor([angle], [], contract).hands, "read_node", { nodeId: "image-1" });
+        expect(short.text).toContain("it takes 1 image; nothing connected, so a press would be refused");
+
+        const wired = handsFor([placed("source", "image", { content: "/api/canvases/c/files/a.png" }), angle], [{ id: "c1", fromNodeId: "source", toNodeId: "image-1" }], contract);
+        const ready = await textOf(wired.hands, "read_node", { nodeId: "image-1" });
+        expect(ready.text).toContain("it takes 1 image; 1 image connected");
+        expect(ready.text).not.toContain("would be refused");
+    });
+
+    test("a text node has no run, and the answer points at its card", async () => {
         const { hands } = handsFor([textSaying(card)]);
-        const { answer } = await textOf(hands, "read_node", { nodeId: "text-1" });
+        const { answer, text } = await textOf(hands, "read_node", { nodeId: "text-1" });
+
+        expect(answer.isError).not.toBe(true);
+        expect(text).toContain("has no run to configure");
+        expect(text).toContain("read_text");
+        expect(text).not.toContain(card);
+    });
+
+    test("carries no bytes, whatever the node holds", async () => {
+        const { hands } = handsFor([placed("image-1", "image", { content: "data:image/png;base64,AAAA", model: "default::image-qwen21" })]);
+        const { answer } = await textOf(hands, "read_node", { nodeId: "image-1" });
+
+        expect(answer.content.every((block) => block.type === "text")).toBe(true);
+        expect(JSON.stringify(answer.content)).not.toContain("AAAA");
+    });
+});
+
+describe("read_text: the card", () => {
+    test("answers with the words the node holds, whole", async () => {
+        const { hands } = handsFor([textSaying(card)]);
+        const { answer } = await textOf(hands, "read_text", { nodeId: "text-1" });
         expect(answer.content).toEqual([{ type: "text", text: card }]);
     });
 
-    test("a node holding nothing says so rather than inventing words", async () => {
+    test("an empty card says so rather than inventing words", async () => {
         const { hands } = handsFor([node("text", { prompt: "a brass compass" })]);
-        const { answer } = await textOf(hands, "read_node", { nodeId: "text-1" });
-        expect(answer.content).toEqual([{ type: "text", text: "text-1 (text) holds nothing to read" }]);
+        const { answer, text } = await textOf(hands, "read_text", { nodeId: "text-1" });
+
+        expect(answer.isError).not.toBe(true);
+        expect(text).toContain("says nothing yet");
+        expect(text).toContain("set_text");
+    });
+
+    test("a node that holds a picture has no card, and the answer points at the picture", async () => {
+        const { hands } = handsFor([node("image", { content: "/api/canvases/c/files/a.png" })]);
+        const { answer, text } = await textOf(hands, "read_text", { nodeId: "image-1" });
+
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("a picture, not words");
+        expect(text).toContain("read_media");
+    });
+});
+
+describe("read_media: the picture itself", () => {
+    test("hands over the media as its own block, with the caption that says what made it", async () => {
+        const { hands } = handsFor([placed("image-1", "image", { content: "data:image/png;base64,iVBORw0KGgo=", workflow: "image-z-image-turbo", generatedAt: "2026-11-05T19:52:23.576Z" })]);
+        const { answer } = await textOf(hands, "read_media", { nodeId: "image-1" });
+
+        expect(answer.content[0]).toMatchObject({ type: "image", mimeType: "image/png" });
+        expect(answer.content[1]).toEqual({ type: "text", text: "image-1 (image) made 2026-11-05T19:52:23.576Z with image-z-image-turbo" });
+    });
+
+    test("a text node holds no media, and the answer points at its card", async () => {
+        const { hands } = handsFor([textSaying(card)]);
+        const { answer, text } = await textOf(hands, "read_media", { nodeId: "text-1" });
+
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("read_text");
+    });
+
+    test("a node no run has filled is refused rather than answered with an empty block", async () => {
+        const { hands } = handsFor([node("image", { prompt: "a brass compass" })]);
+        const { answer, text } = await textOf(hands, "read_media", { nodeId: "image-1" });
+
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("holds no media yet");
     });
 });
 
@@ -294,7 +401,7 @@ describe("create_node: what this canvas can make", () => {
 describe("a name this page does not know", () => {
     test("says the page is older than the tool list, not that the tool does not exist", async () => {
         const { hands } = handsFor([]);
-        const answer = await runTool("set_node", { nodeId: "text-1", text: "x" }, hands, "canvas:test");
+        const answer = await runTool("nudge_node", { nodeId: "text-1" }, hands, "canvas:test");
 
         expect(answer.isError).toBe(true);
         expect((answer.content[0] as { text: string }).text).toContain("the page in front of the user was built before the tool list you were given");
@@ -335,12 +442,12 @@ describe("generate: a wire that carries nothing", () => {
 });
 
 /**
- * `read_prompt` is the pair to `read_node`.
+ * `read_prompt` reads the words a node will be asked, and nothing else.
  *
- * A node has two kinds of words and they are not interchangeable: what it holds (the card, the picture,
- * the film — `read_node`) and what it will be asked (the prompt its panel shows — this). The list stopped
- * carrying the second (#233), so this is the one way to it, and its answer says which is which where the
- * two are easiest to confuse.
+ * A node has two kinds of words and they are not interchangeable: what it holds (the card — `read_text`) and
+ * what it will be asked (the prompt its panel shows — this). The settings standing behind the question are
+ * neither, so they are `read_node`'s: this answer is the words, which is what makes it usable as the string a
+ * rewrite is written against.
  */
 describe("read_prompt: the question behind a node", () => {
     test("a text node has no prompt, and the answer points at what it does have", async () => {
@@ -350,23 +457,7 @@ describe("read_prompt: the question behind a node", () => {
         expect(answer.isError).not.toBe(true);
         expect(text).toContain("has no prompt");
         expect(text).not.toContain(card);
-        expect(text).toContain("read_node");
-    });
-
-    // #313: the prompt is half of a press. A workflow that re-renders a picture from a new angle can only be
-    // refused while nothing is wired into it, and this is the answer to "why".
-    test("says what the run needs and what is wired in — before the press, not after the refusal", async () => {
-        const angle = placed("image-1", "image", { prompt: "turn it to the left" });
-        const { hands } = handsFor([angle], [], { media: { images: { min: 1, max: 1 }, videos: { min: 0, max: 0 }, audios: { min: 0, max: 0 }, minTotal: 0 } });
-        const short = await textOf(hands, "read_prompt", { nodeId: "image-1" });
-        expect(short.text).toContain("it takes 1 image; nothing connected, so a press would be refused");
-
-        const wired = handsFor([placed("source", "image", { content: "/api/canvases/c/files/a.png" }), angle], [{ id: "c1", fromNodeId: "source", toNodeId: "image-1" }], {
-            media: { images: { min: 1, max: 1 }, videos: { min: 0, max: 0 }, audios: { min: 0, max: 0 }, minTotal: 0 },
-        });
-        const ready = await textOf(wired.hands, "read_prompt", { nodeId: "image-1" });
-        expect(ready.text).toContain("it takes 1 image; 1 image connected");
-        expect(ready.text).not.toContain("would be refused");
+        expect(text).toContain("read_text");
     });
 
     test("says so when nothing has been asked of a picture", async () => {
@@ -378,19 +469,13 @@ describe("read_prompt: the question behind a node", () => {
         expect(text).toContain("nothing has been asked of it yet");
     });
 
-    test("answers for a picture too, which has a prompt and no words of its own", async () => {
-        const { hands } = handsFor([node("image", { content: "data:image/png;base64,AAAA", prompt: "a brass compass" })]);
+    test("answers with the words and nothing else, even when the node is set to run something", async () => {
+        const { hands } = handsFor([node("image", { content: "data:image/png;base64,AAAA", prompt: "a brass compass", model: "default::image-qwen21", size: "1360x768" })]);
         const { text } = await textOf(hands, "read_prompt", { nodeId: "image-1" });
 
-        // Exactly the prompt: a node that was never given a model has nothing to say about what will run.
+        // Exactly the prompt: what will run is `read_node`'s, and mixing the two is what made a rewrite read
+        // the model as if it were part of what the user asked for.
         expect(text).toBe("a brass compass");
-    });
-
-    test("says what the node is set to run, which the words alone cannot", async () => {
-        const { hands } = handsFor([node("video", { prompt: "一只猫在雪地里跑", model: "default::video-h3-frames", seconds: "4" })]);
-        const { text } = await textOf(hands, "read_prompt", { nodeId: "video-1" });
-
-        expect(text).toBe("一只猫在雪地里跑\nvideo-1 is set to run video-h3-frames, 4 s.");
     });
 
     test("refuses a node the canvas does not hold", async () => {
@@ -466,12 +551,14 @@ describe("resize_node: the card's box, not a zoom", () => {
 });
 
 /**
- * Which run a node is: the one change that alters what the picture *is*.
+ * Which run a node is, and how that run is shaped: one call, one write.
  *
- * The tool writes the picker's own fields and answers in the node's words; which name means which model, and
- * what a mode may be, are `planNodeModel`'s decisions and are tested where they live (#311).
+ * They were two tools, and neither could keep its promise: a size is judged against the workflow that will run
+ * it, so a model change that succeeded and a size that was refused left one sentence half applied. The plans are
+ * still two (`planNodeModel`, `planNodeSettings`, tested where they live); what is pinned here is the
+ * composition — the run first, the shape judged by it, both written together or not at all.
  */
-describe("set_model: which run this node is", () => {
+describe("set_node: which run it is, and how it is shaped", () => {
     const catalogWith = (accepts: string[]): ModelCatalog => ({
         options: [{ value: "default::image-qwen21", names: ["image-qwen21"], label: "Qwen Image 2.1", workflowId: "image-qwen21", mode: "", modes: ["t2i", "edit"], blocked: [], step: false, takes: "words only", modeMedia: {}, knobs: [] }],
         accepts: (_value, _mode, key) => accepts.includes(key),
@@ -479,17 +566,17 @@ describe("set_model: which run this node is", () => {
 
     test("writes the model and the mode, and answers with what the node now runs", async () => {
         const { hands, written } = handsFor([placed("image-1", "image")], [], {}, undefined, catalogWith(["prompt", "editCanvasSize"]));
-        const { answer, text } = await textOf(hands, "set_model", { nodeId: "image-1", model: "image-qwen21", mode: "edit" });
+        const { answer, text } = await textOf(hands, "set_node", { nodeId: "image-1", model: "image-qwen21", mode: "edit" });
 
         expect(answer.isError).not.toBe(true);
         expect(written.settings).toEqual([["image-1", { model: "default::image-qwen21", imageMode: "edit" }]]);
-        expect(text).toBe("image-1 now runs image-qwen21 as edit — set to run image-qwen21 as edit");
+        expect(text).toBe("image-1 now runs image-qwen21 as edit");
     });
 
     test("a setting the new run does not read is named, and stays on the node", async () => {
         const sized = placed("image-1", "image", { size: "1360x768", params: { steps: 8 } });
         const { hands, written } = handsFor([sized], [], {}, undefined, catalogWith(["prompt"]));
-        const { text } = await textOf(hands, "set_model", { nodeId: "image-1", model: "image-qwen21" });
+        const { text } = await textOf(hands, "set_node", { nodeId: "image-1", model: "image-qwen21" });
 
         expect(written.settings[0][1]).not.toHaveProperty("size");
         expect(text).toContain("no longer reads size, steps");
@@ -498,7 +585,7 @@ describe("set_model: which run this node is", () => {
 
     test("a name it does not have is refused before anything is written", async () => {
         const { hands, written } = handsFor([placed("image-1", "image")], [], {}, undefined, catalogWith(["prompt"]));
-        const { answer, text } = await textOf(hands, "set_model", { nodeId: "image-1", model: "image-flux" });
+        const { answer, text } = await textOf(hands, "set_node", { nodeId: "image-1", model: "image-flux" });
 
         expect(answer.isError).toBe(true);
         expect(written.settings).toEqual([]);
@@ -507,12 +594,71 @@ describe("set_model: which run this node is", () => {
 
     test("an id the canvas does not hold, and a node with no run to choose", async () => {
         const { hands } = handsFor([textSaying(card)], [], {}, undefined, catalogWith(["prompt"]));
-        const unknown = await textOf(hands, "set_model", { nodeId: "image-9", model: "image-qwen21" });
+        const unknown = await textOf(hands, "set_node", { nodeId: "image-9", model: "image-qwen21" });
         expect(unknown.answer.isError).toBe(true);
 
-        const words = await textOf(hands, "set_model", { nodeId: "text-1", model: "image-qwen21" });
+        const words = await textOf(hands, "set_node", { nodeId: "text-1", model: "image-qwen21" });
         expect(words.answer.isError).toBe(true);
         expect(words.text).toContain("holds words");
+    });
+
+    test("writes the settings the plan settled on, and answers with the node's own clause", async () => {
+        const { hands, written } = handsFor([placed("image-1", "image")], [], { accepts: ["size", "seed"] });
+        const { answer, text } = await textOf(hands, "set_node", { nodeId: "image-1", size: "1024x1024", seed: 42 });
+
+        expect(answer.isError).not.toBe(true);
+        expect(written.settings).toEqual([["image-1", { size: "1024x1024", seed: "42", seedFixed: "true" }]]);
+        // The clause is the read-back: the node as its next run would see it, which is what read_node answers.
+        expect(text).toBe("set size 1024x1024, seed 42 on image-1; it is now size 1024x1024, seed 42");
+    });
+
+    test("a key the workflow does not read is refused, and nothing is written", async () => {
+        const { hands, written } = handsFor([placed("image-1", "image")], [], { accepts: ["seed"] });
+        const { answer, text } = await textOf(hands, "set_node", { nodeId: "image-1", size: "1024x1024" });
+
+        expect(answer.isError).toBe(true);
+        expect(written.settings).toEqual([]);
+        expect(text).toContain("size means nothing to this workflow");
+        expect(text).toContain("seed");
+    });
+
+    // The reason the two tools became one.
+    test("a model and a size land together, judged by the new model's contract", async () => {
+        const contractFor = (run?: { model?: string; mode?: string }) => ({ accepts: run?.model === "default::image-qwen21" ? ["size", "seed"] : ["prompt"] });
+        const { hands, written } = handsFor([placed("image-1", "image", { size: "1024x1024" })], [], contractFor, undefined, catalogWith(["prompt", "editCanvasSize", "size", "seed"]));
+        const { answer, text } = await textOf(hands, "set_node", { nodeId: "image-1", model: "image-qwen21", size: "1360x768" });
+
+        expect(answer.isError).not.toBe(true);
+        expect(written.settings).toEqual([["image-1", { model: "default::image-qwen21", size: "1360x768" }]]);
+        // The size was judged against the model being set, not the one being replaced.
+        expect(written.contracts.at(-1)).toEqual(["image-1", { model: "default::image-qwen21", mode: "" }]);
+        expect(text).toBe("image-1 now runs image-qwen21, set size 1360x768");
+    });
+
+    test("when the shape is refused, the model is not written either", async () => {
+        const { hands, written } = handsFor([placed("image-1", "image")], [], { accepts: ["seed"] }, undefined, catalogWith(["prompt", "editCanvasSize", "size", "seed"]));
+        const { answer, text } = await textOf(hands, "set_node", { nodeId: "image-1", model: "image-qwen21", size: "1360x768" });
+
+        expect(answer.isError).toBe(true);
+        expect(written.settings).toEqual([]);
+        expect(text).toContain("size means nothing to this workflow");
+    });
+
+    test("a node kind that has no run to configure is refused", async () => {
+        const { hands } = handsFor([textSaying(card)], [], { accepts: ["size"] });
+        const words = await textOf(hands, "set_node", { nodeId: "text-1", size: "1024x1024" });
+
+        expect(words.answer.isError).toBe(true);
+        expect(words.text).toContain("its words");
+    });
+
+    test("a call with nothing stated is refused, and says what it takes", async () => {
+        const { hands } = handsFor([placed("image-1", "image")]);
+        const { answer, text } = await textOf(hands, "set_node", { nodeId: "image-1" });
+
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("nothing was stated");
+        expect(text).toContain("size");
     });
 });
 
@@ -632,47 +778,6 @@ const at = (id: string, type: CanvasNodeData["type"], x: number, y: number, meta
 const group = (id: string, x: number, y: number): CanvasNodeData => at(id, "group", x, y, {}, 300);
 const member = (id: string, groupId: string, x: number, y: number): CanvasNodeData => at(id, "text", x, y, { groupId });
 const loose = (id: string, x: number, y: number): CanvasNodeData => at(id, "text", x, y);
-
-/**
- * The settings a run's shape is made of: the size, the length, the seed, the knobs.
- *
- * The tool writes what the node's panel writes and answers with the node's own clause, so what an agent is
- * told afterwards is what `read_prompt` would say. What is checked here is the wiring — the plan's refusals
- * and the field each setting names are `planNodeSettings`'s, tested where it lives (#309).
- */
-describe("set_node_settings: how a node is set to run", () => {
-    const picture = (metadata: CanvasNodeMetadata = {}) => placed("image-1", "image", metadata);
-
-    test("writes the settings the plan settled on, and answers with the node's own clause", async () => {
-        const { hands, written } = handsFor([picture()], [], { accepts: ["size", "seed"] });
-        const { answer, text } = await textOf(hands, "set_node_settings", { nodeId: "image-1", size: "1024x1024", seed: 42 });
-
-        expect(answer.isError).not.toBe(true);
-        expect(written.settings).toEqual([["image-1", { size: "1024x1024", seed: "42", seedFixed: "true" }]]);
-        // The clause is the read-back: the node as its next run would see it.
-        expect(text).toBe("set size 1024x1024, seed 42 on image-1; it is now size 1024x1024, seed 42");
-    });
-
-    test("a key the workflow does not read is refused, and nothing is written", async () => {
-        const { hands, written } = handsFor([picture()], [], { accepts: ["seed"] });
-        const { answer, text } = await textOf(hands, "set_node_settings", { nodeId: "image-1", size: "1024x1024" });
-
-        expect(answer.isError).toBe(true);
-        expect(written.settings).toEqual([]);
-        expect(text).toContain("size means nothing to this workflow");
-        expect(text).toContain("seed");
-    });
-
-    test("a node it does not hold, and a node kind that has no run to configure", async () => {
-        const { hands } = handsFor([textSaying(card)], [], { accepts: ["size"] });
-        const unknown = await textOf(hands, "set_node_settings", { nodeId: "image-9", size: "1024x1024" });
-        expect(unknown.answer.isError).toBe(true);
-
-        const words = await textOf(hands, "set_node_settings", { nodeId: "text-1", size: "1024x1024" });
-        expect(words.answer.isError).toBe(true);
-        expect(words.text).toContain("its words");
-    });
-});
 
 /**
  * Moving a group, which is a move of the card and of what it holds.

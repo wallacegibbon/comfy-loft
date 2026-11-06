@@ -3,9 +3,7 @@ import { useEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, 
 import { cn } from "@/lib/utils";
 
 /**
- * Text entry, replacing antd's `Input` and its `TextArea` child, plus `InputNumber` and
- * `Slider`. antd's `Password` and `Search` children went with their last callers: the unlock
- * dialog (deleted in #193) and a search box that had none.
+ * Text entry, replacing antd's `Input` and its `TextArea` child, plus `InputNumber` and `Slider`.
  *
  * Props keep antd's names where call sites use them (`size`, `prefix`, `status`,
  * `onPressEnter`, `allowClear`, `rows`, `autoSize`). `onChange` receives the native change

@@ -102,7 +102,7 @@ const SIZE_PROBLEM_KEYS: Record<ImageSizeProblem, string> = {
 /**
  * What a size is, or what is wrong with it — the one decision behind every reader.
  *
- * `validateImageSize` refuses, `resolveRequestSize` normalises, and the agent's `set_node_settings` asks before
+ * `validateImageSize` refuses, `resolveRequestSize` normalises, and the agent's `set_node` asks before
  * it writes a value into a node: three audiences, one answer. The alternative was a second opinion about sizes
  * in the tool, where "1024x1000 is fine because the request aligns it" and "1024x1000 is refused" could both be
  * true in the same build.

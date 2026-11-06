@@ -95,7 +95,7 @@ func runNotice(stored *task.Task) string {
 	}
 	switch stored.Status {
 	case "completed":
-		return fmt.Sprintf("[comfyloft] %s you asked for has finished: %s, written into the canvas. canvas_read_node it if you need to see it, then carry on.", what, producedFiles(len(stored.Outputs)))
+		return fmt.Sprintf("[comfyloft] %s you asked for has finished: %s, written into the canvas. canvas_read_media it if you need to look at it, then carry on.", what, producedFiles(len(stored.Outputs)))
 	case "cancelled":
 		return fmt.Sprintf("[comfyloft] %s you asked for was cancelled; nothing was produced.", what)
 	default:

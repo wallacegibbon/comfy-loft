@@ -55,7 +55,7 @@ export function generationClause(metadata: CanvasNodeMetadata | undefined): stri
  * a text node's model belongs to the agent, not to a workflow. The seconds are the node's, when it has
  * kept a duration of its own; the global default is not a fact about this node.
  *
- * The settings follow — the same fields `set_node_settings` writes (#309). They are facts about the node
+ * The settings follow — the same fields `set_node` writes (#309). They are facts about the node
  * whether or not a model has been picked for it, which is why a node with a size and no picker still says so:
  * an agent about to write a size has to be able to read the one that is there. `auto` is left out, because it
  * is the absence of a choice rather than one.
@@ -84,7 +84,7 @@ function settingsClause(metadata: CanvasNodeMetadata | undefined) {
     if (size && size.toLowerCase() !== "auto") parts.push(`size ${size}`);
     const seconds = (metadata?.seconds || "").trim();
     if (seconds) parts.push(`${seconds} s`);
-    // A seed is only a fact about the run when the node also says it is fixed — the pair `set_node_settings`
+    // A seed is only a fact about the run when the node also says it is fixed — the pair `set_node`
     // writes together, and the one `buildGenerationConfig` reads before it puts a seed in the request.
     const seed = (metadata?.seed || "").trim();
     if (seed && metadata?.seedFixed === "true") parts.push(`seed ${seed}`);

@@ -8,10 +8,10 @@ import { imageToDataUrl } from "@/services/image-storage";
 import type { ToolContent } from "@/services/api/agent";
 import { generateAnswer, type GenerateOptions, type GenerateStart } from "@/lib/canvas/agent-generate";
 import { describeCanvas } from "@/lib/canvas/canvas-agent-view";
-import { configuredClause, generationClause, requiresClause, runClause, type MediaCounts } from "@/lib/canvas/node-generation-facts";
+import { configuredClause, generationClause, requiresClause, type MediaCounts } from "@/lib/canvas/node-generation-facts";
 import { nodeContentOf, nodePromptOf } from "@/lib/canvas/node-prompt-field";
 import { planNodeSettings, type NodeSettings, type SettingsContract } from "@/lib/canvas/node-settings";
-import { describeModelCatalogs, MODEL_CAPABILITIES, planNodeModel, type ModelCapability, type ModelCatalog, type ModelCatalogs, type ModelChoice } from "@/lib/canvas/node-model";
+import { describeModelCatalogs, MODEL_CAPABILITIES, planNodeModel, type ModelCapability, type ModelCatalog, type ModelCatalogs } from "@/lib/canvas/node-model";
 import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type Position } from "@/types/canvas";
 
 /**
@@ -92,12 +92,17 @@ export type CanvasHands = {
      */
     ungroupNodes: (nodeIds: string[]) => { released: string[]; dissolved: string[] } | null;
     /**
-     * What the node's model publishes, as a contract: the keys a run accepts, and a sound's length bound.
+     * What the node's model publishes, as a contract: the keys a run accepts, the media it takes, a sound's
+     * length bound.
      *
      * Read from the same published list the panel's own rows ask (#304), so a setting this refuses is one the
      * panel would not have offered either — the tool and the UI cannot disagree about what a node takes.
+     *
+     * `run` is the choice a call is about to make: a size stated beside a new model has to be judged by the
+     * contract of the model that will run it, not the one being replaced, and the two are one write. Absent, the
+     * question is about the node as it stands.
      */
-    nodeContract: (nodeId: string) => SettingsContract;
+    nodeContract: (nodeId: string, run?: { model?: string; mode?: string }) => SettingsContract;
     /** Write the fields a call settles on — a setting, or which model runs — the way the panel writes them. */
     writeMetadata: (nodeId: string, patch: CanvasNodeMetadata) => void;
     /**
@@ -140,16 +145,18 @@ export async function runTool(name: string, args: unknown, hands: CanvasHands, s
             return readNode(hands, args);
         case "read_prompt":
             return readPrompt(hands, args);
+        case "read_text":
+            return readText(hands, args);
+        case "read_media":
+            return readMedia(hands, args);
         case "connect":
             return connect(hands, args);
         case "set_prompt":
             return setPrompt(hands, args);
         case "set_text":
             return setText(hands, args);
-        case "set_node_settings":
-            return setNodeSettings(hands, args);
-        case "set_model":
-            return setModel(hands, args);
+        case "set_node":
+            return setNode(hands, args);
         case "list_models":
             return listModels(hands, args);
         case "generate":
@@ -318,40 +325,78 @@ function setText(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
     if (!node) return noSuchNode(args);
     if (node.type !== CanvasNodeType.Text) {
-        const holds = node.type === CanvasNodeType.Image ? "a picture" : node.type === CanvasNodeType.Video ? "a film" : node.type === CanvasNodeType.Audio ? "a sound" : "no text";
-        return { content: [textBlock(`${node.id} is a ${node.type} node: it holds ${holds}, so it has no words to write. set_prompt changes what it is made from, and generate makes a new one.`)], isError: true };
+        return { content: [textBlock(`${node.id} is a ${node.type} node: it holds ${heldNoun(node.type)}, so it has no words to write. set_prompt changes what it is made from, and generate makes a new one.`)], isError: true };
     }
 
     hands.writeText(node.id, text);
     return { content: [textBlock(`${node.id} now says: ${text.slice(0, 300)}`)], isError: false };
 }
 
+/** What a node of this kind holds, for the two tools that write and read words to refuse with. */
+function heldNoun(type: string): string {
+    if (type === CanvasNodeType.Image) return "a picture";
+    if (type === CanvasNodeType.Video) return "a film";
+    if (type === CanvasNodeType.Audio) return "a sound";
+    return "nodes";
+}
+
 /**
- * Set what a node's next run produces — its size, its length, the seed it is drawn with, the workflow's own
- * knobs — in the fields the node's own panel writes, and answer with what the node is now set to.
+ * Set what a node's next run is: which workflow and mode it runs, and the shape that run takes.
  *
- * This is the half of the panel an agent could not reach: it could say *what* to draw and press the button,
- * but not how big the picture is or how long the clip runs, so "a 16:9 hero shot, five seconds" was a
- * sentence it had to hand back to the user. Everything about which value is legal lives in
- * `planNodeSettings` — the same `planImageSize`, the same length bounds, and the same published contract the
- * panel's rows ask — and this function is only the call and the answer.
+ * One tool rather than two, because the two halves cannot be set separately and honestly. A size is judged
+ * against the workflow that will run it, so the contract read is the *new* model's; and a call that states both
+ * must land both or neither — a model change that succeeded followed by a refused size left the user's one
+ * sentence half applied, which is a promise two separate tools made and could not keep.
  *
- * The answer repeats the node's own clause rather than the request, because a setting can be written and
- * still not be the one a run uses (a seed with no `seedFixed`, say): what the agent needs back is what the
- * node says about its next run, which is what `read_prompt` would tell it a moment later.
+ * The panel's own rules stay where they were: `planNodeModel` resolves names and modes, `planNodeSettings`
+ * reads every value and the published contract, and this composes them in the only order that works — the run
+ * first, then the shape judged against it.
+ *
+ * It writes no words. A text node's card is `set_text`'s and the question a media node will be asked is
+ * `set_prompt`'s, so a call that mistakes one for a setting is refused rather than quietly written.
  */
-function setNodeSettings(hands: CanvasHands, args: unknown): ToolAnswer {
+function setNode(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
     if (!node) return noSuchNode(args);
-    // The id names the node; everything beside it is a setting, and a name that is neither is refused by the
-    // plan rather than ignored, which is what makes a typo (`setps`) an answer instead of a silent no-op.
-    const { nodeId: _named, ...settings } = argsOf(args);
-    const plan = planNodeSettings(node, settings as NodeSettings, hands.nodeContract(node.id));
-    if (!plan.ok) return { content: [textBlock(plan.reason)], isError: true };
+    // The id names the node; every other key is either which run this is or how that run is shaped, and a key
+    // that is neither is refused by the plan rather than ignored, which is what makes a typo an answer.
+    const { nodeId: _named, model, mode, ...settings } = argsOf(args) as { nodeId?: unknown; model?: unknown; mode?: unknown } & NodeSettings;
 
-    hands.writeMetadata(node.id, plan.patch);
-    const clause = configuredClause({ ...node.metadata, ...plan.patch });
-    return { content: [textBlock(`set ${plan.written.join(", ")} on ${node.id}${clause ? `; it is now ${clause}` : ""}`)], isError: false };
+    // Which run this is, first: the shape is judged against it.
+    let run: { patch: CanvasNodeMetadata; ran: string; stale: string[] } | undefined;
+    if (model !== undefined || mode !== undefined) {
+        const plan = planNodeModel(node, { model, mode }, hands.modelCatalog(node.type as ModelCapability));
+        if (!plan.ok) return { content: [textBlock(plan.reason)], isError: true };
+        run = { patch: plan.patch, ran: plan.mode ? `${plan.model.workflowId} as ${plan.mode}` : plan.model.workflowId, stale: plan.stale };
+    }
+
+    const stated = Object.keys(settings).length > 0;
+    if (!run && !stated) {
+        return { content: [textBlock(`${node.id}: nothing was stated. set_node takes a model, a mode, a size, a length, a quality, a background, a seed, a format, instructions, or params`)], isError: true };
+    }
+
+    let patch: CanvasNodeMetadata = run ? run.patch : {};
+    let written: string[] = [];
+    if (stated) {
+        // The node as it will be once the run is chosen: the settings *and* the contract are read off that, so
+        // "switch to Qwen's edit mode at 1360x768" is judged by Qwen's keys and lands in one write.
+        const chosen = { ...node, metadata: { ...node.metadata, ...patch } };
+        const override = run ? { model: String(run.patch.model || ""), mode: String(run.patch.imageMode || run.patch.videoMode || "") } : undefined;
+        const plan = planNodeSettings(chosen, settings, hands.nodeContract(node.id, override));
+        if (!plan.ok) return { content: [textBlock(plan.reason)], isError: true };
+        patch = { ...patch, ...plan.patch };
+        written = plan.written;
+    }
+
+    hands.writeMetadata(node.id, patch);
+    // The settings the new run does not read: still on the node, and dropped by the request, so the caller is
+    // told rather than left to discover it when a number stops mattering (#302).
+    const dropped = run?.stale.length ? `; this run no longer reads ${run.stale.join(", ")}, and ${run.stale.length === 1 ? "it is" : "they are"} still on the node — the request leaves ${run.stale.length === 1 ? "it" : "them"} out` : "";
+    if (run) return { content: [textBlock(`${node.id} now runs ${run.ran}${written.length ? `, set ${written.join(", ")}` : ""}${dropped}`)], isError: false };
+    // The clause is the read-back: a setting can be written and still not be the one a run uses (a seed with no
+    // `seedFixed`, say), and `read_node` is what says which.
+    const clause = configuredClause({ ...node.metadata, ...patch });
+    return { content: [textBlock(`set ${written.join(", ")} on ${node.id}${clause ? `; it is now ${clause}` : ""}`)], isError: false };
 }
 
 /**
@@ -391,33 +436,6 @@ async function stopNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> 
         };
     }
     return { content: [textBlock(`stopped ${node.id}: the run was cancelled and the node is idle again, holding what it held before`)], isError: false };
-}
-
-/**
- * Change which run this node is — the model, and the mode a family of workflows is asked in.
- *
- * This is the one tool that can change what a picture *is* rather than how it is made, so it says what it did
- * in the node's own words ("now runs image-qwen21 as edit") and, when the new workflow no longer reads
- * something the node is holding, names it: a size set for the old model is still on the node, and the request
- * will now leave it out without a word (#302).
- *
- * It is also the way a node made of material — a crop, an upload, a mask — becomes a generator again: choosing
- * a model *is* saying "generate here", which is why the material panel's picker is the one control it keeps.
- */
-function setModel(hands: CanvasHands, args: unknown): ToolAnswer {
-    const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
-    const { nodeId: _named, ...choice } = argsOf(args);
-    const plan = planNodeModel(node, choice as ModelChoice, hands.modelCatalog(node.type as ModelCapability));
-    if (!plan.ok) return { content: [textBlock(plan.reason)], isError: true };
-
-    hands.writeMetadata(node.id, plan.patch);
-    const clause = configuredClause({ ...node.metadata, ...plan.patch });
-    const ran = plan.mode ? `${plan.model.workflowId} as ${plan.mode}` : plan.model.workflowId;
-    // The settings the new run does not read: still on the node, and dropped by the request, so the caller is
-    // told rather than left to discover it when a number stops mattering.
-    const dropped = plan.stale.length ? `; this run no longer reads ${plan.stale.join(", ")}, and ${plan.stale.length === 1 ? "it is" : "they are"} still on the node — the request leaves ${plan.stale.length === 1 ? "it" : "them"} out` : "";
-    return { content: [textBlock(`${node.id} now runs ${ran}${clause ? ` — ${clause}` : ""}${dropped}`)], isError: false };
 }
 
 /**
@@ -500,70 +518,100 @@ function press(hands: CanvasHands, nodeId: string, mode: CanvasGenerationMode, w
 const GENERATE_MODES: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio];
 
 /**
- * Read one node's actual content.
+ * Read what a node's next run is set to: the workflow and mode it runs, and the shape that run takes.
  *
- * What comes back is the node's own stuff, not a description of it: the words it holds, and — for a node
- * that holds a picture, a film or a sound — the media itself, as the block the protocol defines for it.
- * The block carries its type, so the choice of block is the media's, not ours: an image is an image, a
- * sound is a sound, and a film travels as a `resource` blob because the protocol has no video block.
+ * The reader that pairs with `set_node`: every field that tool writes is stated here, in the same words
+ * (`configuredClause`, the one place they are worded), plus what a press would still need — a configuration
+ * that cannot run yet is worth knowing about before it is pressed.
  *
- * A node something made ends with one line saying what made it and when — the caption a picture would have
- * in a book, and the answer to the question a model cannot ask: "was this drawn by the model I am about to
- * blame, or by another one, an hour ago?" (#227).
+ * It carries no words and no bytes. A card is `read_text`'s, the question a node will be asked is
+ * `read_prompt`'s, the picture is `read_media`'s; and what a node *did* — the state of its run, and what made
+ * its content — is on the `list_nodes` line, with the caption `read_media` sends. One question, one reader.
  */
-async function readNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> {
+function readNode(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
     if (!node) return noSuchNode(args);
+    if (node.type === CanvasNodeType.Text) {
+        return { content: [textBlock(`${node.id} is a text node and has no run to configure: nothing asks it anything. What it says is its content, which read_text answers with and set_text writes`)], isError: false };
+    }
+    if (!GENERATE_MODES.includes(node.type)) {
+        return { content: [textBlock(`${node.id} is a ${node.type} node and runs nothing: ${node.type === CanvasNodeType.Group ? "it holds nodes, not content" : "a LoRA node names a stack its own panel picks"}`)], isError: false };
+    }
 
-    const content: ToolContent[] = [];
-    // What the node holds. A text node holds words and that is the whole of it: the card is the content.
-    const words = nodeContentOf(node);
-    if (words) content.push(textBlock(words));
-    // Whether anything is happening here, before what it holds: it is the answer to "did my press take hold",
-    // which is the question this node is read for half the time (#285).
-    const running = runClause(node.metadata);
-    if (running) content.push(textBlock(running));
-
-    const media = await mediaOf(node);
-    if (media) content.push(media);
-    if (!content.length) content.push(textBlock(`${node.id} (${node.type}) holds nothing to read`));
-    const clause = generationClause(node.metadata);
-    if (clause) content.push(textBlock(`${node.id} (${node.type}) ${clause}`));
-    return { content };
+    const clause = configuredClause(node.metadata);
+    const parts: string[] = [clause ? `${node.id} (${node.type}) is ${clause}` : `${node.id} (${node.type}) is not set to run anything: no model has been picked for it`];
+    // What a press would need and what is wired in front of it: the half of a run a configuration cannot state.
+    const requirement = requiresClause(hands.nodeContract(node.id).media, connectedMedia(node.id, hands));
+    if (requirement) parts.push(`${node.id} ${requirement}.`);
+    return { content: [textBlock(parts.join("\n"))], isError: false };
 }
 
 /**
- * Read what a node will be asked — the prompt its own panel shows, and the words `set_prompt` writes.
+ * Read a text node's card: the words it holds, whole.
  *
- * The pair to `read_node`, and the same distinction #229 drew: `read_node` answers with what the node
- * holds, this answers with the question standing behind it. Its own tool rather than a field in the list,
- * because a prompt is private until someone asks for it, and because a list that carried every node's
- * prompt twice was both large and ambiguous (#233).
+ * The reader that pairs with `set_text`, and with nothing else. A picture's words are the question it will be
+ * asked (`read_prompt`) and its content is the picture itself (`read_media`), so neither is here. `list_nodes`
+ * shows the first 300 characters of every card, which is a glance across the canvas; this is the card.
+ */
+function readText(hands: CanvasHands, args: unknown): ToolAnswer {
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
+    if (node.type !== CanvasNodeType.Text) {
+        return {
+            content: [
+                textBlock(
+                    `${node.id} is a ${node.type} node: it holds ${heldNoun(node.type)}, not words. ${node.type === CanvasNodeType.Group ? "A group holds nodes, and the members are on its own list line" : "What it holds is read_media's, and what it will be asked is read_prompt's"}`,
+                ),
+            ],
+            isError: true,
+        };
+    }
+    const words = nodeContentOf(node);
+    if (!words) return { content: [textBlock(`${node.id} says nothing yet: set_text writes what it should say`)], isError: false };
+    return { content: [textBlock(words)], isError: false };
+}
+
+/**
+ * Read a node's media: the picture, the film or the sound itself, as the block the protocol defines for it.
  *
- * A text node has no prompt at all, so this answers with that fact and points at `read_node`: the card is
- * what it says, and nothing is asked of it.
+ * The block carries its type, so the choice of block is the media's, not ours: an image is an image, a sound is
+ * a sound, and a film travels as a `resource` blob because the protocol has no video block. It arrives with one
+ * line naming the node and what made it — the caption a picture has in a book, and the answer to the question a
+ * model cannot ask: "was this drawn by the model I am about to blame, or by another one, an hour ago?" — because
+ * a picture alone does not say which of five candidates it is.
  *
- * The second sentence is what a rewrite needs before it can be a rewrite: which workflow the words will
- * be handed to, and how long the video is (#257). The wording is not the agent's to choose — H3's skill
- * picks a different section order for every input mode — and no other tool states it, so an agent asked
- * to write a prompt for a node it did not create would have had to ask, or guess.
+ * This is the one read that costs anything, which is why it is the one read with its own name. Everything an
+ * agent usually asks about a node — its words, its question, its settings — is answered in hundreds of bytes; a
+ * single tool that answered both was read 20 times for 54.9 MiB in one session, 99.7% of the conversation.
+ */
+async function readMedia(hands: CanvasHands, args: unknown): Promise<ToolAnswer> {
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
+    if (!MEDIA_TYPES.includes(node.type)) {
+        return { content: [textBlock(`${node.id} is a ${node.type} node and holds no media: ${node.type === CanvasNodeType.Text ? "its words are read_text's" : "a group holds nodes, and a LoRA node a stack"}`)], isError: true };
+    }
+    const media = await mediaOf(node);
+    if (!media) return { content: [textBlock(`${node.id} (${node.type}) holds no media yet: no run has put one in it`)], isError: true };
+    const clause = generationClause(node.metadata);
+    return { content: [media, textBlock(`${node.id} (${node.type})${clause ? ` ${clause}` : ""}`)] };
+}
+
+/**
+ * Read the words a node will be asked — the prompt its own panel shows, and the words `set_prompt` writes.
+ *
+ * One of the three readers that replaced a single over-full `read_node`: the card is `read_text`'s, the settings
+ * are `read_node`'s, and this answers with the words and nothing else. A text node has no prompt at all, and says
+ * so, pointing at its card; a node nobody has asked anything of has no prompt either, and that is the answer too.
  */
 function readPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
     if (!node) return noSuchNode(args);
     if (node.type === CanvasNodeType.Text) {
-        return { content: [textBlock(`${node.id} (text) has no prompt: it holds words, and nothing asks it anything. What it says is its content, which read_node answers with, and set_text writes.`)], isError: false };
+        return { content: [textBlock(`${node.id} (text) has no prompt: it holds words, and nothing asks it anything. What it says is its content, which read_text answers with, and set_text writes.`)], isError: false };
     }
-
-    // The prompt is half of a press: what the workflow takes and what is wired into it is the other half, and a
-    // node missing a source picture can only be refused (docs/decisions.md #313).
-    const requirement = requiresClause(hands.nodeContract(node.id).media, connectedMedia(node.id, hands));
-    const needs = requirement ? `\n${node.id} ${requirement}.` : "";
     const words = nodePromptOf(node);
-    const configured = configuredClause(node.metadata);
-    const setting = configured ? `\n${node.id} is ${configured}.` : "";
-    if (!words.trim()) return { content: [textBlock(`${node.id} (${node.type}) has no prompt: nothing has been asked of it yet${needs}`)], isError: false };
-    return { content: [textBlock(words + setting + needs)], isError: false };
+    if (!words.trim()) return { content: [textBlock(`${node.id} (${node.type}) has no prompt: nothing has been asked of it yet`)], isError: false };
+    return { content: [textBlock(words)], isError: false };
 }
 
 /** What is wired into one node, one count per kind — the state a run's media requirement is read against. */
@@ -821,14 +869,6 @@ function ungroupNodes(hands: CanvasHands, args: unknown): ToolAnswer {
     return { content: [textBlock(parts.join("; "))], isError: false };
 }
 
-/**
- * The most base64 this page will put in one socket message.
- *
- * The server refuses a message over 8 MiB and closes the socket when one arrives, and base64 costs a third
- * more than the bytes it carries: a 20 MB generated clip read back through `read_node` used to end the whole
- * conversation, with the agent's next question unanswered and nothing to say why. Above this bound the tool
- * answers with the file's size instead of its bytes — the file is not lost, it is on the canvas.
- */
 /**
  * How much base64 one media answer may carry: 40 MiB, which is about 30 MB of file.
  *

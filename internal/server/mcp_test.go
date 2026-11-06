@@ -160,8 +160,8 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 	for _, tool := range tools {
 		names = append(names, tool.(map[string]any)["name"].(string))
 	}
-	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,set_text,set_node_settings,generate,list_models,set_model,stop_node,read_node,read_prompt,delete_node,focus_node,move_node,group_nodes,ungroup_nodes,resize_node" {
-		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, set_text, set_node_settings, generate, list_models, set_model, stop_node, read_node, read_prompt, delete_node, focus_node, move_node, group_nodes, ungroup_nodes, resize_node", names)
+	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,set_text,set_node,generate,list_models,stop_node,read_node,read_prompt,read_text,read_media,delete_node,focus_node,move_node,group_nodes,ungroup_nodes,resize_node" {
+		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, set_text, set_node, generate, list_models, stop_node, read_node, read_prompt, read_text, read_media, delete_node, focus_node, move_node, group_nodes, ungroup_nodes, resize_node", names)
 	}
 }
 
@@ -197,19 +197,25 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 		// #286: asking about a node is answered by moving the user's view to it.
 		"Naming a node is not showing it",
 		"write its title with an @ in front",
+		// The panel draws Markdown and no HTML: a model that dresses an @id in a tag shows the tag.
+		"not dressed in a tag",
+		"the panel draws no HTML",
 		"the viewport is the user's",
 		// #203: said once, in the box or in the card.
 		"leave that node's own prompt empty",
 		"only that node needs them",
 		"carries nothing",
 		"canvas_set_text",
+		"canvas_read_text",
 		"canvas_read_prompt",
-		// #309: the run's shape is a setting too, and it is checked against what the workflow publishes.
-		"canvas_set_node_settings",
-		"canvas_read_prompt reads them back",
-		// #311: the model is its own act, and it is the one change that alters what the picture is.
-		"Which model runs is a separate act, not a setting",
-		"canvas_set_model",
+		// The shape of a run and which run it is are one call, and it is checked against what the workflow publishes.
+		"canvas_set_node",
+		"canvas_read_node reads it back",
+		// The model is still the one change that alters what the picture is, and that rule is now said in words
+		// rather than carried by a tool of its own.
+		"change the model when the user asks for that model",
+		// The one read that costs real context has a name of its own, so the cheap ones stay cheap.
+		"canvas_read_media",
 		// #312: the model list is data, and the prompt only says where to ask.
 		"canvas_list_models",
 		// #310: a run the agent started can be ended, and that is what makes pressing safe.

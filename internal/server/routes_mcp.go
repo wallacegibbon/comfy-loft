@@ -171,12 +171,14 @@ func (s *Server) mcpTools() []mcpTool {
 			"additionalProperties": false
 		}`),
 	}, {
-		Name:        "set_node_settings",
-		Description: "Set what this node's next run produces: its size, how long it runs, the seed it is drawn with, a picture's background, a sound's container and words, and the workflow's own knobs. What it does not set is which run this is — the model and the mode it declares belong to the user's picker — so press generate afterwards to make it happen. Every setting is checked against what the node's workflow publishes: one it does not read is refused, and the refusal names the ones it does. A call that gets any of its settings wrong writes none of them, so what you asked for is either all there or not there at all. Answers with what the node is now set to, in the same words read_prompt gives.",
+		Name:        "set_node",
+		Description: "Set what this node's next run is: the workflow it generates with and the mode it is asked in, and the shape of that run — its size, how long it runs, its quality tier, the seed it is drawn with, a picture's background, a sound's container and words, and the workflow's own knobs. Both halves land together or not at all: the settings are checked against the workflow that will run them, so a call that names a new model and a size judges the size by the new model's contract, and one that gets any of it wrong writes none of it. It writes no words: a text node's card is set_text's, and the question a node will be asked is set_prompt's. Answers with what the node is now set to, in the same words read_node gives.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
 				"nodeId": {"type": "string", "description": "The id list_nodes reported."},
+				"model": {"type": "string", "description": "The workflow to run, as read_node reports it (image-qwen21), or the picker's value (default::image-qwen21). Omit it to leave the run as it is."},
+				"mode": {"type": "string", "description": "The mode to run in: t2i, edit, inpaint or outpaint on a picture family, or text, frames or reference for a film. On a film it names the workflow too. Omitted, a picture keeps the mode it has and a film takes the one its workflow declares."},
 				"size": {"type": "string", "description": "The size in pixels a picture is made at, like 1360x768 — a shape such as 16:9 is not a size, so state the pixels. On a film it is the shape the tier makes numbers for: state 1280x720 for 16:9 at 720p, and a size the tier would not make is refused with the one it does. \"auto\" leaves it to the workflow. Sides are aligned up to 16, and a size outside what a picture may be (655360 to 8294400 pixels in total, longest side at most 3840, at most three times the shortest) is refused with the reason."},
 				"seconds": {"type": "number", "description": "How long a clip or a sound runs, in whole seconds. Refused outside the lengths the workflow declares, rather than clamped into them."},
 				"quality": {"type": "number", "description": "A film's quality tier, the short side in pixels — 480, 720, 1080. A film's size is derived from this tier and the shape it states, so a size the tier would not make is refused with the one it does. A picture has no such setting: its size is the size."},
@@ -202,25 +204,12 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "list_models",
-		Description: "What this canvas can run, grouped by the kind of content, with the ones that are steps named apart. Ask this before answering any question about models: the names an agent has seen are the ones on nodes it happened to read, and reciting those is how a canvas with five image generators answers \"four\", counts an upscaler among them, and misses the workflow nothing on screen uses. A name here is what set_model takes, and what a run reports itself as. Each entry also says what the workflow takes (words, or how many pictures or clips) and the modes a family offers — including any whose own node pack is missing, which a run would be refused for. What each workflow reads is not here: that is the contract of the node it runs on, where set_node_settings refuses a key it does not read. A base model is a file inside a family rather than a workflow, and the node's own picker lists those.",
+		Description: "What this canvas can run, grouped by the kind of content, with the ones that are steps named apart. Ask this before answering any question about models: the names an agent has seen are the ones on nodes it happened to read, and reciting those is how a canvas with five image generators answers \"four\", counts an upscaler among them, and misses the workflow nothing on screen uses. A name here is what set_node's model takes, and what a run reports itself as. Each entry also says what the workflow takes (words, or how many pictures or clips) and the modes a family offers — including any whose own node pack is missing, which a run would be refused for. What each workflow reads is not here: that is the contract of the node it runs on, where set_node refuses a key it does not read. A base model is a file inside a family rather than a workflow, and the node's own picker lists those.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
 				"capability": {"type": "string", "enum": ["image", "video", "audio"], "description": "One kind of content to list. Leave it out for all three, which is the shape a question about models usually has."}
 			},
-			"additionalProperties": false
-		}`),
-	}, {
-		Name:        "set_model",
-		Description: "Change which run this node is: the workflow it generates with, and — for a family that offers several — the mode it is asked in. This is the one tool that changes what a picture is rather than how it is made, so reach for it when the user names a model or asks for a mode, not to make a prompt fit. Both of a model's names work: the workflow this canvas reports (`image-qwen21`) and the picker's own value (`default::image-qwen21`). A mode is resolved the way the panel resolves it — a film's workflow *is* its mode, so naming a film mode names the workflow — and a mode whose node pack is missing is refused here rather than queued to fail inside ComfyUI. The answer names what the node now runs and, if the new workflow no longer reads a setting the node is holding, which one: the value stays on the node and the request leaves it out. Setting a model on a node that holds material is how it becomes a generator again.",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"nodeId": {"type": "string", "description": "The id list_nodes reported."},
-				"model": {"type": "string", "description": "The workflow to run, as read_prompt reported it (image-qwen21), or the picker's value (default::image-qwen21). Omit it to change only the mode of the model the node already runs."},
-				"mode": {"type": "string", "description": "The mode to run in: t2i, edit, inpaint or outpaint on a picture family, or text, frames or reference for a film. On a film it names the workflow too. Omitted, a picture keeps the mode it has and a film takes the one its workflow declares."}
-			},
-			"required": ["nodeId"],
 			"additionalProperties": false
 		}`),
 	}, {
@@ -236,7 +225,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "read_node",
-		Description: "Read what one node holds: a text node's words, or the image, video or audio itself — not a description of it, and not the words it will be asked next. A node something generated ends with a line naming the workflow that made it and the moment that run finished; both are facts the canvas recorded, so they are the answer to \"which model drew this, and when\" rather than a guess.",
+		Description: "Read what this node's next run is set to: the workflow and mode it runs, the shape that run takes (size, length, quality, seed, background, container, its own knobs), and what a press would still need — the media it takes and what is connected in front of it. It carries no words and no media: a card is read_text's, the question is read_prompt's, and the picture, film or sound itself is read_media's. What a node did — whether it is generating, how its last run failed, and which workflow and moment made its content — is on its list_nodes line, and the maker comes back with read_media as a caption. A text node has no run, and this says so.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -247,7 +236,29 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "read_prompt",
-		Description: "Read the words a node will be asked — the prompt its own panel shows, and the words set_prompt writes. This is the pair to read_node: read_node answers with what the node holds, this answers with the question behind it. A text node has no prompt at all, and this says so: what it holds is words, and read_node answers with them. A node nobody has asked anything of has no prompt, and that is the answer too.",
+		Description: "Read the words a node will be asked — the prompt its own panel shows, and the words set_prompt writes. The words and nothing else: the settings standing behind them are read_node's. A text node has no prompt at all, and this says so: what it holds is words, which read_text answers with and set_text writes. A node nobody has asked anything of has no prompt, and that is the answer too.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
+			},
+			"required": ["nodeId"],
+			"additionalProperties": false
+		}`),
+	}, {
+		Name:        "read_text",
+		Description: "Read a text node's card: the words it holds, whole. This is what set_text writes, and the only thing a text node holds — it has no prompt, and nothing generates it. A picture, a film or a sound has no card of words: what it holds is read_media's, and what it will be asked is read_prompt's. list_nodes shows the first 300 characters of every card, which is a glance across the canvas; this is the card.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
+			},
+			"required": ["nodeId"],
+			"additionalProperties": false
+		}`),
+	}, {
+		Name:        "read_media",
+		Description: "Read the picture, the film or the sound a node holds — the bytes themselves, not a description of them — with one line naming the node and the workflow and moment that made it. This is the one read that costs real context, so ask for it when you need to see the thing: everything else about a node is a few hundred bytes through read_node, read_prompt and read_text. A node that holds no media yet, and a text node, are refused and say so.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {

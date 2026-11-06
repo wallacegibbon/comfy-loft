@@ -2113,7 +2113,7 @@ function InfiniteCanvasPage() {
     );
 
     /**
-     * What a node's next run would accept, for the agent's `set_node_settings`.
+     * What a node's next run would accept, for the agent's `set_node`.
      *
      * The keys come from the published contract of the *mode the run will use* — `imageModeFor` for a picture,
      * the node's own video mode for a film — which is the same list the panel's rows ask before they draw
@@ -2121,19 +2121,22 @@ function InfiniteCanvasPage() {
      * clamps to. Read from the node's current metadata, so the answer is about the node as it stands.
      */
     const nodeContract = useCallback(
-        (nodeId: string) => {
+        (nodeId: string, run?: { model?: string; mode?: string }) => {
             const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
             if (!node) return {};
             const mode: CanvasNodeGenerationMode = node.type === CanvasNodeType.Video ? "video" : node.type === CanvasNodeType.Audio ? "audio" : "image";
             const config = buildGenerationConfig(effectiveConfig, node, mode);
-            const contractMode = mode === "image" ? imageModeFor(config, config.model) : node.metadata?.videoMode || "";
-            const contract = modelContractOf(effectiveConfig, config.model, contractMode);
+            // The model a call is about to set, when it is setting one: the settings it states are judged by the
+            // contract of the run they will be used by, which is the whole reason `set_node` is one tool.
+            const model = run?.model || config.model;
+            const contractMode = mode === "image" ? imageModeFor(config, model) : run?.mode || node.metadata?.videoMode || "";
+            const contract = modelContractOf(effectiveConfig, model, contractMode);
             return {
                 accepts: contract?.inputs,
                 media: contract?.accepts,
-                duration: channelModelOf(effectiveConfig, config.model)?.model.duration,
-                // A film's pixels are derived from this tier and the shape, so `set_node_settings` judges a
-                // stated size against the tier the run will use — the node's own, or the canvas's default.
+                duration: channelModelOf(effectiveConfig, model)?.model.duration,
+                // A film's pixels are derived from this tier and the shape, so `set_node` judges a stated size
+                // against the tier the run will use — the node's own, or the canvas's default.
                 tier: mode === "video" ? config.vquality : undefined,
             };
         },

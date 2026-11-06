@@ -40,7 +40,7 @@ export type NodeSettings = {
 /**
  * What the node's model publishes about its next run — every fact the tools read off a node's workflow.
  *
- * One hand for all of them, because they come from one projection: the keys a run accepts (`set_node_settings`
+ * One hand for all of them, because they come from one projection: the keys a run accepts (`set_node`
  * refuses a key outside it), the media it takes (`read_prompt` states what is connected against it), a sound's
  * declared length, and a film's quality tier.
  */

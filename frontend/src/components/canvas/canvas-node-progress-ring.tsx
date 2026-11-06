@@ -8,9 +8,7 @@ const ringRadius = 26;
  * The one charge light: a breathing halo, a brushing midpoint and a tapered tail that rides the
  * card's rounded rectangle as the run advances.
  *
- * Deliberately not a palette table. It was seven of them, picked in the preferences window, and the
- * effect was the same in all seven — so the look is fixed here and there is nothing to choose
- * (docs/decisions.md #193).
+ * Deliberately not a palette table: the look is fixed here and there is nothing to choose.
  */
 const glow = {
     dark: { aura: "#38d6ff", mid: "#8cefff", core: "#d7fbff", gradient: ["#8cefff", "#6edcff", "#4aa3ff"] },
