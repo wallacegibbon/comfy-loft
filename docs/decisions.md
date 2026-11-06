@@ -10019,19 +10019,32 @@ only once the hook went, which is how the last caller of a string surfaces; `npx
 `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`, `frontend/src/hooks/use-copy-text.ts`,
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `frontend/package.json`.
 
-## 297. Material is not a generator
+## 297. Material is not a generator, and nothing can make it one
 
-**Decision** A node with content and no recorded `model` is drawn as *material*: the node panel says what it is,
-keeps the reference bar, and offers one control — a model picker that starts empty. No prompt box, no send
-button (`nodeCanGenerate`, `canvas-generation-helpers.ts`). The crop and split editors stop copying the
-source's `prompt` onto the piece they make.
+**Decision** A node with content and no recorded `model` is drawn as *material*: the node panel says what it is
+and offers nothing else — no prompt box, no send button, no model picker, no reference bar (`nodeCanGenerate`,
+`canvas-generation-helpers.ts`). It has no run, and none of the three ways to give it one survives: the panel
+draws no control, `canvas_set_node` refuses a model or a mode (`materialClause`), and `canvas_generate` refuses to
+press it. `canvas_read_node` answers that there is no run and no model can be set, instead of "no model has been
+picked for it", which read as an invitation. The crop and split editors stop copying the source's `prompt` onto
+the piece they make.
 
 **Why** The composer's fallback answers "no model" with the canvas's default model, which is right for an empty
 node and wrong for a picture somebody cut out: a crop was drawn by the browser, an upload arrived from outside, a
-mask node is a byproduct of an edit. The panel claimed a model for all of them and offered a send button whose
-only possible effect was to repaint the material with that default — destructive, and a claim the node never
-made. The copied prompt made it worse by enabling the button: a crop of a Qwen picture was one press away from
-becoming a Z-Image render of its parent's words.
+mask node is a byproduct of an edit, a frame was taken out of a film. The panel claimed a model for all of them
+and offered a send button whose only possible effect was to repaint the material with that default — destructive,
+and a claim the node never made. The copied prompt made it worse by enabling the button: a crop of a Qwen picture
+was one press away from becoming a Z-Image render of its parent's words.
+
+**Why the picker went** This entry used to keep one control — an empty model picker — on the reasoning that
+choosing a model *is* saying "generate here". That reasoning was wrong about what "here" is: a run reads only what
+is connected to it (`buildNodeGenerationContext`) and never its own content (`requestGeneration` sends
+`references: []`), so the press the picker bought could not read the picture it stood on — only overwrite it.
+On a frame taken from a clip: pick a model, type "make it night", press, and the run is a text-to-image of those
+words; `fillImage` writes it over the frame, and nothing connected ever said the frame was the subject. The
+placeholder said "say what it should become" while not one byte of the picture was sent. Material is an *input*,
+and it is used as one: a connection, or the card's own tools (outpaint, mask, upscale, angle), which read the
+picture and make a new node out of it.
 
 **Three states, two facts** No content: the panel's job is to run the default model into it. Content plus
 `model`: a run of this node's own, and send asks it again. Content without `model`: material, nothing to re-run.
@@ -10039,28 +10052,26 @@ No new field — no `origin`, no `madeBy: "manual"`. `model` is already the node
 here", and a crop's honest answer is "nothing"; a second field would be a second answer to that question, which
 is how #293's bug read from the other end.
 
-**What the panel keeps** The reference bar — a crop is a perfectly good source for another node's run — and the
-model picker, empty. Choosing a model is the explicit act that turns material into a generator, and the composer
-appears with it. It does not pre-select the default, because showing the default is exactly what made a crop
-look like it had a model.
-
 **Also live by the same rule** A node made by a build before #293 has content, `workflow` and no `model`. It is
-material here, which is the honest reading (it knows who made it, not what to run) and stops the button
-repainting it.
+material here, which is the honest reading (it knows who made it, not what to run) and stops anything repainting
+it.
 
-**Cost** A piece of material can no longer be regenerated in place. What that path did was overwrite it with the
-default model, with no undo, and the canvas's own way — connect the material to a node as a reference — does not
-touch it.
+**Cost** Material can no longer be regenerated in place, and there is no longer a one-click way to point a model
+at it: the person has to make a node and connect the material to it. That gesture is the point — it is the only
+one that keeps the picture.
 
-**Tested** `frontend/tests/node-generatable.test.ts` (new, 3): an empty node is a generator, a recorded model is
+**Tested** `frontend/tests/node-generatable.test.ts` (3): an empty node is a generator, a recorded model is
 re-askable, and crop/split/upload/mask material is not — including the workflow-only node above.
-`npx tsc --noEmit`, `npm run check` (i18n at 842 keys, exports at 186 modules), `npx vitest run` (429),
-`make check`, `make frontend`.
+`frontend/tests/canvas-agent-tools.test.ts`: `read_node` answers material with "no model can be set on it and no
+run comes from it", `set_node` refuses a model and refuses a mode alone (writing nothing), `generate` refuses to
+press it — and a text card still gets the plan's own "holds words" refusal rather than the material one.
+`npx tsc --noEmit`, `npm run check`, `npx vitest run` (550), `make check`, `make frontend`.
 
-**Where** `frontend/src/lib/canvas/canvas-generation-helpers.ts`, `frontend/src/components/canvas/canvas-node-prompt-panel.tsx`
-(the material branch and `MaterialModelPicker`), `frontend/src/pages/canvas/hooks/use-image-editors.ts`
-(`cropImageNode`, `splitImageNode`), `frontend/src/i18n/locales/{zh-CN,en-US}.ts`,
-`frontend/tests/node-generatable.test.ts`.
+**Where** `frontend/src/lib/canvas/canvas-generation-helpers.ts` (`nodeCanGenerate`, `materialClause`),
+`frontend/src/lib/canvas/node-generation-facts.ts` (`heldNoun`), `frontend/src/lib/canvas/canvas-agent-tools.ts`
+(`readNode`, `setNode`, `pressGenerate`), `frontend/src/components/canvas/canvas-node-prompt-panel.tsx` (the
+material branch), `frontend/src/pages/canvas/hooks/use-image-editors.ts` (`cropImageNode`, `splitImageNode`),
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `frontend/tests/{node-generatable,canvas-agent-tools}.test.ts`.
 
 ## 298. A native select's popup follows the palette
 
@@ -10583,8 +10594,9 @@ word (#302). The values stay — a knob belongs to the model that declared it, a
 and the answer names them.
 
 **Why** The agent could set a size, a length and a seed (#309) but not the model, which is the first sentence a
-user says ("用 Qwen 的 edit 模式"). It is also the only way an agent can turn **material** into a generator again: a
-crop's panel keeps exactly one control, the picker, and choosing a model *is* saying "generate here" (#297).
+user says ("用 Qwen 的 edit 模式"). What it will not do is write a model onto **material**: a crop's panel has no
+control to mirror, and a model set on a node holding a picture nothing here made would not re-run anything — it
+would replace that picture, because a run reads only what is connected to it (#297).
 
 **What was measured before deciding** Three facts, from the code the pickers and the request run:
 - A node stores `channel::model`; every tool and sentence names the workflow. So one resolver accepts both, asks

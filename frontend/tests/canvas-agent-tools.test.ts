@@ -199,10 +199,29 @@ describe("read_node: what the next run is set to", () => {
     });
 
     test("a node nothing is set to run says so", async () => {
-        const { hands } = handsFor([placed("image-1", "image", { content: "/api/canvases/c/files/a.png" })]);
+        const { hands } = handsFor([placed("image-1", "image")]);
         const { text } = await textOf(hands, "read_node", { nodeId: "image-1" });
 
         expect(text).toBe("image-1 (image) is not set to run anything: no model has been picked for it");
+    });
+
+    /**
+     * Material is a different answer from "nothing picked yet".
+     *
+     * A node holding a picture this canvas did not make — a frame taken from a film, a crop, an upload, a mask
+     * — has no run, and nothing can give it one: a run reads only what is connected to it, never its own
+     * content, so a press would replace the picture with a render that never saw it (#297). Saying "no model
+     * has been picked for it" would read as an invitation to pick one.
+     */
+    test("material says there is no run and none can be set, and names the way out", async () => {
+        const { hands } = handsFor([placed("image-1", "image", { content: "/api/canvases/c/files/a.png", prompt: "a brass compass" })]);
+        const { answer, text } = await textOf(hands, "read_node", { nodeId: "image-1" });
+
+        expect(answer.isError).not.toBe(true);
+        expect(text).toContain("holds a picture this canvas did not make — material, not a run");
+        expect(text).toContain("no model can be set on it");
+        expect(text).toContain("Connect it to a node that runs");
+        expect(text).not.toContain("has been picked");
     });
 
     // What the workflow takes and what is wired in front of it: the half of a run that no setting can state.
@@ -298,6 +317,20 @@ describe("generate: pressing a node's button", () => {
         expect(written.generated).toEqual([]);
         expect(text).toContain("nothing generates them");
         expect(text).toContain("set_text");
+    });
+
+    // The frame taken from a film, the crop, the upload: a picture nothing here made. A press would fall back to
+    // the canvas's default model — the one path that could still reach it, now that the panel offers no button —
+    // and the run would never see the picture it replaced (#297).
+    test("material has nothing to press, and the refusal names the way out", async () => {
+        const { hands, written } = handsFor([node("image", { content: "/api/canvases/c/files/a.png", prompt: "the last frame" })]);
+        const { answer, text } = await textOf(hands, "generate", { nodeId: "image-1" });
+
+        expect(answer.isError).toBe(true);
+        expect(written.generated).toEqual([]);
+        expect(text).toContain("material, not a run");
+        expect(text).toContain("no model on it to press");
+        expect(text).toContain("Connect it to a node that runs");
     });
 
     /**
@@ -600,6 +633,32 @@ describe("set_node: which run it is, and how it is shaped", () => {
         const words = await textOf(hands, "set_node", { nodeId: "text-1", model: "image-qwen21" });
         expect(words.answer.isError).toBe(true);
         expect(words.text).toContain("holds words");
+    });
+
+    /**
+     * The picker the panel no longer offers, refused here too — and refused before the name is resolved.
+     *
+     * This is the door that was still open: a frame taken from a film, a crop, an upload. Giving it a model
+     * does not re-run anything, because a run reads what is connected to it and never its own content — it
+     * only makes the node pressable, and that press replaces the picture with a render that never saw it
+     * (#297). Both halves of "which run this is" are refused: a model, and a mode alone.
+     */
+    test("material cannot be given a run, by model or by mode", async () => {
+        const frame = placed("image-1", "image", { content: "/api/canvases/c/files/frame.png" });
+
+        const byModel = handsFor([frame], [], {}, undefined, catalogWith(["prompt", "editCanvasSize"]));
+        const model = await textOf(byModel.hands, "set_node", { nodeId: "image-1", model: "image-qwen21" });
+        expect(model.answer.isError).toBe(true);
+        expect(byModel.written.settings).toEqual([]);
+        expect(model.text).toContain("material, not a run");
+        expect(model.text).toContain("would replace what it holds");
+        // The refusal is about the node, not the name: an unknown model would be refused differently.
+        expect(model.text).not.toContain("is not a model this canvas has");
+
+        const byMode = handsFor([frame], [], {}, undefined, catalogWith(["prompt", "editCanvasSize"]));
+        const mode = await textOf(byMode.hands, "set_node", { nodeId: "image-1", mode: "edit" });
+        expect(mode.answer.isError).toBe(true);
+        expect(byMode.written.settings).toEqual([]);
     });
 
     test("writes the settings the plan settled on, and answers with the node's own clause", async () => {

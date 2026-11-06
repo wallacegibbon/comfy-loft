@@ -688,7 +688,8 @@ export default {
             videoTextAddDisabled: "Text-to-video takes no reference media; switch to First & last frame or Multi-ref",
             videoTextRefsWarning: "Text-to-video does not accept images, video, or audio. Disconnect references or switch to First & last frame / Multi-ref.",
             material: "Material, not something this canvas generated",
-            materialHint: "No model is recorded for it, so there is no send button. To generate from it, connect it to a node as a reference; or pick a model on the right, which regenerates here with that model and replaces this material.",
+            materialHint:
+                "Nothing recorded here can be re-run, so there is no send button and no model to pick: a picture this canvas did not make is material. To use it, connect it to a node as a reference, or open one of its card's tools (outpaint, local edit, upscale), which make a new node.",
         },
         toolPanel: {
             needs: "Needs {{count}} {{kind}} · {{have}} connected",

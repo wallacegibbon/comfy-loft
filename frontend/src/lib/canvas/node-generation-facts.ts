@@ -1,6 +1,6 @@
 import { NODE_STATUS_ERROR, NODE_STATUS_LOADING } from "@/lib/canvas/canvas-node-status";
 import type { ModelAccepts } from "@/stores/use-config-store";
-import type { CanvasNodeMetadata } from "@/types/canvas";
+import { CanvasNodeType, type CanvasNodeMetadata } from "@/types/canvas";
 
 /**
  * How a node's content came to be, in one clause, for the two tools that answer questions about a node.
@@ -31,6 +31,20 @@ export function runClause(metadata: CanvasNodeMetadata | undefined): string {
         return `last run failed: ${reason}`;
     }
     return "";
+}
+
+/**
+ * What a node of this kind holds, for the sentences that refuse to read or write the wrong thing in it.
+ *
+ * It is here rather than in the tools because two modules now need the same three words: the word tools
+ * ("it holds a picture, not words") and the refusal a node that is *material* gets (`materialClause`). A
+ * second copy is how "a film" becomes "a video" in one refusal and not the other.
+ */
+export function heldNoun(type: string): string {
+    if (type === CanvasNodeType.Image) return "a picture";
+    if (type === CanvasNodeType.Video) return "a film";
+    if (type === CanvasNodeType.Audio) return "a sound";
+    return "nodes";
 }
 
 export function generationClause(metadata: CanvasNodeMetadata | undefined): string {

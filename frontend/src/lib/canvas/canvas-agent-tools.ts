@@ -8,7 +8,8 @@ import { imageToDataUrl } from "@/services/image-storage";
 import type { ToolContent } from "@/services/api/agent";
 import { generateAnswer, type GenerateOptions, type GenerateStart } from "@/lib/canvas/agent-generate";
 import { describeCanvas } from "@/lib/canvas/canvas-agent-view";
-import { configuredClause, generationClause, requiresClause, type MediaCounts } from "@/lib/canvas/node-generation-facts";
+import { configuredClause, generationClause, heldNoun, requiresClause, type MediaCounts } from "@/lib/canvas/node-generation-facts";
+import { materialClause, nodeCanGenerate } from "@/lib/canvas/canvas-generation-helpers";
 import { nodeContentOf, nodePromptOf } from "@/lib/canvas/node-prompt-field";
 import { planNodeSettings, type NodeSettings, type SettingsContract } from "@/lib/canvas/node-settings";
 import { describeModelCatalogs, MODEL_CAPABILITIES, planNodeModel, type ModelCapability, type ModelCatalog, type ModelCatalogs } from "@/lib/canvas/node-model";
@@ -332,14 +333,6 @@ function setText(hands: CanvasHands, args: unknown): ToolAnswer {
     return { content: [textBlock(`${node.id} now says: ${text.slice(0, 300)}`)], isError: false };
 }
 
-/** What a node of this kind holds, for the two tools that write and read words to refuse with. */
-function heldNoun(type: string): string {
-    if (type === CanvasNodeType.Image) return "a picture";
-    if (type === CanvasNodeType.Video) return "a film";
-    if (type === CanvasNodeType.Audio) return "a sound";
-    return "nodes";
-}
-
 /**
  * Set what a node's next run is: which workflow and mode it runs, and the shape that run takes.
  *
@@ -365,6 +358,13 @@ function setNode(hands: CanvasHands, args: unknown): ToolAnswer {
     // Which run this is, first: the shape is judged against it.
     let run: { patch: CanvasNodeMetadata; ran: string; stale: string[] } | undefined;
     if (model !== undefined || mode !== undefined) {
+        // Material has no run to choose, and this is the tool that could still say it did: a model written here
+        // buys a press whose only outcome is to replace the picture, because a run never reads its own content
+        // (#297). So the refusal comes before the name is even resolved. A card, a group and a LoRA are not
+        // material — they hold no run of any kind — so they fall through to the plan's own refusal.
+        if (GENERATE_MODES.includes(node.type) && !nodeCanGenerate(node)) {
+            return { content: [textBlock(`${materialClause(node)}: a model set here would not re-run anything, it would replace what it holds. Connect it to a node that runs — that run takes it as a reference`)], isError: true };
+        }
         const plan = planNodeModel(node, { model, mode }, hands.modelCatalog(node.type as ModelCapability));
         if (!plan.ok) return { content: [textBlock(plan.reason)], isError: true };
         run = { patch: plan.patch, ran: plan.mode ? `${plan.model.workflowId} as ${plan.mode}` : plan.model.workflowId, stale: plan.stale };
@@ -488,6 +488,12 @@ async function pressGenerate(hands: CanvasHands, args: unknown, session: string)
     }
     if (!GENERATE_MODES.includes(mode)) return { content: [textBlock(`a ${node.type} node has nothing to generate`)], isError: true };
 
+    // Material is not a run: there is no model on it, and giving it one is not this tool's business either
+    // (#297). A press here would fall back to the canvas's default and replace what the node holds.
+    if (!nodeCanGenerate(node)) {
+        return { content: [textBlock(`${materialClause(node)}: there is no model on it to press. Connect it to a node that runs — that run takes it as a reference`)], isError: true };
+    }
+
     // Ask the question the page is about to ask, before pressing. A wire into a node that holds nothing
     // carries nothing (#230), and the page refuses a press like that — so the refusal is stated here too,
     // in the same words, rather than the agent being told a run is out when none was started.
@@ -539,6 +545,11 @@ function readNode(hands: CanvasHands, args: unknown): ToolAnswer {
     }
 
     const clause = configuredClause(node.metadata);
+    // Material: the answer to "what will the next run be" is that there is none and cannot be, not a list of
+    // fields nobody set. The requirement half is left out with it — a run that does not exist requires nothing.
+    if (!nodeCanGenerate(node)) {
+        return { content: [textBlock(`${materialClause(node)}: no model can be set on it and no run comes from it. Connect it to a node that runs — that run takes it as a reference`)], isError: false };
+    }
     const parts: string[] = [clause ? `${node.id} (${node.type}) is ${clause}` : `${node.id} (${node.type}) is not set to run anything: no model has been picked for it`];
     // What a press would need and what is wired in front of it: the half of a run a configuration cannot state.
     const requirement = requiresClause(hands.nodeContract(node.id).media, connectedMedia(node.id, hands));

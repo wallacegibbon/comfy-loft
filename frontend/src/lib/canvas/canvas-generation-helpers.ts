@@ -1,5 +1,6 @@
 import { defaultConfig, resolveModelForCapability, type AiConfig } from "@/stores/use-config-store";
 import i18n from "@/i18n";
+import { heldNoun } from "@/lib/canvas/node-generation-facts";
 import { ensureImagePreview, resolveImageUrl } from "@/services/image-storage";
 import { resolveMediaUrl } from "@/services/file-storage";
 import { referenceUrl } from "@/lib/canvas/canvas-node-factory";
@@ -101,6 +102,23 @@ const RUN_CONTENT_TYPES = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNod
  */
 export function nodeCanGenerate(node: CanvasNodeData) {
     return !node.metadata?.content || Boolean(node.metadata?.model);
+}
+
+/**
+ * What a node that fails `nodeCanGenerate` is, in the words every refusal uses.
+ *
+ * This is the half of the sentence the panel cannot say and the tools cannot say differently: a node holding
+ * something nothing here made is *material*, and material is not a run. What each caller adds is its own
+ * consequence — there is nothing to press, or a model would replace the picture instead of re-running
+ * anything — but the fact is stated once, because three wordings of it is how one of them ends up offering
+ * the picker again (docs/decisions.md #297).
+ *
+ * A run reads only what is connected to it (`buildNodeGenerationContext`) and never its own content
+ * (`requestGeneration` sends `references: []`), so a model set on material buys a press whose one outcome is
+ * to overwrite the picture with a render that never saw it.
+ */
+export function materialClause(node: CanvasNodeData) {
+    return `${node.id} holds ${heldNoun(node.type)} this canvas did not make — material, not a run`;
 }
 
 export function hasResumableRun(node: CanvasNodeData) {
