@@ -31,6 +31,7 @@ import (
 
 func (s *Server) routesRuns(mux *http.ServeMux) {
 	s.route(mux, "POST /api/canvases/{id}/uploads", s.handleUploadCreate)
+	s.routesJoin(mux)
 	s.route(mux, "POST /api/canvases/{id}/runs", s.handleRunCreate)
 	s.route(mux, "GET /api/runs", s.handleRunList)
 	s.route(mux, "GET /api/runs/{id}", s.handleRunGet)

@@ -113,7 +113,7 @@ func (s *Server) mcpTools() []mcpTool {
 		InputSchema: noArguments,
 	}, {
 		Name:        "list_nodes",
-		Description: "Every node on the canvas, one line each — id, type, title, position and the size of its card, then the picture's own size when that is not the card's, then which group it is in (`in group <id>`, and a group's own line names its members), then what made its content and when, then `content:`: the words it holds (a text node's text). What a node will be asked is not here; read one node's prompt with read_prompt. Then every connection between them. The ids are what the other tools act on.",
+		Description: "Every node on the canvas, one line each — id, type, position and the size of its card, then the picture's own size when that is not the card's, and how long a clip or a sound runs, then which group it is in (`in group <id>`, and a group's own line names its members), then what made its content and when, then `content:`: the words it holds (a text node's text). What a node will be asked is not here; read one node's prompt with read_prompt. Then every connection between them. The ids are what the other tools act on.",
 		InputSchema: noArguments,
 	}, {
 		Name:        "create_node",
@@ -144,6 +144,34 @@ func (s *Server) mcpTools() []mcpTool {
 				"toNodeId": {"type": "string", "description": "The node that receives it."}
 			},
 			"required": ["fromNodeId", "toNodeId"],
+			"additionalProperties": false
+		}`),
+	}, {
+		Name:        "capture_frame",
+		Description: "Take a film's first and/or last frame out of it, as picture nodes wired to the film it came from — the card's own menu, and the one way a longer clip is made, because the last frame of one clip is the first frame of the next. Nothing is asked of a model: the frame is decoded in the browser and becomes an ordinary picture, and what it makes holds no model, so it is material — connect it to the node that should run from it. A picture is one frame already, and a film that is still generating holds no clip to take a frame out of. The frame the user is looking at is theirs to take from the card; a playhead is not something a tool can see.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeId": {"type": "string", "description": "The film to take a frame from."},
+				"frame": {"type": "string", "enum": ["first", "last", "both"], "description": "Which frame: the one the clip starts on, the one it ends on, or both. Both by default — a chain needs the end, and the start is what tells a reader where the clip came from."}
+			},
+			"required": ["nodeId"],
+			"additionalProperties": false
+		}`),
+	}, {
+		Name:        "join_clips",
+		Description: "Join several clips into one, in the order the call names them — the end of a chain: each clip was made from the frame the one before it ended on, and this is what turns five clips into the one video the user asked for. It is not a run: no model, no GPU, no queue, and nothing comes back later. The order is the list, not the order the clips were connected in. The joined clip holds no model, so it is material like a captured frame. Clips that were not made the same way — a different codec, size, pixel format, frame rate, or an extra audio track — are refused with the file and the field that differ, because a stream copy cannot join them; reencode is the caller saying it wants the whole result re-encoded instead.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"nodeIds": {
+					"type": "array",
+					"items": {"type": "string"},
+					"description": "The clips to join, in the order they should play."
+				},
+				"reencode": {"type": "boolean", "description": "Re-encode the whole result instead of copying the streams, which is the only way to join clips that were not made the same way. It changes every frame, so ask for it rather than assuming it."}
+			},
+			"required": ["nodeIds"],
 			"additionalProperties": false
 		}`),
 	}, {
@@ -186,6 +214,7 @@ func (s *Server) mcpTools() []mcpTool {
 				"seed": {"type": ["number", "string"], "description": "A fixed seed, 1 to 2147483647, so the same prompt draws the same thing again; the string \"random\" leaves it to the graph. A seed travels only while the node says it is fixed, so this writes that with it."},
 				"format": {"type": "string", "enum": ["mp3", "wav", "opus", "aac", "flac", "pcm"], "description": "A sound's container. A picture or a film has none."},
 				"instructions": {"type": "string", "description": "A sound's own words rather than its description — the lyrics a music workflow sings. Not the prompt: that is set_prompt."},
+				"frameMode": {"type": "string", "enum": ["first", "last", "both"], "description": "On a film that takes frames: what the connected pictures are — first continues from a frame, last ends on one, both is one of each in the order they were connected. A workflow that declares no frames refuses it, because nothing would read it."},
 				"params": {"type": "object", "description": "The workflow's own knobs, under the names its contract publishes — steps, cfg, sampler, resolution, horizontalAngle, upscale_model and the rest. A key its contract does not list is refused, and the refusal names the ones it reads. Two keys are never set here: loras comes from the LoRA nodes connected to this one, and layout from the MOSS layout editor.", "additionalProperties": true}
 			},
 			"required": ["nodeId"],

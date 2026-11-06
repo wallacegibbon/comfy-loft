@@ -160,8 +160,8 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 	for _, tool := range tools {
 		names = append(names, tool.(map[string]any)["name"].(string))
 	}
-	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,set_prompt,set_text,set_node,generate,list_models,stop_node,read_node,read_prompt,read_text,read_media,delete_node,focus_node,move_node,group_nodes,ungroup_nodes,resize_node" {
-		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, set_prompt, set_text, set_node, generate, list_models, stop_node, read_node, read_prompt, read_text, read_media, delete_node, focus_node, move_node, group_nodes, ungroup_nodes, resize_node", names)
+	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,capture_frame,join_clips,set_prompt,set_text,set_node,generate,list_models,stop_node,read_node,read_prompt,read_text,read_media,delete_node,focus_node,move_node,group_nodes,ungroup_nodes,resize_node" {
+		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, capture_frame, join_clips, set_prompt, set_text, set_node, generate, list_models, stop_node, read_node, read_prompt, read_text, read_media, delete_node, focus_node, move_node, group_nodes, ungroup_nodes, resize_node", names)
 	}
 }
 
@@ -197,7 +197,7 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 		// #286: asking about a node is answered by moving the user's view to it.
 		"Naming a node is not showing it",
 		"name it with an @ in front",
-		"the id the tools answer with, or the node's own title",
+		"the id the tools answer with",
 		// The panel draws Markdown and no HTML: a model that dresses an @id in a tag shows the tag.
 		"not dressed in a tag",
 		"the panel draws no HTML",
@@ -219,6 +219,11 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 		"canvas_read_media",
 		// #312: the model list is data, and the prompt only says where to ask.
 		"canvas_list_models",
+		// #323/#324: a longer clip is a chain of clips, and joining them is not a run.
+		"canvas_capture_frame",
+		"the first frame of the next clip",
+		"canvas_join_clips",
+		"in the order you name",
 		// #310: a run the agent started can be ended, and that is what makes pressing safe.
 		"canvas_stop_node",
 		"Press nothing you cannot stop",

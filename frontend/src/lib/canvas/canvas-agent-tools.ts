@@ -1,4 +1,5 @@
 import { getNodeSpec } from "@/constant/canvas";
+import type { VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 import { NODE_MIN_SIZE, nodeRatio } from "@/lib/canvas/canvas-node-size";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { canGroupSelectedNodes, collectGroupMemberNodes } from "@/lib/canvas/canvas-node-geometry";
@@ -41,6 +42,12 @@ export type MoveOutcome = {
     removed: string[];
 };
 
+/** What taking frames out of a film made: the pictures, or the reason it could not. */
+export type CaptureOutcome = { ok: true; frames: Array<{ nodeId: string; frame: VideoFramePosition; width: number; height: number }> } | { ok: false; reason: string };
+
+/** What joining clips made: the one clip, or the reason it could not. */
+export type JoinOutcome = { ok: true; nodeId: string; width: number; height: number; durationMs: number } | { ok: false; reason: string };
+
 /** What the page lends a tool: its state to read, the way it makes a node, and the button that runs one. */
 export type CanvasHands = {
     nodes: () => CanvasNodeData[];
@@ -59,6 +66,25 @@ export type CanvasHands = {
      * the node's own record and comes back as `finished`.
      */
     stopNode: (nodeId: string) => Promise<StopOutcome>;
+    /**
+     * Take a film's first and/or last frame out of it, as picture nodes wired to the film it came from.
+     *
+     * The same act as the card's own menu (首帧 / 尾帧 / 当前帧), through the same code: the frame is decoded in the
+     * browser — the server has no picture to hand out — so this is the one hand that turns bytes into a node
+     * without a run. Nothing is asked of a model, and the node it makes holds no model, which is why a caller
+     * has to connect it to something that runs (#297). Answers with the nodes it made, or the reason it could
+     * not; the film must hold a clip to have frames at all.
+     */
+    captureFrame: (nodeId: string, frame: VideoFramePosition | "both") => Promise<CaptureOutcome>;
+    /**
+     * Join these clips into one, in this order, as a new film wired from each of them.
+     *
+     * The bytes are joined by the server because only it has ffmpeg; the page names the files, waits, and
+     * makes the node out of what comes back. Nothing here chooses the parameters — the server probes the
+     * inputs and joins them only when they agree (see `routes_join.go`), so a refusal arrives as a sentence
+     * naming the clip and the field that differs.
+     */
+    joinClips: (nodeIds: string[], options?: { reencode?: boolean }) => Promise<JoinOutcome>;
     connectNodes: (firstNodeId: string, secondNodeId: string, firstHandleType: "source" | "target") => boolean;
     /**
      * Delete these nodes, the way the Delete key does, and say which cards went with them.
@@ -152,6 +178,10 @@ export async function runTool(name: string, args: unknown, hands: CanvasHands, s
             return readMedia(hands, args);
         case "connect":
             return connect(hands, args);
+        case "capture_frame":
+            return captureFrame(hands, args);
+        case "join_clips":
+            return joinClips(hands, args);
         case "set_prompt":
             return setPrompt(hands, args);
         case "set_text":
@@ -270,6 +300,106 @@ function connect(hands: CanvasHands, args: unknown): ToolAnswer {
         return { content: [textBlock(`this canvas will not connect ${from.id} (${from.type}) to ${to.id} (${to.type})`)], isError: true };
     }
     return { content: [textBlock(`connected ${from.id} -> ${to.id}${saidTwice(to.id, nodePromptOf(to), nodes, [...hands.connections(), { id: `${from.id}->${to.id}`, fromNodeId: from.id, toNodeId: to.id }])}`)], isError: false };
+}
+
+/**
+ * Take a film's first and/or last frame out of it, as pictures wired to the film.
+ *
+ * The card's own menu does this, and this is the same act through the same code: the frame is decoded in the
+ * browser and becomes an ordinary image node, connected from the clip it came out of, because that wire is
+ * what says where the picture came from (a node has no name to say it, #321).
+ *
+ * It is not `generate`: nothing is asked of a model, no GPU is involved, and no run comes back later. What it
+ * makes is *material* — content with no model recorded — so the answer says the one thing a caller can do
+ * with it: connect it to a node that runs (docs/decisions.md #297). A frame is how a longer clip is made: the
+ * last frame of one clip is the first frame of the next.
+ *
+ * `"current"` is the menu's third item and not a caller's: a playhead is a fact about the user's screen, and
+ * a tool has no screen.
+ */
+async function captureFrame(hands: CanvasHands, args: unknown): Promise<ToolAnswer> {
+    const node = namedNode(hands, args);
+    if (!node) return noSuchNode(args);
+    const frame = frameOf(args);
+    if (typeof frame !== "string") return { content: [textBlock(frame.reason)], isError: true };
+
+    if (node.type !== CanvasNodeType.Video) {
+        const instead = node.type === CanvasNodeType.Image ? "a picture is one frame already: it is that picture, and read_media hands it over" : `a ${node.type} node has no frames to take`;
+        return { content: [textBlock(`${node.id} is a ${node.type} node: ${instead}`)], isError: true };
+    }
+    if (!node.metadata?.content) {
+        return { content: [textBlock(`${node.id} holds no clip yet, so there is no frame to take: ${node.metadata?.status === "loading" ? "it is generating now" : "press it with generate, or connect a clip into it"}`)], isError: true };
+    }
+
+    const outcome = await hands.captureFrame(node.id, frame);
+    if (!outcome.ok) return { content: [textBlock(outcome.reason)], isError: true };
+    const pictures = outcome.frames.map((each) => `${each.nodeId} (${Math.round(each.width)}×${Math.round(each.height)})${frame === "both" ? ` is the ${each.frame}` : ""}`);
+    const one = outcome.frames.length === 1;
+    const material = one ? "It holds no model, so it is material: connect it to the node that should run from it" : "They hold no model, so they are material: connect them to the node that should run from them";
+    const next = frame === "last" ? " — a film's last frame is where the next clip continues from" : frame === "first" ? " — a film's first frame is what a run that takes a first frame starts from" : "";
+    // "connected from" reads as a fact about one picture and "each connected from" as a fact about two — an
+    // answer that says "each" about a single node is the sort of sentence a reader has to re-read.
+    return { content: [textBlock(`took ${frame === "both" ? "both frames" : `the ${frame} frame`} of ${node.id}: ${pictures.join(", ")}, ${one ? "connected" : "each connected"} from ${node.id}. ${material}${next}`)], isError: false };
+}
+
+/** The frames a call asked for: both unless it said otherwise, and nothing a playhead would be needed for. */
+function frameOf(args: unknown): "first" | "last" | "both" | { reason: string } {
+    const value = argsOf(args).frame;
+    if (value === undefined) return "both";
+    if (value === "first" || value === "last" || value === "both") return value;
+    return { reason: `frame is ${JSON.stringify(value)}: take "first", "last", or "both"` };
+}
+
+/**
+ * Make one clip out of several, in the order the call names them.
+ *
+ * The end of a chain: each clip was made from the one before it, and this is what turns the chain into a
+ * single file the user can watch or download. It is `capture_frame`'s sibling — one node derived from other
+ * nodes, no model recorded — and the order is the call's own list rather than the order the clips were
+ * connected in, because a wire does not say "third" (that is the mistake #323 refused to repeat for frames).
+ *
+ * What it will not do is guess: clips that were not made the same way cannot be joined without re-encoding
+ * every frame of the result, so a join refuses those and names what differs. The answer repeats what was
+ * joined and how long it runs, because "is this long enough" is the next question.
+ */
+async function joinClips(hands: CanvasHands, args: unknown): Promise<ToolAnswer> {
+    const named = argsOf(args).nodeIds;
+    if (!Array.isArray(named) || named.some((value) => typeof value !== "string")) {
+        return { content: [textBlock('join_clips needs nodeIds: the clips to join, in the order they should play — ["clip-1", "clip-2"]')], isError: true };
+    }
+    const ids = (named as string[]).map((value) => value.trim()).filter(Boolean);
+    if (ids.length < 2) return { content: [textBlock("join_clips needs at least two clips: joining one clip to nothing is a copy, and the canvas already holds it")], isError: true };
+    const nodes = hands.nodes();
+    const missing = ids.find((id) => !nodes.some((node) => node.id === id));
+    if (missing) return { content: [textBlock(`no node with id "${missing}" on this canvas`)], isError: true };
+    const wrong = ids.map((id) => nodes.find((node) => node.id === id)!).find((node) => node.type !== CanvasNodeType.Video);
+    if (wrong) return { content: [textBlock(`${wrong.id} is a ${wrong.type} node: join_clips joins films, and a longer film is what they are joined for`)], isError: true };
+    const empty = ids.map((id) => nodes.find((node) => node.id === id)!).find((node) => !node.metadata?.content);
+    if (empty) return { content: [textBlock(`${empty.id} holds no clip yet, so there is nothing to join from it`)], isError: true };
+
+    // The one thing a caller may add: re-encode. It is the only way to join clips that were not made the same
+    // way, and it re-encodes every frame of the result — so it is stated, never chosen for the caller.
+    const reencode = argsOf(args).reencode;
+    if (reencode !== undefined && typeof reencode !== "boolean") return { content: [textBlock(`reencode is ${JSON.stringify(reencode)}: it is true or false`)], isError: true };
+    const outcome = await hands.joinClips(ids, reencode === true ? { reencode: true } : undefined);
+    if (!outcome.ok) return { content: [textBlock(outcome.reason)], isError: true };
+    return {
+        content: [
+            textBlock(
+                `joined ${ids.join(", ")} into ${outcome.nodeId} (${Math.round(outcome.width)}×${Math.round(outcome.height)}, ${durationWords(outcome.durationMs)}), in that order and connected from each of them. It holds no model, so it is material: it is the whole thing, and nothing re-runs it`,
+            ),
+        ],
+        isError: false,
+    };
+}
+
+/** A clip's length in the words a caller can act on: a tenth of a second below a minute, m:ss above. */
+function durationWords(milliseconds: number) {
+    const seconds = Math.max(0, milliseconds) / 1000;
+    if (seconds < 60) return `${seconds.toFixed(1)} s`;
+    const minutes = Math.floor(seconds / 60);
+    const rest = Math.round(seconds - minutes * 60);
+    return `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
 /**

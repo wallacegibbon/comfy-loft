@@ -23,6 +23,11 @@ import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata } from "@/
  * What is deliberately not here: what *runs* (`model`, the Qwen `t2i`/`edit`/`inpaint`/`outpaint` mode), the
  * LoRA stack, the MOSS layout, and masks, crops and outpaints. Those decide which run this is rather than its
  * shape, and each has its own tool or its own editor (docs/decisions.md #309).
+ *
+ * `frameMode` is here for the opposite reason: it is the request's own key (`inputs.frameMode`), declared by
+ * every workflow that takes frames, and it does not decide *which* run this is — a frames workflow is chosen
+ * by its mode. It was reachable only as `params.frameMode`, which did reach the request but not the node, so
+ * the panel's pill and `read_node` never saw it (#324).
  */
 
 /** What a caller may state, under the request's names. */
@@ -34,6 +39,8 @@ export type NodeSettings = {
     seed?: unknown;
     format?: unknown;
     instructions?: unknown;
+    /** Which frames the connected pictures are, on a film that takes them: the first, the last, or both. */
+    frameMode?: unknown;
     params?: unknown;
 };
 
@@ -170,6 +177,21 @@ const secondsBetween =
         return { value: String(whole) };
     };
 
+/**
+ * Which of the connected pictures is the first frame and which the last.
+ *
+ * A workflow declares how many pictures it takes; this says what they mean, and it is the difference between
+ * "continue from this frame" and "end on it". The value is the request's own (`first`, `last`, `both`), and a
+ * film that takes frames reads it — so a workflow that declares no frames refuses it, with the list of the
+ * keys it does read.
+ */
+const frameMode: Field["read"] = (value) => {
+    if (typeof value !== "string") return { reason: 'needs "first", "last" or "both"' };
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "first" || normalized === "last" || normalized === "both") return { value: normalized };
+    return { reason: `${value} is not a frame mode: a run takes its pictures as "first", "last", or "both"` };
+};
+
 const format: Field["read"] = (value) => {
     if (typeof value !== "string") return { reason: "needs a container, like mp3 or wav" };
     const found = audioFormatOptions.find((option) => option.value === value.trim().toLowerCase());
@@ -191,6 +213,7 @@ function fieldsFor(kind: string, contract: SettingsContract): Field[] {
             { name: "size", field: "size", key: "size", read: videoSize(contract.tier ? parseVideoResolution(contract.tier) : "720") },
             { name: "quality", field: "vquality", key: "", read: quality },
             { name: "seconds", field: "seconds", key: "seconds", read: secondsBetween(VIDEO_SECONDS_MIN, VIDEO_SECONDS_MAX) },
+            { name: "frameMode", field: "frameMode", key: "frameMode", read: frameMode },
         ];
     }
     const duration = contract.duration;
@@ -234,7 +257,7 @@ export function planNodeSettings(node: CanvasNodeData, settings: NodeSettings, c
     // Material — content with no model recorded — is the one node whose press cannot run anything (#297), so
     // there is no run to shape. The picker that would give it one belongs to the user.
     if (node.metadata?.content && !node.metadata?.model) {
-        return { ok: false, reason: `${node.id} holds material and no model, so nothing would run it: which run it gets is the user's pick in its own model picker` };
+        return { ok: false, reason: `${node.id} holds material and no model, so nothing would run it: material is used by connecting it to a node that runs (docs/decisions.md #297)` };
     }
 
     // A film's quality tier is settled first: its size is judged against the tier that will be used, so a call
@@ -312,6 +335,7 @@ export function heldKeys(node: CanvasNodeData): string[] {
         ["seed", metadata.seedFixed === "true" ? metadata.seed : ""],
         ["background", metadata.background],
         ["quality", metadata.quality ?? metadata.vquality],
+        ["frameMode", metadata.frameMode],
         ["format", metadata.audioFormat],
         ["lyrics", metadata.audioInstructions],
         ...Object.entries(metadata.params || {}),

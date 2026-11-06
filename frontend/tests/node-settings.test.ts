@@ -93,10 +93,28 @@ describe("what the kind does not keep", () => {
         }
     });
 
-    test("material has no run to shape: which run it gets is the user's pick", () => {
+    // Material has no run to shape, and no picker to give it one any more: what it is *for* is a connection
+    // (#297), so the refusal names that rather than a control that does not exist.
+    test("material has no run to shape, and the refusal says how it is used instead", () => {
         const crop = node("image", { content: "/api/canvases/c/files/a.png" });
         const plan = planNodeSettings(crop, { size: "1024x1024" }, accepts("size"));
-        expect(!plan.ok && plan.reason).toContain("model picker");
+        expect(!plan.ok && plan.reason).toContain("holds material and no model");
+        expect(!plan.ok && plan.reason).toContain("connecting it to a node that runs");
+    });
+
+    // The one setting whose key the film's own request reads, so a workflow that takes no frames refuses it
+    // with the list it does read — the same three-state answer every other setting gets (#304, #324).
+    test("a film's frame mode is a setting, and it is refused by a workflow that takes no frames", () => {
+        const film = node("video", { content: "/api/canvases/c/files/a.mp4", model: "default::video-h3-ref2va" });
+        const plan = planNodeSettings(film, { frameMode: "last" }, accepts("frameMode", "seconds"));
+        expect(plan.ok).toBe(true);
+        expect(plan.ok && plan.patch).toEqual({ frameMode: "last" });
+
+        const refuses = planNodeSettings(film, { frameMode: "first" }, accepts("prompt", "seconds"));
+        expect(!refuses.ok && refuses.reason).toContain("frameMode means nothing to this workflow");
+
+        const nonsense = planNodeSettings(film, { frameMode: "middle" }, accepts("frameMode"));
+        expect(!nonsense.ok && nonsense.reason).toContain('"first", "last", or "both"');
     });
 });
 

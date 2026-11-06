@@ -93,4 +93,14 @@ describe("the canvas as the agent reads it", () => {
         // The card IS the picture here (320×240), so there is one size to state and it has been stated.
         expect(canvas([picture(320, 240)])[1]).toBe("- image-1 (image) at (40, -12), 320×240");
     });
+
+    // A film's length is the one content fact a card never shows, and it is what a chain of clips is planned
+    // from: "how long is this, and how many more make a minute". Unlike the pixels it is never left out —
+    // there is nothing on the card it could be repeating.
+    test("a clip's length is on its line, and so is a sound's", () => {
+        const film = { ...node("video", { content: "/api/canvases/c/files/a.mp4", naturalWidth: 1280, naturalHeight: 720, durationMs: 12400 }) };
+        expect(canvas([film])[1]).toBe("- video-1 (video) at (40, -12), 320×240 (picture 1280×720, 12.4 s)");
+        const sound = { ...node("audio", { content: "/api/canvases/c/files/a.mp3", durationMs: 3000 }) };
+        expect(canvas([sound])[1]).toBe("- audio-1 (audio) at (40, -12), 320×240 (3.0 s)");
+    });
 });

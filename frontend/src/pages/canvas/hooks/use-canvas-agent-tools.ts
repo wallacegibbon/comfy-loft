@@ -42,6 +42,8 @@ export function useCanvasAgentTools({
     writeMetadata,
     modelCatalog,
     stopNode,
+    captureFrame,
+    joinClips,
 }: {
     nodesRef: RefObject<CanvasNodeData[]>;
     connectionsRef: RefObject<CanvasConnection[]>;
@@ -60,6 +62,8 @@ export function useCanvasAgentTools({
     writeMetadata: CanvasHands["writeMetadata"];
     modelCatalog: CanvasHands["modelCatalog"];
     stopNode: CanvasHands["stopNode"];
+    captureFrame: CanvasHands["captureFrame"];
+    joinClips: CanvasHands["joinClips"];
 }) {
     // The refs and callbacks outlive a render, and a tool call can arrive between two of them.
     const hands = useRef<CanvasHands>({
@@ -80,6 +84,8 @@ export function useCanvasAgentTools({
         writeMetadata,
         modelCatalog,
         stopNode,
+        captureFrame,
+        joinClips,
     });
     hands.current = {
         nodes: () => nodesRef.current || [],
@@ -99,6 +105,8 @@ export function useCanvasAgentTools({
         writeMetadata: committed(writeMetadata),
         modelCatalog,
         stopNode,
+        captureFrame,
+        joinClips,
     };
 
     useEffect(

@@ -421,6 +421,10 @@ export default {
             captured: "Image node created",
             failed: "Could not capture this frame. Try again.",
         },
+        join: {
+            joined: "The clips are one video now",
+            failed: "The clips could not be joined",
+        },
         sidePanel: {
             resize: "Resize left panel",
             tab: { canvases: "Canvases", elements: "Elements" },
@@ -515,6 +519,8 @@ export default {
             ungroupTitle: "Remove grouping from selected nodes",
             syncPlay: "Play together",
             syncPlayTitle: "Play all selected videos from 0s, muted by default",
+            joinClips: "Join",
+            joinClipsTitle: "Join the selected clips into one, left to right",
             interpolate: "Interpolate",
             interpolateTitle: "RIFE interpolation",
         },

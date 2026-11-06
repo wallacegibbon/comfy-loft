@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -9,8 +10,9 @@ import { Button } from "@/components/kit/button";
 import { Dialog } from "@/components/kit/dialog";
 import { toast } from "@/components/kit/toast";
 import { cancelRun, type RunRequest } from "@/services/api/runs";
+import { joinCanvasFiles } from "@/services/api/join";
 import type { GenerateOptions, GenerateStart } from "@/lib/canvas/agent-generate";
-import type { MoveOutcome, StopOutcome } from "@/lib/canvas/canvas-agent-tools";
+import type { CaptureOutcome, JoinOutcome, MoveOutcome, StopOutcome } from "@/lib/canvas/canvas-agent-tools";
 import type { ModelCatalog } from "@/lib/canvas/node-model";
 import { createVideoGenerationTask, waitForVideoGenerationTask, type VideoPreview } from "@/services/api/video";
 import { acceptsInput, channelModelOf, modelContractOf, modelOptionLabel, useConfigStore, useEffectiveConfig, workflowModelOptions, type ModelAccepts, type ModelCapability } from "@/stores/use-config-store";
@@ -57,13 +59,13 @@ import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
 import { rememberLastCanvas } from "@/lib/canvas/last-canvas";
-import { setActiveCanvas } from "@/services/canvas-files";
+import { fileNameOf, setActiveCanvas } from "@/services/canvas-files";
 import { useCanvasStore, flushCanvasSaves } from "@/stores/canvas/use-canvas-store";
 import { promptPatch } from "@/lib/canvas/node-prompt-field";
 import { useCanvasAgentTools } from "@/pages/canvas/hooks/use-canvas-agent-tools";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { exportCanvas } from "@/lib/canvas/canvas-export";
-import { applyNodeConfigPatch, createCanvasNode, imageMetadata } from "@/lib/canvas/canvas-node-factory";
+import { applyNodeConfigPatch, createCanvasNode, imageMetadata, videoMetadata } from "@/lib/canvas/canvas-node-factory";
 import { recallNodeSettings } from "@/lib/canvas/node-settings-memory";
 import {
     applyGroupSelection,
@@ -1869,38 +1871,134 @@ function InfiniteCanvasPage() {
         saveAs(node.metadata.content, `canvas-${node.type}-${node.id}.${node.type === CanvasNodeType.Video ? "mp4" : node.type === CanvasNodeType.Audio ? audioExtension(node.metadata.mimeType) : imageExtension(node.metadata.content)}`);
     }, []);
 
-    const captureVideoNodeFrame = useCallback(
-        async (nodeId: string, position: VideoFramePosition) => {
-            setContextMenu(null);
-            const node = nodesRef.current.find((item) => item.id === nodeId);
-            const video = Array.from(containerRef.current!.querySelectorAll<HTMLVideoElement>("video[data-canvas-video]")).find((item) => item.dataset.canvasVideo === nodeId);
-            if (node?.type !== CanvasNodeType.Video || !node.metadata?.content || !video) return toast.error(t("canvas.videoFrames.failed"));
-            try {
-                const image = await uploadImage(await captureVideoFrame(node.metadata.content, position, video.currentTime));
+    /**
+     * Take frames out of a film, as pictures wired to it — the card's menu and the agent's tool, one act.
+     *
+     * The frame is decoded in the browser, because that is where the clip can be decoded; the server has one
+     * job here and it is joining. What comes out is an ordinary image node with no model on it, which is why
+     * the connection it is made with matters: the wire is what says where the picture came from (#321), and
+     * connecting the frame onwards is the only thing a model-less node can be used for (#297).
+     *
+     * `both` is two frames in one call so the caller does not have to place them twice, and the second is
+     * placed clear of the first — the overlap scan below reads the page's nodes, which do not include what
+     * this call has not committed yet.
+     *
+     * The writes are flushed before this returns: a `connect` that arrives in the same turn (the tools run one
+     * call at a time, on committed state) has to see the picture it is being asked to wire (#285).
+     */
+    const captureFrames = useCallback(async (nodeId: string, frame: VideoFramePosition | "both"): Promise<CaptureOutcome> => {
+        const node = nodesRef.current.find((item) => item.id === nodeId);
+        if (node?.type !== CanvasNodeType.Video) return { ok: false, reason: `${nodeId} is not a film, so it has no frames` };
+        const source = node.metadata?.content;
+        if (!source) return { ok: false, reason: `${nodeId} holds no clip yet, so there is no frame to take` };
+        const video = Array.from(containerRef.current?.querySelectorAll<HTMLVideoElement>("video[data-canvas-video]") || []).find((item) => item.dataset.canvasVideo === nodeId);
+        if (frame === "current" && !video) return { ok: false, reason: `the playhead of ${nodeId} is not on screen, so there is no frame to take from it` };
+
+        const positions: VideoFramePosition[] = frame === "both" ? ["first", "last"] : [frame];
+        const taken: Array<{ nodeId: string; frame: VideoFramePosition; width: number; height: number }> = [];
+        const children: CanvasNodeData[] = [];
+        try {
+            for (const position of positions) {
+                const image = await uploadImage(await captureVideoFrame(source, position, video?.currentTime || 0));
                 const size = fitNodeSize(image.width, image.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
                 const id = nanoid();
                 const x = node.position.x + node.width + 96;
                 let y = node.position.y + node.height / 2 - size.height / 2;
-                while (nodesRef.current.some((item) => item.id !== node.id && item.position.x < x + size.width && item.position.x + item.width > x && item.position.y < y + size.height && item.position.y + item.height > y)) y += size.height + 24;
-                const child: CanvasNodeData = {
-                    id,
-                    type: CanvasNodeType.Image,
-                    position: { x, y },
-                    ...size,
-                    metadata: imageMetadata(image),
-                };
-                setNodes((prev) => [...prev, child]);
-                setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: id }]);
-                setSelectedNodeIds(new Set([id]));
-                setSelectedConnectionId(null);
-                setDialogNodeId(id);
-                toast.success(t("canvas.videoFrames.captured"));
-            } catch {
-                toast.error(t("canvas.videoFrames.failed"));
+                // Clear of everything already on the canvas, and of the frames this same call is placing.
+                while ([...nodesRef.current, ...children].some((item) => item.id !== node.id && item.position.x < x + size.width && item.position.x + item.width > x && item.position.y < y + size.height && item.position.y + item.height > y)) {
+                    y += size.height + 24;
+                }
+                children.push({ id, type: CanvasNodeType.Image, position: { x, y }, ...size, metadata: imageMetadata(image) });
+                taken.push({ nodeId: id, frame: position, width: image.width, height: image.height });
+            }
+        } catch {
+            return { ok: false, reason: `the browser could not read a frame out of ${nodeId}: the clip may be in a container or codec it cannot decode` };
+        }
+
+        flushSync(() => {
+            setNodes((prev) => [...prev, ...children]);
+            setConnections((prev) => [...prev, ...children.map((child) => ({ id: nanoid(), fromNodeId: node.id, toNodeId: child.id }))]);
+        });
+        return { ok: true, frames: taken };
+    }, []);
+
+    const captureVideoNodeFrame = useCallback(
+        async (nodeId: string, position: VideoFramePosition) => {
+            setContextMenu(null);
+            const outcome = await captureFrames(nodeId, position);
+            if (!outcome.ok) return void toast.error(t("canvas.videoFrames.failed"));
+            const [frame] = outcome.frames;
+            setSelectedNodeIds(new Set([frame.nodeId]));
+            setSelectedConnectionId(null);
+            setDialogNodeId(frame.nodeId);
+            toast.success(t("canvas.videoFrames.captured"));
+        },
+        [captureFrames, t],
+    );
+
+    /**
+     * Join clips into one, in the order given, as a new film wired from each of them.
+     *
+     * The chain is the intermediate state and this is the end of it: each clip was made from the frame the
+     * one before it ended on, and a user who asked for a longer video wants one file, not five. So the new
+     * node is *material* like a captured frame — content and no model — and the wires from the clips it was
+     * built out of are what say what it was built out of (#321).
+     *
+     * The order is the caller's list, never the order of the wires: a connection does not say "third".
+     * A clip that is not a file in this canvas has nothing to join, and says so rather than being skipped.
+     */
+    const joinClips = useCallback(
+        async (nodeIds: string[], options?: { reencode?: boolean }): Promise<JoinOutcome> => {
+            const clips = nodeIds.map((id) => nodesRef.current.find((item) => item.id === id));
+            const missing = clips.findIndex((node) => !node);
+            if (missing >= 0) return { ok: false, reason: `the canvas no longer holds ${nodeIds[missing]}` };
+            const fileless = clips.find((node) => !fileNameOf(node!.metadata?.storageKey));
+            if (fileless) return { ok: false, reason: `${fileless!.id} holds nothing this canvas can name — a picture that arrived as a data URL — so there is no file to join from it` };
+            try {
+                const joined = await joinCanvasFiles(
+                    projectId,
+                    clips.map((node) => node!.metadata!.storageKey!),
+                    options,
+                );
+                const last = clips[clips.length - 1]!;
+                const width = joined.file.width || last.width;
+                const height = joined.file.height || last.height;
+                const size = fitNodeSize(width, height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
+                const id = nanoid();
+                const x = last.position.x + last.width + 96;
+                let y = last.position.y + last.height / 2 - size.height / 2;
+                while (nodesRef.current.some((item) => item.id !== last.id && item.position.x < x + size.width && item.position.x + item.width > x && item.position.y < y + size.height && item.position.y + item.height > y)) {
+                    y += size.height + 24;
+                }
+                const child: CanvasNodeData = { id, type: CanvasNodeType.Video, position: { x, y }, ...size, metadata: videoMetadata(joined.file) };
+                flushSync(() => {
+                    setNodes((prev) => [...prev, child]);
+                    setConnections((prev) => [...prev, ...clips.map((node) => ({ id: nanoid(), fromNodeId: node!.id, toNodeId: id }))]);
+                });
+                return { ok: true, nodeId: id, width, height, durationMs: joined.file.durationMs || 0 };
+            } catch (error) {
+                return { ok: false, reason: error instanceof Error ? error.message : String(error) };
             }
         },
-        [t],
+        [projectId],
     );
+
+    /**
+     * Joining the selection into one clip, in the order they sit on the canvas.
+     *
+     * Left to right, not the order the user clicked: a click order is invisible, and a chain is drawn with each
+     * clip to the right of the one before it. The agent's tool takes the order from its own list instead, which
+     * is the one place an order can be stated exactly.
+     */
+    const joinSelectedVideos = useCallback(async () => {
+        const inOrder = [...selectedVideoNodes].sort((first, second) => first.position.x - second.position.x || first.position.y - second.position.y);
+        const outcome = await joinClips(inOrder.map((node) => node.id));
+        if (!outcome.ok) return void toast.error(outcome.reason || t("canvas.join.failed"));
+        setSelectedNodeIds(new Set([outcome.nodeId]));
+        setSelectedConnectionId(null);
+        setDialogNodeId(outcome.nodeId);
+        toast.success(t("canvas.join.joined"));
+    }, [joinClips, selectedVideoNodes, t]);
 
     // The node editors live in their own modules; this object is the entire surface they get.
     const nodeEditorDeps: NodeEditorDeps = useMemo(
@@ -2209,6 +2307,8 @@ function InfiniteCanvasPage() {
         groupNodes: (nodeIds) => groupNodes(new Set(nodeIds)),
         ungroupNodes: (nodeIds) => ungroupNodes(new Set(nodeIds)),
         stopNode: stopNodeRun,
+        captureFrame: captureFrames,
+        joinClips,
         nodeContract,
         modelCatalog,
         writeMetadata: handleConfigNodeChange,
@@ -2555,9 +2655,11 @@ function InfiniteCanvasPage() {
                         canGroup={canGroupSelection}
                         canUngroup={canUngroupSelection}
                         canSyncPlay={selectedVideoNodes.length >= 2}
+                        canJoinClips={selectedVideoNodes.length >= 2}
                         onGroup={groupSelection}
                         onUngroup={ungroupSelection}
                         onSyncPlay={syncPlaySelectedVideos}
+                        onJoinClips={() => void joinSelectedVideos()}
                     />
                 ) : null}
 

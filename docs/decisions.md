@@ -11028,3 +11028,102 @@ DOM, so a column width is nothing a test here can see, and the app itself has no
 the rule and the CSS, not the running page.
 
 **Where** `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx` (`CanvasNodeInfoModal`, `InfoRow`).
+
+## 323. A film's frames are pictures, and a picture is a node
+
+**Decision** `capture_frame` takes a film's first and/or last frame out of it as image nodes, each wired from the
+film it came out of: `frame` is `first`, `last`, or `both`, and `both` is the default. The page decodes the frame
+(`captureFrames` in `project.tsx` — the card menu's own code, not a second copy of it), uploads it, and writes the
+node and the connection before the call returns; the tool answers with the ids and the size of each picture. The
+frames hold no model, so the answer ends by saying the one thing that can be done with them: connect them to the
+node that should run from them. There is no `current` frame — a playhead is a fact about the user's screen, and
+the card's menu keeps that item for the person.
+
+**Why a node and not bytes** A run of a frames workflow takes a picture, and this is how a longer clip is made:
+the last frame of one clip is the first frame of the next. Handing the frame back as media would be the 54.9 MiB
+that #319 measured — a caller that needs the *picture as an input* needs it on the canvas, wired.
+
+**Why its own verb** It cannot be `generate` (no model, no GPU, no run — that is what #297 made "material" mean),
+and it cannot be an option on `create_node`: that tool's invariant is "a node made empty, then filled by a run",
+while this one is made *filled*, fails in a different way (a decode, not a refusal), and would be the only argument
+on that tool that produces bytes. It sits after `connect` in the vocabulary, because make / connect / capture are
+the three tools that change the graph rather than what runs in it. `join_clips` (#324) is the same kind of act.
+
+**Tested** `frontend/tests/canvas-agent-tools.test.ts` (5): both frames by default with both ids in the answer; one
+named frame, with what the next clip does with it; a picture refused as "one frame already"; `current` refused with
+the three choices named; a film still generating refused as such; the page's decode failure passed through as the
+answer. `npx tsc --noEmit`, `npm run check`, `npx vitest run` 563, `go test ./internal/server/`, `make check`.
+
+**Where** `frontend/src/lib/canvas/canvas-agent-tools.ts` (`captureFrame`, `CaptureOutcome`, the hand),
+`frontend/src/pages/canvas/project.tsx` (`captureFrames`, `captureVideoNodeFrame`),
+`frontend/src/pages/canvas/hooks/use-canvas-agent-tools.ts`, `internal/server/routes_mcp.go`,
+`internal/server/agent_instructions.go`, `internal/server/mcp_test.go`.
+
+## 324. One verb for joining clips, and it does not guess
+
+**Decision** `POST /api/canvases/{id}/join` takes `{"files": [name, ...], "reencode": false}` and makes one clip
+of the canvas's own files, in the order given. It probes every input with ffprobe first; when the inputs agree on
+every track (kind, codec, size, pixel format, frame rate, sample rate, channels) it copies the streams
+(`-f concat -c copy -movflags +faststart`); when they do not it refuses, naming the file and the field that
+differ; and it re-encodes only when the caller asks for it. The result is read back before it is handed over — its
+duration must be the inputs' sum and it must have a video track — and then it is moved into the canvas and answered
+with `{upload, durationMs, width, height, mode}`. The tool `join_clips {nodeIds, reencode?}` does the same through
+the page, which writes one video node wired from each clip in the list. The selection toolbar's Join is that same
+hand, ordered left to right.
+
+**Why a route and not a run** The browser cannot mux H.264 (it can draw a frame, which is why #323 is the page's),
+and a run would put a CPU file copy behind the GPU queue with fixed media slots — five clips cannot be one run.
+So this is not a model, and the node it makes records none: it is material, like a captured frame, and the wires
+from the clips it was built out of say what it was built out of.
+
+**Why the probe, and why a refusal** ffmpeg's concat demuxer does not refuse inputs it cannot stitch: it writes a
+file, and the file plays until the first seam and then stops. Trusting its exit code would save that as a node. So
+the parameters are compared before anything is written, and the answer names the clip and the field ("clip-2.mp4
+is 96×96 and clip-1.mp4 is 64×64") — the same refuse-don't-clamp rule a size gets (#270). Re-encoding is the
+escape, and it changes every frame of the result, which is why it is a word in the call rather than a fallback.
+
+**Also decided with it** A clip's own length is now on its `list_nodes` line (`pictureClause`): a card never shows
+one, so unlike the picture's pixels it is never left out. A chain is planned from it — "how many more clips make a
+minute" — and `join_clips` answers with the result's length for the same reason.
+
+**Cost** Two clips that were not made the same way cannot be joined from the UI yet: it asks for a copy, and a
+refusal is shown as a toast. The escape exists on the route and the tool (`reencode: true`); a button for it is a
+follow-up, to be added when someone actually hits it.
+
+**Tested** `internal/server/join_test.go` (6): every way two clips can differ, as the sentence each one produces;
+silence when they agree; a sound's channel count; the route's refusals (one file, a missing file, a name outside
+the canvas); one real join of two ten-frame clips through ffmpeg, which answers `mode: copy`, about 2 s of clip,
+and a file the canvas then serves; mismatched clips refused with both names in the sentence. `go test
+./internal/server/`, `make check`, and on the frontend `npx vitest run` 562 (three for `join_clips`: the order is
+the list, one clip is not a join, reencode passed through or refused when it is not a boolean).
+
+**Where** `internal/server/routes_join.go`, `internal/upload/upload.go` (`Adopt`, `moveFile`),
+`internal/server/server.go` (`probeVideoFile` now reads through the one probe), `internal/server/join_test.go`,
+`frontend/src/services/api/join.ts`, `frontend/src/lib/canvas/canvas-agent-tools.ts` (`joinClips`, `JoinOutcome`),
+`frontend/src/pages/canvas/project.tsx` (`joinClips`, `joinSelectedVideos`),
+`frontend/src/components/canvas/canvas-selection-toolbar.tsx`, `frontend/src/lib/canvas/canvas-agent-view.ts`,
+`internal/server/routes_mcp.go`, `internal/server/agent_instructions.go`,
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts`.
+
+## 325. How a film's frames map is a setting, not a leftover knob
+
+**Decision** `frameMode` is a `set_node` setting on a film — `first`, `last`, or `both` — writing
+`metadata.frameMode`, the field the panel's own pill writes and the request reads; `read_node` states it back
+("frames first"). A workflow that declares no frames refuses it with the list of keys it does read.
+
+**Why** It was reachable only as `params.frameMode`. That did reach the request, because a frames workflow
+declares the key — but it did not reach the node: the pill showed nothing, `read_node` reported it as one of the
+workflow's knobs rather than as what the connected pictures are, and a node could be running with a frame mapping
+its own panel could not show. Two paths to one request key is how a panel and a tool drift apart (#302, #309).
+
+**Cost** "Put this film in frames mode" is two statements: the workflow (whose declared mode fixes it) and this.
+And the key is only meaningful together with the pictures: a film with no connected picture, or more than its
+workflow takes, is refused by the run, not by this setting.
+
+**Tested** `frontend/tests/node-settings.test.ts` (one new: a film takes `frameMode` and writes it, a workflow with
+no frames refuses it by name, `middle` is not a frame mode), `frontend/tests/node-generation-facts.test.ts` (the
+clause reads back what the settings wrote). `npx tsc --noEmit`, `npm run check`, `npx vitest run` 563.
+
+**Where** `frontend/src/lib/canvas/node-settings.ts` (`frameMode` field, `heldKeys`),
+`frontend/src/lib/canvas/node-generation-facts.ts` (`settingsClause`), `internal/server/routes_mcp.go` (the
+`set_node` schema).

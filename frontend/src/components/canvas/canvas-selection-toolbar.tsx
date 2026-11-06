@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Group, Play, Ungroup } from "lucide-react";
+import { Group, Merge, Play, Ungroup } from "lucide-react";
 
 import { useTranslation } from "react-i18next";
 
@@ -17,9 +17,11 @@ export function CanvasSelectionToolbar({
     canGroup,
     canUngroup,
     canSyncPlay,
+    canJoinClips,
     onGroup,
     onUngroup,
     onSyncPlay,
+    onJoinClips,
 }: {
     nodes: CanvasNodeData[];
     viewport: ViewportTransform;
@@ -27,9 +29,12 @@ export function CanvasSelectionToolbar({
     canGroup: boolean;
     canUngroup: boolean;
     canSyncPlay: boolean;
+    /** Whether the selection is two or more finished clips, which is the only thing a join takes. */
+    canJoinClips: boolean;
     onGroup: () => void;
     onUngroup: () => void;
     onSyncPlay: () => void;
+    onJoinClips: () => void;
 }) {
     const { t } = useTranslation();
     const theme = useCanvasTheme();
@@ -40,7 +45,7 @@ export function CanvasSelectionToolbar({
     const top = viewport.y + bounds.top * viewport.k - SELECTION_PAD;
     const width = (bounds.right - bounds.left) * viewport.k + SELECTION_PAD * 2;
     const height = (bounds.bottom - bounds.top) * viewport.k + SELECTION_PAD * 2;
-    const showActions = showToolbar && (canGroup || canUngroup || canSyncPlay);
+    const showActions = showToolbar && (canGroup || canUngroup || canSyncPlay || canJoinClips);
 
     return (
         <>
@@ -70,6 +75,7 @@ export function CanvasSelectionToolbar({
                     onPointerDown={(event) => event.stopPropagation()}
                 >
                     {canSyncPlay ? <SelectionAction title={t("canvas.nodeToolbar.syncPlayTitle")} label={t("canvas.nodeToolbar.syncPlay")} icon={<Play className="size-4" />} onClick={onSyncPlay} /> : null}
+                    {canJoinClips ? <SelectionAction title={t("canvas.nodeToolbar.joinClipsTitle")} label={t("canvas.nodeToolbar.joinClips")} icon={<Merge className="size-4" />} onClick={onJoinClips} /> : null}
                     {canGroup ? <SelectionAction title={t("canvas.nodeToolbar.groupTitle")} label={t("canvas.nodeToolbar.group")} icon={<Group className="size-4" />} onClick={onGroup} /> : null}
                     {canUngroup ? <SelectionAction title={t("canvas.nodeToolbar.ungroupTitle")} label={t("canvas.nodeToolbar.ungroup")} icon={<Ungroup className="size-4" />} onClick={onUngroup} /> : null}
                 </div>

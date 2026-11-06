@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,6 +103,76 @@ func (s *Store) Save(canvasID, kind, filename, mimeType string, data []byte) (*F
 	}
 	s.logger.Info("upload %s/%s stored (%d bytes)", canvasID, name, stored.Bytes)
 	return stored, nil
+}
+
+/**
+ * Adopt takes a file the server wrote itself and puts it in a canvas, the way Save does with bytes.
+ *
+ * The difference is only where the bytes are: a joined clip is produced by ffmpeg writing a file, and reading
+ * a ten-minute video into memory to hand it to Save would be a copy of the whole thing for nothing. Same
+ * directory in practice, so the move is a rename; anything else falls back to a copy and a delete.
+ *
+ * No size limit: `Save`'s is the browser's upload budget, and a join is bounded by the clips it was made of,
+ * every one of which already passed it.
+ */
+func (s *Store) Adopt(canvasID, kind, filename, mimeType, path string) (*File, error) {
+	dir, err := s.canvases.FilesPath(canvasID)
+	if err != nil {
+		return nil, err
+	}
+	ext := extensionFor(kind, filename)
+	if ext == "" {
+		return nil, fmt.Errorf("upload: cannot place %q", filename)
+	}
+	name, err := newName("up", ext)
+	if err != nil {
+		return nil, err
+	}
+	target := filepath.Join(dir, name)
+	if err := moveFile(path, target); err != nil {
+		return nil, fmt.Errorf("upload: cannot move %s into place: %w", path, err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return nil, fmt.Errorf("upload: cannot read %s: %w", target, err)
+	}
+	stored := &File{
+		ID:        name,
+		Kind:      kind,
+		Filename:  defaultString(filename, name),
+		MimeType:  defaultString(mimeType, mimeOf(kind)),
+		Bytes:     info.Size(),
+		CreatedAt: util.NowIso(),
+		Path:      target,
+	}
+	s.logger.Info("upload %s/%s adopted (%d bytes)", canvasID, name, stored.Bytes)
+	return stored, nil
+}
+
+// moveFile renames when it can and copies when it cannot (a temp directory on another filesystem).
+func moveFile(from, to string) error {
+	if err := os.Rename(from, to); err == nil {
+		return nil
+	}
+	source, err := os.Open(from)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	destination, err := os.Create(to)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(destination, source); err != nil {
+		destination.Close()
+		os.Remove(to)
+		return err
+	}
+	if err := destination.Close(); err != nil {
+		os.Remove(to)
+		return err
+	}
+	return os.Remove(from)
 }
 
 // Get returns an upload that is still on disk, or nil.

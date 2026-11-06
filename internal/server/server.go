@@ -2,13 +2,10 @@
 package server
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 
@@ -339,19 +336,9 @@ func (s *Server) probeVideoPath(path string) int {
 	return s.probeVideoFile(path)
 }
 
-// probeVideoFile runs ffprobe on one file and returns the 17k+5 frame count.
+// probeVideoFile answers the 17k+5 frame count of one file, out of the same probe every other reader uses.
 func (s *Server) probeVideoFile(temporary string) int {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	args := []string{
-		"-v", "error", "-select_streams", "v:0",
-		"-show_entries", "stream=avg_frame_rate",
-		"-show_entries", "format=duration",
-		"-of", "json", temporary,
-	}
-	s.logger.Info("running external command: %s", util.CommandLine("ffprobe", args...))
-	out, err := exec.CommandContext(ctx, "ffprobe", args...).Output()
+	probe, err := s.probeMedia(temporary)
 	if err != nil {
 		// Degrading to "unknown length" is legitimate, but it must be visible: the
 		// character-swap workflows silently produce the wrong duration without it.
@@ -362,38 +349,15 @@ func (s *Server) probeVideoFile(temporary string) int {
 		}
 		return 0
 	}
-
-	var parsed struct {
-		Streams []struct {
-			AvgFrameRate string `json:"avg_frame_rate"`
-		} `json:"streams"`
-		Format struct {
-			Duration string `json:"duration"`
-		} `json:"format"`
-	}
-	if err := json.Unmarshal(out, &parsed); err != nil {
+	video, ok := videoStream(probe.Streams)
+	if !ok {
 		return 0
 	}
-
-	fps := 0.0
-	if len(parsed.Streams) > 0 {
-		parts := strings.Split(parsed.Streams[0].AvgFrameRate, "/")
-		switch len(parts) {
-		case 2:
-			numerator, _ := strconv.ParseFloat(parts[0], 64)
-			denominator, _ := strconv.ParseFloat(parts[1], 64)
-			if denominator != 0 {
-				fps = numerator / denominator
-			}
-		case 1:
-			fps, _ = strconv.ParseFloat(parts[0], 64)
-		}
-	}
-	duration, _ := strconv.ParseFloat(parsed.Format.Duration, 64)
-	if fps <= 0 || duration <= 0 {
+	fps := rateValue(video.frameRate)
+	if fps <= 0 {
 		return 0
 	}
-	frames := int(fps*duration + 0.5)
+	frames := int(fps*probe.Duration + 0.5)
 	if frames < 1 {
 		return 1
 	}

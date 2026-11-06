@@ -459,6 +459,7 @@ export default {
             audio: "音频",
         },
         videoFrames: { first: "截取首帧", last: "截取尾帧", current: "截取当前帧", captured: "已生成图片节点", failed: "无法截取该画面，请重试" },
+        join: { joined: "已拼成一段视频", failed: "无法拼接这些视频" },
         sidePanel: {
             resize: "调整左侧面板宽度",
             tab: { canvases: "画布", elements: "元素" },
@@ -553,6 +554,8 @@ export default {
             ungroupTitle: "取消节点分组",
             syncPlay: "同时播放",
             syncPlayTitle: "所有选中视频从 0 秒开始同步播放（默认静音）",
+            joinClips: "合并",
+            joinClipsTitle: "把选中的视频从左到右拼成一个",
             interpolate: "插帧",
             interpolateTitle: "RIFE 插帧",
         },

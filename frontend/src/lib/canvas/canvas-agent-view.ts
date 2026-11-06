@@ -74,18 +74,22 @@ function groupClause(node: CanvasNodeData, members: Map<string, string[]>): stri
 }
 
 /**
- * The picture's own pixels, when they are not the card's — the second size a node has.
+ * What a node holds, in the numbers the card does not show: the picture's own pixels, and how long a clip or
+ * a sound runs.
  *
  * A card is the shape of what it holds, but not its size: a 1920×1280 photograph in a 480×320 card is one
- * line's worth of fact, and a reader deciding whether a node is worth looking at needs both. It is left out
- * when the two agree, because a fact repeated is noise.
+ * line's worth of fact, and a reader deciding whether a node is worth looking at needs both. The pixels are
+ * left out when the two agree, because a fact repeated is noise — the *length* never is, because no card
+ * shows one and "how long is this clip" is the question a chain of clips is planned from.
  */
 function pictureClause(node: CanvasNodeData): string {
+    const facts: string[] = [];
     const width = Math.round(node.metadata?.naturalWidth || 0);
     const height = Math.round(node.metadata?.naturalHeight || 0);
-    if (!width || !height) return "";
-    if (width === Math.round(node.width) && height === Math.round(node.height)) return "";
-    return ` (picture ${width}×${height})`;
+    if (width && height && (width !== Math.round(node.width) || height !== Math.round(node.height))) facts.push(`picture ${width}×${height}`);
+    const duration = node.metadata?.durationMs || 0;
+    if (duration > 0) facts.push(`${(duration / 1000).toFixed(1)} s`);
+    return facts.length ? ` (${facts.join(", ")})` : "";
 }
 
 /**

@@ -58,6 +58,14 @@ describe("configuredClause", () => {
         expect(configuredClause({ model: "image-z-image-turbo", seed: "42" })).toBe("set to run image-z-image-turbo");
     });
 
+    // #325: what the connected pictures *are* to a film that takes frames — the fact that decides whether a
+    // clip continues from a frame or ends on one, and the one setting whose value is not a number of seconds.
+    test("names how a film's frames map, in the words the request uses", () => {
+        expect(configuredClause({ model: "video-h3-frames", frameMode: "first", seconds: "4" })).toBe("set to run video-h3-frames, 4 s, frames first");
+        expect(configuredClause({ model: "video-h3-frames", frameMode: "last" })).toBe("set to run video-h3-frames, frames last");
+        expect(configuredClause({ model: "video-h3-frames", frameMode: "both" })).toBe("set to run video-h3-frames, frames first and last");
+    });
+
     test("auto is the absence of a choice, and the workflow's own knobs are named as they are", () => {
         expect(configuredClause({ model: "image-qwen21", size: "auto", params: { steps: 8, cfg: 2.5, loras: [], layout: {} } })).toBe("set to run image-qwen21, params steps 8, cfg 2.5");
     });

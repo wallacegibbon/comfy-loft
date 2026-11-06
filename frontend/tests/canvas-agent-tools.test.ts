@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { runTool, type CanvasHands } from "../src/lib/canvas/canvas-agent-tools";
 import { settleMoveMembership, withGroupMembers, withoutEmptiedGroups } from "../src/lib/canvas/canvas-node-geometry";
 import type { GenerateStart } from "../src/lib/canvas/agent-generate";
+import type { VideoFramePosition } from "../src/lib/canvas/canvas-video-frame";
 import { registerBuiltinNodes } from "../src/components/canvas/nodes/builtin-nodes";
 import type { SettingsContract } from "../src/lib/canvas/node-settings";
 import type { StopOutcome } from "../src/lib/canvas/canvas-agent-tools";
@@ -47,6 +48,9 @@ function handsFor(
         deleted: [] as string[],
         settings: [] as Array<[string, CanvasNodeMetadata]>,
         stopped: [] as string[],
+        captured: [] as Array<[string, string]>,
+        joined: [] as string[][],
+        reencoded: [] as boolean[],
     };
     const hands: CanvasHands = {
         nodes: () => nodes,
@@ -117,6 +121,18 @@ function handsFor(
             written.stopped.push(nodeId);
             return stopped;
         },
+        // The page decodes a frame and writes a node; what these answer is only what the tool reports, so a
+        // frame is a name and a size, and the tests that care about the refusal replace them.
+        captureFrame: async (nodeId, frame) => {
+            written.captured.push([nodeId, frame]);
+            const frames = (frame === "both" ? ["first", "last"] : [frame]).map((each, index) => ({ nodeId: `image-frame-${index + 1}`, frame: each as VideoFramePosition, width: 1280, height: 720 }));
+            return { ok: true, frames };
+        },
+        joinClips: async (nodeIds, options) => {
+            written.joined.push(nodeIds);
+            written.reencoded.push(Boolean(options?.reencode));
+            return { ok: true, nodeId: "video-joined", width: 1280, height: 720, durationMs: 60_000 };
+        },
     };
     return { hands, written };
 }
@@ -128,6 +144,143 @@ const textOf = async (hands: CanvasHands, name: string, args: Record<string, unk
     const answer = await runTool(name, args, hands, "canvas:test");
     return { answer, text: (answer.content[0] as { text: string }).text };
 };
+
+/**
+ * A film's frames, taken out of it as pictures.
+ *
+ * This is how a longer clip is made: the last frame of one clip becomes the first frame of the next, so the
+ * capability has to be a node on the canvas rather than bytes handed back to the caller — the caller is a
+ * model, and a picture in a conversation is 2–3 MiB a look (#319).
+ */
+describe("capture_frame: a film's frames, as pictures", () => {
+    test("takes both frames by default, and says what can be done with them", async () => {
+        const { hands, written } = handsFor([placed("video-1", "video", { content: "/api/canvases/c/files/clip.mp4" })]);
+        const { answer, text } = await textOf(hands, "capture_frame", { nodeId: "video-1" });
+
+        expect(answer.isError).not.toBe(true);
+        expect(written.captured).toEqual([["video-1", "both"]]);
+        expect(text).toContain("took both frames of video-1");
+        expect(text).toContain("image-frame-1 (1280×720) is the first");
+        expect(text).toContain("image-frame-2 (1280×720) is the last");
+        // Material: no model, so the one thing a caller can do with it is connect it.
+        expect(text).toContain("They hold no model, so they are material");
+    });
+
+    test("one frame, named, and what the next clip does with it", async () => {
+        const { hands, written } = handsFor([placed("video-1", "video", { content: "/api/canvases/c/files/clip.mp4" })]);
+        const { text } = await textOf(hands, "capture_frame", { nodeId: "video-1", frame: "last" });
+
+        expect(written.captured).toEqual([["video-1", "last"]]);
+        expect(text).toContain("took the last frame of video-1: image-frame-1 (1280×720), connected from video-1");
+        expect(text).toContain("a film's last frame is where the next clip continues from");
+    });
+
+    test("a picture is one frame already, and a word a playhead is not on offer", async () => {
+        const { hands, written } = handsFor([node("image", { content: "/api/canvases/c/files/a.png" })]);
+        const picture = await textOf(hands, "capture_frame", { nodeId: "image-1", frame: "first" });
+        expect(picture.answer.isError).toBe(true);
+        expect(picture.text).toContain("a picture is one frame already");
+        expect(written.captured).toEqual([]);
+
+        const film = handsFor([placed("video-1", "video", { content: "/api/canvases/c/files/clip.mp4" })]);
+        const playhead = await textOf(film.hands, "capture_frame", { nodeId: "video-1", frame: "current" });
+        expect(playhead.answer.isError).toBe(true);
+        expect(playhead.text).toContain('take "first", "last", or "both"');
+        expect(film.written.captured).toEqual([]);
+    });
+
+    test("a clip that is not there yet has no frame, and says which way it is missing", async () => {
+        const waiting = handsFor([placed("video-1", "video", { status: "loading" })]);
+        const running = await textOf(waiting.hands, "capture_frame", { nodeId: "video-1" });
+        expect(running.answer.isError).toBe(true);
+        expect(running.text).toContain("holds no clip yet");
+        expect(running.text).toContain("it is generating now");
+
+        const empty = handsFor([placed("video-2", "video")]);
+        const nothing = await textOf(empty.hands, "capture_frame", { nodeId: "video-2" });
+        expect(nothing.text).toContain("press it with generate");
+    });
+
+    test("the page's refusal is the answer, not a run that quietly did nothing", async () => {
+        const { hands } = handsFor([placed("video-1", "video", { content: "/api/canvases/c/files/clip.mp4" })]);
+        hands.captureFrame = async () => ({ ok: false, reason: "the browser could not read a frame out of video-1: the clip may be in a container or codec it cannot decode" });
+        const { answer, text } = await textOf(hands, "capture_frame", { nodeId: "video-1" });
+
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("could not read a frame");
+    });
+});
+
+/**
+ * Joining clips into one — the end of a chain.
+ *
+ * Each clip was made from the frame the one before it ended on; the user asked for a longer video, and a
+ * chain of five clips is not one. The order is the call's list, because a wire cannot say "third".
+ */
+describe("join_clips: several clips into one", () => {
+    const film = (id: string) => placed(id, "video", { content: `/api/canvases/c/files/${id}.mp4` });
+
+    test("joins in the order the call names, and answers with the whole length", async () => {
+        const { hands, written } = handsFor([film("video-1"), film("video-2"), film("video-3")]);
+        const { answer, text } = await textOf(hands, "join_clips", { nodeIds: ["video-3", "video-1", "video-2"] });
+
+        expect(answer.isError).not.toBe(true);
+        // The list, not the canvas order and not the wire order.
+        expect(written.joined).toEqual([["video-3", "video-1", "video-2"]]);
+        expect(text).toContain("joined video-3, video-1, video-2 into video-joined");
+        expect(text).toContain("1:00");
+        expect(text).toContain("It holds no model, so it is material");
+    });
+
+    test("one clip is not a join, and the answer says why", async () => {
+        const { hands, written } = handsFor([film("video-1")]);
+        const { answer, text } = await textOf(hands, "join_clips", { nodeIds: ["video-1"] });
+
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("at least two clips");
+        expect(written.joined).toEqual([]);
+    });
+
+    test("a missing id, a picture, and a clip nobody has made yet are each named", async () => {
+        const { hands } = handsFor([film("video-1"), node("image", { content: "/api/canvases/c/files/a.png" }), placed("video-2", "video")]);
+
+        const missing = await textOf(hands, "join_clips", { nodeIds: ["video-1", "video-9"] });
+        expect(missing.answer.isError).toBe(true);
+        expect(missing.text).toContain('no node with id "video-9"');
+
+        const picture = await textOf(hands, "join_clips", { nodeIds: ["video-1", "image-1"] });
+        expect(picture.answer.isError).toBe(true);
+        expect(picture.text).toContain("join_clips joins films");
+
+        const empty = await textOf(hands, "join_clips", { nodeIds: ["video-1", "video-2"] });
+        expect(empty.answer.isError).toBe(true);
+        expect(empty.text).toContain("video-2 holds no clip yet");
+    });
+
+    test("re-encoding is the caller's to ask for, and it is passed through", async () => {
+        const { hands, written } = handsFor([film("video-1"), film("video-2")]);
+        await textOf(hands, "join_clips", { nodeIds: ["video-1", "video-2"], reencode: true });
+        expect(written.reencoded).toEqual([true]);
+
+        const plain = handsFor([film("video-1"), film("video-2")]);
+        await textOf(plain.hands, "join_clips", { nodeIds: ["video-1", "video-2"] });
+        expect(plain.written.reencoded).toEqual([false]);
+
+        const odd = await textOf(plain.hands, "join_clips", { nodeIds: ["video-1", "video-2"], reencode: "yes" });
+        expect(odd.answer.isError).toBe(true);
+        expect(odd.text).toContain("it is true or false");
+    });
+
+    test("clips that were not made the same way are refused by the page, in its own words", async () => {
+        const { hands } = handsFor([film("video-1"), film("video-2")]);
+        hands.joinClips = async () => ({ ok: false, reason: "video-2 is 25 fps and video-1 is 24 fps: joining them would re-encode every frame of the result, so send reencode if that is what you want" });
+        const { answer, text } = await textOf(hands, "join_clips", { nodeIds: ["video-1", "video-2"] });
+
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("25 fps");
+        expect(text).toContain("reencode");
+    });
+});
 
 describe("set_text: writing what the card says", () => {
     test("writes the text itself, and it is the only field a text node has", async () => {

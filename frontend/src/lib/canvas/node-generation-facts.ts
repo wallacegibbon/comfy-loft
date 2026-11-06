@@ -105,6 +105,12 @@ function settingsClause(metadata: CanvasNodeMetadata | undefined) {
     if ((metadata?.background || "").trim().toLowerCase() === "transparent") parts.push("transparent background");
     const quality = (metadata?.quality || metadata?.vquality || "").trim();
     if (quality) parts.push(`quality ${quality}`);
+    // What the connected pictures are to a film that takes frames: `first`, `last`, or both. It is the request's
+    // own word, and the fact that decides whether a clip continues from a frame or ends on it (#324).
+    const frames = (metadata?.frameMode || "").trim();
+    if (frames === "first") parts.push("frames first");
+    else if (frames === "last") parts.push("frames last");
+    else if (frames === "both") parts.push("frames first and last");
     const params = Object.entries(metadata?.params || {}).filter(([key, value]) => !UNSTATED_PARAMS.includes(key) && value !== "" && value != null);
     if (params.length) parts.push(`params ${params.map(([key, value]) => `${key} ${value && typeof value === "object" ? JSON.stringify(value) : String(value)}`).join(", ")}`);
     return parts.join(", ");
