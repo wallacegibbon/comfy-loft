@@ -13,7 +13,7 @@ import { parseInline, parseMarkdown, type MarkdownBlock, type MarkdownInline } f
 
 /** Every inline token's words, in order, so a test can read a line without walking the tree. */
 function flat(tokens: MarkdownInline[]): string {
-    return tokens.map((token) => (token.kind === "text" || token.kind === "code" ? token.text : flat(token.tokens))).join("");
+    return tokens.map((token) => (token.kind === "text" || token.kind === "code" ? token.text : token.kind === "break" ? "\n" : flat(token.tokens))).join("");
 }
 
 function kinds(tokens: MarkdownInline[]): string[] {
@@ -179,7 +179,29 @@ describe("inline", () => {
         expect(parseInline("[click](javascript:alert)")).toEqual([{ kind: "text", text: "[click](javascript:alert)" }]);
     });
 
-    test("raw HTML is characters, because nothing here ever produces markup", () => {
+    test("a tag outside the allowlist is characters, because nothing here ever produces markup", () => {
         expect(parseInline("<img src=x onerror=alert(1)>")).toEqual([{ kind: "text", text: "<img src=x onerror=alert(1)>" }]);
+        expect(parseInline("<div onclick=alert(1)>hi</div>")).toEqual([{ kind: "text", text: "<div onclick=alert(1)>hi</div>" }]);
+    });
+
+    // Measured over one session: seven answers in a row dressed a node id this way, because a code span is
+    // what the model meant and a tag is what it typed. The tag is read as its meaning; none of it survives.
+    test("the few tags a model writes mean the token they already meant", () => {
+        expect(parseInline('<span style="font-family: monospace;">@image-1</span>')).toEqual([{ kind: "code", text: "@image-1" }]);
+        expect(parseInline("<code>x</code>")).toEqual([{ kind: "code", text: "x" }]);
+        expect(parseInline("<b>bold</b> and <em>em</em>")).toEqual([
+            { kind: "strong", tokens: [{ kind: "text", text: "bold" }] },
+            { kind: "text", text: " and " },
+            { kind: "em", tokens: [{ kind: "text", text: "em" }] },
+        ]);
+        expect(parseInline("a<br>b")).toEqual([{ kind: "text", text: "a" }, { kind: "break" }, { kind: "text", text: "b" }]);
+    });
+
+    test("an attribute on a tag that is read is not carried: only the meaning survives", () => {
+        expect(parseInline('<span style="font-family: monospace; color: red" onclick="steal()">@image-1</span>')).toEqual([{ kind: "code", text: "@image-1" }]);
+    });
+
+    test("an unclosed tag stays characters rather than swallowing the rest of the line", () => {
+        expect(parseInline("<code>half")).toEqual([{ kind: "text", text: "<code>half" }]);
     });
 });

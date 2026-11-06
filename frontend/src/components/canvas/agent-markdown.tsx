@@ -141,9 +141,12 @@ function Inline({ tokens, renderText }: { tokens: MarkdownInline[]; renderText: 
                     case "text":
                         return <Fragment key={index}>{renderText(token.text)}</Fragment>;
                     case "code":
+                        // The words still go through the panel's renderer: a model that dresses a node id in a
+                        // monospace tag means a citation, so the chip stays and the jump with it. Anything that
+                        // is not a known node comes back as the same characters it was given.
                         return (
                             <code key={index} className={INLINE_CODE}>
-                                {token.text}
+                                {renderText(token.text)}
                             </code>
                         );
                     case "strong":
@@ -164,6 +167,8 @@ function Inline({ tokens, renderText }: { tokens: MarkdownInline[]; renderText: 
                                 <Inline tokens={token.tokens} renderText={renderText} />
                             </s>
                         );
+                    case "break":
+                        return <br key={index} />;
                     case "link":
                         return (
                             <a key={index} href={token.href} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">

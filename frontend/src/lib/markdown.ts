@@ -11,11 +11,18 @@
  * page served over plain HTTP. It is also the only shape that can keep a citation clickable: every run of
  * text goes back out through the panel's `withMentions`, which is what turns `@label` into a button (#237).
  *
+ * **A few inline tags are read, and none is written.** A model does not always write Markdown: measured over
+ * one session, every answer dressed a node id as `<span style="font-family: monospace">@image-1</span>`,
+ * because a code span is what it meant and a tag is what it typed. So `INLINE_TAGS` reads the handful of tags
+ * whose meaning is already a token here — `code`, `b`/`strong`, `i`/`em`, `del`/`s`/`strike`, `br`, and that
+ * one monospace `span`. The tag becomes a token and the token a React element, so nothing on this path builds
+ * an HTML string and no attribute of any tag is carried anywhere. Everything else stays the characters it was
+ * written as — the same answer an unclosed `**` and a stray `|` get.
+ *
  * **The subset is what an answer writes**, not CommonMark: headings, paragraphs, fenced code, quotes,
- * rules, lists and tables, inline code, strong, emphasis, strikethrough and links. No images (a picture in
- * this app is a node), no raw HTML, no footnotes, no math, no reference-style links, no task-list boxes. A
- * construct outside the subset is not an error — it stays the text it was, which is what a half-streamed
- * `**` and a stray `|` both end up as.
+ * rules, lists and tables, inline code, strong, emphasis, strikethrough, links, and those few tags. No images
+ * (a picture in this app is a node), no footnotes, no math, no reference-style links, no task-list boxes. A
+ * construct outside the subset is not an error — it stays the text it was.
  *
  * Text nodes do not use this: the canvas draws what a text node holds as the words that were typed.
  */
@@ -39,7 +46,8 @@ export type MarkdownInline =
     | { kind: "strong"; tokens: MarkdownInline[] }
     | { kind: "em"; tokens: MarkdownInline[] }
     | { kind: "strike"; tokens: MarkdownInline[] }
-    | { kind: "link"; href: string; tokens: MarkdownInline[] };
+    | { kind: "link"; href: string; tokens: MarkdownInline[] }
+    | { kind: "break" };
 
 const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
 const HEADING = /^\s{0,3}(#{1,6})\s+(.*)$/;
@@ -52,6 +60,28 @@ const COLUMN_MARK = /^:?-+:?$/;
 /** A link whose target we are willing to open. Anything else — `javascript:`, a relative path — stays text. */
 const SAFE_HREF = /^(https?:\/\/|mailto:)/i;
 const LINK = /^\[([^\]]*)\]\(([^()\s]*)\)/;
+/**
+ * The inline tags an answer may write, and the token each of them means.
+ *
+ * Read, never written: the tag is consumed and the token that comes out is drawn as a React element, so a
+ * `style` attribute cannot reach the page and no event handler survives. Only the tags whose meaning already
+ * exists here are listed; the monospace `span` is the one a model reaches for when it means a code span.
+ */
+type InlineTag = { kind: "code"; open: RegExp; close: RegExp } | { kind: "strong" | "em" | "strike"; open: RegExp; close: RegExp };
+
+const INLINE_TAGS: InlineTag[] = [
+    { kind: "code", open: /^<code(?:\s[^<>]*)?>/i, close: /<\/code\s*>/i },
+    // Any other attribute on it is irrelevant: the tag is read for the one thing it means, and the rest of it
+    // is dropped with it — an `onclick` is not carried anywhere because no attribute is carried at all.
+    { kind: "code", open: /^<span\s+[^<>]*font-family\s*:\s*monospace[^<>]*>/i, close: /<\/span\s*>/i },
+    { kind: "strong", open: /^<(?:b|strong)(?:\s[^<>]*)?>/i, close: /<\/(?:b|strong)\s*>/i },
+    { kind: "em", open: /^<(?:i|em)(?:\s[^<>]*)?>/i, close: /<\/(?:i|em)\s*>/i },
+    { kind: "strike", open: /^<(?:del|s|strike)(?:\s[^<>]*)?>/i, close: /<\/(?:del|s|strike)\s*>/i },
+];
+
+/** A `<br>` is a break: `<span>` is not the only tag a model writes when it means layout. */
+const LINE_BREAK = /^<br\s*\/?>/i;
+
 /** What a backslash takes back, per CommonMark: punctuation only, and `\n` is not one of them. */
 const ESCAPABLE = "\\`*_{}[]()#+-.!>~|\"'";
 
@@ -268,6 +298,15 @@ export function parseInline(text: string): MarkdownInline[] {
             index += 2;
             continue;
         }
+        if (char === "<") {
+            const html = readInlineHTML(text, index);
+            if (html) {
+                flush();
+                tokens.push(...html.tokens);
+                index = html.next;
+                continue;
+            }
+        }
         if (char === "`") {
             const run = runLength(text, index);
             const close = findRun(text, index + run, run);
@@ -318,6 +357,27 @@ export function parseInline(text: string): MarkdownInline[] {
     }
     flush();
     return tokens;
+}
+
+/** One allowlisted tag at `index`, as the tokens it means — or null, and then it stays the text it was. */
+function readInlineHTML(text: string, index: number): { tokens: MarkdownInline[]; next: number } | null {
+    const rest = text.slice(index);
+    const br = LINE_BREAK.exec(rest);
+    if (br) return { tokens: [{ kind: "break" }], next: index + br[0].length };
+    for (const tag of INLINE_TAGS) {
+        const open = tag.open.exec(rest);
+        if (!open) continue;
+        const body = rest.slice(open[0].length);
+        const close = tag.close.exec(body);
+        // An unclosed tag is characters, not an unterminated run of code or emphasis.
+        if (!close) continue;
+        const inner = body.slice(0, close.index);
+        const next = index + open[0].length + close.index + close[0].length;
+        // Inline code is literal; the rest keeps its own Markdown, as an emphasis delimiter does.
+        if (tag.kind === "code") return { tokens: [{ kind: "code", text: inner }], next };
+        return { tokens: [{ kind: tag.kind, tokens: parseInline(inner) }], next };
+    }
+    return null;
 }
 
 /** A run of `**strong**` or `*em*` starting at `index`, or null when the delimiter opens nothing. */
