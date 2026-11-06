@@ -10997,3 +10997,34 @@ and the four assertions that read titles were rewritten around what a node actua
 `frontend/src/components/canvas/{canvas-node,canvas-create-menus,canvas-side-panel-elements,canvas-node-hover-toolbar,canvas-node-reference-bar,canvas-agent-panel,canvas-node-generation,nodes/builtin-nodes}.tsx`,
 `frontend/src/pages/canvas/{project.tsx,hooks/use-content-ingress.ts,hooks/use-image-editors.ts}`,
 `frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `frontend/src/lib/canvas/node-title.ts` (deleted).
+
+## 322. A key column is sized by its own words, never by a number
+
+**Decision** The node information panel's keys are one grid column for the whole panel, sized `max-content`
+(`grid-cols-[max-content_minmax(0,1fr)]` in `canvas-node-hover-toolbar.tsx`), and `InfoRow` returns the key and
+the value as two cells of that grid rather than being a grid of its own. The value column is `minmax(0,1fr)` and
+keeps `break-words`: a prompt gives way when the panel is narrow, a key never does.
+
+**Why** The key column was 72px per row. "Generated at" wrapped onto two lines while "ID" left most of its cell
+empty — a number somebody guessed, and one that only has to survive until the next key or the next language. It
+was already wrong in the language it was guessed in: English is where this panel's keys are longest. The row is a
+table of facts, and the only width a table's key column can honestly have is the width of its widest key.
+
+**The rest of the app, checked** No other panel puts a key and its value in two columns of prose: the
+system-status dialog, the settings dialogs and the tool-node panel are label-left/value-right
+(`justify-between`), which sizes itself, and the JSON tab is a `<pre>`. The one other fixed column
+(`canvas-node-angle-dialog.tsx`, 88px, three rows of label + slider + number) is a *control* row, and its four
+labels fit at 88px in both languages; it is also a column shared by rows that must line up, so it stays a number
+until a translation outgrows it — at which point those rows want this same treatment against a shared parent grid.
+
+**Cost** The column is now as wide as the widest key rather than a constant, so a panel of long keys pushes the
+values further right than it used to, and the gap between key and value is 20px rather than 12.
+
+**Tested** `npx vitest run` 550, `npx tsc --noEmit`, `npm run check`, `npm run build`, and the built stylesheet
+carries `grid-template-columns:max-content minmax(0,1fr)`. The layout was rendered rather than assumed: this
+panel's own markup, with the video node's nine keys, against that stylesheet in headless Chrome — every key on one
+line, values starting at one x, the prompt wrapping inside the value column. The unit suite runs in `node` with no
+DOM, so a column width is nothing a test here can see, and the app itself has not been opened: what is verified is
+the rule and the CSS, not the running page.
+
+**Where** `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx` (`CanvasNodeInfoModal`, `InfoRow`).

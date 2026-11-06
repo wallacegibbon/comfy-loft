@@ -245,7 +245,7 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
             {node ? (
                 <div className="min-h-0 flex-1 select-text text-sm" data-canvas-shortcuts-ignore>
                     {view === "info" ? (
-                        <div className="thin-scrollbar h-full space-y-3 overflow-auto pr-1">
+                        <div className="thin-scrollbar grid h-full grid-cols-[max-content_minmax(0,1fr)] content-start gap-x-5 gap-y-3 overflow-auto pr-1">
                             <InfoRow label="ID" value={node.id} />
                             <InfoRow
                                 label={t("canvas.nodeToolbar.type")}
@@ -268,7 +268,7 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
                             {node.metadata?.runId ? <InfoRow label={t("canvas.nodeToolbar.runId")} value={node.metadata.runId} /> : null}
                             {imageBytes ? <InfoRow label={t("canvas.nodeToolbar.imageSize")} value={formatBytes(imageBytes)} /> : null}
                             {node.metadata?.errorDetails ? (
-                                <div className="rounded-lg border p-3 text-red-400" style={{ borderColor: theme.node.stroke }}>
+                                <div className="col-span-2 rounded-lg border p-3 text-red-400" style={{ borderColor: theme.node.stroke }}>
                                     {node.metadata.errorDetails}
                                 </div>
                             ) : null}
@@ -298,11 +298,24 @@ function ToolbarAction({ title, label, icon, onClick, showLabel, active = false,
     );
 }
 
+/**
+ * One fact about the node: its key, and what the key says.
+ *
+ * A fragment rather than a row of its own, because the *list* is the grid and its first column is `max-content`:
+ * the key column is one column for the whole panel, sized to the widest key in it. It used to be a grid per
+ * row with a 72px key column, which is a number somebody guessed: "Generated at" wrapped onto two lines while
+ * "ID" left most of its cell empty, and a translation only has to be a little longer than the last one for the
+ * next key to wrap too. Sizing the column by its own words is the rule that cannot go stale — a key is as wide
+ * as it is, in whatever language the reader is in.
+ *
+ * The value keeps `min-w-0` and `break-words`: a prompt is a paragraph, and it is the value that gives way when
+ * the panel is narrow, never the key.
+ */
 function InfoRow({ label, value }: { label: string; value: ReactNode }) {
     return (
-        <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3">
+        <>
             <span className="opacity-50">{label}</span>
             <span className="min-w-0 whitespace-pre-wrap break-words">{value}</span>
-        </div>
+        </>
     );
 }
