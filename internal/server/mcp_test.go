@@ -224,6 +224,12 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 		"the first frame of the next clip",
 		"canvas_join_clips",
 		"in the order you name",
+		// #326: a run reports back on its own, so waiting for it or polling it is the wrong thing to do with
+		// a turn. It was in `generate`'s description and answer, which is where a rule about working goes to
+		// be forgotten: the temptation arrives after the call, when the description has been read and gone.
+		"Pressing is not waiting",
+		"finished, failed or cancelled",
+		"Do not wait for it and do not poll the node",
 		// #310: a run the agent started can be ended, and that is what makes pressing safe.
 		"canvas_stop_node",
 		"Press nothing you cannot stop",

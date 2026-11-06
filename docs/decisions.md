@@ -7120,9 +7120,9 @@ with its answer and a run it started reports into the log. A session that is gon
 and the log says so — the message is not queued for the next process. The ask is a *name*, which is what lets it
 survive a reload and also what lets it outlive a conversation cleared mid-run, whose successor under the same name
 would be told about a run it never asked for. A text node's generate is not a run, so it is not reported, and the
-tool's answer says so instead of promising a message. `generate`'s description and answer set the expectation —
-"you will be sent a message; do not poll" — which is the other half: an agent told nothing waits, and an agent told
-too little polls.
+tool's answer says so instead of promising a message. The expectation is set by the system prompt ("Do not wait for
+it and do not poll the node", #326) and by the answer's fact about the run it started — "you will be sent a message"
+— which is the other half: an agent told nothing waits, and an agent told too little polls.
 
 **Where** `internal/task/task.go` (`Ask`, `SetOnFinish`, `finishedLocked`, `finish`), `internal/server/run_notice.go`,
 `internal/server/routes_{runs,mcp}.go`, `internal/agent/sessions.go` (`Tell`),
@@ -11127,3 +11127,38 @@ clause reads back what the settings wrote). `npx tsc --noEmit`, `npm run check`,
 **Where** `frontend/src/lib/canvas/node-settings.ts` (`frameMode` field, `heldKeys`),
 `frontend/src/lib/canvas/node-generation-facts.ts` (`settingsClause`), `internal/server/routes_mcp.go` (the
 `set_node` schema).
+
+
+## 326. A rule about working is in the prompt; a description says what a call does
+
+**Decision** "Do not wait for it and do not poll the node" is stated once, in `canvasInstructions`: *"Pressing is
+not waiting: canvas_generate answers when the run is out, and how it ended reaches you as a message — finished,
+failed or cancelled, however long it took."* The rule left `generate`'s description, which now says only what the
+call does — it answers at once, the node shows its own progress and holds the result, a text node generates
+nothing — and it left the tool's answer, which keeps the fact about the run it started ("run … is out … you will be
+sent a message when it finishes") and no instruction.
+
+**Why** The sentence was in two places and the prompt had none, while the paragraph above it — a longer video is a
+chain, *"let each run finish before you take its frame"* — already assumed the mechanism without ever stating it.
+Three homes for one instruction is the sediment #203 named ("a third copy of the same sentence is sediment"), and
+the two existing copies had already begun to disagree: a run ends in three ways (`run_notice.go`: finished,
+cancelled, failed with the reason) while the description said "a message saying how it went".
+
+Which half goes where is #203's line for `connect` — the description carries the mechanism, the prompt carries the
+policy — and the prompt is the only text with the durability a rule needs: it is set on every spawn, it survives
+the compaction of a conversation and any trimming of the tool list, and the temptation to poll arrives *after* the
+call, when the description has already been read and answered. `list_nodes` then hands the agent a handle for
+exactly that mistake (`[generating now]`), which is why the rule is worth a sentence rather than a shrug.
+
+**Cost** The instruction is paid once instead of twice, and the answer's remaining promise is a fact about one run
+rather than a rule. What is lost is the reminder at the moment of temptation: a model that ignores the system
+prompt has only "you will be sent a message" to work from, and an agent told too little polls (#225). One authority
+for the rule, and the fact beside it, is the trade.
+
+**Tested** `internal/server/mcp_test.go` (`TestAgentSpawnCarriesTheCanvasRule` names "Pressing is not waiting",
+"finished, failed or cancelled" and "Do not wait for it and do not poll the node"), `frontend/tests/agent-generate.test.ts`
+(the answer still promises the message, and now a case pins that it says `poll` nowhere). `go test ./...`,
+`npx vitest run`, `make check`.
+
+**Where** `internal/server/agent_instructions.go`, `internal/server/routes_mcp.go` (`generate`),
+`frontend/src/lib/canvas/agent-generate.ts`, `internal/server/mcp_test.go`, `frontend/tests/agent-generate.test.ts`.

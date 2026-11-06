@@ -31,6 +31,11 @@ export type GenerateOptions = {
  * A run exists, so the server owes the agent one message when it ends — delivered even if nobody is listening
  * at the time (`flushRunNotices`). Or no run exists, so the reason is the answer and nothing else is coming.
  *
+ * The answer states the fact about *this* run, and gives no instruction. "Do not wait for it and do not poll
+ * the node" is a rule about how to work, true of every turn and every canvas, so it lives in the system prompt
+ * (`canvasInstructions`) and only there: a rule said in two places is a rule that will disagree with itself
+ * (#326).
+ *
  * There used to be a third sentence for "the page has not reported anything yet", which promised a message
  * either way and therefore needed a promise-keeper, a late message and a ledger to be true (#285). It was all
  * scaffolding around that promise. A press now answers when the page answers; a page that never answers is
@@ -41,5 +46,5 @@ export function generateAnswer(nodeId: string, mode: string, start: GenerateStar
     if (!start.started) {
         return `generate on ${nodeId} (${mode}) did not start: ${start.reason}. Nothing was queued, so there is nothing to wait for — fix that and press it again.`;
     }
-    return `pressed generate on ${nodeId} (${mode}): run ${start.runId} is out. It will take a while — you will be sent a message when it finishes, so do not wait for it or poll the node.`;
+    return `pressed generate on ${nodeId} (${mode}): run ${start.runId} is out. It will take a while — you will be sent a message when it finishes.`;
 }

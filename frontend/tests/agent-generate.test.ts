@@ -5,9 +5,10 @@ import { generateAnswer, type GenerateStart } from "@/lib/canvas/agent-generate"
 /**
  * What `generate` tells the agent, which is the tool's whole contract with the model.
  *
- * A press either put a run out — so a message will come when it ends, and waiting or polling is wrong —
- * or it did not, and the agent has to be told that and why, because "nothing was started" and "it is
- * running" send it in opposite directions (#225).
+ * A press either put a run out — so a message will come when it ends — or it did not, and the agent has to be
+ * told that and why, because "nothing was started" and "it is running" send it in opposite directions (#225).
+ * What to *do* about a run that is out (do not wait, do not poll) is the system prompt's rule, not this
+ * answer's sentence (#326), so a case here pins its absence.
  */
 describe("the answer to generate", () => {
     it("says a run is out, and that the message comes later", () => {
@@ -16,7 +17,9 @@ describe("the answer to generate", () => {
         expect(answer).toContain("pressed generate on n12 (image)");
         expect(answer).toContain("task_6f2c");
         expect(answer).toContain("you will be sent a message when it finishes");
-        expect(answer).toContain("do not wait for it or poll");
+        // The fact about this run, and no instruction: "do not wait for it or poll the node" is in
+        // `canvasInstructions`, where it is true of every turn, and a second copy here would drift from it.
+        expect(answer).not.toContain("poll");
         // Nothing in it says the run failed: that word belongs to the refusal.
         expect(answer).not.toContain("did not start");
     });

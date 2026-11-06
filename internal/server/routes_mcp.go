@@ -222,7 +222,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "generate",
-		Description: "Press one node's generate button — the same thing the node's own panel does. It starts the work and answers at once; the node shows its own progress and holds the result. A picture, a film or a sound takes minutes, so do not wait for it and do not poll the node: when the run ends you are sent a message saying how it went, and you can carry on. A text node generates nothing — write its words with set_text.",
+		Description: "Press one node's generate button — the same thing the node's own panel does. It starts the work and answers at once; the node shows its own progress and holds the result. A picture, a film or a sound takes minutes. A text node generates nothing — write its words with set_text.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
