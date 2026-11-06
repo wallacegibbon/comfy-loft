@@ -136,8 +136,6 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 {
                     id: maskNodeId,
                     type: CanvasNodeType.Image,
-                    title: t("canvas.runtime.maskNodeTitle"),
-                    titleKey: "canvas.runtime.maskNodeTitle",
                     position: { x: node.position.x, y: node.position.y + node.height + 96 },
                     width: node.width,
                     height: node.height,
@@ -146,9 +144,6 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 {
                     id: childId,
                     type: CanvasNodeType.Image,
-                    title: userPrompt.slice(0, 32) || t("canvas.runtime.maskResult"),
-                    // A prompt the user wrote is data; only the fallback is a translation.
-                    ...(userPrompt.slice(0, 32) ? {} : { titleKey: "canvas.runtime.maskResult" }),
                     position: { x: node.position.x + node.width + 96, y: node.position.y },
                     width: node.width,
                     height: node.height,
@@ -203,8 +198,6 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 {
                     id: childId,
                     type: CanvasNodeType.Image,
-                    title: payload.prompt.slice(0, 32) || t("canvas.outpaint.resultTitle"),
-                    ...(payload.prompt.slice(0, 32) ? {} : { titleKey: "canvas.outpaint.resultTitle" }),
                     position: { x: node.position.x + node.width + 96, y: node.position.y },
                     width: node.width,
                     height: node.height,
@@ -257,8 +250,6 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 {
                     id: childId,
                     type: CanvasNodeType.Image,
-                    title: payload.summary.slice(0, 32) || t("canvas.mossLayout.resultTitle"),
-                    ...(payload.summary.slice(0, 32) ? {} : { titleKey: "canvas.mossLayout.resultTitle" }),
                     position: { x: node.position.x + node.width + 96, y: node.position.y },
                     width: node.width,
                     height: node.height,

@@ -10969,10 +10969,17 @@ An older canvas keeps its `title` fields in the file — nothing reads them — 
 (`documentOf`). A media file a run is handed is now named by the node's id instead of its title, which is at
 least unique: eleven pictures all sent `Image.png`.
 
-**Tested** `npx vitest run` 547 (one new: a legacy document's title fields do not survive a save; the fixtures
-and the four assertions that read titles were rewritten around what a node actually says), `npx tsc --noEmit`
-(the type made the compiler visit all 47 places), `npm run check` (i18n: 823 zh keys and 790 en, no dead ones;
-exports; prettier), `npm run build` 570.04 kB, `go test ./internal/server/`.
+**What the type does not catch** Four writers outlived the field: the mask, outpaint and MOSS-layout nodes still
+wrote `title` and `titleKey`, and those writes kept `canvas.runtime.maskNodeTitle`,
+`canvas.runtime.maskResult`, `canvas.outpaint.resultTitle` and `canvas.mossLayout.resultTitle` alive, so the
+i18n check counted them as used. `tsc` never saw them because a node literal inside `[...prev, {…}]` is inferred
+rather than freshly checked — a spread of the current nodes in the same array literal is what turns the element
+type into a union and drops the excess-property check. They are removed, and the key counts are 819 zh / 786 en.
+
+**Tested** `npx vitest run` 550 (one new: a legacy document's title fields do not survive a save; the fixtures
+and the four assertions that read titles were rewritten around what a node actually says), `npx tsc --noEmit`,
+`npm run check` (i18n: 819 zh keys and 786 en, no dead ones; exports; prettier), `npm run build` 570.00 kB,
+`go test ./internal/server/`.
 
 **Where** `frontend/src/types/canvas.ts`, `frontend/src/constant/canvas.ts`, `frontend/src/lib/canvas/{node-registry,canvas-node-factory,canvas-document,canvas-agent-view,node-prompt-field,canvas-export,canvas-resource-references}.ts`,
 `frontend/src/components/canvas/{canvas-node,canvas-create-menus,canvas-side-panel-elements,canvas-node-hover-toolbar,canvas-node-reference-bar,canvas-agent-panel,canvas-node-generation,nodes/builtin-nodes}.tsx`,

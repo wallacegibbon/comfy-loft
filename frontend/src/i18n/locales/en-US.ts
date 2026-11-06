@@ -264,7 +264,6 @@ export default {
     },
     canvas: {
         outpaint: {
-            resultTitle: "Outpaint result",
             failed: "Outpaint failed",
             title: "Outpaint",
             ratio: "Ratio",
@@ -283,7 +282,6 @@ export default {
             generate: "Generate",
         },
         mossLayout: {
-            resultTitle: "MOSS layout result",
             noImage: "MOSS layout generation returned no image",
             failed: "MOSS layout generation failed",
             title: "MOSS regional layout",
@@ -535,7 +533,6 @@ export default {
             addFileFailed: "Could not add the file to this canvas",
             clipboardTextAdded: "Added text from clipboard",
             splitSuccess: "Split into {{count}} child nodes",
-            maskResult: "Local edit result",
             maskFailed: "Local edit failed",
             generationFailed: "Generation failed",
             partialFailed: "Some images failed to generate",
@@ -548,7 +545,6 @@ export default {
             clearDescription: "This will delete every node and connection on the current canvas.",
             maskPrompt:
                 "{{source}} is the original image. {{mask}} marks the area to edit with a translucent blue overlay on the original image. Only modify the area covered by the blue overlay, keep everything else identical to the original, output a full image with the same size as the original, and do not keep any blue overlay in the result. Edit request: {{prompt}}",
-            maskNodeTitle: "Mask annotation",
             maskNodeNeeded: "Inpaint needs a mask: mark the area on this image with the mask tool, or connect a node that carries one",
         },
         lora: {

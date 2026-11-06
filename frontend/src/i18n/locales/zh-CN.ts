@@ -308,7 +308,6 @@ export default {
     },
     canvas: {
         outpaint: {
-            resultTitle: "扩图结果",
             failed: "扩图失败",
             title: "扩图",
             ratio: "比例",
@@ -327,7 +326,6 @@ export default {
             generate: "生成",
         },
         mossLayout: {
-            resultTitle: "MOSS 布局结果",
             noImage: "MOSS 布局生成没有返回图片",
             failed: "MOSS 布局生成失败",
             title: "MOSS 区域布局",
@@ -573,7 +571,6 @@ export default {
             addFileFailed: "文件没能放进这个画布",
             clipboardTextAdded: "已从剪切板添加文本",
             splitSuccess: "已切分为 {{count}} 个子节点",
-            maskResult: "局部编辑结果",
             maskFailed: "局部修改失败",
             generationFailed: "生成失败",
             partialFailed: "部分图片生成失败",
@@ -585,7 +582,6 @@ export default {
             clear: "清空",
             clearDescription: "这会删除当前画布上的所有节点和连线。",
             maskPrompt: "参考{{source}}为原图，{{mask}}是在原图上用蓝色半透明标注出的待修改区域。请只修改蓝色标注覆盖的区域，其余区域与原图保持完全一致，输出与原图相同尺寸的完整图片，并且结果中不要保留任何蓝色标注。修改要求：{{prompt}}",
-            maskNodeTitle: "遮罩标注",
             maskNodeNeeded: "局部重绘需要一张遮罩：用标记工具在这张图上画出区域，或连一个带遮罩的节点",
         },
         lora: {
