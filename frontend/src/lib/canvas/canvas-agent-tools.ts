@@ -14,7 +14,7 @@ import { materialClause, nodeCanGenerate } from "@/lib/canvas/canvas-generation-
 import { nodeContentOf, nodePromptOf } from "@/lib/canvas/node-prompt-field";
 import { planNodeSettings, type NodeSettings, type SettingsContract } from "@/lib/canvas/node-settings";
 import { describeModelCatalogs, MODEL_CAPABILITIES, planNodeModel, type ModelCapability, type ModelCatalog, type ModelCatalogs } from "@/lib/canvas/node-model";
-import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type Position } from "@/types/canvas";
+import { CanvasNodeType, type CanvasConnection, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type CanvasTrashEntry, type Position } from "@/types/canvas";
 
 /**
  * The tools, as functions: one call in, one answer out, against the page's own state.
@@ -94,6 +94,15 @@ export type CanvasHands = {
      * was already empty before the press.
      */
     deleteNodes: (nodeIds: string[]) => { removed: string[] };
+    /**
+     * Put deleted nodes back, wires and all, and say which ids it could not find.
+     *
+     * The inverse of `deleteNodes`, and the same function the Recently deleted list calls: a delete is a move
+     * into the canvas's trash, and the file it held is named by the document until the trash forgets it (#327).
+     */
+    restoreNodes: (nodeIds: string[]) => { restored: string[]; missing: string[] };
+    /** What this canvas deleted and can still put back, newest first. */
+    trash: () => CanvasTrashEntry[];
     focusNode: (nodeId: string) => void;
     /**
      * Move one card, and say what travelled and what the landing did to membership.
@@ -165,7 +174,7 @@ export async function runTool(name: string, args: unknown, hands: CanvasHands, s
         case "ping":
             return { content: [textBlock(`listening: ${hands.nodes().length} nodes, ${hands.connections().length} connections`)] };
         case "list_nodes":
-            return { content: [textBlock(describeCanvas(hands.nodes(), hands.connections()))] };
+            return { content: [textBlock(describeCanvas(hands.nodes(), hands.connections(), hands.trash()))] };
         case "create_node":
             return createNode(hands, args);
         case "read_node":
@@ -196,6 +205,8 @@ export async function runTool(name: string, args: unknown, hands: CanvasHands, s
             return stopNode(hands, args);
         case "delete_node":
             return deleteNode(hands, args);
+        case "restore_node":
+            return restoreNode(hands, args);
         case "focus_node":
             return focusNode(hands, args);
         case "move_node":
@@ -247,8 +258,23 @@ function namedNode(hands: CanvasHands, args: unknown): CanvasNodeData | undefine
     return hands.nodes().find((candidate) => candidate.id === nodeId);
 }
 
-/** The answer for a tool that names a node the canvas does not hold. */
-const noSuchNode = (args: unknown): ToolAnswer => ({ content: [textBlock(`no node with id "${nodeIdOf(args)}" on this canvas`)], isError: true });
+/**
+ * The answer for a tool that names a node the canvas does not hold.
+ *
+ * A node in the trash is not "no node with that id": the agent deleted it, the canvas kept it, and telling it
+ * the id is unknown would send it looking for a bug instead of calling `restore_node` (#327).
+ */
+function noSuchNode(hands: CanvasHands, args: unknown): ToolAnswer {
+    const nodeId = nodeIdOf(args);
+    const trashed = hands.trash().find((entry) => entry.node.id === nodeId);
+    if (trashed) {
+        return {
+            content: [textBlock(`${nodeId} is not on the canvas: it is in the trash, holding ${trashed.node.type === CanvasNodeType.Text ? "words" : "its content"}. restore_node puts it back where it was, with the connections it had`)],
+            isError: true,
+        };
+    }
+    return { content: [textBlock(`no node with id "${nodeId}" on this canvas`)], isError: true };
+}
 
 /**
  * Make one node, the way the user's own button makes one — placed where the view is looking, selected, and
@@ -319,7 +345,7 @@ function connect(hands: CanvasHands, args: unknown): ToolAnswer {
  */
 async function captureFrame(hands: CanvasHands, args: unknown): Promise<ToolAnswer> {
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
     const frame = frameOf(args);
     if (typeof frame !== "string") return { content: [textBlock(frame.reason)], isError: true };
 
@@ -431,7 +457,7 @@ function setPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
     const prompt = promptOf(args);
     if (prompt === undefined) return { content: [textBlock("set_prompt needs a prompt")], isError: true };
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
     if (node.type === CanvasNodeType.Text) {
         return {
             content: [textBlock(`${node.id} is a text node: it holds words and has no prompt, so there is nothing to ask it. Write what it says with set_text — an empty string clears it.`)],
@@ -454,7 +480,7 @@ function setText(hands: CanvasHands, args: unknown): ToolAnswer {
     const text = textOf(args);
     if (text === undefined) return { content: [textBlock("set_text needs text: the words the node should say (an empty string clears it)")], isError: true };
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
     if (node.type !== CanvasNodeType.Text) {
         return { content: [textBlock(`${node.id} is a ${node.type} node: it holds ${heldNoun(node.type)}, so it has no words to write. set_prompt changes what it is made from, and generate makes a new one.`)], isError: true };
     }
@@ -480,7 +506,7 @@ function setText(hands: CanvasHands, args: unknown): ToolAnswer {
  */
 function setNode(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
     // The id names the node; every other key is either which run this is or how that run is shaped, and a key
     // that is neither is refused by the plan rather than ignored, which is what makes a typo an answer.
     const { nodeId: _named, model, mode, ...settings } = argsOf(args) as { nodeId?: unknown; model?: unknown; mode?: unknown } & NodeSettings;
@@ -543,7 +569,7 @@ function setNode(hands: CanvasHands, args: unknown): ToolAnswer {
  */
 async function stopNode(hands: CanvasHands, args: unknown): Promise<ToolAnswer> {
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
     if (!GENERATE_MODES.includes(node.type)) {
         const what = node.type === CanvasNodeType.Text ? "it holds words and nothing generates them" : "nothing generates it";
         return { content: [textBlock(`${node.id} is a ${node.type} node: ${what}, so there is nothing to stop`)], isError: true };
@@ -609,7 +635,7 @@ function listModels(hands: CanvasHands, args: unknown): ToolAnswer {
  */
 async function pressGenerate(hands: CanvasHands, args: unknown, session: string): Promise<ToolAnswer> {
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
 
     // A node generates what it is.
     const mode: string = node.type;
@@ -666,7 +692,7 @@ const GENERATE_MODES: string[] = [CanvasNodeType.Image, CanvasNodeType.Video, Ca
  */
 function readNode(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
     if (node.type === CanvasNodeType.Text) {
         return { content: [textBlock(`${node.id} is a text node and has no run to configure: nothing asks it anything. What it says is its content, which read_text answers with and set_text writes`)], isError: false };
     }
@@ -696,7 +722,7 @@ function readNode(hands: CanvasHands, args: unknown): ToolAnswer {
  */
 function readText(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
     if (node.type !== CanvasNodeType.Text) {
         return {
             content: [
@@ -727,7 +753,7 @@ function readText(hands: CanvasHands, args: unknown): ToolAnswer {
  */
 async function readMedia(hands: CanvasHands, args: unknown): Promise<ToolAnswer> {
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
     if (!MEDIA_TYPES.includes(node.type)) {
         return { content: [textBlock(`${node.id} is a ${node.type} node and holds no media: ${node.type === CanvasNodeType.Text ? "its words are read_text's" : "a group holds nodes, and a LoRA node a stack"}`)], isError: true };
     }
@@ -746,7 +772,7 @@ async function readMedia(hands: CanvasHands, args: unknown): Promise<ToolAnswer>
  */
 function readPrompt(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
     if (node.type === CanvasNodeType.Text) {
         return { content: [textBlock(`${node.id} (text) has no prompt: it holds words, and nothing asks it anything. What it says is its content, which read_text answers with, and set_text writes.`)], isError: false };
     }
@@ -770,18 +796,51 @@ function connectedMedia(nodeId: string, hands: CanvasHands): MediaCounts {
  * Delete one node, the way the Delete key does: the node, and every connection that touched it.
  *
  * It is the page's own delete, so everything a removal means happens with it — the node's panel closes, a
- * group forgets the member — and it becomes one history entry, which is what makes it removable by the same
- * Ctrl+Z as a deletion the user made.
+ * group forgets the member, an emptied group goes — and it becomes one history entry, which is what makes it
+ * removable by the same Ctrl+Z as a deletion the user made.
+ *
+ * What holds content is not destroyed: it moves into the canvas's trash, with the connections it had, and the
+ * file it names stays on disk as long as the trash names it (#327). The answer says so, because an agent that
+ * believes a delete is final will read `no node with that id` later and go looking for a bug.
  */
 function deleteNode(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
 
     const edges = hands.connections().filter((connection) => connection.fromNodeId === node.id || connection.toNodeId === node.id).length;
     const done = hands.deleteNodes([node.id]);
     const connected = edges ? `, and ${edges} connection${edges === 1 ? "" : "s"} that touched it` : "";
     const emptied = done.removed.length ? `; removed ${done.removed.join(", ")}, which the delete left empty` : "";
-    return { content: [textBlock(`deleted ${node.id} (${node.type})${connected}${emptied}`)], isError: false };
+    // A group is structure: the box goes and its members stay, so there is nothing to put back and the trash
+    // does not keep one (#327).
+    if (node.type === CanvasNodeType.Group) {
+        return { content: [textBlock(`removed ${node.id} (group)${emptied}: the box is gone and its members are still on the canvas — a group holds nodes, so nothing was deleted with it`)], isError: false };
+    }
+    return { content: [textBlock(`deleted ${node.id} (${node.type})${connected}${emptied}. It is in the canvas's trash with the connections it had, so nothing is lost: restore_node puts it back`)], isError: false };
+}
+
+/**
+ * Put one deleted node back, with the connections it had — the inverse of `delete_node`.
+ *
+ * The trash belongs to the canvas rather than to the session that filled it, so this also brings back a node
+ * the *user* deleted, which is the point: a mistake is a mistake whoever made it. A connection whose other end
+ * is gone is dropped, and so is a membership of a group that is gone — a restore may not invent a relation the
+ * canvas cannot draw.
+ */
+function restoreNode(hands: CanvasHands, args: unknown): ToolAnswer {
+    const nodeId = nodeIdOf(args);
+    const entry = hands.trash().find((candidate) => candidate.node.id === nodeId);
+    if (!entry) {
+        return { content: [textBlock(`nothing in the trash has the id "${nodeId}": list_nodes states what the trash holds, and restore_node takes one of those ids`)], isError: true };
+    }
+    const done = hands.restoreNodes([nodeId]);
+    if (!done.restored.length) {
+        return { content: [textBlock(`${nodeId} could not be put back: the canvas no longer has it in the trash`)], isError: true };
+    }
+    const node = entry.node;
+    const edges = entry.connections.length ? `, with ${entry.connections.length} connection${entry.connections.length === 1 ? "" : "s"} it had` : "";
+    const group = node.metadata?.groupId ? `, in group ${node.metadata.groupId}` : "";
+    return { content: [textBlock(`restored ${nodeId} (${node.type})${edges}${group}. It holds the same content it did before the delete`)], isError: false };
 }
 
 /**
@@ -792,7 +851,7 @@ function deleteNode(hands: CanvasHands, args: unknown): ToolAnswer {
  */
 function focusNode(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
 
     hands.focusNode(node.id);
     return { content: [textBlock(`selected ${node.id} (${node.type}) and moved the view to it`)], isError: false };
@@ -816,7 +875,7 @@ function focusNode(hands: CanvasHands, args: unknown): ToolAnswer {
  */
 function moveNode(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
     const position = readPosition(argsOf(args).position);
     if (!position) return { content: [textBlock("move_node needs a position: {x, y} in canvas coordinates")], isError: true };
 
@@ -871,7 +930,7 @@ function moveClause(membership: MoveOutcome["membership"], removed: string[]): s
  */
 function resizeNode(hands: CanvasHands, args: unknown): ToolAnswer {
     const node = namedNode(hands, args);
-    if (!node) return noSuchNode(args);
+    if (!node) return noSuchNode(hands, args);
     const size = readSize(argsOf(args));
     if (!size) return { content: [textBlock("resize_node needs a size: {width} or {width, height} in canvas pixels")], isError: true };
 

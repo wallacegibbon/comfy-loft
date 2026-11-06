@@ -462,7 +462,11 @@ export default {
         join: { joined: "已拼成一段视频", failed: "无法拼接这些视频" },
         sidePanel: {
             resize: "调整左侧面板宽度",
-            tab: { canvases: "画布", elements: "元素" },
+            tab: { canvases: "画布", elements: "元素", deleted: "最近删除" },
+            trashEmpty: "这个画布还没有删除过东西",
+            trashHint: "文件会保留",
+            restore: "恢复",
+            restoreTitle: "把这个节点连同它的连线放回原处",
             select: "选择",
             searchNodes: "搜索节点",
             focusNode: "定位到节点",

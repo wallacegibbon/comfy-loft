@@ -160,8 +160,8 @@ func TestMCPHandshakeIsEnoughToDiscoverTheTools(t *testing.T) {
 	for _, tool := range tools {
 		names = append(names, tool.(map[string]any)["name"].(string))
 	}
-	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,capture_frame,join_clips,set_prompt,set_text,set_node,generate,list_models,stop_node,read_node,read_prompt,read_text,read_media,delete_node,focus_node,move_node,group_nodes,ungroup_nodes,resize_node" {
-		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, capture_frame, join_clips, set_prompt, set_text, set_node, generate, list_models, stop_node, read_node, read_prompt, read_text, read_media, delete_node, focus_node, move_node, group_nodes, ungroup_nodes, resize_node", names)
+	if strings.Join(names, ",") != "ping,list_nodes,create_node,connect,capture_frame,join_clips,set_prompt,set_text,set_node,generate,list_models,stop_node,read_node,read_prompt,read_text,read_media,delete_node,restore_node,focus_node,move_node,group_nodes,ungroup_nodes,resize_node" {
+		t.Fatalf("tools/list = %v, want ping, list_nodes, create_node, connect, capture_frame, join_clips, set_prompt, set_text, set_node, generate, list_models, stop_node, read_node, read_prompt, read_text, read_media, delete_node, restore_node, focus_node, move_node, group_nodes, ungroup_nodes, resize_node", names)
 	}
 }
 
@@ -233,6 +233,10 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 		// #310: a run the agent started can be ended, and that is what makes pressing safe.
 		"canvas_stop_node",
 		"Press nothing you cannot stop",
+		// #327: a delete is a move into the canvas's trash, so it is neither permanent nor something to avoid.
+		"Deleting is a move, not a loss",
+		"canvas_restore_node",
+		"a mistake of yours is one call away from being undone",
 	}
 	for _, want := range wants {
 		if !strings.Contains(system, want) {

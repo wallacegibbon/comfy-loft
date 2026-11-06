@@ -260,9 +260,10 @@ func (s *Store) Write(id, rev string, title *string, document []byte) (Summary, 
 
 // Delete removes a canvas and everything under it.
 //
-// This is a delete, not a move to a trash directory: a canvas nobody wants back is the common case,
-// and a trash nobody empties is a second lifetime rule to explain. Undo belongs to the editor that
-// still holds the nodes in memory, not to the server.
+// This is a delete, not a move to a trash directory: a canvas nobody wants back is the common case, and
+// a trash nobody empties is a second lifetime rule to explain. A *node* is the different case and has its
+// own answer: it moves into the canvas's trash, which is a field of the document rather than a directory
+// (docs/decisions.md #327).
 func (s *Store) Delete(id string) error {
 	if _, err := s.readMeta(id); err != nil {
 		return err

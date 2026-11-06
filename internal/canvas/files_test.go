@@ -88,6 +88,46 @@ func TestSweepKeepsReferencesAndYoungFilesAndDeletesTheRest(t *testing.T) {
 	}
 }
 
+// A deleted node's file is not an orphan: the trash is in the document, so the collector's one rule — "the
+// document names it" — already protects it (#327).
+//
+// This is the pin on the whole mechanism. The canvas's trash holds a node the collector knows nothing about,
+// and the collector's scan answers "alive" without being taught that a trash exists; the day somebody teaches
+// it to parse nodes instead of scanning for names, this test is what fails.
+func TestSweepKeepsTheFileOfANodeTheDocumentOnlyHoldsInItsTrash(t *testing.T) {
+	store := openTestStore(t)
+	created := mustCreate(t, store, "trashed")
+	dir, err := store.FilesPath(created.ID)
+	if err != nil {
+		t.Fatalf("FilesPath: %v", err)
+	}
+	path := filepath.Join(dir, "gen-in-the-trash.png")
+	if err := os.WriteFile(path, []byte("PNG"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Old enough that only being named can save it.
+	old := store.now().Add(-72 * time.Hour)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	document := []byte(`{"nodes":[],"trash":[{"deletedAt":"2026-01-02T03:04:05.000Z","node":{"id":"image-9","metadata":{"storageKey":"files/gen-in-the-trash.png"}},"connections":[]}]}`)
+	if _, err := store.Write(created.ID, created.Rev, nil, document); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	result, err := store.Sweep(created.ID, nil, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	if len(result.Removed) != 0 {
+		t.Errorf("removed = %v, want nothing: a trashed node still names its file", result.Removed)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("the file behind a trashed node is gone: %v", err)
+	}
+}
+
 func TestFilePathRefusesNamesThatCouldLeaveTheDirectory(t *testing.T) {
 	store := openTestStore(t)
 	created := mustCreate(t, store, "paths")

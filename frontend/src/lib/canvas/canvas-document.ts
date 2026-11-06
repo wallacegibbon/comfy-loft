@@ -18,6 +18,10 @@ export function documentOf(project: CanvasDocument): CanvasDocument {
         showImageInfo: project.showImageInfo,
         viewport: project.viewport,
         agent: project.agent,
+        // The trash is written the same way the canvas is: a trashed node's `content` is an absolute URL in
+        // the editor and a reference on disk, and a document that carried the host would break on the next
+        // machine — with the file it names inside this canvas and nowhere else.
+        trash: project.trash.map((entry) => ({ ...entry, node: withoutResolvedUrls(entry.node) })),
     };
 }
 

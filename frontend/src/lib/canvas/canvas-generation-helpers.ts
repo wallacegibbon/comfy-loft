@@ -8,7 +8,7 @@ import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-p
 import type { CanvasImageAngleParams } from "@/components/canvas/canvas-node-angle-dialog";
 import type { ReferenceImage } from "@/types/image";
 import { RunFailedError } from "@/services/api/runs";
-import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
+import { CanvasNodeType, type CanvasNodeData, type CanvasTrashEntry } from "@/types/canvas";
 
 export function imageExtension(dataUrl: string) {
     return dataUrl.match(/^data:image[/]([^;]+)/)?.[1] || dataUrl.match(/image[/]([^;]+)/)?.[1] || "png";
@@ -32,16 +32,28 @@ export function generationReferenceUrls(context: { referenceImages: ReferenceIma
 }
 
 export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
-    return Promise.all(
-        nodes.map(async (node) => {
-            const metadata = node.metadata;
-            const content = metadata?.content;
-            if ((node.type === CanvasNodeType.Video || node.type === CanvasNodeType.Audio) && metadata?.storageKey) return { ...node, metadata: { ...metadata, content: await resolveMediaUrl(metadata.storageKey, content) } };
-            if (node.type !== CanvasNodeType.Image || !metadata || !metadata.storageKey) return node;
-            void ensureImagePreview(metadata.storageKey);
-            return { ...node, metadata: { ...metadata, content: await resolveImageUrl(metadata.storageKey, content) } };
-        }),
-    );
+    return Promise.all(nodes.map(hydrateCanvasNode));
+}
+
+/**
+ * The same for the trash, which shows pictures too.
+ *
+ * A trashed node is written to the document exactly like a live one — its `content` is `files/<name>` — so a
+ * list of deletions whose thumbnails were never resolved would draw broken pictures in the one place a person
+ * goes to get something back (#327).
+ */
+export async function hydrateCanvasTrash(trash: CanvasTrashEntry[]) {
+    return Promise.all(trash.map(async (entry) => ({ ...entry, node: await hydrateCanvasNode(entry.node) })));
+}
+
+/** One node, with the URL its media is rendered from rather than the reference the document keeps. */
+async function hydrateCanvasNode(node: CanvasNodeData) {
+    const metadata = node.metadata;
+    const content = metadata?.content;
+    if ((node.type === CanvasNodeType.Video || node.type === CanvasNodeType.Audio) && metadata?.storageKey) return { ...node, metadata: { ...metadata, content: await resolveMediaUrl(metadata.storageKey, content) } };
+    if (node.type !== CanvasNodeType.Image || !metadata || !metadata.storageKey) return node;
+    void ensureImagePreview(metadata.storageKey);
+    return { ...node, metadata: { ...metadata, content: await resolveImageUrl(metadata.storageKey, content) } };
 }
 
 export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | undefined, mode: CanvasNodeGenerationMode): AiConfig {

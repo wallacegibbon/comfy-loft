@@ -26,6 +26,20 @@ type mcpRequest struct {
 	Params  json.RawMessage `json:"params"`
 }
 
+// nodeIdSchema is the arguments of every tool that acts on exactly one node.
+//
+// One var rather than the same eight lines in a dozen places: the ids the tools take are all
+// `list_nodes`' own, and a tool that asked for one differently would be a second vocabulary for the
+// same thing.
+var nodeIdSchema = json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"nodeId": {"type": "string", "description": "The id list_nodes reported."}
+	},
+	"required": ["nodeId"],
+	"additionalProperties": false
+}`)
+
 // mcpTool is one entry of `tools/list`.
 type mcpTool struct {
 	Name        string          `json:"name"`
@@ -113,7 +127,7 @@ func (s *Server) mcpTools() []mcpTool {
 		InputSchema: noArguments,
 	}, {
 		Name:        "list_nodes",
-		Description: "Every node on the canvas, one line each — id, type, position and the size of its card, then the picture's own size when that is not the card's, and how long a clip or a sound runs, then which group it is in (`in group <id>`, and a group's own line names its members), then what made its content and when, then `content:`: the words it holds (a text node's text). What a node will be asked is not here; read one node's prompt with read_prompt. Then every connection between them. The ids are what the other tools act on.",
+		Description: "Every node on the canvas, one line each — id, type, position and the size of its card, then the picture's own size when that is not the card's, and how long a clip or a sound runs, then which group it is in (`in group <id>`, and a group's own line names its members), then what made its content and when, then `content:`: the words it holds (a text node's text). What a node will be asked is not here; read one node's prompt with read_prompt. Then every connection between them, then the trash: the nodes this canvas deleted, with how long ago, which restore_node takes back. The ids are what the other tools act on.",
 		InputSchema: noArguments,
 	}, {
 		Name:        "create_node",
@@ -223,14 +237,7 @@ func (s *Server) mcpTools() []mcpTool {
 	}, {
 		Name:        "generate",
 		Description: "Press one node's generate button — the same thing the node's own panel does. It starts the work and answers at once; the node shows its own progress and holds the result. A picture, a film or a sound takes minutes. A text node generates nothing — write its words with set_text.",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
-			},
-			"required": ["nodeId"],
-			"additionalProperties": false
-		}`),
+		InputSchema: nodeIdSchema,
 	}, {
 		Name:        "list_models",
 		Description: "What this canvas can run, grouped by the kind of content, with the ones that are steps named apart. Ask this before answering any question about models: the names an agent has seen are the ones on nodes it happened to read, and reciting those is how a canvas with five image generators answers \"four\", counts an upscaler among them, and misses the workflow nothing on screen uses. A name here is what set_node's model takes, and what a run reports itself as. Each entry also says what the workflow takes (words, or how many pictures or clips) and the modes a family offers — including any whose own node pack is missing, which a run would be refused for. What each workflow reads is not here: that is the contract of the node it runs on, where set_node refuses a key it does not read. A base model is a file inside a family rather than a workflow, and the node's own picker lists those.",
@@ -244,80 +251,35 @@ func (s *Server) mcpTools() []mcpTool {
 	}, {
 		Name:        "stop_node",
 		Description: "Stop what this node is generating — its panel's stop button, without the question the button asks: a call is the sure part. The node keeps what it held before the run started, and is idle again; the work in progress is thrown away on the server too (the ComfyUI prompt is interrupted, so the GPU is free). Answers one of three things, and they are not the same: the run was cancelled; there was nothing running; or the server did not confirm the cancel, in which case the call failed and the run may still be rendering there. A text node generates nothing, so it has nothing to stop.",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
-			},
-			"required": ["nodeId"],
-			"additionalProperties": false
-		}`),
+		InputSchema: nodeIdSchema,
 	}, {
 		Name:        "read_node",
 		Description: "Read what this node's next run is set to: the workflow and mode it runs, the shape that run takes (size, length, quality, seed, background, container, its own knobs), and what a press would still need — the media it takes and what is connected in front of it. It carries no words and no media: a card is read_text's, the question is read_prompt's, and the picture, film or sound itself is read_media's. What a node did — whether it is generating, how its last run failed, and which workflow and moment made its content — is on its list_nodes line, and the maker comes back with read_media as a caption. A text node has no run, and this says so.",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
-			},
-			"required": ["nodeId"],
-			"additionalProperties": false
-		}`),
+		InputSchema: nodeIdSchema,
 	}, {
 		Name:        "read_prompt",
 		Description: "Read the words a node will be asked — the prompt its own panel shows, and the words set_prompt writes. The words and nothing else: the settings standing behind them are read_node's. A text node has no prompt at all, and this says so: what it holds is words, which read_text answers with and set_text writes. A node nobody has asked anything of has no prompt, and that is the answer too.",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
-			},
-			"required": ["nodeId"],
-			"additionalProperties": false
-		}`),
+		InputSchema: nodeIdSchema,
 	}, {
 		Name:        "read_text",
 		Description: "Read a text node's card: the words it holds, whole. This is what set_text writes, and the only thing a text node holds — it has no prompt, and nothing generates it. A picture, a film or a sound has no card of words: what it holds is read_media's, and what it will be asked is read_prompt's. list_nodes shows the first 300 characters of every card, which is a glance across the canvas; this is the card.",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
-			},
-			"required": ["nodeId"],
-			"additionalProperties": false
-		}`),
+		InputSchema: nodeIdSchema,
 	}, {
 		Name:        "read_media",
 		Description: "Read the picture, the film or the sound a node holds — the bytes themselves, not a description of them — with one line naming the node and the workflow and moment that made it. This is the one read that costs real context, so ask for it when you need to see the thing: everything else about a node is a few hundred bytes through read_node, read_prompt and read_text. A node that holds no media yet, and a text node, are refused and say so.",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
-			},
-			"required": ["nodeId"],
-			"additionalProperties": false
-		}`),
+		InputSchema: nodeIdSchema,
 	}, {
 		Name:        "delete_node",
-		Description: "Delete one node, the way the Delete key does: the node goes, and so does every connection that touched it. A group left with nothing in it is removed too, since a box drawn around nothing is what this delete made; a box that was already empty is left alone. Answers with what disappeared. The user can undo it.",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
-			},
-			"required": ["nodeId"],
-			"additionalProperties": false
-		}`),
+		Description: "Delete one node, the way the Delete key does: the node leaves the canvas, and so does every connection that touched it. A group left with nothing in it is removed too, since a box drawn around nothing is what this delete made; a box that was already empty is left alone. Nothing holding content is destroyed — the node moves into the canvas's trash with the connections it had, and restore_node puts it back, so this is not a decision to agonise over. A group is structure: deleting the box leaves its members where they are. Answers with what went.",
+		InputSchema: nodeIdSchema,
+	}, {
+		Name:        "restore_node",
+		Description: "Put a deleted node back where it was, with the connections it had — the inverse of delete_node. The trash belongs to the canvas rather than to you, so this also brings back a node the user deleted, which is what makes a mistake recoverable whoever made it. list_nodes states what the trash holds; a connection whose other end is gone is dropped, and so is a membership of a group that no longer exists. Answers with what came back.",
+		InputSchema: nodeIdSchema,
 	}, {
 		Name:        "focus_node",
 		Description: "Select one node and move the user's view to it, the way clicking its row in the side panel does. This moves what the user is looking at: use it to show them something that changed or is out of sight.",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"nodeId": {"type": "string", "description": "The id list_nodes reported."}
-			},
-			"required": ["nodeId"],
-			"additionalProperties": false
-		}`),
+		InputSchema: nodeIdSchema,
 	}, {
 		Name:        "move_node",
 		Description: "Move one node so its top-left corner lands where you say, the way dragging it does: a node dropped on a group becomes one of its members and a node drawn out of its group leaves it, and the answer names that change; a group moves its members with it and keeps them — the card and the nodes it is drawn around are one thing to move, and the answer says how many came along. A group left with nothing in it is removed, since a box drawn around nothing is debris the move made; a box that was already empty is left alone. It changes nothing else about the node — moving is not running it, and the node keeps its prompt and its result.",

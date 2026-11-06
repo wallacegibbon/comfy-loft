@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { describeCanvas } from "../src/lib/canvas/canvas-agent-view";
-import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
+import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata, CanvasTrashEntry } from "../src/types/canvas";
 
 /**
  * What `list_nodes` answers with.
@@ -102,5 +102,55 @@ describe("the canvas as the agent reads it", () => {
         expect(canvas([film])[1]).toBe("- video-1 (video) at (40, -12), 320×240 (picture 1280×720, 12.4 s)");
         const sound = { ...node("audio", { content: "/api/canvases/c/files/a.mp3", durationMs: 3000 }) };
         expect(canvas([sound])[1]).toBe("- audio-1 (audio) at (40, -12), 320×240 (3.0 s)");
+    });
+});
+
+/**
+ * What the canvas threw away, on the same list (#327).
+ *
+ * A deletion leaves nothing on the board, so this is the only place a reader learns that a node it remembers
+ * is recoverable rather than gone — and it is what `restore_node` takes its ids from. The lines are shaped
+ * like a live node's because they identify the same kind of thing, minus the geometry a deleted node has not.
+ */
+describe("the trash on the list", () => {
+    const deleted = (overrides: Partial<CanvasNodeData>, deletedAt = new Date(Date.now() - 5 * 60_000).toISOString()): CanvasTrashEntry => ({
+        deletedAt,
+        node: { id: "image-9", type: "image", position: { x: 0, y: 0 }, width: 320, height: 240, ...overrides } as CanvasNodeData,
+        connections: [],
+    });
+
+    test("the count is in the header and one line says what each one was", () => {
+        const lines = describeCanvas([], [], [deleted({ metadata: { naturalWidth: 1024, naturalHeight: 1024 } })]).split("\n");
+        expect(lines[0]).toBe("0 nodes, 0 connections, 1 in the trash");
+        expect(lines[1]).toBe("trash:");
+        expect(lines[2]).toBe("- image-9 (image) (picture 1024×1024) deleted 5 minutes ago");
+    });
+
+    test("a deleted text node carries its words, because that is what identifies it", () => {
+        const lines = describeCanvas([], [], [deleted({ id: "text-1", type: "text", metadata: { content: "宫崎骏风格的森林。" } })]).split("\n");
+        expect(lines[2]).toBe("- text-1 (text) deleted 5 minutes ago content: 宫崎骏风格的森林。");
+    });
+
+    test("an empty trash is not a section", () => {
+        expect(describeCanvas([], [], [])).toBe("0 nodes, 0 connections");
+    });
+
+    test("a deletion with no readable timestamp is still a line, without the date", () => {
+        // A hand-written or damaged document can hold `deletedAt: ""`. The node is what matters; the date is
+        // the half a reader can do without.
+        const lines = describeCanvas([], [], [deleted({}, "")]).split("\n");
+        expect(lines[2]).toBe("- image-9 (image)");
+    });
+
+    test("time is said in the unit a reader can order without a clock", () => {
+        // Read through the line rather than through the helper: what a reader gets is the sentence, and
+        // `sinceWords` has no caller but that line.
+        const lineFor = (secondsAgo: number) => describeCanvas([], [], [deleted({}, new Date(Date.now() - secondsAgo * 1000).toISOString())]).split("\n")[2];
+        expect(lineFor(20)).toBe("- image-9 (image) deleted just now");
+        expect(lineFor(60)).toBe("- image-9 (image) deleted 1 minute ago");
+        expect(lineFor(3 * 3600)).toBe("- image-9 (image) deleted 3 hours ago");
+        expect(lineFor(26 * 3600)).toBe("- image-9 (image) deleted 1 day ago");
+        // A clock that went backwards is not "in -1 minute": it is the present.
+        expect(lineFor(-60)).toBe("- image-9 (image) deleted just now");
     });
 });

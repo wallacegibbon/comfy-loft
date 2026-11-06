@@ -29,6 +29,10 @@ const EXEMPT = new Set([path.join(WEB, "src/vite-env.d.ts")]);
 // the product code.
 const TEST_ONLY = new Map([
     [
+        "src/lib/canvas/canvas-trash.ts:TRASH_LIMIT",
+        "how many deletions a canvas remembers. It is the default argument of `withTrashed` and nothing else reads it by name — the trash list shows whatever it holds — so the test is the only caller that has to know the number",
+    ],
+    [
         "src/lib/canvas/save-queue.ts:SaveSnapshot",
         "the save queue's input snapshot: the queue's own `snapshot` callback returns it and its `save` callback takes it, but no product code names the type (it is always inferred), so only a test has to construct one by name",
     ],

@@ -4676,8 +4676,8 @@ stale one is refused with `409` and the current summary in `details.current`. Th
 browser stop being the truth: it becomes a cache with a save queue, and a save that races another one
 loses visibly instead of overwriting silently.
 
-**Deliberately absent** No trash directory: a delete is a delete, and undo belongs to the editor that
-still has the nodes in memory (#151 reasoned the same way about the exits). No file listing yet — the
+**Deliberately absent** No trash directory for a canvas: a canvas nobody wants back is the common case (a
+node is the different case — it moves into the canvas's own trash, #327). No file listing yet — the
 `files/` directory exists and is created with the canvas, but runs and uploads still write into
 `data/outputs`; pointing them here is #153, and it is where `/api/canvases/{id}/files/{name}` arrives.
 No agent session inside the canvas directory yet, same reason.
@@ -11162,3 +11162,61 @@ for the rule, and the fact beside it, is the trade.
 
 **Where** `internal/server/agent_instructions.go`, `internal/server/routes_mcp.go` (`generate`),
 `frontend/src/lib/canvas/agent-generate.ts`, `internal/server/mcp_test.go`, `frontend/tests/agent-generate.test.ts`.
+
+
+## 327. Deleting a node is a move into the canvas's trash
+
+**Decision** A delete — the Delete key, the hover toolbar's remove, `delete_node` — takes the node out of `nodes`
+and puts it in `document.trash` with the connections it had and when it went, newest first, the newest 20 kept.
+`restore_node`, and the side panel's Deleted list, puts it back: its wires are restored when both ends are still
+there and the pair is not connected already, and a `groupId` whose group is gone is cleared. A group is never in
+the trash: deleting one releases its members and destroys nothing.
+
+**Why** The canvas had one gesture with no way back, and two separate reasons, both measured on this machine.
+
+- *The undo stack is memory.* It is emptied when a canvas is opened, so a delete was reversible only inside the tab
+  that made it. The agent's `delete_node` is the page's own `deleteNodes`, so Ctrl+Z undid it too — but a reload
+  made every mistake permanent, and a mistake is usually noticed after the reload.
+- *The file died with the node.* The server keeps a canvas's media in `files/`, and the collector deletes what
+  neither the document nor a task still names, with a grace measured from the *file's own age* — so deleting a
+  picture made yesterday had its bytes collected at the next save, 180 ms of debounce later. Ctrl+Z brought the
+  card back empty. On the canvas this was found on, twelve files were already unreferenced and eight were hours
+  short of their 24-hour birthday: "you can still get it back" was luck with a timer on it.
+
+Putting the node *in* the document is what fixes both with one mechanism. The collector's one rule is "the document
+names it" — it scans for `files/<name>` and deliberately knows nothing about nodes (#148) — so a trashed node keeps
+its file alive without the collector learning a new concept, and the way back outlives the tab. No second store and
+no second lifetime rule for bytes, which is what the old "no trash directory" decision refused.
+
+**Cost** A seventh field in the document and a third list in the side panel. The trash holds 20 nodes, and a node
+pushed out of it stops naming its file: its bytes then wait out the existing grace and go, which is the one
+lifetime rule this adds. Clear canvas is deliberately *not* trashed — it is a confirmed "throw it all away", and a
+20-slot trash holding a tenth of a cleared board would be a promise it cannot keep. The trash belongs to the
+canvas rather than to the session that filled it, so it is also where a user's own deletions go, and
+`restore_node` may put back something the agent never touched — which the prompt says out loud.
+
+**Tested** `frontend/tests/canvas-trash.test.ts` (10: what a delete keeps, a group is not kept, the limit, the three
+relations a restore may not invent, ids it could not find); `canvas-agent-tools.test.ts` (the delete's sentence, a
+group's different one, an id answered as "in the trash" rather than unknown, restore, restore of something that is
+not there); `canvas-agent-view.test.ts` (the header's count, a trash line for a picture and for words, an empty
+trash is not a section, an unreadable timestamp, the unit of the age); `canvas-document.test.ts` (a trashed node's
+media is written by reference, so the document does not carry this server's address); `internal/canvas` —
+`TestSweepKeepsTheFileOfANodeTheDocumentOnlyHoldsInItsTrash`, the pin on the whole mechanism: a file three days
+old, named only inside `trash`, survives a real sweep. `mcp_test.go` pins `restore_node` in the tool order and the
+prompt's "Deleting is a move, not a loss".
+
+In the browser, against the running server and a throwaway canvas (deleted afterwards): a node deleted with the
+Delete key left `trash: [image-verify]` in `canvas.json` and its file on disk; aged to three days and saved again,
+the file survived the sweep; the Deleted tab drew the row with its thumbnail and Restore, in a brand-new tab that
+had only ever read the document; restoring put the picture back, selected, with the trash empty. Two things were
+fixed after seeing it: the English tab label shortened to "Deleted" (it truncated at the column's default width),
+and the header's hint to "Files are kept".
+
+**Where** `frontend/src/lib/canvas/canvas-trash.ts`, `frontend/src/components/canvas/canvas-side-panel-deleted.tsx`,
+`frontend/src/components/canvas/canvas-side-panel.tsx`, `frontend/src/pages/canvas/project.tsx` (`deleteNodes`,
+`restoreNodes`, the history entry, the save patch), `frontend/src/lib/canvas/canvas-agent-tools.ts` (`restore_node`,
+`noSuchNode`, `delete_node`), `frontend/src/lib/canvas/canvas-agent-view.ts` (`describeCanvas`, `trashLine`),
+`frontend/src/lib/canvas/canvas-generation-helpers.ts` (`hydrateCanvasTrash`),
+`frontend/src/services/api/canvases.ts` (`readTrash`), `frontend/src/lib/canvas/canvas-document.ts`,
+`frontend/src/types/canvas.ts` (`CanvasTrashEntry`), `internal/server/routes_mcp.go` (`nodeIdSchema`, the two
+tools), `internal/server/agent_instructions.go`, `internal/canvas/canvas.go`.

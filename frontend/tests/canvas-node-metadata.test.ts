@@ -19,7 +19,7 @@ const url = "http://127.0.0.1:8190/api/canvases/349b70cf4764/files/task_ab12.png
 const key = "files/task_ab12.png";
 
 function documentWith(nodes: CanvasNodeData[]): CanvasDocument {
-    return { nodes, connections: [], backgroundMode: "lines", showImageInfo: false, viewport: { x: 0, y: 0, k: 1 }, agent: { open: false, position: null, size: null } };
+    return { nodes, connections: [], backgroundMode: "lines", showImageInfo: false, viewport: { x: 0, y: 0, k: 1 }, agent: { open: false, position: null, size: null }, trash: [] };
 }
 
 function nodeFrom(metadata: CanvasNodeData["metadata"]): CanvasNodeData {

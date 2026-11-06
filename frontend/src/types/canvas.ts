@@ -164,6 +164,25 @@ export type CanvasConnection = {
     toNodeId: string;
 };
 
+/**
+ * A node the canvas deleted, and the wires it had when it went.
+ *
+ * Deleting is a move, not a loss: what a node holds is a file inside the canvas, and the server frees a file
+ * only when the document no longer names it — so the trash is what keeps a deleted picture on disk (#327).
+ * It is part of the document for that reason, and because the memory that used to hold a deletion (the undo
+ * stack) dies with the tab: a node in the trash survives a reload, and so does the file it names.
+ *
+ * A group is never in here: deleting one releases its members and destroys nothing, so there is nothing to
+ * recover.
+ */
+export type CanvasTrashEntry = {
+    /** ISO, `util.NowIso`'s shape: the trash is kept newest first. */
+    deletedAt: string;
+    node: CanvasNodeData;
+    /** Every connection that had this node on either end, so a restore puts the wires back with it. */
+    connections: CanvasConnection[];
+};
+
 export type ConnectionHandle = {
     nodeId: string;
     handleType: "source" | "target";

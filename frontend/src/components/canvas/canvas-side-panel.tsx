@@ -2,6 +2,7 @@ import { type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { CanvasCanvasesSection } from "@/components/canvas/canvas-side-panel-canvases";
+import { CanvasDeletedSection } from "@/components/canvas/canvas-side-panel-deleted";
 import { CanvasElementsSection } from "@/components/canvas/canvas-side-panel-elements";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import {
@@ -16,7 +17,7 @@ import {
     type CanvasPanelSection,
 } from "@/stores/canvas/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { type CanvasNodeData } from "@/types/canvas";
+import { type CanvasNodeData, type CanvasTrashEntry } from "@/types/canvas";
 
 /**
  * The middle box of the board's left column (#191), holding the two lists the app has: the canvases in the
@@ -50,6 +51,9 @@ const CLOSED_TRANSITION = `height ${CANVAS_SIDE_PANEL_MOTION_MS}ms ${PANEL_EASE}
 const SECTIONS: Array<{ id: CanvasPanelSection; labelKey: string }> = [
     { id: "canvases", labelKey: "canvas.sidePanel.tab.canvases" },
     { id: "elements", labelKey: "canvas.sidePanel.tab.elements" },
+    // The third list is what the canvas threw away (#327): the one place a mistake is still recoverable after
+    // the tab that made it is gone.
+    { id: "deleted", labelKey: "canvas.sidePanel.tab.deleted" },
 ];
 
 type Props = {
@@ -57,12 +61,15 @@ type Props = {
     projectId: string;
     nodes: CanvasNodeData[];
     selectedNodeIds: Set<string>;
+    /** What this canvas deleted and can still put back, newest first. */
+    trash: CanvasTrashEntry[];
+    onRestoreNode: (nodeId: string) => void;
     onFocusNode: (nodeId: string) => void;
     onPreviewNode: (nodeId: string) => void;
     onHoverNode: (nodeId: string | null) => void;
 };
 
-export function CanvasSidePanel({ projectId, nodes, selectedNodeIds, onFocusNode, onPreviewNode, onHoverNode }: Props) {
+export function CanvasSidePanel({ projectId, nodes, selectedNodeIds, trash, onFocusNode, onPreviewNode, onHoverNode, onRestoreNode }: Props) {
     const { t } = useTranslation();
     const theme = useCanvasTheme();
     const colorTheme = useThemeStore((state) => state.theme);
@@ -147,6 +154,9 @@ export function CanvasSidePanel({ projectId, nodes, selectedNodeIds, onFocusNode
                     </div>
                     <div className="h-full" hidden={section !== "elements"}>
                         <CanvasElementsSection nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} onPreviewNode={onPreviewNode} onHoverNode={onHoverNode} />
+                    </div>
+                    <div className="h-full" hidden={section !== "deleted"}>
+                        <CanvasDeletedSection trash={trash} onRestoreNode={onRestoreNode} />
                     </div>
                 </div>
             </div>

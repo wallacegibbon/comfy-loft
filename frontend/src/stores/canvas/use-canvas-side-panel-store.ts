@@ -56,7 +56,7 @@ type CanvasNodeViewMode = "list" | "grid";
  * was left. Nothing outside the column asks for a section any more: one button opens it, and the switch
  * inside picks the list (#197).
  */
-export type CanvasPanelSection = "canvases" | "elements";
+export type CanvasPanelSection = "canvases" | "elements" | "deleted";
 
 function initialWidth() {
     const stored = Number(readSetting(WIDTH_KEY, 0));
@@ -75,7 +75,8 @@ function initialNodeView(): CanvasNodeViewMode {
 
 /** The elements first: the canvas is what you came for, and its list is the surface you work in. */
 function initialSection(): CanvasPanelSection {
-    return readSetting<CanvasPanelSection>(SECTION_KEY, "elements") === "canvases" ? "canvases" : "elements";
+    const stored = readSetting<CanvasPanelSection>(SECTION_KEY, "elements");
+    return stored === "canvases" || stored === "deleted" ? stored : "elements";
 }
 
 type CanvasSidePanelStore = {

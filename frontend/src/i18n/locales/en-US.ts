@@ -427,7 +427,11 @@ export default {
         },
         sidePanel: {
             resize: "Resize left panel",
-            tab: { canvases: "Canvases", elements: "Elements" },
+            tab: { canvases: "Canvases", elements: "Elements", deleted: "Deleted" },
+            trashEmpty: "Nothing has been deleted on this canvas",
+            trashHint: "Files are kept",
+            restore: "Restore",
+            restoreTitle: "Put this node back where it was, with its connections",
             select: "Select",
             searchNodes: "Search nodes",
             focusNode: "Focus node",

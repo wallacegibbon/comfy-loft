@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { documentOf } from "../src/lib/canvas/canvas-document";
 import type { CanvasDocument } from "../src/services/api/canvases";
-import type { CanvasNodeData } from "../src/types/canvas";
+import type { CanvasNodeData, CanvasTrashEntry } from "../src/types/canvas";
 
 /**
  * What a canvas document is.
@@ -16,8 +16,8 @@ function node(overrides: Partial<CanvasNodeData>): CanvasNodeData {
     return { id: "n1", type: "image", position: { x: 0, y: 0 }, width: 100, height: 100, ...overrides } as CanvasNodeData;
 }
 
-function documentWith(nodes: CanvasNodeData[]): CanvasDocument {
-    return { nodes, connections: [], backgroundMode: "lines", showImageInfo: false, viewport: { x: 0, y: 0, k: 1 }, agent: { open: false, position: null, size: null } };
+function documentWith(nodes: CanvasNodeData[], trash: CanvasTrashEntry[] = []): CanvasDocument {
+    return { nodes, connections: [], backgroundMode: "lines", showImageInfo: false, viewport: { x: 0, y: 0, k: 1 }, agent: { open: false, position: null, size: null }, trash };
 }
 
 const resolved = "http://127.0.0.1:8190/api/canvases/349b70cf4764/files/up-a1b2c3d4.png";
@@ -60,7 +60,16 @@ describe("a canvas document", () => {
     test("is the document and nothing else", () => {
         const project = { ...documentWith([]), id: "349b70cf4764", rev: "abc", createdAt: "x", updatedAt: "y", bytes: 2 };
         const written = documentOf(project);
-        expect(Object.keys(written).sort()).toEqual(["agent", "backgroundMode", "connections", "nodes", "showImageInfo", "viewport"]);
+        expect(Object.keys(written).sort()).toEqual(["agent", "backgroundMode", "connections", "nodes", "showImageInfo", "trash", "viewport"]);
+    });
+
+    test("names a deleted node's media by reference too, which is what keeps the file alive", () => {
+        // A trashed node is in the document on purpose (#327): the server frees a file the document does not
+        // name, so this line is the difference between "restorable" and "gone". It has to be written the same
+        // way a live node is, or the document carries this server's address for a picture it owns.
+        const written = documentOf(documentWith([], [{ deletedAt: "2026-01-02T03:04:05.000Z", node: node({ metadata: { content: resolved, storageKey: "files/up-a1b2c3d4.png" } }), connections: [] }]));
+        expect(written.trash[0].node.metadata?.content).toBe("files/up-a1b2c3d4.png");
+        expect(JSON.stringify(written)).not.toContain("127.0.0.1");
     });
 
     test("carries the agent window with the canvas", () => {

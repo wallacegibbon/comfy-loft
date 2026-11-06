@@ -83,8 +83,21 @@ import {
     withGroupMembers,
     withoutEmptiedGroups,
 } from "@/lib/canvas/canvas-node-geometry";
-import { adoptLegacyRunIds, audioExtension, buildGenerationConfig, failedWatch, hasResumableRun, hydrateCanvasImages, imageExtension, isGenerationCanceled, resetInterruptedGeneration, runWatchEnded } from "@/lib/canvas/canvas-generation-helpers";
+import {
+    adoptLegacyRunIds,
+    audioExtension,
+    buildGenerationConfig,
+    failedWatch,
+    hasResumableRun,
+    hydrateCanvasImages,
+    hydrateCanvasTrash,
+    imageExtension,
+    isGenerationCanceled,
+    resetInterruptedGeneration,
+    runWatchEnded,
+} from "@/lib/canvas/canvas-generation-helpers";
 import { videoRunMetadata } from "@/lib/canvas/video-run-metadata";
+import { restoreFromTrash, trashedEntries, withTrashed } from "@/lib/canvas/canvas-trash";
 import { getNodeDefinition, isBuiltinNodeType } from "@/lib/canvas/node-registry";
 import { registerBuiltinNodes } from "@/components/canvas/nodes/builtin-nodes";
 import { confirm } from "@/components/kit/confirm";
@@ -92,7 +105,19 @@ import { CanvasRefreshShell } from "@/components/canvas/canvas-refresh-shell";
 import { canvasMenuItems } from "@/components/canvas/canvas-menu";
 import { CanvasTopBar } from "@/components/canvas/canvas-top-bar";
 import { ConnectionCreateMenu, NodeCreateMenu, type PendingConnectionCreate } from "@/components/canvas/canvas-create-menus";
-import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type ConnectionHandle, type ContextMenuState, type Position, type SelectionBox, type ViewportTransform } from "@/types/canvas";
+import {
+    CanvasNodeType,
+    type CanvasConnection,
+    type CanvasNodeData,
+    type CanvasNodeMetadata,
+    type CanvasNodeTypeId,
+    type CanvasTrashEntry,
+    type ConnectionHandle,
+    type ContextMenuState,
+    type Position,
+    type SelectionBox,
+    type ViewportTransform,
+} from "@/types/canvas";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
 // Register built-in nodes in the shared registry once when the module loads.
@@ -111,6 +136,8 @@ type ConnectionDropTarget = {
 type CanvasHistoryEntry = Pick<CanvasClipboard, "nodes" | "connections"> & {
     backgroundMode: CanvasBackgroundMode;
     showImageInfo: boolean;
+    /** The trash travels with the canvas, so an undo of a delete is not also a copy left behind (#327). */
+    trash: CanvasTrashEntry[];
 };
 
 type CanvasGenerationRequest = {
@@ -222,6 +249,8 @@ function InfiniteCanvasPage() {
     const [isMiniMapOpen, setIsMiniMapOpen] = useState(false);
     const [backgroundMode, setBackgroundMode] = useState<CanvasBackgroundMode>("lines");
     const [showImageInfo, setShowImageInfo] = useState(false);
+    // What this canvas deleted and can put back (#327). Part of the document, so it outlives the tab.
+    const [trash, setTrash] = useState<CanvasTrashEntry[]>([]);
     const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
     const [projectLoaded, setProjectLoaded] = useState(false);
 
@@ -244,6 +273,7 @@ function InfiniteCanvasPage() {
     const connectionsRef = useRef(connections);
     const selectedNodeIdsRef = useRef(selectedNodeIds);
     const viewportRef = useRef(viewport);
+    const trashRef = useRef(trash);
     const focusAnimRef = useRef<number | null>(null);
     const generateNodeRef = useRef<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, options?: GenerateOptions) => Promise<void>) | null>(null);
     const connectingParamsRef = useRef(connectingParams);
@@ -264,6 +294,7 @@ function InfiniteCanvasPage() {
             connections: connectionsRef.current,
             backgroundMode,
             showImageInfo,
+            trash: trashRef.current,
         }),
         [backgroundMode, showImageInfo],
     );
@@ -585,11 +616,15 @@ function InfiniteCanvasPage() {
             // A canvas written before `runId` had one name is read into it first, so a run that was in flight
             // then is still picked up (#235).
             const restoredNodes = await hydrateCanvasImages(resetInterruptedGeneration(adoptLegacyRunIds(project.nodes)));
+            // The trash draws pictures too, so it is hydrated the same way: what the document keeps is
+            // `files/<name>`, and what a thumbnail needs is the URL it is served at (#327).
+            const restoredTrash = await hydrateCanvasTrash(project.trash);
             setNodes(restoredNodes);
             setConnections(project.connections);
             setBackgroundMode(project.backgroundMode);
             setShowImageInfo(project.showImageInfo || false);
             setViewport(project.viewport);
+            setTrash(restoredTrash);
             // The panel's window is part of the document, so it comes back with the viewport — the
             // conversation and the corner it was left in, not a default.
             restoreAgentWindow(projectId, project.agent);
@@ -603,6 +638,7 @@ function InfiniteCanvasPage() {
                 connections: project.connections,
                 backgroundMode: project.backgroundMode,
                 showImageInfo: project.showImageInfo || false,
+                trash: restoredTrash,
             };
             setHistoryState({ canUndo: false, canRedo: false });
             if (live) setProjectLoaded(true);
@@ -617,7 +653,7 @@ function InfiniteCanvasPage() {
         if (!projectLoaded || applyingHistoryRef.current || historyPausedRef.current) return;
         const next = createHistoryEntry();
         const previous = lastHistoryRef.current;
-        if (previous?.nodes === next.nodes && previous.connections === next.connections && previous.backgroundMode === next.backgroundMode && previous.showImageInfo === next.showImageInfo) return;
+        if (previous?.nodes === next.nodes && previous.connections === next.connections && previous.backgroundMode === next.backgroundMode && previous.showImageInfo === next.showImageInfo && previous.trash === next.trash) return;
 
         if (historyCommitTimerRef.current) clearTimeout(historyCommitTimerRef.current);
         historyCommitTimerRef.current = setTimeout(() => {
@@ -637,12 +673,12 @@ function InfiniteCanvasPage() {
                 historyCommitTimerRef.current = null;
             }
         };
-    }, [backgroundMode, connections, createHistoryEntry, nodes, projectLoaded, showImageInfo]);
+    }, [backgroundMode, connections, createHistoryEntry, nodes, projectLoaded, showImageInfo, trash]);
 
     useEffect(() => {
         if (!projectLoaded || historyPausedRef.current) return;
-        updateProject(projectId, { nodes, connections, backgroundMode, showImageInfo });
-    }, [backgroundMode, connections, nodes, projectId, projectLoaded, showImageInfo, updateProject]);
+        updateProject(projectId, { nodes, connections, backgroundMode, showImageInfo, trash });
+    }, [backgroundMode, connections, nodes, projectId, projectLoaded, showImageInfo, trash, updateProject]);
 
     useEffect(() => {
         if (!dialogNodeId) setNodeImageSettingsOpen(false);
@@ -748,10 +784,11 @@ function InfiniteCanvasPage() {
         connectionsRef.current = connections;
         selectedNodeIdsRef.current = selectedNodeIds;
         viewportRef.current = viewport;
+        trashRef.current = trash;
         connectingParamsRef.current = connectingParams;
         connectionTargetNodeIdRef.current = connectionTargetNodeId;
         pendingConnectionCreateRef.current = pendingConnectionCreate;
-    }, [nodes, connections, selectedNodeIds, viewport, connectingParams, connectionTargetNodeId, pendingConnectionCreate]);
+    }, [nodes, connections, selectedNodeIds, viewport, trash, connectingParams, connectionTargetNodeId, pendingConnectionCreate]);
 
     useLayoutEffect(() => {
         selectionBoxRef.current = selectionBox;
@@ -1079,6 +1116,10 @@ function InfiniteCanvasPage() {
             const settled = withoutEmptiedGroups(before, kept, remaining);
             setNodes(settled.nodes);
             setConnections(settled.connections);
+            // Nothing is lost, and the file it held is not either: the entry names it, and the server frees a
+            // file only when this document stops naming it (#327).
+            const entries = trashedEntries(before, connectionsRef.current, ids, new Date().toISOString());
+            if (entries.length) setTrash((current) => withTrashed(current, entries));
             setSelectedNodeIds(new Set());
             setSelectedConnectionId(null);
             forgetNodes(new Set([...ids, ...settled.removed]));
@@ -1086,6 +1127,24 @@ function InfiniteCanvasPage() {
         },
         [forgetNodes, projectId],
     );
+
+    /**
+     * Put deleted nodes back where they were, wires and all.
+     *
+     * The recovery path the agent and the user share, and the reason the trash is in the document: it works
+     * after a reload, on another tab, and long after the undo stack that a delete used to depend on has gone.
+     * What a restore may not do is invent a relation — see `restoreFromTrash` for the three it refuses.
+     */
+    const restoreNodes = useCallback((ids: string[]): { restored: string[]; missing: string[] } => {
+        const outcome = restoreFromTrash(trashRef.current, nodesRef.current, connectionsRef.current, ids);
+        if (!outcome.restored.length) return { restored: [], missing: outcome.missing };
+        setTrash(outcome.trash);
+        setNodes(outcome.nodes);
+        setConnections(outcome.connections);
+        setSelectedNodeIds(new Set(outcome.restored));
+        setSelectedConnectionId(null);
+        return { restored: outcome.restored, missing: outcome.missing };
+    }, []);
 
     /**
      * Put one node's top-left corner where a tool says, the way the end of a drag does.
@@ -1439,6 +1498,7 @@ function InfiniteCanvasPage() {
         setConnections(entry.connections);
         setBackgroundMode(entry.backgroundMode);
         setShowImageInfo(entry.showImageInfo);
+        setTrash(entry.trash);
         setSelectedNodeIds(new Set());
         setSelectedConnectionId(null);
         setContextMenu(null);
@@ -2301,6 +2361,8 @@ function InfiniteCanvasPage() {
         writeText: handleNodeContentChange,
         connectNodes: addConnection,
         deleteNodes: (nodeIds) => deleteNodes(new Set(nodeIds)),
+        restoreNodes,
+        trash: () => trashRef.current,
         focusNode,
         moveNode: moveNodesTo,
         resizeNode: handleNodeResize,
@@ -2423,7 +2485,16 @@ function InfiniteCanvasPage() {
     return (
         <main className="flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.background, color: theme.node.text }}>
             <section className="relative min-w-0 flex-1 overflow-hidden">
-                <CanvasSidePanel projectId={projectId} nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onHoverNode={handleSidebarHoverNode} />
+                <CanvasSidePanel
+                    projectId={projectId}
+                    nodes={nodes}
+                    selectedNodeIds={selectedNodeIds}
+                    trash={trash}
+                    onFocusNode={focusNode}
+                    onPreviewNode={setPreviewNodeId}
+                    onHoverNode={handleSidebarHoverNode}
+                    onRestoreNode={(nodeId) => restoreNodes([nodeId])}
+                />
                 {agentOpen ? null : (
                     <button
                         type="button"

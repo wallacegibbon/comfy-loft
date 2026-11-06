@@ -33,6 +33,8 @@ export function useCanvasAgentTools({
     writeText,
     connectNodes,
     deleteNodes,
+    restoreNodes,
+    trash,
     focusNode,
     moveNode,
     resizeNode,
@@ -53,6 +55,8 @@ export function useCanvasAgentTools({
     writeText: CanvasHands["writeText"];
     connectNodes: CanvasHands["connectNodes"];
     deleteNodes: CanvasHands["deleteNodes"];
+    restoreNodes: CanvasHands["restoreNodes"];
+    trash: CanvasHands["trash"];
     focusNode: CanvasHands["focusNode"];
     moveNode: CanvasHands["moveNode"];
     resizeNode: CanvasHands["resizeNode"];
@@ -75,6 +79,8 @@ export function useCanvasAgentTools({
         writeText,
         connectNodes,
         deleteNodes,
+        restoreNodes: () => ({ restored: [], missing: [] }),
+        trash: () => [],
         focusNode,
         moveNode,
         resizeNode,
@@ -96,6 +102,8 @@ export function useCanvasAgentTools({
         writeText: committed(writeText),
         connectNodes: committedAnswer(connectNodes),
         deleteNodes: committed(deleteNodes),
+        restoreNodes: committed(restoreNodes),
+        trash,
         focusNode,
         moveNode: committed(moveNode),
         resizeNode: committed(resizeNode),

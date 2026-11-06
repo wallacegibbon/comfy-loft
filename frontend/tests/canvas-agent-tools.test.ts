@@ -8,7 +8,7 @@ import { registerBuiltinNodes } from "../src/components/canvas/nodes/builtin-nod
 import type { SettingsContract } from "../src/lib/canvas/node-settings";
 import type { StopOutcome } from "../src/lib/canvas/canvas-agent-tools";
 import type { ModelCatalog } from "../src/lib/canvas/node-model";
-import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
+import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata, CanvasTrashEntry } from "../src/types/canvas";
 
 /**
  * The tools the agent may call, and what each one writes.
@@ -34,6 +34,7 @@ function handsFor(
     contract: SettingsContract | ((run?: { model?: string; mode?: string }) => SettingsContract) = {},
     stopped: StopOutcome = { running: true, cancel: "cancelled" },
     catalog: ModelCatalog = { options: [], accepts: () => undefined },
+    trash: CanvasTrashEntry[] = [],
 ) {
     const written = {
         contracts: [] as Array<[string, { model?: string; mode?: string } | undefined]>,
@@ -46,6 +47,7 @@ function handsFor(
         grouped: [] as string[][],
         ungrouped: [] as string[][],
         deleted: [] as string[],
+        restored: [] as string[],
         settings: [] as Array<[string, CanvasNodeMetadata]>,
         stopped: [] as string[],
         captured: [] as Array<[string, string]>,
@@ -72,6 +74,12 @@ function handsFor(
             written.deleted.push(...nodeIds);
             const kept = nodes.filter((each) => !nodeIds.includes(each.id)).map((each) => (each.metadata?.groupId && nodeIds.includes(each.metadata.groupId) ? { ...each, metadata: { ...each.metadata, groupId: undefined } } : each));
             return { removed: withoutEmptiedGroups(nodes, kept, []).removed };
+        },
+        // The trash the page lends: what it holds, and the restore that takes one out of it.
+        trash: () => trash,
+        restoreNodes: (nodeIds) => {
+            written.restored.push(...nodeIds);
+            return { restored: nodeIds.filter((id) => trash.some((entry) => entry.node.id === id)), missing: nodeIds.filter((id) => !trash.some((entry) => entry.node.id === id)) };
         },
         focusNode: () => {},
         // The real hands move through `withGroupMembers` and `settleMoveMembership`, which are the canvas's own
@@ -1138,18 +1146,71 @@ describe("delete_node: the card a delete empties", () => {
         const { answer, text } = await textOf(hands, "delete_node", { nodeId: "text-1" });
         expect(answer.isError).not.toBe(true);
         expect(written.deleted).toEqual(["text-1"]);
-        expect(text).toBe("deleted text-1 (text); removed group-1, which the delete left empty");
+        expect(text).toBe("deleted text-1 (text); removed group-1, which the delete left empty. It is in the canvas's trash with the connections it had, so nothing is lost: restore_node puts it back");
     });
 
     test("a card that still holds a member stays", async () => {
         const { hands } = handsFor([group("group-1", 0, 0), member("text-1", "group-1", 100, 100), member("text-2", "group-1", 100, 220)]);
         const { text } = await textOf(hands, "delete_node", { nodeId: "text-1" });
-        expect(text).toBe("deleted text-1 (text)");
+        expect(text).toBe("deleted text-1 (text). It is in the canvas's trash with the connections it had, so nothing is lost: restore_node puts it back");
     });
 
     test("a box that was already empty is nobody's debris", async () => {
         const { hands } = handsFor([placed("empty", "group"), placed("text-1", "text")]);
         const { text } = await textOf(hands, "delete_node", { nodeId: "text-1" });
-        expect(text).toBe("deleted text-1 (text)");
+        expect(text).toBe("deleted text-1 (text). It is in the canvas's trash with the connections it had, so nothing is lost: restore_node puts it back");
+    });
+});
+
+/**
+ * The trash, as the tools see it (#327).
+ *
+ * A delete moves a node instead of destroying it, so three things follow and each is a sentence the agent
+ * depends on: the delete says where the node went, an id that is no longer on the canvas is answered as
+ * "trashed" rather than "unknown" (which would send it looking for a bug), and `restore_node` puts it back
+ * with the connections it had.
+ */
+describe("the trash", () => {
+    const entry = (node: CanvasNodeData, connections: CanvasConnection[] = []): CanvasTrashEntry => ({ deletedAt: new Date().toISOString(), node, connections });
+    const gonePicture = { id: "image-9", type: "image" as const, position: { x: 0, y: 0 }, width: 320, height: 240, metadata: { groupId: "group-1" } };
+
+    test("an id that is not on the canvas but is in the trash says so, and names the way back", async () => {
+        const { hands } = handsFor([], [], {}, { running: false, cancel: "finished" }, { options: [], accepts: () => undefined }, [entry(gonePicture)]);
+        const { answer, text } = await textOf(hands, "read_prompt", { nodeId: "image-9" });
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("image-9 is not on the canvas: it is in the trash");
+        expect(text).toContain("restore_node puts it back");
+    });
+
+    test("an id that was never here is still just unknown", async () => {
+        const { hands } = handsFor([]);
+        const { text } = await textOf(hands, "read_text", { nodeId: "text-404" });
+        expect(text).toBe('no node with id "text-404" on this canvas');
+    });
+
+    test("restore_node puts it back, and says with what", async () => {
+        const wires: CanvasConnection[] = [{ id: "c1", fromNodeId: "text-1", toNodeId: "image-9" }];
+        const { hands, written } = handsFor([group("group-1", 0, 0)], [], {}, { running: false, cancel: "finished" }, { options: [], accepts: () => undefined }, [entry(gonePicture, wires)]);
+        const { answer, text } = await textOf(hands, "restore_node", { nodeId: "image-9" });
+        expect(answer.isError).not.toBe(true);
+        expect(written.restored).toEqual(["image-9"]);
+        expect(text).toBe("restored image-9 (image), with 1 connection it had, in group group-1. It holds the same content it did before the delete");
+    });
+
+    test("restoring something that is not in the trash is refused, and points at where the ids are", async () => {
+        const { hands, written } = handsFor([]);
+        const { answer, text } = await textOf(hands, "restore_node", { nodeId: "image-9" });
+        expect(answer.isError).toBe(true);
+        expect(written.restored).toEqual([]);
+        expect(text).toContain('nothing in the trash has the id "image-9"');
+        expect(text).toContain("list_nodes states what the trash holds");
+    });
+
+    test("a group in the trash is a group a restore cannot draw, and the trash never holds one", async () => {
+        // What the tool does with an id the page's trash does not have: the same refusal, because the page is
+        // the one that decides what a delete keeps (a group is structure, #327).
+        const { hands } = handsFor([group("group-1", 0, 0)]);
+        const { text } = await textOf(hands, "restore_node", { nodeId: "group-1" });
+        expect(text).toContain("nothing in the trash has the id");
     });
 });

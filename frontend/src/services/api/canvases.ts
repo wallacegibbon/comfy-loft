@@ -1,7 +1,7 @@
 import { LOCAL_SERVER_BASE_URL } from "@/constant/app-mode";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { ApiError, KEEPALIVE_BYTES, httpJson, httpVoid } from "@/services/api/http";
-import type { CanvasAgentWindow, CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
+import type { CanvasAgentWindow, CanvasConnection, CanvasNodeData, CanvasTrashEntry, ViewportTransform } from "@/types/canvas";
 
 /**
  * The canvas documents, as the server keeps them.
@@ -33,6 +33,13 @@ export type CanvasDocument = {
     viewport: ViewportTransform;
     /** The agent panel's window: open or not, and the place and size the user left it at. */
     agent: CanvasAgentWindow;
+    /**
+     * The nodes this canvas deleted, newest first (#327).
+     *
+     * In the document for two reasons that are one: a reload must not turn a mistake into a loss, and a file
+     * is kept on disk by being named in this document — so a trashed node is what keeps its picture alive.
+     */
+    trash: CanvasTrashEntry[];
 };
 
 type CanvasRecord = {
@@ -61,7 +68,7 @@ const DEFAULT_AGENT_WINDOW: CanvasAgentWindow = { open: false, position: null, s
 
 /** The document as a new canvas starts: no nodes, a blank view, the default background. */
 export function emptyCanvasDocument(): CanvasDocument {
-    return { nodes: [], connections: [], backgroundMode: "lines", showImageInfo: false, viewport: { x: 0, y: 0, k: 1 }, agent: { ...DEFAULT_AGENT_WINDOW } };
+    return { nodes: [], connections: [], backgroundMode: "lines", showImageInfo: false, viewport: { x: 0, y: 0, k: 1 }, agent: { ...DEFAULT_AGENT_WINDOW }, trash: [] };
 }
 
 /**
@@ -82,6 +89,29 @@ function readAgentWindow(raw: unknown): CanvasAgentWindow {
     };
 }
 
+/**
+ * The trash a document describes, dropping entries that cannot be drawn.
+ *
+ * A trashed node is still a node — a card the list can show and a restore can put back — so an entry without
+ * one is not "an empty deletion", it is damage, and it goes. A document written before the trash existed has
+ * no field at all, which is the ordinary empty trash and not an error (#327).
+ */
+function readTrash(raw: unknown): CanvasTrashEntry[] {
+    if (!Array.isArray(raw)) return [];
+    const entries: CanvasTrashEntry[] = [];
+    for (const item of raw) {
+        const entry = (item || {}) as Partial<CanvasTrashEntry>;
+        const node = entry.node as CanvasNodeData | undefined;
+        if (!node || typeof node.id !== "string" || typeof node.type !== "string") continue;
+        entries.push({
+            deletedAt: typeof entry.deletedAt === "string" ? entry.deletedAt : "",
+            node,
+            connections: Array.isArray(entry.connections) ? entry.connections.filter((connection) => connection && typeof connection.fromNodeId === "string" && typeof connection.toNodeId === "string") : [],
+        });
+    }
+    return entries;
+}
+
 /** Fill in whatever a document is missing, so a canvas written by an older build still opens. */
 function readDocument(raw: unknown): CanvasDocument {
     const source = (raw || {}) as Partial<CanvasDocument>;
@@ -93,6 +123,7 @@ function readDocument(raw: unknown): CanvasDocument {
         showImageInfo: Boolean(source.showImageInfo),
         viewport: source.viewport && typeof source.viewport.k === "number" ? source.viewport : empty.viewport,
         agent: readAgentWindow(source.agent),
+        trash: readTrash(source.trash),
     };
 }
 

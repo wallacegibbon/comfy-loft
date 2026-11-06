@@ -1,6 +1,6 @@
 import { generationClause, runClause } from "@/lib/canvas/node-generation-facts";
 import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
-import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
+import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasTrashEntry } from "@/types/canvas";
 
 /**
  * The whole canvas as text: every node with the id a tool call can act on, and every edge.
@@ -19,8 +19,8 @@ import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/ty
  * `groupClause`): the canvas draws groups as containers, so a list that named them without saying what they
  * hold described a box and not the thing in it.
  */
-export function describeCanvas(nodes: CanvasNodeData[], connections: CanvasConnection[]): string {
-    const lines = [`${nodes.length} nodes, ${connections.length} connections`];
+export function describeCanvas(nodes: CanvasNodeData[], connections: CanvasConnection[], trash: CanvasTrashEntry[] = []): string {
+    const lines = [`${nodes.length} nodes, ${connections.length} connections${trash.length ? `, ${trash.length} in the trash` : ""}`];
     const members = membersByGroup(nodes);
     for (const node of nodes) {
         // No title: a node has no name. The line says what it is by id, type and contents, and a name that
@@ -34,7 +34,44 @@ export function describeCanvas(nodes: CanvasNodeData[], connections: CanvasConne
     }
     if (connections.length) lines.push("connections:");
     for (const connection of connections) lines.push(`- ${connection.fromNodeId} -> ${connection.toNodeId}`);
+    // What the canvas threw away. A deletion is not visible on the board, so this is the only place a reader
+    // can learn that a node it remembers is recoverable rather than gone (#327) — and the `no node with that
+    // id` answer points here.
+    if (trash.length) lines.push("trash:");
+    for (const entry of trash) lines.push(trashLine(entry));
     return lines.join("\n");
+}
+
+/**
+ * One trashed node, in the same words as a live one: what it is, what it held, and when it went.
+ *
+ * The pixel and duration clause is here for the same reason it is on a live line — it is how a picture is
+ * told from the other pictures — and the words are only printed for a text node, because for the others
+ * `content` is the URL they are rendered from and a URL identifies nothing to a reader.
+ */
+function trashLine(entry: CanvasTrashEntry): string {
+    const held = entry.node.type === CanvasNodeType.Text ? oneLine(nodeContentOf(entry.node)) : "";
+    const when = sinceWords(entry.deletedAt);
+    return `- ${entry.node.id} (${entry.node.type})${pictureClause(entry.node)}${when ? ` deleted ${when}` : ""}${held ? ` content: ${held}` : ""}`;
+}
+
+/**
+ * How long ago something happened, in words a reader can order without doing arithmetic.
+ *
+ * A timestamp would make the model compare dates against a clock it does not have, and "3 minutes ago" is
+ * what the question actually is: is this the thing I deleted a moment ago, or one from last week.
+ */
+function sinceWords(iso: string, now = Date.now()): string {
+    const at = Date.parse(iso);
+    if (!Number.isFinite(at)) return "";
+    const seconds = Math.max(0, Math.round((now - at) / 1000));
+    if (seconds < 60) return "just now";
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+    const days = Math.round(hours / 24);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
 /**
