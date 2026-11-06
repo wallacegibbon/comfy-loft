@@ -1,34 +1,30 @@
 # Decisions
 
-One entry per decision, numbered, oldest first. The number is an **address**: 53 places in the code cite one,
-so entries are never renumbered and never deleted — an entry whose subject is gone is compressed to a tombstone
-saying what it was and why it must not come back.
+Why the code is the shape it is. One entry per choice a reader could otherwise mistake for an accident.
+
+What belongs here: a rule that is true **now**, and the reason the code looks that way — the alternative
+rejected, and what the choice costs. Nothing else.
+
+What does not: a feature that has been removed. When a thing is gone the tree no longer holds it and the entry
+goes with it; `git show` keeps the history. A tombstone reading "we tried this and took it out" is a graveyard
+with a door sign, and it does real harm: it reads like a constraint, and it pulls the next design back towards a
+decision made under conditions that no longer exist.
 
 Three things worth knowing before quoting one:
 
-- **This is a record, not a specification.** What is true now is the code and `git show`; an entry says what was
-  decided, why the obvious alternative was rejected, and what that cost.
-- **A sentence carrying a version, a model name or a number is a measurement of that day.** Where the fixture is
-  named (ComfyUI 0.43.0, `image-moss-sft-8step`, seed 424242) re-run it; where it is not, treat the number as
-  folklore and check before relying on it.
+- **This is a record, not a specification.** What is true is the code and `git show`. An entry says what was
+  decided and why; it never says what a new design must be. When a design changes, the entry changes with it.
+- **A sentence carrying a version, a model name or a number is a measurement of that day.** Where the fixture
+  is named (`ComfyUI 0.43.0`, `image-moss-sft-8step`, seed 424242) re-run it; where it is not, treat the number
+  as folklore and check before relying on it.
 - **Entries before #240 say "gateway".** The process is `comfyloft-server` and the word is historical: do not
   reuse it in new code, comments or prose.
 
-The shape of a new entry is #287: the decision, the counterfactual, the cost, and a measurement with its fixture.
-
-# Design decisions
-
-Why the code looks the way it does. Each entry states the decision, the reason, and what it
-costs — so a future change can be measured against the original intent instead of guessed.
-
-Format is deliberately short: decision, why, consequences, where it lives.
-
-**Paths are as the tree was when the entry was written.** Entries record a moment, and the tree has
-moved since: the canvas frontend has been `canvas/web/`, then `canvas/` (#149), and is `frontend/`
-today (`README.md`, Layout, is always the current tree). A path an entry names for something it
-deleted is the path it was deleted from, which is the only one that ever existed.
+Format: decision, why, consequences, where it lives. Paths are as the tree was when the entry was written —
+an entry that names a path for something it deleted is naming a path that no longer exists.
 
 ---
+
 
 ## 1. The gateway is Go, built as a static binary with CGO disabled
 
@@ -598,57 +594,6 @@ looks like coverage.
 component or canvas interaction tests, so overlay guards and kit primitives are still verified by hand.
 
 
-## 27. Cloud mode is deleted, not hidden
-
-**Decision** `LOCAL_ONLY` and everything behind it are gone. There is no `VITE_LOCAL_ONLY`, no
-branch to restore the cloud interface, and no dead UI kept "just in case". Deleted: the
-`/image`, `/video` and `/prompts` workbenches, the cloud model-channel editor paths, the
-audio capability in the canvas, config import/export, the prompt library and prompt-source
-scheduler, the model-script editor, and the cloud default config. Routes and the navigation
-list now contain only what this build can actually serve.
-
-**Why** The flag defaulted to on and nothing anywhere — not `.env`, not `.env.example`, not
-`start.sh`, not `Makefile` — ever set `VITE_LOCAL_ONLY=0`, so no build this repository produced
-could reach the cloud interface. It was inherited from the upstream fork, where it _was_ the
-main interface, and kept as an escape hatch that only a source-code comment mentioned. A branch
-nobody builds is a branch nobody validates: it had already produced four permanently failing
-tests (#26), and two of its pages were the largest single consumers of antd. The rule applied
-here is the one from #23 — an unsimplified fork is not a smaller dependency, it is a second
-product that silently rots.
-
-**How the deletion was bounded** Not by reading: by reachability. A script walked imports from
-`main.tsx`, simulating the removed routes as absent, and reported modules nothing could reach.
-That found 8 modules (956 lines) already dead _before_ any decision, and after each removal it
-was re-run until only `vite-env.d.ts` remained — an ambient-types file, not dead code.
-`tsc --noUnusedLocals --noUnusedParameters` then caught the second class of leftovers the
-graph cannot see: unused imports and unused locals (45 of them). Three Chinese UI strings that
-the local branches already carried moved into the locale files, because inline copy violates
-#17 whether or not a flag guards it.
-
-Neither of those tools can see a third class: a JSX expression whose braces were lost, which
-compiles and renders the _source_ of the call instead of its result. Two of those shipped into a
-build — `t("config.channels.localOnlyDescription")` printed literally in the settings panel —
-and only a click-through found them. Any rewrite of this shape needs one pass through the app
-afterwards; type checks prove the code is well formed, not that it is right.
-
-**Cost** The upstream fork's interface is gone, so re-adopting cloud providers later means
-rewriting those pages rather than flipping a flag. That was an explicit trade: this repository
-is maintained on its own and may be rewritten. The cascade also removed `services/config-file`
-(settings import/export) and the prompt library, which are user-visible features — they were
-unreachable in every build, but someone who only ever ran `VITE_LOCAL_ONLY=0 npm run build` by
-hand will notice their absence.
-
-**Result** Frontend 167 modules / 34,112 lines → 145 modules / 29,620 lines. Files importing
-antd 60 → 44. antd chunk 916 kB → 739 kB (298 → 240 kB gzip); vendor chunk 1,090 kB → 571 kB
-(366 → 192 kB gzip), the latter from dropping the prompt-source and config-file graphs.
-
-**Where** `frontend/src/constant/app-mode.ts` (`LOCAL_ONLY` removed), `frontend/src/router.tsx`,
-`src/constant/navigation-tools.ts`, `frontend/src/stores/use-config-store.ts`, and every file that used
-to branch on the flag.
-
----
-
-
 ## 28. Model call scripts are gone; everything is OpenAI-compatible
 
 **Decision** `services/api/model-plugin.ts` is deleted, along with the `script` field on
@@ -881,26 +826,6 @@ what the dialog does.
 
 **Where** `package.json`, `components/kit/*`, `frontend/src/components/kit/field.tsx`, `frontend/src/lib/canvas-overlay.ts`,
 `lib/design-tokens.ts`, `frontend/src/components/layout/app-providers.tsx`.
-
----
-
-
-## 34. Unused translations are pruned by namespace, never by key _(superseded by #38)_
-
-**Decision** A locale namespace is deleted only when its feature was deleted outright _and_ no
-template key can reach it. Everything else unreferenced stays.
-
-**Why** After the deletions there are ~150 translation keys no literal `t("…")` refers to. A script
-can find them, but it cannot tell a dead string from one reached through a computed key —
-`t(\`settingsPanels.common.${labelKey}\`)`, `t(\`canvas.sidePanel.filter.${value}\`)`and`t(\`assets.kinds.${kind}\`)`all resolve keys that look unreferenced. Deleting one of those shows the
-user a raw key like`assets.kinds.image`, which is the same class of bug as decision #27's missing
-JSX brace: invisible to the compiler and obvious only in the browser.
-
-So the pruning pass took `prompts`, `imageWorkbench`, `videoWorkbench` and the dead half of
-`workbench`, and stopped. The verification is a DOM scan for text matching a key shape, run on every
-route.
-
-**Where** `src/i18n/locales/{zh-CN,en-US}.ts`.
 
 ---
 
@@ -2658,37 +2583,6 @@ file's format belongs to AlayaCore.
 **Where** `internal/agent/{spawn,wire,run,sessions}.go`, `internal/server/routes_agent.go`, `internal/ws`.
 
 
-## 76. The prompt recipes are deleted; the agent route is the only one
-
-**Decision** The four `/api/prompts/*` routes, `internal/prompt`'s chat client and its recipes (the H3
-skill assembly, the two sanitisers, speaker tags, frame alignment), the prompt-endpoint settings in the
-canvas and the model/key/base-URL fields they carried are gone. What replaced them is `#75`'s one route:
-`POST /api/agent/chat`, a prompt and/or one of AlayaCore's commands in, its frames out.
-
-**Why** They had had no caller since the canvas moved to the agent, and their whole job — writing the
-wording, choosing the model, cleaning the answer — is the agent's now. Keeping them was keeping a second
-backend, a second configuration story (a base URL and a key in the browser) and 900 lines that could
-drift from the skill they duplicated.
-
-**What went with them, and where it went instead** The H3 wording was already a shipped Agent Skill
-(`prompts/skills/h3-prompt-writing/`), so it stays exactly where it was and the agent loads it with
-`read_file` — the one tool the spawn enables. The canvas now says "rewrite this into a MiniMax H3
-prompt, task type …, duration …" and nothing else. `promptOptimizeLanguage` survived: the instruction
-still has to say which language to answer in.
-
-**Logging, because the transcript is the API** Every agent operation writes a line a reader who knows
-AlayaCore can follow: the request (`command`, `args`, the prompt's head, how many images), the spawn
-(pid, binary, config dir, skills container, tools), **every frame in both directions** (`agent >> UX`,
-`agent << SM`, … with the value truncated at 400 runes), the release (exit, stderr's last line, how long
-it lived), and a closing count per event type. `api_key` values are redacted: `SM model_list` carries
-every key from `model.conf`, and a transcript is worth having without them.
-
-**Tested** `make check` (14 packages), `npx vitest run`, `npm run check`. Against the real agent:
-a prompt streamed `models`/`reasoning`/`delta`/`done` with the frame log, a command-only request changed
-the reasoning level and logged its `CI`/`CO` pair, and the browser generated text, switched models and
-optimised an image prompt through the one route.
-
-
 ## 77. Regenerating an image answers in that node; a variant is a node you make
 
 **Decision** `nodeRegenerateBehavior` is gone. Pressing generate on a node that already holds a result
@@ -2834,37 +2728,6 @@ a process that ends before its turn does returns `ErrGone`, and that releases th
 questions on that session both answered ("收到", then "还在") from the same process; the tool round
 (prompt → `AF`/`AF`/`UF` → answer) streamed as `tool_call`/`tool_result`/`delta` with one `done`.
 The e2e tests state the idempotency, the second turn and the tool relay against a fake agent.
-
-
-## 81. A one-shot question has no name, so it cannot reach a canvas's agent
-
-**Decision** The words the canvas asks for without continuing — a text node's body, a rewritten prompt, a
-caption — go to `POST /api/agent/once`, which names no session and reads none. It spawns
-`alayacore --rawio`, asks, and releases. The canvas's own agent is reached only through
-the conversation's own route, which requires a name (#82).
-
-**Why** One function used to do both, and it read the session out of the store, so every one-shot
-question was sent to whichever agent the canvas happened to hold — and the gateway spent it when the
-answer ended. That was harmless while a connection was one question by design (#80 replaced that), and
-it would have become "pressing the sparkle next to a prompt empties the history of the agent you are
-working with" the moment the process started living. The rewrite buttons and the canvas agent are
-different kinds of thing; the route is where that difference lives rather than a convention the caller
-has to remember.
-
-**The shape of the guarantee** `/api/agent/once` never reads a `session` field, so a buggy caller cannot
-hand it one either — the field is not on the route. The client mirrors it: `requestAgentOnce` passes a
-literal `null` where `requestAgentChat` passes the store's session, and both go through one helper that
-takes the session as an argument, so the only place that can look one up is the caller that should.
-
-**Not a weakened agent** The one-shot keeps the tools and the skills container: it is the H3 prompt
-rewrite, which works by reading a `SKILL.md`, so `--builtin-tools=read_file` stays on both routes. The
-difference between the two kinds of agent is lifetime, not capability.
-
-**Tested** `:8191`: a prompt on `/chat` spends nothing and the session answers again; a prompt on `/chat`
-for a name that was never connected is `409 session_not_connected`; a prompt on `/once` handed a live
-session id answers, leaves that session connected, and the session still answers afterwards. From the
-browser, clicking 优化提示词 logged `POST /api/agent/once 200` with 20 deltas, and the process exited by
-itself (`lived=14886ms`) — a one-shot agent does not outlive its answer.
 
 
 ## 82. The conversation is a socket; a shortcut stays a POST
@@ -3656,50 +3519,6 @@ it would fail in a browser.
 ---
 
 
-## 109. A presence signal nobody reads is a timer, so it is gone
-
-**Decision** The canvas-tab tracker is deleted whole: `internal/store/sessions.go` (the map, the stale
-window, the idle clock), `Server.sessions`, `POST /api/session/{open,heartbeat,close}`,
-`sessionPayload`, the `SESSION_STALE_SEC` environment variable, `web/src/lib/local-session.ts`, and the
-`startLocalSession()` call in `main.tsx`. Nothing posts a heartbeat any more.
-
-**Why** Every five seconds, per tab, the canvas posted to the gateway, which wrote a timestamp into a map,
-pruned entries older than 120 s, and answered with a snapshot of that map. Nothing read it. The two
-readers it was built for do not exist here: the upstream fork's desktop launcher (which stopped the Node
-backend when the last page closed — the comment in `local-session.ts` says so in as many words) was never
-part of this repository, and the VRAM idea recorded in `store/sessions.go` ("'idle' from 'nobody is
-looking', which governs whether it is safe to free VRAM") was never wired into `POST /api/system/free-memory`
-— that button asks ComfyUI, not the tracker. #107 removed the one route that exposed the map, which
-turned the heartbeat into pure noise traffic; this removes the noise.
-
-**Why a heartbeat at all, for the record** Presence cannot be sent reliably: a tab that is killed, a
-laptop that sleeps and a dropped network all fail to POST "I am leaving". A last-seen timestamp with a TTL
-is the honest way to infer it, and 120 s against a 5 s beat is a sane margin. The mechanism was fine; the
-consumer was missing. If VRAM release ever wants this fact, the run queue already has it — "nothing is
-queued and nothing is running" is a question the gateway can answer about itself, without a browser.
-
-**Cost** With this, nothing in the gateway knows whether a browser is open. Nothing did before either —
-the count was reported to a route nobody called — so the only thing that changes is 17,280 requests a day
-per tab that no longer happen, and a config knob that no longer exists. A deployment that set
-`SESSION_STALE_SEC` can delete the line; the variable is simply ignored now.
-
-**Checked together, as the change asks** Code: the `store` package keeps its other three stores and its
-package comment moved to `preferences.go`, corrected (it used to name "canvas sessions" as one of the
-things the package holds). Tests: the two `TestSessions*` cases went with the type; `config_test.go` no
-longer isolates `SESSION_STALE_SEC`. Frontend: `main.tsx` lost both the import and the call, and
-`check:exports` reports 182 modules instead of 183 with no unused export. Docs: `gateway.md` and
-`protocol.md` never listed the three routes (`/api/session/*` was mentioned once in protocol.md's
-"unchanged" line, already dropped in #107); `README.md`'s endpoint table never had them. Comments that
-described the trackers — the `local-session.ts` header, `store/sessions.go`'s two paragraphs, and the
-inline "Register the canvas session…" — went with their files.
-
-**Tested** `make check`, `make test-race`, `npm run check`, `npx vitest run` (132 cases), and the rebuilt
-bundle in a browser: the canvas loads, and the network log contains no `/api/session/*` request at all
-(where the previous build posted `/api/session/open` and a heartbeat every five seconds).
-
----
-
-
 ## 110. There is no token, because the client that would send it cannot keep one
 
 **Decision** `GATEWAY_TOKEN`, the `X-Gateway-Token` branch in `Guard`, and the variable's row in
@@ -3810,40 +3629,6 @@ makes the bytecode check fail by name. The restored files are the upstream
 2.5.24 tree (`area_resize`, `divisible_crop`, `na_resize`, `side_resize`), byte-identical to it, and
 `python3 -m py_compile` accepts them — importing them for real needs torch, so the compile check is as far
 as this repository can go without ComfyUI's interpreter.
-
----
-
-
-## 114. The chat the panel stopped keeping, and the code that still carried it
-
-**Decision** Out of the canvas frontend: `chatSessions` / `activeChatId` (persisted in every project,
-carried through the undo history, restored on every open), the four `CanvasAssistant*` types, the
-`hydrateAssistantImages` pass, thirteen dead translation keys, the `step-progress` bus
-(`bindStepProgress` / `unbindStepProgress` / `publishStepProgress`), and the thirty-one unused locals and
-cloud-era leftovers that `tsc --noUnusedLocals` lists (mostly `frontend/src/services/api/video.ts`: `ApiVideoResponse`,
-`ApiEnvelope`, `VideoGenerationTaskState`, `aiHeaders`, `videoResultFromUrl`, `assertVideoBlob`,
-`normalizeVideoResolution`, `delay`).
-
-**Why** $4 held a conversation the panel drew itself. When the panel became a socket over the agent's own
-session file (#104) that model lost its writer: nothing ever pushed a message, so the two fields only
-travelled — written on every edit, read on every open, cloned into every undo step. The types, the
-hydration pass and the store plumbing existed to move them. The rest is the same shape of leftover: the
-step ring is driven by a run's own progress now (`waitForRun`'s `onSteps`, and `updateVideoSteps`), so
-`publishStepProgress` had no caller and every `bindStepProgress` registered a handler nothing invoked; and
-`video.ts` still carried the request/response shapes of the cloud API that #69 deleted, kept alive only by
-each other.
-
-**Cost** A stored blob is now format 4: `backfillProject` drops the two keys on read (the migration is a
-destructuring, like the `editCanvasRatio` one in #102), so an older canvas opens without them. An undo
-entry and a project are now `nodes + connections + backgroundMode + showImageInfo` — less to copy per edit.
-`stepProgress` itself stays: the ring is real, its source is the run.
-
-**Tested** `npm run check` (i18n 1031/1013 keys, no dead key; 181 modules, no invalid export; prettier;
-`tsc --noUnusedLocals --noUnusedParameters` clean) and `npx vitest run` (133 cases, including a new one
-that feeds a format-3 blob with a chat session and asserts both keys are gone while nodes and viewport
-survive). In a browser against `:8191`: the same canvas opened with its 42 nodes and no console error,
-which is the migration running on a real stored blob; the built bundle contains `chatSessions` exactly
-once — inside the migration that deletes it.
 
 ---
 
@@ -3998,39 +3783,6 @@ one; a source that offers neither header still needs the bytes downloaded once.
 `frontend/src/lib/resource-copy-zh.ts`.
 
 
-## 119. Guanlan leaves: an optional download nobody needs
-
-**Decision** `moss_guanlan_lora` is gone from `resources/index.json` — the resource, its entry in the
-moss pack's `resources` and `optionalResources`, and its line in the Chinese copy table. The 145 MB file
-is deleted from `models/loras/Moss_image/`. The catalogue went from 59 resources to 58.
-
-**What it was** A style/aesthetic LoRA for MOSS-Image SFT, which the index could only describe as
-`license: Unknown (community LoRA)`. The weights say the rest: ai-toolkit 1.18.9, internal name
-`MOSS-SFT-2027`, `ss_base_model_version: moss_image`, 5000 steps over 70 epochs, version 1.0, and no
-trigger word or dataset metadata at all. Nothing in the repository knows what it does to an image.
-
-**Why it went** Three things together, none fatal alone:
-
-- **No workflow names it.** Nothing in `workflows/` references the file; the only reason it was visible
-  was the `Moss_image|MOSS|moss` filter putting it in the LoRA dropdown of the three MOSS graphs. A
-  dropdown entry is not a dependency.
-- **No license.** `Unknown (community LoRA)` is a license we cannot ship against, and unlike the other
-  third-party weights it was not even a mirror of something we could point at.
-- **The note was wrong.** It said the ModelScope collection is private and signing in may be required.
-  The file answers `302 → cdn-lfs 200` with a full `content-length`, no credential — so the entry was
-  also the reason a user could not tell what they were agreeing to.
-
-**What this is not** Not a statement that community LoRAs are unwelcome: `moss_image_sft_8steps_lora`
-stays, because a shipped graph loads it and it has a hash. The rule the pack now follows is the one the
-`upscale` pack already used: a resource exists because a workflow needs it, not because a download was
-convenient to list.
-
-**Tested** `make check` and the canvas suite (133 tests) both pass; `resource-copy-zh.test.ts` is the gate
-that would have caught a zh dictionary key left pointing at a resource that no longer exists.
-
-**Where** `resources/index.json`, `frontend/src/lib/resource-copy-zh.ts`.
-
-
 ## 120. taeh3 stops being a binary of unknown origin
 
 **Decision** `h3_tiny_vae` is downloaded, not bundled: `resources/payload/vae_approx/` is gone and the
@@ -4134,50 +3886,6 @@ change.
 **Where** `resources/index.json`, `internal/resource/resource.go`.
 
 
-## 122. Two of the four local patches are gone
-
-**Decision** `minimax-h3-audio-t8` is re-vendored at **v1.79.2** (`93cefbf5d15f`), and
-`ComfyUI-SolAttn_triton/__init__.py` is restored to the bytes upstream publishes at the commit we already
-pin. Four locally modified files became two.
-
-**The audio-t8 one was upstream's fix, written better** Our copy of `multikeyframe_advanced.py` passed
-three extra arguments to `final_layer` because the H3 core changed its signature. v1.75.0 solved the same
-problem with `call_h3_final_layer`, which inspects the model's signature and passes the schedule
-parameters only when the layer accepts them — so it survives both cores instead of ours, which only
-survives the new one. Re-vendoring removes the patch and the reasoning that went with it.
-
-**Why v1.79.2 and not v1.104.0** v1.104.0 is 6,566 files and, at the tag itself, not self-consistent:
-its root `__init__.py` imports modules that live in `h3_t8/`, and `h3_t8/nodes.py` imports
-`sol_attn_minimax_v2`, which lives at the root. `TestVendoredPacksImportOnlyWhatTheyShip` rejects that
-tree, correctly — a pack we ship must be one Python can import. v1.79.2 is the earliest tag after the
-`h3_t8/` reorganisation, resolves all 3,167 relative imports across the packs, and is 25 releases newer
-than the v1.47.0 it replaces. It costs 416 files where we had 179, and 6.8 MB where we had 6.5.
-
-**What was checked before shipping it** The four node classes our graphs actually use
-(`MiniMaxH3AVDecodeT8`, `MiniMaxH3AudioConditioningT8`, `MiniMaxH3SigmaShift`, `ModelAttentionBackend`)
-still exist, and all 62 inputs those graphs pass to them still exist by name. Without that, "it imports" is
-not the same as "it works".
-
-**The SolAttn defaults cost nothing to give back** Upstream's 2026-08-05 commit "update defaults" changed
-three values; our copy kept two and reverted `sink_conditioning` to `exact_kv`, plus set `dense_blocks`
-to `0-5`. The only graph that uses the node, `video-h3-ref2va-drama.json`, passes `"off"` and `""`
-explicitly, so the defaults never reached a render. Restored.
-
-**What is still patched, and why it has to be**
-`ComfyUI-SolAttn_triton/_morton_h3.py` resolves `_forward` on the class at call time so TE-Speed's runtime
-patch stays in the chain — upstream still captures the pointer at patch time. And
-`ComfyUI-SeedVR2_VideoUpscaler/src/common/distributed/basic.py` uses `fp32_precision` where upstream still
-sets `allow_tf32`; that repository has not been touched since 2025-12-24, so there is no upstream fix to
-wait for.
-
-**Tested** `make check` (3,167 relative imports resolved, no bytecode), `tsc --noEmit`, and 133 canvas tests.
-Not tested: a real render — ComfyUI is not running on this machine, and no gate here can replace that. The
-input-name check above is the closest thing available without it.
-
-**Where** `resources/payload/custom_nodes/minimax-h3-audio-t8`, `.../ComfyUI-SolAttn_triton/__init__.py`,
-`resources/index.json`.
-
-
 ## 123. SeedVR2 is gone: a video upscaler nobody maintains, for a job we do not have
 
 **Decision** `video-seedvr2-upscale` is gone — the registry entry, the graph, its three resources, the vendored
@@ -4242,20 +3950,6 @@ every pack reference resolves, and the 8 payload directories are exactly the 8 v
 `resources/index.json`, `resources/payload/custom_nodes/ComfyUI-SolAttn_triton` (deleted),
 `frontend/src/lib/canvas/video-model-mode.ts`, the two node panels, `video-settings-panel.tsx`,
 `i18n/locales/*`, `frontend/src/lib/resource-copy-zh.ts`, `internal/workflow/media_test.go`.
-
-
-## 125. Krea2 is gone: the second text-to-image family nobody opened
-
-**Decision** The `krea2` pack is gone — four resources, `image-krea2-turbo` and its graph, the Chinese copy,
-29.92 GiB of weights. Removed in e1410b2.
-
-**Why** It occupied Z-Image Turbo's slot: both are 8-step, CFG-1 distillations of the same size class, differing
-only in what they were trained on. The evidence is one-sided — 1030 outputs in `output/` from Z-Image, 0 from
-Krea2 — and three of its four weight files existed for this workflow alone.
-
-**What it costs to say no** 29.92 GiB resident for a second aesthetic, in a pack the resource panel installs
-again in minutes. Z-Image (drafts), Qwen-Image 2.1 (edit, inpaint, outpaint, angle) and MOSS-Image (photoreal)
-do different jobs; Krea2 was the only removable duplicate.
 
 
 ## 126. The node packs are no longer bundled
@@ -4664,41 +4358,6 @@ separate decision with its own consequences, not a rename.
 **Where** `README.md`, `docs/server.md`, `main.go`.
 
 
-## 139. The old product names leave the canvas shell too
-
-**Decision** The browser tab says `Comfy Loft` in both languages, the canvas manager is titled `Canvas` /
-`画布`, a new canvas is `Canvas {{count}}` / `画布 {{count}}`, the export default is `Canvas` / `画布`, and the
-storage page's database labels name Comfy Loft. Three upstream names are gone from user-visible text:
-`无界工作台` (the shell's `<title>` and `meta.title`), `Boundless Workbench` (its English counterpart), and
-`Infinite Canvas` (the English board title, export name and storage labels).
-
-**Why they were still there** They were never removed. `git log -S "无界工作台" -- canvas/web/index.html` returns
-exactly one commit — #137, the directory rename — and that is a path change, not a content change. The string
-has been in the tree since the initial import; it surfaced in #138's review, where it was listed as "user-visible,
-your call" instead of being changed. That was the wrong call: a name that is on screen is not a decision to defer
-when the decision to rename has already been made.
-
-**What the tab actually reads from** Two places, and both had to change: `canvas/web/index.html`'s static
-`<title>` (what a cold load shows) and `meta.title` in the i18n dictionaries, which `app-providers.tsx` and
-`project.tsx` write into `document.title` at runtime. Changing only the HTML would have been overwritten a frame
-later; that is worth remembering the next time a "title" looks like markup.
-
-**Board titles became words, not a brand** "Infinite Canvas 3" was the upstream product name used as a document
-name. `Canvas 3` / `画布 3` says the same thing without pretending each board is the product.
-
-**Still upstream, deliberately** `canvas/plugins/**`: the plugin id `infinite-canvas`, the SDK package
-`@infinite-canvas/plugin-sdk`, every plugin's `package.json`/`README`/`build.mjs`, the Codex/ZCode plugin manifests
-and `canvas/plugins/infinite-canvas/skills/**`. Those are an interface — the host loads plugins by id and the
-packages resolve by name — so renaming them means renaming the SDK, every import of it and every marketplace
-declaration in one move. That is a project of its own, not a string edit.
-
-**Tested** `npx tsc --noEmit`, `npm run check:i18n` (1018 zh keys, 1004 en, no dead or missing keys), 134 canvas
-tests, `go test ./internal/...`, and a rebuilt bundle whose `<title>` is `Comfy Loft`. A grep for the three old
-names now returns nothing outside `canvas/plugins/**`.
-
-**Where** `canvas/web/{index.html,src/i18n/locales/{zh-CN,en-US}.ts}`.
-
-
 ## 140. The plugin SDK and its packages stop being named after upstream
 
 **Decision** The web app's package is `comfy-loft`, the plugin SDK is `@comfy-loft/plugin-sdk`, and the plugin
@@ -4838,93 +4497,6 @@ and no `infinite-canvas:` key. A fresh browser therefore starts with an empty ap
 stores/canvas/{use-canvas-store,use-plugin-store}.ts,i18n/index.ts,services/localforage-databases.ts,
 types/canvas-export.ts,lib/canvas/canvas-export.ts,components/assets/asset-transfer.ts}`,
 `canvas/plugins/canvas/sdk/src/jsx-runtime.ts`.
-
-
-## 144. The asset library is deleted, not hidden
-
-**Decision** `use-asset-store`, `asset-persist`, `components/assets/`, the Assets tab in the side
-panel, the "Add to My Assets" node action and the asset package format are gone, and `/assets` is
-nothing but an address that lands back on a canvas. A canvas's nodes are the only place a file lives:
-what is on a canvas is what exists.
-
-**Why** The library was the cloud-era organ of a product that no longer exists. Upstream could not
-read the user's disk, so it had to keep a pool of its own inside the browser; this fork deleted the
-cloud (README, #71, #76) and kept the pool. On a local machine the pool is the filesystem, and it is
-better at every part of the job: it can be searched, backed up, synced, opened by other programs and
-seen without this app running. The app's copy was worse than that — IndexedDB, no
-`navigator.storage.persist()`, cleared by "clear site data" and collected by the canvas GC — so
-keeping user originals there was a net risk, not a service.
-
-**Nothing was lost from the loop** Content already enters a canvas without the library: files
-dropped on the canvas, pasted from the clipboard, or chosen from the picker all become nodes
-(`use-content-ingress.ts`), and that path accepted images, video and audio before this change. The
-library's own "Add" button did the same job with an extra step, and its create form only ever
-supported text and images.
-
-**What else went with it** Four kit components whose only callers were the asset UI — `Empty`,
-`Pagination`, `TagInput`, `CheckableTag` — and the `.prompt-filter-tag` styles. The `assets.*`
-translation namespace went whole; the node-type titles it was also carrying (`assets.kinds.*`) moved
-to `canvas.nodeTypes.*`, which already existed and already had all four kinds. `common.addToAssets`,
-`common.addedToAssets`, the side panel's asset keys and the six `canvas.runtime` strings that only
-said "there is nothing here to save" went with their call sites.
-
-**The one thing the library did that a canvas does not** Cross-canvas reuse: copy/paste of nodes is
-page state, so it does not survive switching canvases, and the export zip carries whole projects, not
-a chosen set. Both are accepted losses — re-dragging from the disk is one gesture, and the filesystem
-is a better selection UI than a dialog would be.
-
-**Data already on disk** `comfy-loft:asset_store` and the records in it are left where they are; no
-migration reads them. Blobs that only a library record referred to are now unreachable, so the next
-sweep (`lib/canvas/canvas-file-cleanup.ts`) collects them. That is the intent of a deletion, and this
-project is at the stage where #143 already said an empty app beats a compatibility shim.
-
-**Where the sweep lives now** With the asset store gone, `sweepUnusedCanvasFiles` in
-`lib/canvas/canvas-file-cleanup.ts` is the single entry point for blob collection, called by node
-deletion (with the undo snapshot as an extra root) and by project deletion.
-
-**Tested** `npm run check:i18n`, `check:exports` and `tsc --noEmit` (the three gates a deletion can
-break), 129 canvas tests, `make web`,
-and in a browser: no Assets button in the top bar, no second side-panel tab, no "Add to My Assets" in
-a node's toolbar, `/assets` lands back on a canvas instead of opening anything (the address is a
-tombstone, the same courtesy `/config` gets), and a file dropped on the canvas still becomes a node.
-
-**Where** `canvas/web/src/{stores/use-asset-store.ts,stores/asset-persist.ts,components/assets/**,components/kit/{tag-input,tag,nav,display}.tsx,components/canvas/canvas-side-panel.tsx,components/canvas/canvas-node-hover-toolbar.tsx,components/canvas/canvas-top-bar.tsx,pages/canvas/project.tsx,pages/panel-entries.tsx,router.tsx,types/canvas.ts,i18n/locales/*,styles/globals.css,tests/persist-migration.test.ts}`.
-
-
-## 145. The deleted library gets one exit, and then it is gone
-
-**Decision** `lib/canvas/legacy-asset-store.ts` reads the `comfy-loft:asset_store` record back,
-`components/layout/legacy-assets-banner.tsx` offers it once as a zip, and discarding the offer deletes
-the record. While the record exists its `storageKey`s are one more root for the blob sweep, so nothing
-it names is collected before the user has been asked. Nothing is imported back into the app.
-
-**Why not just delete it with #144** Because the code was the only thing that knew those files
-existed. A record in `comfy-loft:asset_store` can point at a blob that no canvas, no undo snapshot and
-no generation log mentions — a picture saved to the library and nowhere else — and the first sweep
-after the removal would have collected it. That is a feature removal quietly deleting user data, which
-is not the same thing as removing a feature.
-
-**Why a dead end rather than a migration** Converting library records into canvases would resurrect
-the very shape #144 removed: a project per saved picture, or one junk canvas per library. The package
-is the old format (`assets.json` verbatim + `files/` + a `README.txt` that says what it is), which
-means this path writes a format nothing reads. That is the point: the exit has to be worth deleting
-once it is unused, and a format nobody parses is easier to delete than an importer.
-
-**The common case is silence** Most machines that ever opened the app have
-`{"state":{"assets":[]},"version":1}` sitting there. `readLegacyLibrary` reports that as `empty`, the
-banner deletes it without a word. Only a record with something in it, or a blob that will not parse,
-is worth asking a person about — an unreadable blob is not empty, because its bytes are still theirs.
-
-**Verified end to end in a browser** A seeded library of one image record and one text record: the
-banner says 2, exporting downloads a zip holding the record's bytes verbatim, a 79-byte
-`files/1-Legacy-hero.png` and no file for the text record; a sweep with the record still present leaves
-the image alive; discarding removes the record and the next sweep collects the image.
-
-**When to delete this** After the release in which nobody can still hold an old library. It is
-`lib/canvas/legacy-asset-store.ts`, the banner, its `canvas.legacyAssets.*` strings, the
-`legacy` root in `sweepUnusedCanvasFiles`, and `tests/legacy-asset-store.test.ts`.
-
-**Where** `canvas/web/src/{lib/canvas/legacy-asset-store.ts,lib/canvas/canvas-file-cleanup.ts,components/layout/legacy-assets-banner.tsx,layouts/user-layout.tsx,i18n/locales/*}`,`canvas/web/{tests/legacy-asset-store.test.ts,scripts/check-exports.cjs}`.
 
 
 ## 146. The project's machine identity is `comfyloft`
@@ -5073,55 +4645,6 @@ Touched: `node-registry.ts`, `builtin-nodes.tsx`, `canvas-node.tsx`, `project.ts
 `frontend/src/constant/canvas.ts`, `frontend/src/types/canvas.ts`, `frontend/src/services/api/video.ts`, `i18n/locales/*`,
 `internal/server/routes_mcp.go`, `scripts/check-exports.cjs`, `docs/known-issues.md`, `README.md`,
 `.gitignore`.
-
-
-## 149. The canvas frontend is `canvas/`, not `canvas/web/`
-
-**Decision** Every file under `canvas/web/` moved up one level and `canvas/web/` is gone. `canvas/` is the
-frontend: `src/`, `public/`, `scripts/`, `tests/`, its `package.json` and its build output in
-`canvas/dist/`. `canvas/LICENSE` — the upstream MIT text the credits point at — stays where it was, beside
-the app it covers.
-
-**Why** `web/` was upstream's layout, and it made sense there: the subtree held `web/` (the app) next to
-`plugins/` (the SDK and the official plugins). The plugin mechanism is gone (#148), so `canvas/` had exactly
-one child left, and a directory that contains a single directory is a level of indirection that no reader
-needs. Nothing about the boundary changed — `canvas/` is still the self-contained npm project, still
-separate from the Go module at the root — only the path got shorter.
-
-**What moved with it** `make web` now builds into `canvas/dist/`, `start.sh` finds `vite` and the bundle one
-directory higher, `vite.config.ts` reaches the repository root with `..` instead of `../..`, and the
-one test that reads `resources.json` through `import.meta.url` counted one `..` too many until the move.
-
-**Not changed on purpose** `canvas/vercel.json` and `canvas/components.json` are upstream leftovers that
-still describe a deployment nobody runs and a stylesheet path that does not exist. They are as dead after
-this move as before it; removing them is a separate decision about the credits, not about the layout.
-
-**Tested** `make web-deps` (a fresh `npm ci` in the new location), `npm run check`, 143 canvas tests,
-`make web`, `make check`, and `./start.sh` serving the bundle: the canvas loads from
-`http://127.0.0.1:3000/`, `config.js` is injected at the new path, the public assets resolve, and the
-console is clean.
-
-**Where** `canvas/**` (moved), `Makefile`, `start.sh`, `.gitignore`, `canvas/vite.config.ts`,
-`canvas/tests/resource-copy-zh.test.ts`, `README.md`, `docs/server.md`.
-
-
-## 150. The two upstream leftovers go too
-
-**Decision** `canvas/vercel.json` and `canvas/components.json` are deleted. #149 left them alone because
-removing them is a decision about the credits rather than the layout; this is that decision.
-
-**Why they were dead** `vercel.json` described deploying the bundle to Vercel with `bun install` — this is a
-local workbench whose canvas is served by `start.sh` and whose gateway is a static binary. `components.json`
-was a shadcn CLI config pointing at `src/app/globals.css`, a path that has not existed since the kit
-components replaced antd; the real stylesheet is `src/styles/globals.css`, which the app imports directly.
-
-**What stays** The `shadcn` package itself, and it is not a leftover: `src/styles/globals.css` imports
-`shadcn/tailwind.css`. Deleting the config does not make the dependency unused — the check that found the
-two files dead also found this one alive, which is the reason it was checked at all.
-
-**Tested** `npm run check` (i18n, exports, prettier, `tsc`), 143 canvas tests, `make web`.
-
-**Where** `canvas/vercel.json`, `canvas/components.json` (deleted).
 
 
 ## 151. There are no users yet, so the compatibility layers go
@@ -6461,49 +5984,6 @@ confirm, then `DELETE … 200`, release, new pid — left the file gone and the 
 locales.
 
 
-## 188. The bottom dock is gone; its commands live in the canvas menu
-
-**Decision** The icon dock across the bottom of the canvas is deleted (`canvas-toolbar.tsx`), and its
-commands became sections of the menu that opens on the canvas's name: **New** (text, image, video, group,
-LoRA, upload files), **Edit** (undo, redo, center focus, delete selected), **View** (select/move tool, grid:
-dots/lines/blank, image info) and, after a divider, export current canvas and clear canvas. Items that
-toggle show a tick; items with a real keyboard shortcut show it. The viewport's own controls — zoom,
-minimap, reset view — stay in the bottom-left dock: they are a dial, not a menu.
-
-**Why** The dock was sixteen glyphs with no words, each one needing a tooltip to be readable, and the
-thing pressed once a session (export, clear) took exactly the room of the thing pressed constantly (a new
-node). It also sat in the middle of the canvas's bottom edge, which is where a node's own panel opens. A
-menu is where a command that needs a name can have one, and the canvas menu already held the commands that
-belong to the canvas as a whole (rename, new, delete).
-
-**Cost** Every one of these is now two clicks instead of one, and nothing is discoverable by looking at the
-canvas: a first-time user has to open the menu to find out what can be made. The commands still answer
-their keyboard shortcuts (undo, redo, delete, clear's confirmation), which is what the menu shows beside
-them.
-
-**Sediment removed with it** `bottomInset` in `focusViewportForNode` and the test that measured it (the
-dock was the only thing that fed it — the inset said "do not centre a panel under the dock"; with no dock
-the whole height is usable), the `[data-canvas-bottom-toolbar]` lookup in `measureFocusFrame`,
-`canvas-toolbar.tsx`'s `ToolbarButton`/`DockTip`/`toolLabel`/`getTipX`/`CanvasThemeButton` and its
-appearance popover, the `CanvasColorTheme` export (nothing outside `canvas-theme.ts` names it any more), and
-seven i18n keys the popover owned (`canvas.toolbar.appearance`, `audio`, `config`, `themeMode`, `light`,
-`dark`, `gridStyle`). `Dropdown` gained a section heading and a shortcut column for this, which is the only
-kit change.
-
-**Tested** `npm run check` (i18n 894/880: seven keys gone, three added — `canvas.menu.create/edit/view`; no
-dead or missing keys), `npx vitest run` (155: one test removed with `bottomInset`), `make check`. In the
-browser (a `/tmp/verify` copy at 8191/3001): no dock in the page at all (only minimap/reset/zoom at the
-bottom left), the menu shows the four sections in that order, **Text** created a node, **Undo** removed it
-again (the saved `canvas.json` agreed both times), **Blank** wrote `backgroundMode: "blank"`, and **Clear
-canvas** opened the existing confirmation.
-
-**Where** `frontend/src/components/canvas/canvas-menu.tsx` (new),
-`frontend/src/components/canvas/canvas-toolbar.tsx` (deleted),
-`frontend/src/components/canvas/canvas-top-bar.tsx`, `frontend/src/components/kit/floating.tsx`,
-`frontend/src/pages/canvas/project.tsx`, `frontend/src/lib/canvas/canvas-node-geometry.ts`,
-`frontend/tests/canvas-focus-viewport.test.ts`, both locales.
-
-
 ## 189. The bridge is found beside the gateway, on PATH, or nowhere honest
 
 **Decision** `mcpBridgePath` looks for `comfyloft-mcp` in the order the agent's own binary is found
@@ -6524,74 +6004,6 @@ binary that has none beside it (which is what `go run` looks like), and `MCP_BIN
 MCP tests (which go through `writeMCPConf`) still pass.
 
 **Where** `internal/server/agent_config.go`, `internal/server/agent_config_test.go`.
-
-
-## 190. Preferences and Add workflows are two windows, and the Gateway tab is gone
-
-**Decision** The settings window — one `Dialog` with three tabs, Gateway / Preferences / Add workflows —
-is deleted. Two windows replace it, each opened by its own button at the right end of the top bar and
-closed by the X in its own top-right corner:
-
-- `PreferencesDialog` (`frontend/src/components/settings/preferences-dialog.tsx`): default image and video model,
-  generation defaults, auto-center on select, system prompt. (The card skin and progress-ring skin
-  pickers were in this list too; #193 removed them.)
-- `AddWorkflowsDialog` (`frontend/src/components/settings/workflows-dialog.tsx`): the resource panel in a frame. The
-  first-run `ResourceSetupGate` opens the same window with its own heading and no close button, so the
-  two cannot drift apart in size or padding. The panel's summary card lost its own "Add workflows" line
-  for this: the window title says it once.
-
-`use-config-store` keeps two flags, `preferencesOpen` and `workflowsOpen`, instead of `isConfigOpen`
-plus a `configTab`.
-
-The Gateway tab went, with everything only it reached: `channel-editor-drawer.tsx`, `kit/drawer.tsx`
-(its last user), `kit/nav.tsx`'s `Tabs`, `withChannels` / `pickDefaultModel` / `saveChannel`,
-`normalizeModelOptionValue`, `config.title` / `modalDescription` / `saved` / `savedContinue` /
-`tabs.*`, the display half of `config.channels.*`, all of `config.channelEditor.*`,
-`config.preferences.defaultTextModel` / `defaultAudioModel` (the model list was already filtered to
-image and video, so those two branches could never render), `topNav.settings` and `common.done` —
-28 keys, with `config.preferences.title` / `description` and `topNav.preferences` /
-`topNav.addWorkflows` added.
-
-**Why** The tab edited three things and none of them was a setting: the channel's name (nothing on
-screen names a channel outside a model label's fallback), its address (it comes from the page and is
-rewritten by `use-local-gateway-sync` on every scan, #71), and a model's media kind (an override the
-same sync then preserved, whose only author was that editor — the sync now takes the gateway's `type`,
-which is the side that knows what a graph does). A form whose fields are re-derived behind it is a form
-that lies. Splitting the window is the other half: "Preferences" and "Add workflows" are answers to
-different questions, and one gear labelled "Settings" described neither.
-
-**Why the Done button went with it** A preference is written when it changes (#155, #166), so the
-gateway already had the value before the button could be pressed — "Done" saved nothing. The toast it
-raised ("Settings saved. Continue with your previous request.") promised a continuation that no call
-site performed: all twenty blocked-generation call sites did `openConfigDialog(true)` and returned, and
-Continue was then a click the user made anyway. They now call `openPreferences()`, and
-`shouldPromptContinue` / `clearPromptContinue` are gone with the flag.
-
-**Cost** Re-tagging a workflow whose registry `type` is not what you want is now an edit to
-`workflows/registry.json`; there is no UI for it. The preferences window has no "saved" feedback,
-because a window that saves as you type has nothing left to announce.
-
-**Tested** `npm run check` (i18n 870 zh / 856 en: 28 keys gone, 4 added, no dead or missing keys;
-exports 170 modules), `npx vitest run` (155 — `frontend/tests/overlay-z-index.test.ts` lost its `drawer.tsx`
-half), `make check`. In the browser, on a `/tmp/verify` copy (8191/3001): the top bar shows
-"Preferences" and "Add workflows" where the gear was, each opens its own 1000×646 window with the X in
-its own top-right corner and leaves the other shut; `/config` still opens the preferences window and
-returns to the canvas; toggling "Auto-center on select" reached `data/settings.json` with no button
-pressed (`autoFocusOnSelect: true` through `GET /api/settings`); the first-run gate — forced open in the
-throwaway copy, since every pack here is installed — renders its own "Prepare resources" heading over
-the same frame, no close button, and the skip footer with the new hint.
-
-**Where** `frontend/src/components/settings/preferences-dialog.tsx` (new),
-`frontend/src/components/settings/workflows-dialog.tsx` (new),
-`frontend/src/components/settings/app-config-modal.tsx` (deleted),
-`frontend/src/components/settings/channel-editor-drawer.tsx` (deleted),
-`frontend/src/components/kit/drawer.tsx` (deleted), `frontend/src/components/kit/nav.tsx`,
-`frontend/src/components/settings/resource-center-panel.tsx`,
-`frontend/src/components/settings/resource-setup-gate.tsx`,
-`frontend/src/components/layout/user-status-actions.tsx`, `frontend/src/layouts/user-layout.tsx`,
-`frontend/src/stores/use-config-store.ts`, `frontend/src/hooks/use-local-gateway-sync.ts`,
-`frontend/src/pages/panel-entries.tsx`, `frontend/src/i18n/locales/*`, `frontend/scripts/check-*.cjs`,
-`frontend/tests/overlay-z-index.test.ts`, `docs/server.md`.
 
 
 ## 191. The left column: one width, three stacked boxes
@@ -6711,41 +6123,6 @@ lasso share that parent and those two numbers.
 **Where** `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`,
 `frontend/src/components/canvas/canvas-selection-toolbar.tsx`.
 
-
-## 193. The card skins, the progress-ring skins and the unlock flow are gone
-
-**Decision** The canvas has one card look and one charge light. Four mechanisms left whole:
-
-- **Card skins** — six palettes (`warm`, `cream`, `mist`, `forest`, `angel`, `fish`), each overriding a dozen
-  `canvasThemes[].node` colours per light/dark, two of them replacing the card fill with a gradient and painting
-  character art inside it; a second table did the same to the toolbar, and a `Map` cached the theme × skin pair.
-- **The character animation** — the two art skins carried a rig beside and inside the card (a lantern jellyfish with
-  an "AT field" halo, an angel with falling feathers) plus a *Character animation while generating* toggle reachable
-  only while one of them was selected: `fish-guard-*` and `angel-*` in `globals.css` (about 380 lines), `public/skins/`
-  (four images, 2.3 MB), `theme.fishWhipEnabled`/`fishWhipSide`, and the art-skin branches in `canvas-node.tsx`.
-- **Progress-ring skins** — seven palettes × two themes, each with its own stroke widths, blur radii, tail length and
-  breathing period, one of them (`tide`) a second rendering path that filled the card with rising water.
-  `lib/canvas/progress-ring-skins.ts` and `config.progressRingSkin` are gone.
-- **The unlock flow** — a PBKDF2-SHA256 verifier in the client bundle gating exactly one skin; unlocking posted to
-  `POST /api/skin-unlocks`, which `store.Skins` persisted to `data/skin-unlocks.json`, and a hook merged the server's
-  list into the store and pushed back every local unlock the server did not have. Both routes, the store, its two
-  tests, the hook, the service and the password dialog are gone.
-
-45 i18n keys per locale went with them (870/856 → 825/811), and `lib/design-tokens.ts` too: its last reader was the
-progress-ring preview grid, so the `stone` table had no importer left.
-
-**Why** Every one of those mechanisms changed a colour or a timing constant on the same renderer, and the "skins"
-differed by appearance alone — seven rings that all meant "charging", six cards that all meant "a card". They cost a
-cache keyed by theme × skin, two override tables to keep in step with the base palette, a stylesheet section larger
-than the rest of the canvas chrome, 2.3 MB of art, an HTTP route and a file on disk, for a choice the canvas does not
-need.
-
-**What stays, and why that is not the same thing** The ring itself stays, with the palette and the numbers it shipped
-with (`cyan`, `balancedStyle`): the glow is the run's progress, not a preference. `theme.node.fill` is the card
-background again, and `use-canvas-theme.ts` is a hook rather than a palette resolver.
-
-**Where** `frontend/src/lib/canvas/use-canvas-theme.ts`, `frontend/src/components/canvas/canvas-node.tsx`,
-`frontend/src/styles/globals.css`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
 
 ## 194. A dropdown's list outranks the dialog that opened it
 
@@ -8019,54 +7396,6 @@ holding a result take an instruction without losing it. What changed is who may 
 **Where** `frontend/src/lib/canvas/node-prompt-field.ts` (`nodeContentOf`),
 `frontend/src/components/canvas/canvas-node-generation.ts` (the refusal),
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/lib/canvas/canvas-agent-tools.ts`.
-
-
-## 231. The config node is gone, and the panel framework that only it used
-
-**Decision** `config` is no longer a node type. It went with its definition and default size, its
-`CanvasConfigComposer` ("组装提示词") and `CanvasConfigNodePanel`, the `generationMode` field and every branch that
-read it, the connection rules that existed only to point a wire at one or draw a wire from one, `findRetrySourceNode`,
-`hasSourceHandle`, `renderNodeContent`, `useBuiltinPanel` with its `writeBackToSelf` branch, the text node's
-"用文本生图" button, `kit/media.tsx`, five i18n namespaces and the `sentPrompt` plumbing only its panel read.
-
-With no type that could generate into a *new* node, the four run functions stop asking: **generating writes in
-place**, which is what #77 decided and what the image run already did. The `isImageNode` / `reuseTextNode` /
-`reuseVideoNode` / `reuseAudioNode` branches, the nodes they spawned and `pendingChildIds` are gone.
-
-**Why** The config node was a card whose only job was to hold a prompt and make nodes, and after #229 and #230
-every node holds its prompt: the box is the question, the card is the answer, `composerContent` is what you type
-when the card is not to be thrown away. What it alone could do:
-
-- *Keep the old result and make another* — duplicating the node does that, and the copy carries the prompt, the
-  model and the size.
-- *`@` to choose which wired references go into the request* — the one thing with no replacement, and the one
-  thing nobody used. It was also a trap: pressing generate after typing a prompt with no `@` silently dropped
-  every wired picture, text and video (LoRAs excepted) while the panel still said 参考图 N 张.
-
-Against that it forced four special cases on everything else: a type branch in `promptFieldOf`, the only node with
-no source handle, the only type that generated into a new node, and a hub rule — *a node wired into a config node
-takes that config's other wires as its inputs* — that no decision ever explained and that #230's refusal then had
-to mirror. It was also hard to find: 新建 never offered it; two gestures made one (drag a wire to empty canvas, or
-the text node's toolbar button), and the double-click menu called it 生成配置, a name nothing else used.
-
-**What this changes for a person** Generating replaces the node's content, always; a variant is a duplicate node or
-a second node fed by a wire. The text node's toolbar loses "用文本生图": wire the text node into an image node
-instead — the gesture the agent's instructions describe and the panel already supports.
-
-**What this changes for the agent** `create_node` makes four types (`image`, `video`, `audio`, `text`), and
-`generate` no longer reads a `generationMode`. Nothing else: the tools for a config node were the tools for any node.
-
-**What this does not do** No migration. A canvas written before this renders a config node as an unknown node
-(`canvas.node.missingNode`), which is what `CanvasNodeTypeId` was made open for: a saved canvas is data, and a type
-this build lacks is a missing node, not a refused file. Deleting that card is the user's call.
-
-Left alone on purpose: `interactionToggle`, `forceInteractive`, `transparentBackground`, `showInCreateMenu` and
-`hidePanel` — the plugin framework #148 left behind. The config node used none of them, so they are unrelated debt,
-and removing them touches how a node takes pointer events. A separate decision.
-
-**Where** `frontend/src/lib/canvas/{builtin-nodes,node-prompt-field,canvas-agent-view}.ts`,
-`frontend/src/pages/canvas/project.tsx`, `frontend/src/pages/canvas/hooks/use-node-generation.ts`,
-`frontend/src/components/canvas/panels/`, `internal/server/{routes_mcp.go,agent_instructions.go}`.
 
 
 ## 232. The node definition loses the flags nothing set
@@ -9469,33 +8798,6 @@ the rule it now follows is a field on the definition rather than arithmetic in t
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
 
 
-## 265. A branch for a workflow the registry does not have
-
-**Decision** The two places that still named `video-h3-fast` are gone: the filter inside
-`WorkflowModelPicker` and the special case in the H3 composer's mode switch. The composer now always routes
-a mode change through `videoModelForWorkflow`, which is what every other H3 node already did.
-
-**Why** The workflow is not in `workflows/registry.json` — the video entries are `video-h3-t2v`,
-`video-h3-frames`, `video-h3-ref2va`, `video-h3-character-swap` and `video-rife` — and no Go file names it
-either. So both branches guarded an id the server cannot send: the picker filtered out a model that can
-never be in the list, and the composer's early return was unreachable. #263 left the remaining `isH3*`
-branches in this file on purpose, calling them a UI question about one family of workflows; a branch for a
-workflow that is not in the registry is not a question, it is a leftover of the days when the client knew
-which workflows existed.
-
-**Cost** None. The only thing that could still reach those branches is a saved node whose model is
-`video-h3-fast`, and there is no such node: the project is unreleased, and nothing was written while that id
-existed. That is why this is a deletion rather than a compatibility shim — the shim would have had to be
-carried forever and would have taught the next reader that the id means something.
-
-**Tested** `npx tsc --noEmit` (removing the only `channelModelOf` use in the picker left an unused import,
-which the compiler refuses), `npm run check` (866/852 keys, 182 modules, prettier clean), `npx vitest run`
-(40 files, 374 tests), `npm run build`.
-
-**Where** `frontend/src/components/model-picker.tsx`,
-`frontend/src/components/canvas/canvas-node-prompt-panel.tsx`.
-
-
 ## 266. The composer asks what a workflow declares, not which workflow it is
 
 **Decision** The five id tests left in the video composer are now reads of the declaration:
@@ -10734,51 +10036,6 @@ boolean branch of the deleted parameter form; exports: `Collapse` and `WorkflowP
 `pages/canvas/project.tsx`, `pages/canvas/hooks/use-image-editors.ts` (`upscaleImageNode`),
 `i18n/locales/{zh-CN,en-US}.ts` (`canvas.upscale.*`).
 
-## 295. The workflow visibility switch is gone, not fixed
-
-**Decision** `store.Visibility` and its file (`data/workflow-visibility.json`), `POST
-/api/workflows/{id}/visibility`, `enabled` on a `/api/workflows` row, `Enabled` and `ModelVisible` on a
-resource row, the resource centre's 启用 checkbox and its "Hidden from picker" tag, the client-side filter in
-`modelsOf`, and the four strings that explained them are all gone.
-
-**Why** It was a switch that could not keep its promise, and the promise had a stronger twin.
-
-1. **One of its entry points honoured it.** `modelsOf` dropped a hidden workflow from the model picker. The
-   upscale dialog's pool filtered by `category` only, a run submitted by workflow id was never refused, and the
-   availability totals had stopped reading it in #64. Hide it, and it left the dropdown and still ran.
-2. **"Hidden" already had a real mechanism.** A workflow whose pack is not installed reports `available: false`
-   or contributes no models, so it is not in the picker either. The checkbox was a weaker second way to say the
-   same thing.
-3. **A preference that is always on is not free.** It cost a store, a file, a route, a field on two API rows, a
-   checkbox, four strings and a filter — to hide one row in a dropdown whose entries are already split by kind
-   and number fewer than ten.
-
-`ModelVisible` went with it: its only writer set it to `true` unconditionally (`internal/resource/status.go`),
-so the "Canvas entry" tag it gated could not render.
-
-**Rejected** Making it real — every entry point reading `enabled`, `POST /api/runs` refusing a hidden workflow,
-the agent honouring it too. That is a policy ("this workflow is unavailable in this workspace") with a
-server-side meaning, and nothing needs it: one user's board, and the way to not have a workflow is not to
-install it. #64 kept this switch while deleting the registry's `hidden` flag, on the grounds that `hidden` was
-deciding for the user; the ground was right and the conclusion was not, because a switch that decides nothing
-is worse than no switch.
-
-**Cost** A workflow that is installed and runnable can no longer be kept out of the model picker. If that ever
-becomes a requirement, the honest shape is a server-side policy whose refusal reaches the run — not a
-client-side filter that only edits a list. An install's `data/workflow-visibility.json` is left on disk and
-read by nothing; deleting a user's file on upgrade is not this change's business.
-
-**Tested** `go test ./...` — the store's two visibility tests and the route's end-to-end test are deleted with
-it, and `TestWorkflowsReportTheirModelIds` no longer asserts an `enabled` field. `frontend/tests/server-models.test.ts`:
-"leaves out a workflow the user disabled" is gone, "leaves out a workflow ComfyUI cannot run" stays. Plus
-`npx tsc --noEmit`, `npm run check`, `npx vitest run` (426), `make check` (502 exported declarations, every one
-reachable), `make build`, `make frontend`. The running server needs a restart to stop serving the deleted route.
-
-**Where** `internal/store/preferences.go`, `internal/server/server.go`, `internal/server/routes_admin.go`,
-`internal/resource/{resource.go,status.go}`, `frontend/src/lib/server-models.ts`,
-`frontend/src/services/api/resources.ts`, `frontend/src/components/settings/resource-center-panel.tsx`,
-`frontend/src/services/api/workflows.ts`, `frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `docs/server.md`.
-
 ## 296. The image toolbar does not offer to copy a prompt
 
 **Decision** The `copyPrompt` quick tool is gone: its definition in `imageToolDefinitions`, its handler in the
@@ -11682,3 +10939,48 @@ its card were both gone. `npx vitest run` (534), `npx tsc --noEmit`, `npm run ch
 **Where** `frontend/src/lib/canvas/canvas-agent-tools.ts` (`CanvasHands["deleteNodes"]`, `deleteNode`),
 `frontend/src/pages/canvas/project.tsx` (`deleteNodes`), `internal/server/routes_mcp.go`,
 `frontend/tests/canvas-agent-tools.test.ts`, and #292's cost paragraph above.
+
+## 319. One question, one reader: the node tools are cut by what they answer
+
+**Decision** Seven tools over a node's content, and each answers exactly one thing: `read_node` / `set_node` for
+the parameters of the next run (which workflow and mode, size, length, quality, seed, background, container,
+instructions, the workflow's own knobs), `read_prompt` / `set_prompt` for the words it will be asked, `read_text` /
+`set_text` for the words it holds, and `read_media` for the picture, film or sound itself — which has no writer,
+because a file enters the canvas as a new node (#228). A reader reports exactly what its writer writes: `set_node`
+answers with the same `configuredClause` that `read_node` gives, and neither carries bytes.
+
+`read_node` carries no media, no words, no run state and no maker. State and provenance stay on the `list_nodes`
+line and in the caption `read_media` sends with a picture. `set_node` is the old `set_node_settings` and `set_model`
+in one call: the run is chosen first, and every stated setting is judged against the contract of the model that
+will run it (`nodeContract(nodeId, run)`), in one write — all of it or none of it.
+
+**Why** The reads were cut by payload size, not by question: `read_node` answered with content, the picture's
+bytes, the run's state and what made it, while `read_prompt` answered with the words *and* the whole
+configuration. Two names with one `nodeId` differed by three orders of magnitude in cost, so nothing at the call
+site said what a read would spend. Measured on one real session (`canvases/0d0a9a0c2250/session.alaya`, 55.1 MiB,
+235 tool calls): **20 `canvas_read_node` calls carried 54.90 MiB — 99.7% of the conversation** — while the other
+215 calls together carried 65 kB. Two of those reads were made to answer 最新的图片是哪一张 / 最旧的图片是哪一张, on
+nodes the same conversation had already read, for a date that its last `list_nodes` (3.5 kB) already printed: 5.8
+MiB for two facts.
+
+The writes had the mirror-image defect. A size is judged against the workflow that will run it, and #309's promise
+that "a call that gets any setting wrong writes none of them" could not hold across two calls: `set_model` would
+succeed, and the size that followed would be refused, leaving the user's one sentence half applied.
+
+**Cost** One more name (20 tools), and #257's rewrite workflow now reads twice — `read_prompt` for the words and
+`read_node` for the run — where it used to read once. Both answers are a few hundred bytes, which is the trade the
+old arrangement could not make while `read_node` carried pictures. `planNodeModel` and `planNodeSettings` keep
+their own validation; `set_node` only decides the order and the atomicity. The rule "change the model when the user
+asks for that model, never to tidy" is now carried by the system prompt alone, no longer by a tool of its own.
+
+**Tested** `npx vitest run` (544, including: `read_node` never returns a non-text block, `read_media` returns the
+image block plus its caption, `read_node` on a text node points at `read_text`, `set_node` writes model and size
+together and writes nothing when the size is refused, `set_node` judges the size by the contract of the model being
+set), `npx tsc --noEmit`, `npm run check` (i18n, exports, prettier), `npm run build` 573.63 kB, `make check`
+(vet, every Go package, deadcode 503 exports), and `tools/list` on a live server: twenty names in the order the
+agent receives them.
+
+**Where** `frontend/src/lib/canvas/canvas-agent-tools.ts` (`readNode`, `readText`, `readMedia`, `readPrompt`,
+`setNode`, `CanvasHands["nodeContract"]`), `frontend/src/pages/canvas/project.tsx` (`nodeContract`),
+`internal/server/{routes_mcp.go,agent_instructions.go,run_notice.go}`, `internal/server/{mcp,run_notice}_test.go`,
+`frontend/tests/canvas-agent-tools.test.ts`.
