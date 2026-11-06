@@ -92,7 +92,9 @@ export type MentionSegment = { kind: "text"; text: string } | { kind: "link"; id
  * What a mention means does not depend on the words being scanned: the ids come from the message itself —
  * the block it was sent with — so two nodes with the same name are two different links even though they read
  * the same, and a name the canvas still has is the fallback, so an answer that mentions a node is clickable
- * too. A transcript written before labels were unique is read the same way: one citation per occurrence, in
+ * too. A node answers to its **id** as well as its name: every tool answers with ids, so an agent writing
+ * `@image-1793960998462-zngu6` has named the node precisely, and a title is the one token that cannot be
+ * assumed unique (#163). A transcript written before labels were unique is read the same way: one citation per occurrence, in
  * the order they were cited, and an occurrence past the last of them stays on the node that was cited (#163).
  *
  * Only the scan is per run of text. The two tables it needs — what the canvas calls each node, and the labels
@@ -105,6 +107,13 @@ export function mentionResolver(citations: Citation[], nodes: Citation[]): (text
     for (const node of nodes) {
         if (!node.label || named.has(node.label)) continue;
         named.set(node.label, node.id);
+    }
+    // Then the ids, which are what the tools answer with and what an answer therefore writes: `@image-1` is a
+    // node, not a word. A title that happens to be another node's id keeps the title — a name the user can see
+    // beats a coincidence — so these are added only where nothing has claimed the token.
+    for (const node of nodes) {
+        if (!node.id || named.has(node.id)) continue;
+        named.set(node.id, node.id);
     }
     const cited = citations.filter((citation) => citation.label);
     const labels = [...new Set([...named.keys(), ...cited.map((citation) => citation.label)])].sort((a, b) => b.length - a.length);

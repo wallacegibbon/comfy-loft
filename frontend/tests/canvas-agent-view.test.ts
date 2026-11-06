@@ -93,3 +93,22 @@ describe("the canvas as the agent reads it", () => {
         expect(canvas([picture(320, 240)])[1]).toBe("- image-1 (image) at (40, -12), 320×240");
     });
 });
+
+/**
+ * A name on the line only when the user gave one (#320).
+ *
+ * Every node keeps a snapshot of its type's translated title, so `"Image"` was printed beside `(image)` on every
+ * picture — a name that belongs to eleven nodes and names none of them. A title the user typed is theirs and is
+ * printed as it is.
+ */
+describe("a node's name", () => {
+    const titled = (fields: { title?: string; titleKey?: string }): CanvasNodeData => ({ ...node("image"), ...fields });
+
+    test("is not printed when it is only the type's own snapshot", () => {
+        expect(describeCanvas([titled({ title: "Image", titleKey: "canvas.nodeTypes.image" })], [])).not.toContain('"Image"');
+    });
+
+    test("is printed when somebody chose it", () => {
+        expect(describeCanvas([titled({ title: "hero shot" })], [])).toContain('"hero shot"');
+    });
+});

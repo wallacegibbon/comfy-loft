@@ -23,7 +23,10 @@ export function describeCanvas(nodes: CanvasNodeData[], connections: CanvasConne
     const lines = [`${nodes.length} nodes, ${connections.length} connections`];
     const members = membersByGroup(nodes);
     for (const node of nodes) {
-        const title = node.title ? ` "${node.title}"` : "";
+        // The title only when it is one somebody chose: a node keeps a snapshot of its type's translated name,
+        // so every picture on the canvas carries `"Image"` and the line already says `(image)`. Printing it would
+        // teach a caller a name that belongs to eleven nodes — the same mistake a citation made (#320).
+        const title = node.title && !node.titleKey ? ` "${node.title}"` : "";
         const at = ` at (${Math.round(node.position.x)}, ${Math.round(node.position.y)}), ${Math.round(node.width)}×${Math.round(node.height)}`;
         const picture = pictureClause(node);
         const made = generationClause(node.metadata);

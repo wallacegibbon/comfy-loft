@@ -196,7 +196,8 @@ func TestAgentSpawnCarriesTheCanvasRule(t *testing.T) {
 		"never from where the cards are",
 		// #286: asking about a node is answered by moving the user's view to it.
 		"Naming a node is not showing it",
-		"write its title with an @ in front",
+		"name it with an @ in front",
+		"the id the tools answer with, or the node's own title",
 		// The panel draws Markdown and no HTML: a model that dresses an @id in a tag shows the tag.
 		"not dressed in a tag",
 		"the panel draws no HTML",

@@ -98,6 +98,25 @@ describe("mentionSegments", () => {
         ]);
     });
 
+    it("finds a node by the id the tools answer with, which is what an answer writes", () => {
+        // Measured: every answer in one session named a node `@image-…`, the only name it had ever been given,
+        // and nothing happened when it was clicked. The title is `图片`; the id is the address.
+        const real = [{ id: "image-1793960998462-zngu6", label: "图片" }];
+        expect(mentionSegments("已将图片 @image-1793960998462-zngu6 移到 (500, -200)", [], real)).toEqual([
+            { kind: "text", text: "已将图片 " },
+            { kind: "link", id: "image-1793960998462-zngu6", label: "image-1793960998462-zngu6" },
+            { kind: "text", text: " 移到 (500, -200)" },
+        ]);
+    });
+
+    it("reads the longest token first, so one id is not another id's prefix", () => {
+        const many = [
+            { id: "image-1", label: "图片" },
+            { id: "image-10", label: "图片 2" },
+        ];
+        expect(mentionSegments("@image-10", [], many)).toEqual([{ kind: "link", id: "image-10", label: "image-10" }]);
+    });
+
     it("keeps a repeated citation on the node that was cited, not on the next node of that name", () => {
         // The same node cited twice reads the same twice; the third occurrence has no citation left to
         // spend, and must not drift to the other node that happens to be called `图片`.

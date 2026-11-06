@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import i18n from "@/i18n";
-import { nodeTitle } from "@/lib/canvas/node-title";
+import { mentionLabel, nodeTitle } from "@/lib/canvas/node-title";
 import { channelName, normalizeChannelModels } from "@/stores/use-config-store";
 
 /**
@@ -48,5 +48,26 @@ describe("channelName", () => {
 describe("normalizeChannelModels", () => {
     it("keeps the capability a stored model had", () => {
         expect(normalizeChannelModels([{ name: "audio-minimax-music-3", capability: "audio" }])[0].capability).toBe("audio");
+    });
+});
+
+/**
+ * What a mention calls a node.
+ *
+ * A title is not an address: every picture is created as "Image" (or 图片), so ten of them are ten `@Image`s and
+ * the reader picking one has nothing to go on. The id names exactly one node, and it is what every tool answers
+ * with — so a node the user has not named is mentioned by its id, and one they have named keeps their words.
+ */
+describe("mentionLabel", () => {
+    it("is the id when the node only has the default title of its type", () => {
+        expect(mentionLabel({ id: "image-1793960998462-zngu6", title: "图片", titleKey: "canvas.nodeTypes.image" })).toBe("image-1793960998462-zngu6");
+    });
+
+    it("is the name the user gave it, which is the one thing that reads like a name", () => {
+        expect(mentionLabel({ id: "image-1", title: "hero shot" })).toBe("hero shot");
+    });
+
+    it("falls back to the id for a node with no title at all", () => {
+        expect(mentionLabel({ id: "image-1" })).toBe("image-1");
     });
 });

@@ -10984,3 +10984,41 @@ agent receives them.
 `setNode`, `CanvasHands["nodeContract"]`), `frontend/src/pages/canvas/project.tsx` (`nodeContract`),
 `internal/server/{routes_mcp.go,agent_instructions.go,run_notice.go}`, `internal/server/{mcp,run_notice}_test.go`,
 `frontend/tests/canvas-agent-tools.test.ts`.
+
+## 320. A mention names a node by its id, unless the user named it
+
+**Decision** `@` on the canvas cites a node by the id every tool answers with — `@image-1793960998462-zngu6` — and
+by the user's own words when they renamed it (`@hero shot`). One function says which: `mentionLabel` in
+`node-title.ts` returns the title when the node carries a user-typed one, and the id otherwise. A default title
+is a translation of the node's *type*, not a name.
+
+The reader accepts both forms. `mentionResolver` maps a node's id to itself as well as its name, so an answer
+that writes `@image-…` — which is what an agent writes, because ids are what its tools give it — is a link. The
+longest token still wins, and a title that happens to equal another node's id keeps the title.
+
+The same rule reaches the list: `list_nodes` prints a node's title only when it is one the user chose, because
+every node keeps a snapshot of its type's translated name and `"Image"` beside `(image)` is a name that belongs
+to every picture on the canvas.
+
+**Why** A canvas of ten pictures cited all ten as `@Image`; `citationLabel` disambiguated them as `@Image 2`,
+`@Image 3`, which identifies a picture to nobody, and the agent ended up writing an id that the transcript then
+could not resolve — so the one thing a mention is for, the jump, was the thing that did not work. The id is the
+only token that names exactly one node, it is already the address every tool reports, and a title is the only
+one that can be assumed *not* unique.
+
+**Cost** A transcript reads `@image-1793960998462-zngu6` where it used to read `@Image`, which is longer and
+uglier and says which node it is. A node renamed by the user keeps their words, so the two forms coexist in one
+conversation — which the reader already handles. Old transcripts keep working: their labels come from the
+message's own reference block, not from the canvas.
+
+**Tested** `npx vitest run` 558 (three for `mentionLabel`: a default title is the id, a renamed node is the name,
+a node with no title falls back to the id; three for the resolver: an id a tool answered with, the longest id
+first so `@image-10` is not `@image-1`, and the draft line a pick writes; two for the list: a snapshot title is
+not printed and a chosen one is), `npx tsc --noEmit`, `npm run check`,
+`npm run build` 574.67 kB, `go test ./internal/server/` (the system-prompt assertions).
+
+**Where** `frontend/src/lib/canvas/node-title.ts` (`mentionLabel`),
+`frontend/src/lib/canvas/agent-references.ts` (`mentionResolver`),
+`frontend/src/components/canvas/canvas-agent-panel.tsx` (`cite`),
+`frontend/src/lib/canvas/canvas-agent-view.ts` (`describeCanvas`), `internal/server/agent_instructions.go`,
+`frontend/tests/{node-title,agent-references,canvas-agent-view}.test.ts`.

@@ -6,7 +6,7 @@ import { citationLabel, mentionResolver, referenceBlock, referenceLine, type Cit
 import { insertSpoken } from "@/lib/canvas/agent-dictation";
 import { agentIsWorking, agentRunState, textOf, transcriptEvent, transcriptWindow, type AgentRunState, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
 import { contextSegment, speedSegment } from "@/lib/canvas/agent-usage";
-import { nodeTitle } from "@/lib/canvas/node-title";
+import { mentionLabel, nodeTitle } from "@/lib/canvas/node-title";
 import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import { reasoningPreview } from "@/lib/canvas/reasoning-preview";
 import { toolSubjectOf } from "@/lib/canvas/tool-argument";
@@ -437,13 +437,13 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         pickAtRef.current = -1;
         if (at < 0) return;
         const node = nodes.find((candidate) => candidate.id === nodeId);
-        // The label is what the node is called on the canvas — the same words the reader sees — with an
-        // ordinal when that name is already cited here: a second image node carries the same default title.
+        // A node the user named is cited by that name; one they did not is cited by its id, because ten pictures
+        // share the default title and `@Image 2` says nothing about which picture it is.
         const already = citations.find((citation) => citation.id === nodeId);
         const label = already
             ? already.label
             : citationLabel(
-                  node ? nodeTitle(node, t) || nodeId : nodeId,
+                  node ? mentionLabel(node) : nodeId,
                   citations.map((citation) => citation.label),
               );
         // The `@` and the space around the label: the next thing typed belongs after it, not inside it.

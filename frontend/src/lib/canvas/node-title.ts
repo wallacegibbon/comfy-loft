@@ -23,3 +23,16 @@ export function nodeTitle(node: TitleSource, t: Translate) {
     if (node.titleKey) return t(node.titleKey, node.titleParams);
     return node.title || "";
 }
+
+/**
+ * What a mention calls a node: the name the user gave it, or its id.
+ *
+ * A mention has to name one node. A title does not: every picture starts as "Image", so a canvas of ten of them
+ * cites ten `@Image`s and the eleventh reader cannot tell which is meant — the ordinal `@Image 2` disambiguates
+ * them but says nothing about the picture. The id is the one token that names exactly one node, it is what every
+ * tool answers with, and it is what an agent writes back. So a node the user has not named is mentioned by its
+ * id, and a node they have named keeps their words.
+ */
+export function mentionLabel(node: TitleSource & { id: string }) {
+    return node.titleKey ? node.id : node.title || node.id;
+}
