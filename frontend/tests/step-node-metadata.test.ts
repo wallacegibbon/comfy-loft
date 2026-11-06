@@ -110,5 +110,5 @@ test("a node a button creates is ready to run, and runs nothing until asked", ()
     expect(metadata.params).toBeUndefined();
     // No content yet — and that is what makes it a generator rather than material: its panel is the step panel,
     // with the source wired in and a send button that is the first thing that spends anything (#297, #301).
-    expect(nodeCanGenerate({ id: "n", type: "image", title: "Upscale", position: { x: 0, y: 0 }, width: 240, height: 240, metadata } as never)).toBe(true);
+    expect(nodeCanGenerate({ id: "n", type: "image", position: { x: 0, y: 0 }, width: 240, height: 240, metadata } as never)).toBe(true);
 });

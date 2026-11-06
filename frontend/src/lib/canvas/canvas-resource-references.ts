@@ -87,7 +87,7 @@ function labelResourceNodes(nodes: CanvasNodeData[], active: boolean) {
                 nodeId: node.id,
                 kind,
                 label,
-                title: node.title || label,
+                title: label,
                 previewUrl: node.metadata?.content || resource?.url,
                 text: resourceText(node),
                 loras: resource?.kind === "lora" ? resource.loras : undefined,

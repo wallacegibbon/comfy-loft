@@ -69,7 +69,6 @@ export function useContentIngress(deps: ContentIngressDeps) {
         const newNode: CanvasNodeData = {
             id,
             type: CanvasNodeType.Image,
-            title: file.name,
             position: { x: position.x - size.width / 2, y: position.y - size.height / 2 },
             width: size.width,
             height: size.height,
@@ -91,7 +90,6 @@ export function useContentIngress(deps: ContentIngressDeps) {
             {
                 id,
                 type: CanvasNodeType.Video,
-                title: file.name,
                 position: { x: position.x - size.width / 2, y: position.y - size.height / 2 },
                 width: size.width,
                 height: size.height,
@@ -112,7 +110,6 @@ export function useContentIngress(deps: ContentIngressDeps) {
             {
                 id,
                 type: CanvasNodeType.Audio,
-                title: file.name,
                 position: { x: position.x - spec.width / 2, y: position.y - spec.height / 2 },
                 width: spec.width,
                 height: spec.height,

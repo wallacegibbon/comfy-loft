@@ -23,7 +23,7 @@ function documentWith(nodes: CanvasNodeData[]): CanvasDocument {
 }
 
 function nodeFrom(metadata: CanvasNodeData["metadata"]): CanvasNodeData {
-    return { id: "n1", type: "image", title: "n1", position: { x: 0, y: 0 }, width: 100, height: 100, metadata };
+    return { id: "n1", type: "image", position: { x: 0, y: 0 }, width: 100, height: 100, metadata };
 }
 
 describe("a node built from a finished file", () => {

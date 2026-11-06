@@ -444,13 +444,7 @@ export default {
             audio: "音频参考",
             select: "选择节点",
         },
-        upscale: {
-            title: "图片放大",
-        },
         node: {
-            node: "节点",
-            untitled: "未命名节点",
-            renameHint: "双击修改节点名称",
             group: "组",
             nodeCount: "{{count}} 个节点",
             awaitingResult: "等待结果",
@@ -466,7 +460,7 @@ export default {
             emptyAudio: "空音频节点",
             audio: "音频",
         },
-        videoFrames: { first: "截取首帧", last: "截取尾帧", current: "截取当前帧", firstTitle: "{{name}} 首帧", lastTitle: "{{name}} 尾帧", currentTitle: "{{name}} 当前帧", captured: "已生成图片节点", failed: "无法截取该画面，请重试" },
+        videoFrames: { first: "截取首帧", last: "截取尾帧", current: "截取当前帧", captured: "已生成图片节点", failed: "无法截取该画面，请重试" },
         sidePanel: {
             resize: "调整左侧面板宽度",
             tab: { canvases: "画布", elements: "元素" },
@@ -548,7 +542,6 @@ export default {
             zoomOut: "缩小",
             zoomIn: "放大",
             nodeInfo: "节点信息",
-            name: "名称",
             type: "类型",
             size: "尺寸",
             position: "位置",
@@ -579,7 +572,6 @@ export default {
             clipboardImageAdded: "已从剪切板添加图片",
             addFileFailed: "文件没能放进这个画布",
             clipboardTextAdded: "已从剪切板添加文本",
-            splitTitle: "{{name}} {{row}}-{{column}}",
             splitSuccess: "已切分为 {{count}} 个子节点",
             maskResult: "局部编辑结果",
             maskFailed: "局部修改失败",
@@ -595,7 +587,6 @@ export default {
             maskPrompt: "参考{{source}}为原图，{{mask}}是在原图上用蓝色半透明标注出的待修改区域。请只修改蓝色标注覆盖的区域，其余区域与原图保持完全一致，输出与原图相同尺寸的完整图片，并且结果中不要保留任何蓝色标注。修改要求：{{prompt}}",
             maskNodeTitle: "遮罩标注",
             maskNodeNeeded: "局部重绘需要一张遮罩：用标记工具在这张图上画出区域，或连一个带遮罩的节点",
-            cropNodeTitle: "裁剪结果",
         },
         lora: {
             none: "未选择",

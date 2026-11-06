@@ -8,7 +8,6 @@ const { CanvasNodeType } = await import("../src/types/canvas");
 const node = (metadata: CanvasNodeData["metadata"]): CanvasNodeData => ({
     id: "n",
     type: CanvasNodeType.Image,
-    title: "Image",
     position: { x: 0, y: 0 },
     width: 240,
     height: 240,

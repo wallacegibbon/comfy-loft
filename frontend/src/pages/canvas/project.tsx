@@ -1280,7 +1280,6 @@ function InfiniteCanvasPage() {
         const next: CanvasNodeData = {
             ...source,
             id,
-            title: `${source.title} Copy`,
             position: { x: source.position.x + 36, y: source.position.y + 36 },
         };
         const referenceConnections = connectionsRef.current.filter((connection) => connection.toNodeId === nodeId).map((connection) => ({ ...connection, id: nanoid(), toNodeId: id }));
@@ -1335,7 +1334,6 @@ function InfiniteCanvasPage() {
             return {
                 ...node,
                 id,
-                title: node.title.endsWith(" Copy") ? node.title : `${node.title} Copy`,
                 position: {
                     x: node.position.x + dx,
                     y: node.position.y + dy,
@@ -1856,12 +1854,6 @@ function InfiniteCanvasPage() {
         setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, content } } : node)));
     }, []);
 
-    // A hand-typed title replaces the generated one, so the key that would re-translate it goes with
-    // it: the node now says exactly what the user wrote, in every language.
-    const handleNodeTitleChange = useCallback((nodeId: string, title: string) => {
-        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, title, titleKey: undefined, titleParams: undefined } : node)));
-    }, []);
-
     const handleConfigNodeChange = useCallback((nodeId: string, patch: Partial<CanvasNodeData["metadata"]> = {}) => {
         setNodes((prev) =>
             prev.map((node) => {
@@ -1893,9 +1885,6 @@ function InfiniteCanvasPage() {
                 const child: CanvasNodeData = {
                     id,
                     type: CanvasNodeType.Image,
-                    title: t(`canvas.videoFrames.${position}Title`, { name: node.title || t("canvas.nodeTypes.video") }),
-                    titleKey: `canvas.videoFrames.${position}Title`,
-                    titleParams: { name: node.title || t("canvas.nodeTypes.video") },
                     position: { x, y },
                     ...size,
                     metadata: imageMetadata(image),
@@ -2003,7 +1992,7 @@ function InfiniteCanvasPage() {
             // pressed the button reads it in their language; the agent is answered with the full sentence.
             const emptyInputs = inputsHoldingNothing(nodeId, nodesRef.current, connectionsRef.current);
             if (emptyInputs.length) {
-                toast.warning(t("canvas.runtime.connectionHoldsNothing", { name: emptyInputs.map((input) => input.node.title || input.node.id).join(", ") }));
+                toast.warning(t("canvas.runtime.connectionHoldsNothing", { name: emptyInputs.map((input) => input.node.id).join(", ") }));
                 start({ started: false, reason: describeEmptyInputs(emptyInputs) });
                 return;
             }
@@ -2317,16 +2306,15 @@ function InfiniteCanvasPage() {
                   src: hoverPreviewNode.metadata.content,
                   width: hoverPreviewNode.metadata?.naturalWidth || hoverPreviewNode.width,
                   height: hoverPreviewNode.metadata?.naturalHeight || hoverPreviewNode.height,
-                  title: hoverPreviewNode.title || "",
               }
             : null;
     const showHoverPreview = Boolean(hoverPreviewMedia);
-    const retainedPreviewRef = useRef<{ video: boolean; src: string; title: string; width: number; height: number } | null>(null);
+    const retainedPreviewRef = useRef<{ video: boolean; src: string; width: number; height: number } | null>(null);
     // Written during render on purpose: the overlay stays mounted while it fades out, so the last preview has to be
     // retained after the hovered node clears. Sizing reuses the measured container size instead of reading layout here.
     if (hoverPreviewMedia) {
         const previewSize = fitNodeSize(hoverPreviewMedia.width, hoverPreviewMedia.height, size.width * 0.9, size.height * 0.9);
-        retainedPreviewRef.current = { video: hoverPreviewMedia.video, src: hoverPreviewMedia.src, title: hoverPreviewMedia.title, width: previewSize.width, height: previewSize.height };
+        retainedPreviewRef.current = { video: hoverPreviewMedia.video, src: hoverPreviewMedia.src, width: previewSize.width, height: previewSize.height };
     }
     const retainedPreview = retainedPreviewRef.current;
 
@@ -2463,7 +2451,6 @@ function InfiniteCanvasPage() {
                             onResizeEnd={handleNodeResizeEnd}
                             onContentChange={handleNodeContentChange}
                             onVideoDimensions={handleVideoDimensions}
-                            onTitleChange={handleNodeTitleChange}
                             onViewImage={handleNodeViewImage}
                             onSelectReference={pickingForAgent ? finishAgentPick : selectNodeReference}
                             onContextMenu={handleNodeContextMenu}
@@ -2530,14 +2517,10 @@ function InfiniteCanvasPage() {
                         {retainedPreview ? (
                             <>
                                 <div className="max-w-full truncate px-3.5 py-2 text-sm font-medium" style={{ color: theme.node.text }}>
-                                    {retainedPreview.title || t(retainedPreview.video ? "canvas.nodeTypes.video" : "canvas.nodeTypes.image")}
+                                    {t(retainedPreview.video ? "canvas.nodeTypes.video" : "canvas.nodeTypes.image")}
                                 </div>
                                 <div className="overflow-hidden" style={{ width: retainedPreview.width, height: retainedPreview.height }}>
-                                    {retainedPreview.video ? (
-                                        <video src={retainedPreview.src} muted playsInline preload="metadata" className="size-full object-contain" />
-                                    ) : (
-                                        <img src={retainedPreview.src} alt={retainedPreview.title} className="size-full object-contain" />
-                                    )}
+                                    {retainedPreview.video ? <video src={retainedPreview.src} muted playsInline preload="metadata" className="size-full object-contain" /> : <img src={retainedPreview.src} alt="" className="size-full object-contain" />}
                                 </div>
                             </>
                         ) : null}
@@ -2660,7 +2643,7 @@ function InfiniteCanvasPage() {
                     bodyClassName="p-0"
                     bodyStyle={{ display: "flex", justifyContent: "center", alignItems: "center", maxHeight: "80vh" }}
                 >
-                    {previewContent ? <img src={previewContent} alt={previewNode?.title || t("canvas.nodeTypes.image")} style={{ maxWidth: "100%", maxHeight: "80vh", objectFit: "contain" }} /> : null}
+                    {previewContent ? <img src={previewContent} alt="" style={{ maxWidth: "100%", maxHeight: "80vh", objectFit: "contain" }} /> : null}
                 </Dialog>
 
                 <Dialog

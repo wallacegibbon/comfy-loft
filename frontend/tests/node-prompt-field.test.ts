@@ -17,7 +17,7 @@ import type { CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
  */
 
 function node(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData {
-    return { id: `${type}-1`, type, title: `${type}-1`, position: { x: 0, y: 0 }, width: 320, height: 240, metadata };
+    return { id: `${type}-1`, type, position: { x: 0, y: 0 }, width: 320, height: 240, metadata };
 }
 
 const card = "宫崎骏风格的森林。";
@@ -76,7 +76,7 @@ describe("finding a node by its words", () => {
     test("the card's words are searchable, and so is a picture's question", () => {
         const text = node("text", { content: card });
         expect(nodeWords(text)).toContain(card);
-        expect(nodeWords(text)).toContain("text-1");
+        // A node has no name to search by: what a search finds is the words it holds or was asked (#321).
         expect(nodeWords(node("image", { prompt: question }))).toContain(question);
     });
 

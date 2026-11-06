@@ -23,16 +23,14 @@ export function describeCanvas(nodes: CanvasNodeData[], connections: CanvasConne
     const lines = [`${nodes.length} nodes, ${connections.length} connections`];
     const members = membersByGroup(nodes);
     for (const node of nodes) {
-        // The title only when it is one somebody chose: a node keeps a snapshot of its type's translated name,
-        // so every picture on the canvas carries `"Image"` and the line already says `(image)`. Printing it would
-        // teach a caller a name that belongs to eleven nodes — the same mistake a citation made (#320).
-        const title = node.title && !node.titleKey ? ` "${node.title}"` : "";
+        // No title: a node has no name. The line says what it is by id, type and contents, and a name that
+        // belonged to eleven pictures taught a caller a token that resolved to none of them (#321).
         const at = ` at (${Math.round(node.position.x)}, ${Math.round(node.position.y)}), ${Math.round(node.width)}×${Math.round(node.height)}`;
         const picture = pictureClause(node);
         const made = generationClause(node.metadata);
         const running = runClause(node.metadata);
         const content = oneLine(nodeContentOf(node));
-        lines.push(`- ${node.id} (${node.type})${title}${at}${picture}${groupClause(node, members)}${running ? ` [${running}]` : ""}${made ? ` ${made}` : ""}${content ? ` content: ${content}` : ""}`);
+        lines.push(`- ${node.id} (${node.type})${at}${picture}${groupClause(node, members)}${running ? ` [${running}]` : ""}${made ? ` ${made}` : ""}${content ? ` content: ${content}` : ""}`);
     }
     if (connections.length) lines.push("connections:");
     for (const connection of connections) lines.push(`- ${connection.fromNodeId} -> ${connection.toNodeId}`);

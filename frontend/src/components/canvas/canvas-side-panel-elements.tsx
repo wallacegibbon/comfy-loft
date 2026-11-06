@@ -216,7 +216,7 @@ export function CanvasElementsSection({
                                         title={selectMode ? undefined : t("canvas.sidePanel.focusNode")}
                                     >
                                         <span className="relative grid aspect-square w-full place-items-center overflow-hidden rounded-md">
-                                            {isImage ? <img src={previewUrlFor(node.metadata?.storageKey) || node.metadata?.content} alt={node.title} className="size-full object-cover" /> : <Icon className="size-6 opacity-60" />}
+                                            {isImage ? <img src={previewUrlFor(node.metadata?.storageKey) || node.metadata?.content} alt="" className="size-full object-cover" /> : <Icon className="size-6 opacity-60" />}
                                             {selectMode ? (
                                                 <span className="absolute left-1 top-1">
                                                     <CheckMark checked={isChecked} theme={theme} />
@@ -224,7 +224,7 @@ export function CanvasElementsSection({
                                             ) : null}
                                             {node.metadata?.status && node.metadata.status !== "idle" ? <span className="absolute right-1 top-1 size-1.5 rounded-full" style={{ background: STATUS_COLOR[node.metadata.status] || "transparent" }} /> : null}
                                         </span>
-                                        <span className="mt-1 block truncate text-xs font-medium leading-snug">{node.title || getNodeDefinition(node.type)?.title || t("canvas.node.untitled")}</span>
+                                        <span className="mt-1 block truncate text-xs font-medium leading-snug">{nodePreviewText(node)}</span>
                                     </button>
                                 );
                             })}
@@ -257,7 +257,7 @@ export function CanvasElementsSection({
                                                 type="button"
                                                 onClick={() => setCollapsedGroups((prev) => (prev.has(node.id) ? new Set([...prev].filter((id) => id !== node.id)) : new Set(prev).add(node.id)))}
                                                 className="ml-1 grid size-6 shrink-0 place-items-center opacity-55 transition hover:opacity-100"
-                                                aria-label={node.title}
+                                                aria-label={nodePreviewText(node)}
                                             >
                                                 <ChevronRight className={cn("size-3.5 transition-transform", !collapsedGroups.has(node.id) && "rotate-90")} />
                                             </button>
@@ -270,10 +270,10 @@ export function CanvasElementsSection({
                                         >
                                             {selectMode ? <CheckMark checked={isChecked} theme={theme} /> : null}
                                             <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-md">
-                                                {isImage ? <img src={previewUrlFor(node.metadata?.storageKey) || node.metadata?.content} alt={node.title} className="size-full object-cover" /> : <Icon className="size-5 opacity-60" />}
+                                                {isImage ? <img src={previewUrlFor(node.metadata?.storageKey) || node.metadata?.content} alt="" className="size-full object-cover" /> : <Icon className="size-5 opacity-60" />}
                                             </span>
                                             <span className="min-w-0 flex-1 space-y-0.5">
-                                                <span className="block truncate text-sm font-medium leading-snug">{node.title || getNodeDefinition(node.type)?.title || t("canvas.node.untitled")}</span>
+                                                <span className="block truncate text-sm font-medium leading-snug">{nodePreviewText(node)}</span>
                                                 <span className="block truncate text-xs leading-snug opacity-50">{nodePreviewText(node)}</span>
                                             </span>
                                             {node.metadata?.status && node.metadata.status !== "idle" ? <span className="size-1.5 shrink-0 rounded-full" style={{ background: STATUS_COLOR[node.metadata.status] || "transparent" }} /> : null}

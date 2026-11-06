@@ -44,7 +44,6 @@ const ready = useConfigStore.getState().isAiConfigReady;
 const videoNode = (model: string): CanvasNodeData => ({
     id: "saved-video",
     type: CanvasNodeType.Video,
-    title: "Saved video",
     position: { x: 0, y: 0 },
     width: 320,
     height: 180,

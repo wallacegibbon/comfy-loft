@@ -9,7 +9,6 @@ import { pickImageSource } from "@/lib/image-thumbnail";
 import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision } from "@/services/image-storage";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { NODE_MIN_SIZE, nodeRatio } from "@/lib/canvas/canvas-node-size";
-import { nodeTitle } from "@/lib/canvas/node-title";
 import { LoraNodeContent } from "@/components/canvas/nodes/lora-node";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasNodeProgressRing } from "./canvas-node-progress-ring";
@@ -45,7 +44,6 @@ type CanvasNodeProps = {
     onResizeEnd: (nodeId: string) => void;
     onContentChange: (nodeId: string, content: string) => void;
     onVideoDimensions?: (nodeId: string, width: number, height: number) => void;
-    onTitleChange: (nodeId: string, title: string) => void;
     onDownloadImage?: (node: CanvasNodeData) => void;
     onViewImage?: (node: CanvasNodeData, imageId?: string) => void;
     onSelectReference?: (nodeId: string) => void;
@@ -91,21 +89,16 @@ export const CanvasNode = React.memo(function CanvasNode({
     onResizeEnd,
     onContentChange,
     onVideoDimensions,
-    onTitleChange,
     onDownloadImage,
     onViewImage,
     onSelectReference,
     onContextMenu,
 }: CanvasNodeProps) {
     const theme = useCanvasTheme();
-    const titleTheme = theme.node;
     const { t } = useTranslation();
     const [hovered, setHovered] = useState(false);
     const definition = getNodeDefinition(data.type);
     const [isEditingContent, setIsEditingContent] = useState(false);
-    const [isEditingTitle, setIsEditingTitle] = useState(false);
-    // Editing starts from what is on screen, which may be a translation of a stored key.
-    const [titleDraft, setTitleDraft] = useState(() => nodeTitle(data, t));
     const hasImageContent = data.type === CanvasNodeType.Image && Boolean(data.metadata?.content);
     const hasVideoContent = data.type === CanvasNodeType.Video && Boolean(data.metadata?.content);
     const hasAudioContent = data.type === CanvasNodeType.Audio && Boolean(data.metadata?.content);
@@ -113,7 +106,6 @@ export const CanvasNode = React.memo(function CanvasNode({
     const isActive = isConnectionTarget || isSelected || isFocusRelated;
     const imageBorderColor = isActive ? selectionBlue : isRelated ? theme.node.muted : "transparent";
     const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const titleInputRef = useRef<HTMLInputElement>(null);
     const resizeRef = useRef({
         isResizing: false,
         corner: "bottom-right" as ResizeCorner,
@@ -126,35 +118,6 @@ export const CanvasNode = React.memo(function CanvasNode({
         keepRatio: false,
         ratio: 1,
     });
-
-    useEffect(() => {
-        setTitleDraft(nodeTitle(data, t));
-    }, [data.title]);
-
-    useEffect(() => {
-        if (!isEditingTitle) return;
-        titleInputRef.current?.focus();
-        titleInputRef.current?.select();
-    }, [isEditingTitle]);
-
-    const finishTitleEditing = useCallback(() => {
-        const resolved = nodeTitle(data, t);
-        const title = titleDraft.trim() || resolved || t("canvas.node.untitled");
-        setTitleDraft(title);
-        setIsEditingTitle(false);
-        if (title !== resolved) onTitleChange(data.id, title);
-    }, [data.id, data.title, onTitleChange, t, titleDraft]);
-
-    useEffect(() => {
-        if (!isEditingTitle) return;
-        const handleOutsidePointerDown = (event: PointerEvent) => {
-            const target = event.target;
-            if (target instanceof Node && titleInputRef.current?.contains(target)) return;
-            finishTitleEditing();
-        };
-        window.addEventListener("pointerdown", handleOutsidePointerDown, true);
-        return () => window.removeEventListener("pointerdown", handleOutsidePointerDown, true);
-    }, [finishTitleEditing, isEditingTitle]);
 
     useEffect(() => {
         const textarea = textareaRef.current;
@@ -291,42 +254,6 @@ export const CanvasNode = React.memo(function CanvasNode({
                 else onContextMenu(event, data.id);
             }}
         >
-            {!referenceSelectionState && (isSelected || hovered || isEditingTitle) && (
-                <div className="absolute left-3 top-[-28px] z-[65] max-w-[calc(100%-24px)]" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-                    {isEditingTitle ? (
-                        <input
-                            ref={titleInputRef}
-                            value={titleDraft}
-                            maxLength={64}
-                            className="h-6 max-w-full border-0 border-b border-dashed bg-transparent px-0 text-left text-xs font-medium outline-none"
-                            style={{ borderColor: titleTheme.muted, color: titleTheme.text }}
-                            onChange={(event) => setTitleDraft(event.target.value)}
-                            onBlur={finishTitleEditing}
-                            onKeyDown={(event) => {
-                                if (event.key === "Enter") finishTitleEditing();
-                                if (event.key === "Escape") {
-                                    setTitleDraft(nodeTitle(data, t));
-                                    setIsEditingTitle(false);
-                                }
-                            }}
-                        />
-                    ) : (
-                        <button
-                            type="button"
-                            className="block max-w-full truncate border-b border-dashed border-transparent px-0 py-0.5 text-left text-xs font-medium opacity-75 transition hover:border-current hover:opacity-100"
-                            style={{ color: titleTheme.text }}
-                            title={t("canvas.node.renameHint")}
-                            onDoubleClick={(event) => {
-                                event.stopPropagation();
-                                setIsEditingTitle(true);
-                            }}
-                        >
-                            {nodeTitle(data, t) || t("canvas.node.untitled")}
-                        </button>
-                    )}
-                </div>
-            )}
-
             <div
                 className="relative h-full w-full overflow-visible rounded-3xl border-2"
                 style={{
@@ -458,13 +385,13 @@ const nodeContentRenderers = {
     [CanvasNodeType.Group]: GroupNodeContent,
 } satisfies Record<CanvasNodeType, (props: NodeContentRendererProps) => ReactNode>;
 
-function GroupNodeContent({ node, theme, groupChildCount }: NodeContentRendererProps) {
+function GroupNodeContent({ theme, groupChildCount }: NodeContentRendererProps) {
     const { t } = useTranslation();
     return (
         <div className="pointer-events-none flex h-full w-full p-3">
             <div className="flex h-7 max-w-full items-center gap-2 px-1 text-xs font-medium" style={{ color: theme.node.text }}>
                 <Group className="size-3.5 shrink-0" style={{ color: theme.node.muted }} />
-                <span className="truncate">{node.title || t("canvas.node.group")}</span>
+                <span className="truncate">{t("canvas.node.group")}</span>
                 <span className="shrink-0 text-[11px] font-normal" style={{ color: theme.node.muted }}>
                     {t("canvas.node.nodeCount", { count: groupChildCount })}
                 </span>
@@ -701,7 +628,7 @@ function ImageContent({ node, scale, onDownload }: { node: CanvasNodeData; scale
 
     return (
         <div className="relative h-full w-full overflow-hidden rounded-3xl">
-            {content ? <img src={source} alt={node.title} draggable={false} onDragStart={(event) => event.preventDefault()} className="pointer-events-none block h-full w-full select-none object-contain" /> : <ImageSlotStatus node={node} />}
+            {content ? <img src={source} alt="" draggable={false} onDragStart={(event) => event.preventDefault()} className="pointer-events-none block h-full w-full select-none object-contain" /> : <ImageSlotStatus node={node} />}
             {content ? (
                 <button
                     type="button"

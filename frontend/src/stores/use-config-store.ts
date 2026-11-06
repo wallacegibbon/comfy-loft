@@ -102,8 +102,10 @@ type ModelChannel = {
     /** The stored name: a user-typed one, or a snapshot of the translated default. */
     name: string;
     /**
-     * The translation key a generated name came from. Present only until the user renames the channel;
-     * while it is, the name is rendered in the reader's language (docs/decisions.md #70).
+     * The translation key a generated name came from. Present only until the user renames the channel; while
+     * it is, the name is rendered in the reader's language — a channel saved on a Chinese machine reads
+     * "Local ComfyUI" on an English one. A stored name is data, so the key drives the display and the snapshot
+     * stays for whatever needs a string now.
      */
     nameKey?: string;
     baseUrl: string;
@@ -510,7 +512,7 @@ export function useEffectiveConfig() {
 }
 
 /** Normalize a mixed list of raw model names or model objects into deduped ChannelModel entries. */
-export function normalizeChannelModels(models: Array<string | ChannelModel> | undefined): ChannelModel[] {
+function normalizeChannelModels(models: Array<string | ChannelModel> | undefined): ChannelModel[] {
     const seen = new Set<string>();
     const result: ChannelModel[] = [];
     for (const item of models || []) {
@@ -603,7 +605,7 @@ function normalizeInputs(value: unknown) {
  * Same rule as a node title: a key wins, so a channel created in the Chinese UI does not appear under its
  * Chinese name in the English one. A name the user typed has no key and is shown as typed.
  */
-export function channelName(channel: Pick<ModelChannel, "name" | "nameKey">) {
+function channelName(channel: Pick<ModelChannel, "name" | "nameKey">) {
     return channel.nameKey ? i18n.t(channel.nameKey) : channel.name;
 }
 

@@ -12,7 +12,7 @@ import type { CanvasNodeData } from "../src/types/canvas";
  * filled — and deleting it because something unrelated was grouped elsewhere was never the intent (#292).
  */
 
-const node = (id: string, type: CanvasNodeData["type"], groupId?: string): CanvasNodeData => ({ id, type, title: id, position: { x: 0, y: 0 }, width: 320, height: 240, metadata: groupId ? { groupId } : {} });
+const node = (id: string, type: CanvasNodeData["type"], groupId?: string): CanvasNodeData => ({ id, type, position: { x: 0, y: 0 }, width: 320, height: 240, metadata: groupId ? { groupId } : {} });
 
 const ids = (result: { nodes: CanvasNodeData[] } | null) => result?.nodes.map((each) => each.id);
 const groupOf = (result: { nodes: CanvasNodeData[] } | null, nodeId: string) => result?.nodes.find((each) => each.id === nodeId)?.metadata?.groupId;
@@ -118,7 +118,6 @@ describe("who belongs to what after a move", () => {
     const card = (id: string, type: CanvasNodeData["type"], x: number, y: number, groupId?: string, size = 100): CanvasNodeData => ({
         id,
         type,
-        title: id,
         position: { x, y },
         width: size,
         height: size,
@@ -177,8 +176,8 @@ describe("who belongs to what after a move", () => {
  * and keeping it is the whole point of #292.
  */
 describe("the cards a move emptied", () => {
-    const box = (id: string): CanvasNodeData => ({ id, type: "group", title: id, position: { x: 0, y: 0 }, width: 300, height: 300, metadata: {} });
-    const held = (id: string, groupId: string): CanvasNodeData => ({ id, type: "text", title: id, position: { x: 100, y: 100 }, width: 100, height: 100, metadata: { groupId } });
+    const box = (id: string): CanvasNodeData => ({ id, type: "group", position: { x: 0, y: 0 }, width: 300, height: 300, metadata: {} });
+    const held = (id: string, groupId: string): CanvasNodeData => ({ id, type: "text", position: { x: 100, y: 100 }, width: 100, height: 100, metadata: { groupId } });
 
     test("a card whose last member was moved out is taken away", () => {
         const before = [box("g1"), held("m1", "g1")];

@@ -2329,49 +2329,6 @@ page load syncs its models, generates an image, and lists the workflows with no 
 `README.md`.
 
 
-## 70. Saved names are keys, not translations
-
-**Decision** A name the app generates is stored as a translation key, and rendered in the reader's
-language: `CanvasNodeData.titleKey` (+ `titleParams`) and `ModelChannel.nameKey`. `title` / `name` stay
-on the record as the snapshot — what a filename, an export, or a user-typed name looks like. Editing a
-title (or a channel name) clears the key: from then on the node says exactly what the user wrote.
-
-**What it fixed** Everything the app wrote down was written in the language that happened to be active.
-A canvas created in Chinese showed "图片", "音频" and "AI 超分" as node titles in the English UI, and the
-channel was called "本地 ComfyUI" there too. #66 and #67 fixed the _shipped_ text; this was the other
-half — generated text that outlives its session.
-
-**Why not store only the key** Two of the three uses of a title are not UI: `${node.title}.png` names a
-reference image, and the canvas export writes it into a file. Those need a string now, in whatever
-language. So the key drives display and the snapshot drives data, and a node without a key keeps working
-as before — a user-typed title, or one from a canvas written by an older build.
-
-**The migration** `CANVAS_PERSIST_VERSION` 2 adds `titleKey` to a stored node whose `title` matches one
-of the app's own defaults **in either language**; the same idea runs over the channel list on load (no
-version bump: the config store already rebuilds channels every time it reads). The matching list lives in
-`frontend/src/lib/canvas/node-title.ts` and has to be extended when a new default title is added; the test fails when
-a stored default goes unrecognised.
-
-**What is deliberately still a snapshot** Titles that _compose_ several translations — the multi-angle
-label (`前方 · 俯视 10° · 正面视角`), the split title's source name — store the composed string. They are
-descriptions of a particular moment, and rebuilding them would need the parameters, not just a key. The
-`Copy` suffix and asset titles (which are prompts) are the same kind of thing.
-
-**Tested** `frontend/tests/node-title.test.ts` (key wins, params pass through, a typed title is untouched, a dotted
-id, whole-title matching, `channelName` both ways) and a case in `tests/persist-migration.test.ts` (a
-stored "音频" becomes `canvas.nodeTypes.audio`, a typed title and an explicit key are untouched). In the
-browser: the existing canvas, created in Chinese, shows "Audio" and "Local ComfyUI" in English, and
-"音频" / "本地 ComfyUI" again after switching back — with nothing edited in between.
-
-**Where** `frontend/src/lib/canvas/node-title.ts`,
-`frontend/src/constant/canvas.ts`,
-`canvas/web/src/stores/canvas/canvas-persist.ts`,
-`frontend/src/stores/use-config-store.ts`,
-`frontend/src/components/canvas/canvas-node.tsx`,
-`frontend/src/pages/canvas/hooks/use-image-editors.ts`,
-`frontend/src/pages/canvas/project.tsx`.
-
-
 ## 71. There is one channel, and it is the gateway the page came from
 
 **Decision** The canvas has exactly one model channel. Its address is the gateway that served the page
@@ -10985,40 +10942,39 @@ agent receives them.
 `internal/server/{routes_mcp.go,agent_instructions.go,run_notice.go}`, `internal/server/{mcp,run_notice}_test.go`,
 `frontend/tests/canvas-agent-tools.test.ts`.
 
-## 320. A mention names a node by its id, unless the user named it
+## 321. A node has no name
 
-**Decision** `@` on the canvas cites a node by the id every tool answers with — `@image-1793960998462-zngu6` — and
-by the user's own words when they renamed it (`@hero shot`). One function says which: `mentionLabel` in
-`node-title.ts` returns the title when the node carries a user-typed one, and the id otherwise. A default title
-is a translation of the node's *type*, not a name.
+**Decision** A node is its id and its type. `CanvasNodeData` loses `title`, `titleKey` and `titleParams`; the
+rename UI on the card goes with them (the dashed label above a node, its double-click editor, and the two
+dismiss/cancel keys); every default title is gone from `NODE_DEFAULT_SIZE`, from the node factory and from
+`getNodeSpec`. Where a person or an agent needs words for a node, it is the type's own name
+(`getNodeDefinition(type).title` — "Image", "组"), the node's id, or what the node holds.
 
-The reader accepts both forms. `mentionResolver` maps a node's id to itself as well as its name, so an answer
-that writes `@image-…` — which is what an agent writes, because ids are what its tools give it — is a link. The
-longest token still wins, and a title that happens to equal another node's id keeps the title.
+The one place a *generated* name survived was the capture-frame menu on a video node ("视频 首帧"), and it goes
+too: the picture a capture makes is an ordinary image node, connected to the video it came from, and the
+connection is what says so.
 
-The same rule reaches the list: `list_nodes` prints a node's title only when it is one the user chose, because
-every node keeps a snapshot of its type's translated name and `"Image"` beside `(image)` is a name that belongs
-to every picture on the canvas.
+**Why** A title was three fields of ceremony for a label nobody read. Measured on the working canvas: 17 nodes,
+none renamed, every one carrying `title: "Image"` or `"Group"` — a name that belongs to eleven nodes and names
+none of them. It cost more than that: the side panel and the reference block fell back to it, `list_nodes`
+printed it beside `(image)`, an import named its node after the file, a duplicate appended " Copy", and a
+citation tried to be a name, because a mention that reads `@Image` cannot
+be resolved to a node and a mention that reads the id never needed a title at all.
 
-**Why** A canvas of ten pictures cited all ten as `@Image`; `citationLabel` disambiguated them as `@Image 2`,
-`@Image 3`, which identifies a picture to nobody, and the agent ended up writing an id that the transcript then
-could not resolve — so the one thing a mention is for, the jump, was the thing that did not work. The id is the
-only token that names exactly one node, it is already the address every tool reports, and a title is the only
-one that can be assumed *not* unique.
+**Cost** A canvas of pictures has nothing above a card to aim at, and the side panel's rows are separated by
+thumbnail and type name alone. Three i18n keys per language go with it (`canvas.node.untitled`,
+`canvas.node.renameHint`, the three `videoFrames.*Title`), plus `canvas.upscale.title`,
+`canvas.runtime.cropNodeTitle`, `canvas.runtime.splitTitle`, `canvas.nodeToolbar.name` and `canvas.node.node`.
+An older canvas keeps its `title` fields in the file — nothing reads them — and the next save drops them
+(`documentOf`). A media file a run is handed is now named by the node's id instead of its title, which is at
+least unique: eleven pictures all sent `Image.png`.
 
-**Cost** A transcript reads `@image-1793960998462-zngu6` where it used to read `@Image`, which is longer and
-uglier and says which node it is. A node renamed by the user keeps their words, so the two forms coexist in one
-conversation — which the reader already handles. Old transcripts keep working: their labels come from the
-message's own reference block, not from the canvas.
+**Tested** `npx vitest run` 547 (one new: a legacy document's title fields do not survive a save; the fixtures
+and the four assertions that read titles were rewritten around what a node actually says), `npx tsc --noEmit`
+(the type made the compiler visit all 47 places), `npm run check` (i18n: 823 zh keys and 790 en, no dead ones;
+exports; prettier), `npm run build` 570.04 kB, `go test ./internal/server/`.
 
-**Tested** `npx vitest run` 558 (three for `mentionLabel`: a default title is the id, a renamed node is the name,
-a node with no title falls back to the id; three for the resolver: an id a tool answered with, the longest id
-first so `@image-10` is not `@image-1`, and the draft line a pick writes; two for the list: a snapshot title is
-not printed and a chosen one is), `npx tsc --noEmit`, `npm run check`,
-`npm run build` 574.67 kB, `go test ./internal/server/` (the system-prompt assertions).
-
-**Where** `frontend/src/lib/canvas/node-title.ts` (`mentionLabel`),
-`frontend/src/lib/canvas/agent-references.ts` (`mentionResolver`),
-`frontend/src/components/canvas/canvas-agent-panel.tsx` (`cite`),
-`frontend/src/lib/canvas/canvas-agent-view.ts` (`describeCanvas`), `internal/server/agent_instructions.go`,
-`frontend/tests/{node-title,agent-references,canvas-agent-view}.test.ts`.
+**Where** `frontend/src/types/canvas.ts`, `frontend/src/constant/canvas.ts`, `frontend/src/lib/canvas/{node-registry,canvas-node-factory,canvas-document,canvas-agent-view,node-prompt-field,canvas-export,canvas-resource-references}.ts`,
+`frontend/src/components/canvas/{canvas-node,canvas-create-menus,canvas-side-panel-elements,canvas-node-hover-toolbar,canvas-node-reference-bar,canvas-agent-panel,canvas-node-generation,nodes/builtin-nodes}.tsx`,
+`frontend/src/pages/canvas/{project.tsx,hooks/use-content-ingress.ts,hooks/use-image-editors.ts}`,
+`frontend/src/i18n/locales/{zh-CN,en-US}.ts`, `frontend/src/lib/canvas/node-title.ts` (deleted).

@@ -15,7 +15,6 @@ import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/ty
 const node = (id: string, type: CanvasNodeData["type"], metadata: CanvasNodeData["metadata"], x = 0): CanvasNodeData => ({
     id,
     type,
-    title: type === CanvasNodeType.Text ? "Text" : "Image",
     position: { x, y: 0 },
     width: 340,
     height: 240,
@@ -131,7 +130,7 @@ describe("a wire that carries nothing", () => {
             ["t1", "empty"],
             ["i0", "empty"],
         ]);
-        expect(describeEmptyInputs(missing)).toMatch(/^t1 \(Text\) holds nothing yet.*; i0 \(Image\) holds nothing yet/);
+        expect(describeEmptyInputs(missing)).toMatch(/^t1 \(text\) holds nothing yet.*; i0 \(image\) holds nothing yet/);
     });
 
     it("says nothing when every wired node holds what it promised", () => {
@@ -146,8 +145,8 @@ describe("a wire that carries nothing", () => {
         const missing = inputsHoldingNothing("i2", nodes, [connect("i0", "i2"), connect("i1", "i2")]);
 
         expect(missing.map((input) => input.state)).toEqual(["running", "failed"]);
-        expect(describeEmptyInputs(missing)).toMatch(/i0 \(Image\) is still being made/);
-        expect(describeEmptyInputs(missing)).toMatch(/i1 \(Image\)'s last run failed/);
+        expect(describeEmptyInputs(missing)).toMatch(/i0 \(image\) is still being made/);
+        expect(describeEmptyInputs(missing)).toMatch(/i1 \(image\)'s last run failed/);
     });
 
     it("reads a group by what is inside it", () => {

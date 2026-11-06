@@ -111,10 +111,10 @@ function ReferenceItem({ node, onRemove, index }: { node: CanvasNodeData; onRemo
 function ReferencePreview({ node, content }: { node: CanvasNodeData; content?: string }) {
     const { t } = useTranslation();
     const resource = getNodeDefinition(node.type)?.resource?.(node);
-    if ((resource?.kind === "image" || node.type === CanvasNodeType.Image) && content) return <img src={content} alt={node.title} className="max-h-52 w-72 rounded-lg object-contain" />;
+    if ((resource?.kind === "image" || node.type === CanvasNodeType.Image) && content) return <img src={content} alt="" className="max-h-52 w-72 rounded-lg object-contain" />;
     if ((resource?.kind === "video" || node.type === CanvasNodeType.Video) && content) return <video src={content} className="max-h-52 w-72 rounded-lg" muted controls />;
     if ((resource?.kind === "audio" || node.type === CanvasNodeType.Audio) && content) return <audio src={content} className="w-72" controls />;
-    if (resource?.kind === "lora") return <div className="max-h-52 w-72 overflow-auto text-sm">{resource.loras?.map((lora) => `${lora.name} · ${lora.strength.toFixed(2)}`).join("\n") || node.title}</div>;
+    if (resource?.kind === "lora") return <div className="max-h-52 w-72 overflow-auto text-sm">{resource.loras?.map((lora) => `${lora.name} · ${lora.strength.toFixed(2)}`).join("\n")}</div>;
     // The words the node holds — never its prompt, which is what it was asked (#230).
-    return <div className="max-h-52 w-72 overflow-auto whitespace-pre-wrap text-sm">{nodeContentOf(node) || node.title || t("canvas.references.empty")}</div>;
+    return <div className="max-h-52 w-72 overflow-auto whitespace-pre-wrap text-sm">{nodeContentOf(node) || t("canvas.references.empty")}</div>;
 }

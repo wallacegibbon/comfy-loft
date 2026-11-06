@@ -12,7 +12,7 @@ import type { CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
  * nothing else in the canvas would say out loud (docs/decisions.md #311).
  */
 
-const node = (type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData => ({ id: `${type}-1`, type, title: `${type}-1`, position: { x: 0, y: 0 }, width: 320, height: 240, metadata });
+const node = (type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData => ({ id: `${type}-1`, type, position: { x: 0, y: 0 }, width: 320, height: 240, metadata });
 
 /** One picker entry, as the page builds it: the fields the decision reads, and nothing else. */
 type Entry = { value: string; workflowId: string } & Partial<{ names: string[]; label: string; mode: string; modes: string[]; modeMedia: Record<string, string>; blocked: string[]; step: boolean; takes: string; knobs: string[] }>;

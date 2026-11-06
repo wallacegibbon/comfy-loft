@@ -1,5 +1,3 @@
-import i18n from "@/i18n";
-
 import type { CanvasNodeDefinition } from "@/types/canvas-node";
 import { CanvasNodeType } from "@/types/canvas";
 
@@ -26,13 +24,13 @@ export function listNodeDefinitions() {
     return Array.from(definitions.values());
 }
 
-const FALLBACK_SPEC = { width: 340, height: 240, title: i18n.t("canvas.node.node"), metadata: {} as CanvasNodeDefinition["defaultMetadata"] };
+const FALLBACK_SPEC = { width: 340, height: 240, metadata: {} as CanvasNodeDefinition["defaultMetadata"] };
 
-// Provide default size, title, and metadata shared by createCanvasNode and agent operations.
+// Provide the default size and metadata shared by createCanvasNode and agent operations.
 export function getNodeSpec(type: string) {
     const def = definitions.get(type);
     if (!def) return FALLBACK_SPEC;
-    return { width: def.defaultSize.width, height: def.defaultSize.height, title: def.title, metadata: def.defaultMetadata };
+    return { width: def.defaultSize.width, height: def.defaultSize.height, metadata: def.defaultMetadata };
 }
 
 export function isBuiltinNodeType(type: string) {

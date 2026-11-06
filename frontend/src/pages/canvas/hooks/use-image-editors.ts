@@ -48,8 +48,6 @@ export function useImageEditors(deps: NodeEditorDeps) {
             const child: CanvasNodeData = {
                 id: childId,
                 type: CanvasNodeType.Image,
-                title: t("canvas.runtime.cropNodeTitle"),
-                titleKey: "canvas.runtime.cropNodeTitle",
                 position: { x: node.position.x + node.width + 96, y: node.position.y },
                 width,
                 height: width * (image.height / image.width),
@@ -84,9 +82,6 @@ export function useImageEditors(deps: NodeEditorDeps) {
                     return {
                         id,
                         type: CanvasNodeType.Image,
-                        title: t("canvas.runtime.splitTitle", { name: node.title || t("canvas.nodeTypes.image"), row: piece.row + 1, column: piece.column + 1 }),
-                        titleKey: "canvas.runtime.splitTitle",
-                        titleParams: { name: node.title || t("canvas.nodeTypes.image"), row: piece.row + 1, column: piece.column + 1 },
                         position: { x: startX + piece.column * (cellWidth + gap), y: startY + piece.row * (cellHeight + gap) },
                         width: cellWidth,
                         height: cellHeight,
@@ -126,7 +121,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
             const generationMask = isQwenImage ? await uploadImage(payload.binaryMaskDataUrl) : null;
             const maskNodeId = nanoid();
             const childId = nanoid();
-            const source = { id: node.id, name: `${node.title || node.id}.png`, type: node.metadata.mimeType || "image/png", dataUrl: node.metadata.content, storageKey: node.metadata.storageKey };
+            const source = { id: node.id, name: `${node.id}.png`, type: node.metadata.mimeType || "image/png", dataUrl: node.metadata.content, storageKey: node.metadata.storageKey };
             const maskSource = { id: maskNodeId, name: "mask.png", type: maskImage.mimeType || "image/png", dataUrl: maskImage.url, storageKey: maskImage.storageKey };
             const references = [source, generationMask ? { ...maskSource, dataUrl: generationMask.url, storageKey: generationMask.storageKey } : maskSource];
             // The node shows the mask drawn over the source; the mask itself is whichever of the two
@@ -200,7 +195,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
             }
             closeNodeTool();
             const childId = nanoid();
-            const source = { id: node.id, name: `${node.title || node.id}.png`, type: node.metadata.mimeType || "image/png", dataUrl: node.metadata.content, storageKey: node.metadata.storageKey };
+            const source = { id: node.id, name: `${node.id}.png`, type: node.metadata.mimeType || "image/png", dataUrl: node.metadata.content, storageKey: node.metadata.storageKey };
             const references = [source];
             const generationMetadata = buildImageGenerationMetadata("edit", generationConfig, references);
             setNodes((prev) => [
@@ -306,8 +301,6 @@ export function useImageEditors(deps: NodeEditorDeps) {
                 {
                     id: childId,
                     type: CanvasNodeType.Image,
-                    title: t("canvas.upscale.title"),
-                    titleKey: "canvas.upscale.title",
                     position: { x: node.position.x + node.width + 96, y: node.position.y },
                     width: imageConfig.width,
                     height: imageConfig.height,
@@ -340,7 +333,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
             const prompt = buildAnglePrompt(params);
             const sourceReference = {
                 id: node.id,
-                name: `${node.title || node.id}.png`,
+                name: `${node.id}.png`,
                 type: node.metadata.mimeType || "image/png",
                 dataUrl: node.metadata.content,
                 storageKey: node.metadata.storageKey,

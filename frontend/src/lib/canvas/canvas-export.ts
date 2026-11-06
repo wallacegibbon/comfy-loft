@@ -49,7 +49,8 @@ export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n
 
     await Promise.all(
         nodes.map(async (node) => {
-            const title = node.title || node.type;
+            // A file in the zip is named by the node it came from: the id is the only name a node has.
+            const title = node.id;
             const storageKey = node.metadata?.storageKey || "";
             if (storageKey) {
                 const blob = await fetchFileBlob(activeFileUrl(storageKey));

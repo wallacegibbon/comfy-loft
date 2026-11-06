@@ -70,7 +70,7 @@ function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[], conn
     return getGenerationResourceNodes(nodeId, nodes, connections).flatMap((node): NodeGenerationInput[] => {
         if (node.type === CanvasNodeType.Group) {
             const children = getGroupResourceNodes(node.id, nodes).flatMap(readNodeGenerationResource);
-            return children.length ? [{ nodeId: node.id, type: "group", title: node.title, children }] : [];
+            return children.length ? [{ nodeId: node.id, type: "group", title: node.id, children }] : [];
         }
         return readNodeGenerationResource(node);
     });
@@ -101,25 +101,25 @@ export function repeatedConnectedText(nodeId: string, prompt: string, nodes: Can
 
 function readNodeGenerationResource(node: CanvasNodeData): NodeGenerationResourceInput[] {
     const image = readReferenceImage(node);
-    if (image) return [{ nodeId: node.id, type: "image", title: node.title, image }];
+    if (image) return [{ nodeId: node.id, type: "image", title: node.id, image }];
     const video = readReferenceVideo(node);
-    if (video) return [{ nodeId: node.id, type: "video", title: node.title, video }];
+    if (video) return [{ nodeId: node.id, type: "video", title: node.id, video }];
     const audio = readReferenceAudio(node);
-    if (audio) return [{ nodeId: node.id, type: "audio", title: node.title, audio }];
+    if (audio) return [{ nodeId: node.id, type: "audio", title: node.id, audio }];
     const resource = getNodeDefinition(node.type)?.resource?.(node);
     if (resource?.kind === "image" && resource.url)
-        return [{ nodeId: node.id, type: "image", title: node.title, image: { id: node.id, name: mediaFileName(node.title, node.id, "png"), type: node.metadata?.mimeType || "image/png", dataUrl: resource.url, storageKey: node.metadata?.storageKey } }];
+        return [{ nodeId: node.id, type: "image", title: node.id, image: { id: node.id, name: mediaFileName(node.id, "png"), type: node.metadata?.mimeType || "image/png", dataUrl: resource.url, storageKey: node.metadata?.storageKey } }];
     if (resource?.kind === "video" && resource.url)
-        return [{ nodeId: node.id, type: "video", title: node.title, video: { id: node.id, name: mediaFileName(node.title, node.id, "mp4"), type: node.metadata?.mimeType || "video/mp4", url: resource.url, storageKey: node.metadata?.storageKey } }];
+        return [{ nodeId: node.id, type: "video", title: node.id, video: { id: node.id, name: mediaFileName(node.id, "mp4"), type: node.metadata?.mimeType || "video/mp4", url: resource.url, storageKey: node.metadata?.storageKey } }];
     if (resource?.kind === "audio" && resource.url)
-        return [{ nodeId: node.id, type: "audio", title: node.title, audio: { id: node.id, name: mediaFileName(node.title, node.id, "mp3"), type: node.metadata?.mimeType || "audio/mpeg", url: resource.url, storageKey: node.metadata?.storageKey } }];
-    if (resource?.kind === "lora" && resource.loras?.length) return [{ nodeId: node.id, type: "lora", title: node.title, loras: resource.loras }];
-    if (resource?.kind === "text" && resource.text) return [{ nodeId: node.id, type: "text", title: node.title, text: resource.text }];
+        return [{ nodeId: node.id, type: "audio", title: node.id, audio: { id: node.id, name: mediaFileName(node.id, "mp3"), type: node.metadata?.mimeType || "audio/mpeg", url: resource.url, storageKey: node.metadata?.storageKey } }];
+    if (resource?.kind === "lora" && resource.loras?.length) return [{ nodeId: node.id, type: "lora", title: node.id, loras: resource.loras }];
+    if (resource?.kind === "text" && resource.text) return [{ nodeId: node.id, type: "text", title: node.id, text: resource.text }];
     // The words, and only the words this node holds. Asked here rather than only through the node's
     // definition so a module that has not registered the built-in definitions — a test, a fresh import —
     // answers the same way, and both roads lead through `nodeContentOf` (#230).
     const text = nodeContentOf(node);
-    return text ? [{ nodeId: node.id, type: "text", title: node.title, text }] : [];
+    return text ? [{ nodeId: node.id, type: "text", title: node.id, text }] : [];
 }
 
 /**
@@ -162,7 +162,7 @@ function emptyInputStateOf(node: CanvasNodeData): EmptyInput["state"] {
 export function describeEmptyInputs(inputs: EmptyInput[]): string {
     return inputs
         .map(({ node, state }) => {
-            const name = node.title ? `${node.id} (${node.title})` : node.id;
+            const name = `${node.id} (${node.type})`;
             if (state === "running") return `${name} is still being made, so the connection from it carries nothing yet: wait for it to finish, or remove the connection`;
             if (state === "failed") return `${name}'s last run failed, so the connection from it carries nothing: run it again, or remove the connection`;
             return `${name} holds nothing yet, so the connection from it carries nothing: fill it in first, or remove the connection`;
@@ -181,8 +181,14 @@ function textBlock(label: string, text: string) {
 
 const MEDIA_EXTENSION_RE = /\.(png|jpe?g|webp|gif|bmp|mp4|webm|mov|mkv|avi|mp3|wav|ogg|m4a|flac)$/i;
 
-function mediaFileName(title: string | undefined, id: string, extension: string) {
-    const name = (title || id).trim();
+/**
+ * A file name for the media a run is handed: the node's id, with the extension its container implies.
+ *
+ * It used to be the node's title — eleven pictures called "Image" all sent `Image.png`, so a run that took
+ * two of them could not tell the two apart in its own log.
+ */
+function mediaFileName(id: string, extension: string) {
+    const name = id.trim();
     return MEDIA_EXTENSION_RE.test(name) ? name : `${name}.${extension}`;
 }
 
@@ -190,7 +196,7 @@ function readReferenceImage(node: CanvasNodeData): ReferenceImage | null {
     if (node.type !== CanvasNodeType.Image || !node.metadata?.content) return null;
     return {
         id: node.id,
-        name: mediaFileName(node.title, node.id, "png"),
+        name: mediaFileName(node.id, "png"),
         type: node.metadata.mimeType || "image/png",
         dataUrl: node.metadata.content,
         storageKey: node.metadata.storageKey,
@@ -201,7 +207,7 @@ function readReferenceVideo(node: CanvasNodeData): ReferenceVideo | null {
     if (node.type !== CanvasNodeType.Video || !node.metadata?.content) return null;
     return {
         id: node.id,
-        name: mediaFileName(node.title, node.id, "mp4"),
+        name: mediaFileName(node.id, "mp4"),
         type: node.metadata.mimeType || "video/mp4",
         url: node.metadata.content,
         storageKey: node.metadata.storageKey,
@@ -216,7 +222,7 @@ function readReferenceAudio(node: CanvasNodeData): ReferenceAudio | null {
     if (node.type !== CanvasNodeType.Audio || !node.metadata?.content) return null;
     return {
         id: node.id,
-        name: mediaFileName(node.title, node.id, "mp3"),
+        name: mediaFileName(node.id, "mp3"),
         type: node.metadata.mimeType || "audio/mpeg",
         url: node.metadata.content,
         storageKey: node.metadata.storageKey,

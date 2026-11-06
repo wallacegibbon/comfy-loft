@@ -47,7 +47,7 @@ const BUILTIN_DEFINITIONS: CanvasNodeDefinition[] = [
     { type: CanvasNodeType.Group, title: i18n.t("canvas.node.group"), icon: <Group className={iconClass} />, minimapColor: "#94a3b8" },
 ].map((def) => {
     const spec = NODE_SPECS[def.type];
-    return { ...def, title: spec.title, defaultSize: { width: spec.width, height: spec.height }, defaultMetadata: spec.metadata };
+    return { ...def, defaultSize: { width: spec.width, height: spec.height }, defaultMetadata: spec.metadata };
 });
 
 let registered = false;

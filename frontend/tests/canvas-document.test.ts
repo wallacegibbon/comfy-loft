@@ -13,7 +13,7 @@ import type { CanvasNodeData } from "../src/types/canvas";
  */
 
 function node(overrides: Partial<CanvasNodeData>): CanvasNodeData {
-    return { id: "n1", type: "image", title: "n1", position: { x: 0, y: 0 }, width: 100, height: 100, ...overrides } as CanvasNodeData;
+    return { id: "n1", type: "image", position: { x: 0, y: 0 }, width: 100, height: 100, ...overrides } as CanvasNodeData;
 }
 
 function documentWith(nodes: CanvasNodeData[]): CanvasDocument {
@@ -47,8 +47,18 @@ describe("a canvas document", () => {
         expect(written.nodes[1].metadata?.content).toBe("data:image/png;base64,AAAA");
     });
 
+    test("drops the title an older canvas gave its nodes", () => {
+        // A node has no name (#321). The fields stay readable in old documents — nothing looks at them — and
+        // the next save is what takes them out, so a canvas does not carry a label nothing draws forever.
+        const legacy = { ...node({ metadata: { content: "/api/canvases/c/files/a.png" } }), title: "Image", titleKey: "canvas.nodeTypes.image", titleParams: { name: "x" } };
+        const written = documentOf(documentWith([legacy as never]));
+        expect(written.nodes[0]).not.toHaveProperty("title");
+        expect(written.nodes[0]).not.toHaveProperty("titleKey");
+        expect(written.nodes[0]).not.toHaveProperty("titleParams");
+    });
+
     test("is the document and nothing else", () => {
-        const project = { ...documentWith([]), id: "349b70cf4764", title: "kept by the summary", rev: "abc", createdAt: "x", updatedAt: "y", bytes: 2 };
+        const project = { ...documentWith([]), id: "349b70cf4764", rev: "abc", createdAt: "x", updatedAt: "y", bytes: 2 };
         const written = documentOf(project);
         expect(Object.keys(written).sort()).toEqual(["agent", "backgroundMode", "connections", "nodes", "showImageInfo", "viewport"]);
     });

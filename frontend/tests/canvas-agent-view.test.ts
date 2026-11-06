@@ -12,8 +12,8 @@ import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "../sr
  * just cleaned it up (#233).
  */
 
-function node(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}, title = ""): CanvasNodeData {
-    return { id: `${type}-1`, type, title, position: { x: 40, y: -12 }, width: 320, height: 240, metadata };
+function node(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData {
+    return { id: `${type}-1`, type, position: { x: 40, y: -12 }, width: 320, height: 240, metadata };
 }
 
 const canvas = (nodes: CanvasNodeData[], connections: CanvasConnection[] = []) => describeCanvas(nodes, connections).split("\n");
@@ -31,9 +31,10 @@ describe("the canvas as the agent reads it", () => {
     });
 
     test("a text node shows the text it says, and not the question standing behind it", () => {
-        const lines = canvas([node("text", { content: "宫崎骏风格的森林。", composerContent: "改成无字幕的版本" }, "森林")]);
+        const lines = canvas([node("text", { content: "宫崎骏风格的森林。", composerContent: "改成无字幕的版本" })]);
         expect(lines[0]).toBe("1 nodes, 0 connections");
-        expect(lines[1]).toBe(`- text-1 (text) "森林" at (40, -12), 320×240 content: 宫崎骏风格的森林。`);
+        // No name on the line: a node has none, and the type is already there beside the id (#321).
+        expect(lines[1]).toBe(`- text-1 (text) at (40, -12), 320×240 content: 宫崎骏风格的森林。`);
         // The question is still there, one call away: `read_prompt` is what answers with it (#233).
         expect(describeCanvas([node("text", { composerContent: "改成无字幕的版本" })], [])).not.toContain("改成无字幕的版本");
     });
@@ -72,7 +73,7 @@ describe("the canvas as the agent reads it", () => {
             { ...node("text", { content: "无字幕" }), id: "n2", metadata: { content: "无字幕", groupId: "g1" } },
         ];
         const lines = canvas([group, ...inside]);
-        expect(lines[1]).toBe(`- g1 (group) "森林" at (40, -12), 320×240 members: n1, n2`);
+        expect(lines[1]).toBe(`- g1 (group) at (40, -12), 320×240 members: n1, n2`);
         expect(lines[2]).toBe("- n1 (image) at (40, -12), 320×240 in group g1");
         expect(lines[3]).toBe("- n2 (text) at (40, -12), 320×240 in group g1 content: 无字幕");
     });
@@ -91,24 +92,5 @@ describe("the canvas as the agent reads it", () => {
         expect(canvas([picture(1920, 1280)])[1]).toBe("- image-1 (image) at (40, -12), 320×240 (picture 1920×1280)");
         // The card IS the picture here (320×240), so there is one size to state and it has been stated.
         expect(canvas([picture(320, 240)])[1]).toBe("- image-1 (image) at (40, -12), 320×240");
-    });
-});
-
-/**
- * A name on the line only when the user gave one (#320).
- *
- * Every node keeps a snapshot of its type's translated title, so `"Image"` was printed beside `(image)` on every
- * picture — a name that belongs to eleven nodes and names none of them. A title the user typed is theirs and is
- * printed as it is.
- */
-describe("a node's name", () => {
-    const titled = (fields: { title?: string; titleKey?: string }): CanvasNodeData => ({ ...node("image"), ...fields });
-
-    test("is not printed when it is only the type's own snapshot", () => {
-        expect(describeCanvas([titled({ title: "Image", titleKey: "canvas.nodeTypes.image" })], [])).not.toContain('"Image"');
-    });
-
-    test("is printed when somebody chose it", () => {
-        expect(describeCanvas([titled({ title: "hero shot" })], [])).toContain('"hero shot"');
     });
 });

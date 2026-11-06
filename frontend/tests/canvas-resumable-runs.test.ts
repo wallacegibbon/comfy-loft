@@ -18,7 +18,6 @@ const node = (overrides: Record<string, unknown>): Node =>
     ({
         id: "n1",
         type: "audio",
-        title: "n1",
         position: { x: 0, y: 0 },
         width: 100,
         height: 100,

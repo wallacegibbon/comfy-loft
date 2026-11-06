@@ -94,7 +94,7 @@ export function promptPatch(node: CanvasNodeData, words: string): Partial<Canvas
  * searching it made "png" match every image on the canvas.
  */
 export function nodeWords(node: CanvasNodeData): string {
-    const parts: Array<string | undefined> = [node.title, node.metadata?.composerContent, node.metadata?.prompt];
+    const parts: Array<string | undefined> = [node.metadata?.composerContent, node.metadata?.prompt];
     if (node.type === CanvasNodeType.Text) parts.push(node.metadata?.content);
     return parts.filter(Boolean).join("\n");
 }

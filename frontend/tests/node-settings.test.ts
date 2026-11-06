@@ -13,7 +13,7 @@ import type { CanvasNodeData, CanvasNodeMetadata } from "../src/types/canvas";
  * take (docs/decisions.md #309).
  */
 
-const node = (type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData => ({ id: `${type}-1`, type, title: `${type}-1`, position: { x: 0, y: 0 }, width: 320, height: 240, metadata });
+const node = (type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData => ({ id: `${type}-1`, type, position: { x: 0, y: 0 }, width: 320, height: 240, metadata });
 
 /** A contract as the server publishes it: the keys a run reads. */
 const accepts = (...keys: string[]): SettingsContract => ({ accepts: keys });

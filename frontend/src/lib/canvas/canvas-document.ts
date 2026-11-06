@@ -30,9 +30,14 @@ export function documentOf(project: CanvasDocument): CanvasDocument {
  * (`files/<name>`), so it is what the document keeps.
  */
 function withoutResolvedUrls(node: CanvasNodeData): CanvasNodeData {
-    const metadata = node.metadata;
-    if (!metadata) return node;
+    // The three title fields of an older document are dropped here rather than carried forever: a node has no
+    // name (#321), and a document that kept one would hand the next reader a label nothing draws. A node with
+    // nothing to strip is returned as it is, which is what kept `toBe` honest for a node nothing touches.
+    const { title, titleKey, titleParams, ...rest } = node as CanvasNodeData & { title?: string; titleKey?: string; titleParams?: Record<string, string | number> };
+    const named = title !== undefined || titleKey !== undefined || titleParams !== undefined;
+    const metadata = rest.metadata;
+    if (!metadata) return named ? rest : node;
     const next = { ...metadata };
     if (metadata.storageKey) next.content = metadata.storageKey;
-    return { ...node, metadata: next };
+    return { ...rest, metadata: next };
 }

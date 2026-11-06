@@ -6,7 +6,6 @@ import { citationLabel, mentionResolver, referenceBlock, referenceLine, type Cit
 import { insertSpoken } from "@/lib/canvas/agent-dictation";
 import { agentIsWorking, agentRunState, textOf, transcriptEvent, transcriptWindow, type AgentRunState, type ToolStep, type TranscriptMessage } from "@/lib/canvas/agent-transcript";
 import { contextSegment, speedSegment } from "@/lib/canvas/agent-usage";
-import { mentionLabel, nodeTitle } from "@/lib/canvas/node-title";
 import { nodeContentOf } from "@/lib/canvas/node-prompt-field";
 import { reasoningPreview } from "@/lib/canvas/reasoning-preview";
 import { toolSubjectOf } from "@/lib/canvas/tool-argument";
@@ -79,7 +78,9 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
      * answer (#237). The identity matters too: a finished answer is only rebuilt when something it reads
      * has actually changed, and this is one of those things.
      */
-    const citationLabels = useMemo(() => nodes.map((node) => ({ id: node.id, label: nodeTitle(node, t) })), [nodes, t]);
+    // A citation is a node: its id is the one token that names exactly one of them, and it is what the box
+    // writes when something is picked (#321).
+    const citationLabels = useMemo(() => nodes.map((node) => ({ id: node.id, label: node.id })), [nodes]);
 
     /**
      * How full the context is and how fast the agent is going, as it last reported — plus the size of the
@@ -436,14 +437,13 @@ export function CanvasAgentPanel({ canvasId, nodes, onFocusNode, onPickNode }: P
         const at = pickAtRef.current;
         pickAtRef.current = -1;
         if (at < 0) return;
-        const node = nodes.find((candidate) => candidate.id === nodeId);
-        // A node the user named is cited by that name; one they did not is cited by its id, because ten pictures
-        // share the default title and `@Image 2` says nothing about which picture it is.
+        // A citation is the node's id: the one token that names exactly one node, the same token every tool
+        // answers with, and therefore the same token an answer writes back (#321).
         const already = citations.find((citation) => citation.id === nodeId);
         const label = already
             ? already.label
             : citationLabel(
-                  node ? mentionLabel(node) : nodeId,
+                  nodeId,
                   citations.map((citation) => citation.label),
               );
         // The `@` and the space around the label: the next thing typed belongs after it, not inside it.
@@ -974,9 +974,8 @@ const AnswerBody = memo(function AnswerBody({ text, mentions, labels, color, onF
 function describeNode(node: CanvasNodeData | undefined, label: string): string {
     if (!node) return "";
     const kind = NODE_LABEL[node.type] || node.type;
-    // What the node holds, never what it was asked: a prompt is private, and the node's own title is the
-    // only other thing it says out loud. A picture has no words, so its line names it and stops there —
-    // the agent reads the node itself when it needs the picture (#230).
-    const words = (nodeContentOf(node) || node.title || "").slice(0, 200);
+    // What the node holds, never what it was asked: a prompt is private. A picture has no words, so its line
+    // names it by id and stops there — the agent reads the node itself when it needs the picture (#230).
+    const words = (nodeContentOf(node) || "").slice(0, 200);
     return referenceLine(node.id, kind, label, words);
 }

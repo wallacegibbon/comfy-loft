@@ -23,7 +23,7 @@ import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "../sr
 registerBuiltinNodes();
 
 function node(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}): CanvasNodeData {
-    return { id: `${type}-1`, type, title: `${type}-1`, position: { x: 0, y: 0 }, width: 320, height: 240, metadata };
+    return { id: `${type}-1`, type, position: { x: 0, y: 0 }, width: 320, height: 240, metadata };
 }
 
 /** The page's hands, with every write recorded instead of performed. */

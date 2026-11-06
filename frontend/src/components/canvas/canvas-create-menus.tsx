@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 import { type CanvasTheme } from "@/lib/canvas-theme";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { listNodeDefinitions } from "@/lib/canvas/node-registry";
-import { getNodeSpec } from "@/constant/canvas";
 import { CanvasNodeType, type ConnectionHandle, type Position } from "@/types/canvas";
 
 export type PendingConnectionCreate = {
@@ -46,7 +45,7 @@ export function ConnectionCreateMenu({ pending, scale = 1, onCreate, onClose }: 
                             {t("canvas.createMenu.upstream")}
                         </div>
                         {upstreamDefinitions.map((def) => (
-                            <ConnectionCreateOption key={def.type} theme={theme} icon={def.icon} title={getNodeSpec(def.type).title} onClick={() => onCreate(def.type)} />
+                            <ConnectionCreateOption key={def.type} theme={theme} icon={def.icon} title={def.title} onClick={() => onCreate(def.type)} />
                         ))}
                     </div>
                 ) : null}
@@ -111,7 +110,7 @@ export function NodeCreateMenu({ position, scale = 1, onCreate, onClose }: { pos
             </div>
             <div className="grid gap-0.5">
                 {definitions.map((def) => (
-                    <ConnectionCreateOption key={def.type} theme={theme} icon={def.icon} title={getNodeSpec(def.type).title} onClick={() => onCreate(def.type)} />
+                    <ConnectionCreateOption key={def.type} theme={theme} icon={def.icon} title={def.title} onClick={() => onCreate(def.type)} />
                 ))}
             </div>
         </div>
