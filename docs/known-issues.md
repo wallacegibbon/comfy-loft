@@ -1,6 +1,6 @@
 # Known issues
 
-Open problems, verified against the current tree — last verified at `79fd642`, so an entry older than the code
+Open problems, verified against the current tree — last verified at `94498f4`, so an entry older than the code
 around it is worth re-checking before it is trusted. Each entry says what breaks, why, and what the fix is, so
 nobody has to rediscover it. Only a defect belongs here: a fix, and the reason it was chosen, live in
 [`decisions.md`](decisions.md), and an entry leaves this file the moment it stops being one.

@@ -9,7 +9,8 @@
 // nothing, which is worse than the sentence carrying no number at all: it reads like the rule was recorded
 // somewhere and they have simply not found it yet.
 //
-// What counts: a `#N` written in **prose** — a comment in a source file, or a line of Markdown. A `#` in code
+// What counts: a `#N` written in **prose** — a comment in a source file, or a line of Markdown, this record
+// included: an entry that cites an entry the record no longer has is the same broken pointer. A `#` in code
 // is not a citation, and that is also what keeps hex colours out of the check: this tree writes them in strings
 // (`style={{ background: "#242529" }}`), never in a comment.
 //
@@ -38,7 +39,7 @@ function sources() {
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) {
                 if (!skip.has(entry.name)) walk(full);
-            } else if (/\.(tsx?|go|md)$/.test(entry.name) && full !== RECORD) {
+            } else if (/\.(tsx?|go|md)$/.test(entry.name)) {
                 out.push(full);
             }
         }
