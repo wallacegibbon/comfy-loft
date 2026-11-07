@@ -263,7 +263,6 @@ function InfiniteCanvasPage() {
     const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
     const [projectLoaded, setProjectLoaded] = useState(false);
 
-    const [toolbarNodeId, setToolbarNodeId] = useState<string | null>(null);
     const [nodeImageSettingsOpen, setNodeImageSettingsOpen] = useState(false);
     const [dialogNodeId, setDialogNodeId] = useState<string | null>(null);
     const [activeNodeTool, setActiveNodeTool] = useState<CanvasNodeToolState>(null);
@@ -849,16 +848,6 @@ function InfiniteCanvasPage() {
         }
     }, []);
 
-    const keepNodeToolbar = useCallback(
-        (nodeId: string) => {
-            if (nodeDraggingRef.current || nodeImageSettingsOpen || !selectedNodeIdsRef.current.has(nodeId)) return;
-            setToolbarNodeId(nodeId);
-        },
-        [nodeImageSettingsOpen],
-    );
-
-    const hideNodeToolbar = useCallback(() => {}, []);
-
     /**
      * Add one connection the way a drag does: normalized by the canvas's own rules, and never twice.
      *
@@ -985,10 +974,10 @@ function InfiniteCanvasPage() {
             }),
         [connections, nodeById, viewBounds],
     );
-    // The toolbar follows a single selected node selected by click, creation, marquee, or keyboard.
+    // The bar follows a single selected node selected by click, creation, marquee, or keyboard.
     // It stays hidden for multi-selection and while isNodeDragging is true.
     const singleSelectedNodeId = selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null;
-    const toolbarNode = (toolbarNodeId ? nodeById.get(toolbarNodeId) || null : null) || (singleSelectedNodeId ? nodeById.get(singleSelectedNodeId) || null : null);
+    const toolbarNode = singleSelectedNodeId ? nodeById.get(singleSelectedNodeId) || null : null;
     const activeNodeToolNode = activeNodeTool ? nodeById.get(activeNodeTool.nodeId) || null : null;
     const infoNode = activeNodeTool?.kind === "info" ? activeNodeToolNode : null;
     const cropNode = activeNodeTool?.kind === "crop" ? activeNodeToolNode : null;
@@ -1109,7 +1098,6 @@ function InfiniteCanvasPage() {
     const forgetNodes = useCallback((ids: Set<string>) => {
         setSelectedNodeIds((current) => (current.size && [...current].some((id) => ids.has(id)) ? new Set([...current].filter((id) => !ids.has(id))) : current));
         setHoveredNodeId((current) => (current && ids.has(current) ? null : current));
-        setToolbarNodeId((current) => (current && ids.has(current) ? null : current));
         setDialogNodeId((current) => (current && ids.has(current) ? null : current));
         setActiveNodeTool((current) => (current && ids.has(current.nodeId) ? null : current));
         setPreviewNodeId((current) => (current && ids.has(current) ? null : current));
@@ -1217,7 +1205,6 @@ function InfiniteCanvasPage() {
         setConnections(result.connections);
         setSelectedNodeIds(new Set(result.selectedIds));
         setSelectedConnectionId(null);
-        setToolbarNodeId(result.selectedIds[0] || null);
         setDialogNodeId(null);
         setContextMenu(null);
         return { groupId: created.id, memberIds: members.map((member) => member.id) };
@@ -1242,7 +1229,6 @@ function InfiniteCanvasPage() {
         setConnections(result.connections);
         setSelectedNodeIds(new Set(result.selectedIds));
         setSelectedConnectionId(null);
-        setToolbarNodeId(result.selectedIds.length === 1 ? result.selectedIds[0] : null);
         setDialogNodeId(null);
         setContextMenu(null);
         const after = new Map(result.nodes.map((node) => [node.id, node]));
@@ -1340,7 +1326,6 @@ function InfiniteCanvasPage() {
         setContextMenu(null);
         setSelectionBox(null);
         setHoveredNodeId(null);
-        setToolbarNodeId(null);
         setDialogNodeId(null);
     }, [cancelPendingConnectionCreate]);
 
@@ -1568,7 +1553,6 @@ function InfiniteCanvasPage() {
             setContextMenu(null);
             setNodeCreatePosition(null);
             setHoveredNodeId(null);
-            setToolbarNodeId(null);
             setDialogNodeId(null);
             if (pendingConnectionCreateRef.current) cancelPendingConnectionCreate();
             if (event.button !== 0) return;
@@ -1606,7 +1590,6 @@ function InfiniteCanvasPage() {
         }
         setSelectedNodeIds(nextSelected);
         const soloId = nextSelected.size === 1 && nextSelected.has(nodeId) ? nodeId : null;
-        setToolbarNodeId(soloId);
         return { nextSelected, soloId };
     }, []);
 
@@ -1903,7 +1886,6 @@ function InfiniteCanvasPage() {
                 setSelectionBox(null);
                 setConnecting(null);
                 setHoveredNodeId(null);
-                setToolbarNodeId(null);
                 setDialogNodeId(null);
                 setActiveNodeTool(null);
                 setPendingConnectionCreate(null);
@@ -2474,10 +2456,7 @@ function InfiniteCanvasPage() {
                     onOpenMaskEditor={(nodeId) => openNodeTool("maskEdit", nodeId)}
                     onOpenOutpaintEditor={(nodeId) => openNodeTool("outpaint", nodeId)}
                     onOpenMossLayoutEditor={(nodeId) => openNodeTool("mossLayout", nodeId)}
-                    onImageSettingsOpenChange={(open) => {
-                        setNodeImageSettingsOpen(open);
-                        if (open) setToolbarNodeId(null);
-                    }}
+                    onImageSettingsOpenChange={setNodeImageSettingsOpen}
                 />
             ),
         [confirmStopGeneration, connectedNodesByNodeId, disconnectNodeReference, handleConfigNodeChange, handleGenerateNode, hasActiveGeneration, mentionReferencesByNodeId, nodes, startNodeReferenceSelection],
@@ -2726,20 +2705,14 @@ function InfiniteCanvasPage() {
                 <CanvasNodeHoverToolbar
                     node={isNodeDragging || isNodeResizing || nodeImageSettingsOpen || Boolean(referencePickerNodeId) ? null : toolbarNode}
                     viewport={viewport}
-                    onKeep={keepNodeToolbar}
-                    onLeave={hideNodeToolbar}
-                    onInfo={(node) => openNodeTool("info", node.id)}
                     onDecreaseFont={(node) => handleFontSizeChange(node.id, Math.max(10, (node.metadata?.fontSize || 14) - 2))}
                     onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
                     onInterpolateVideo={(node) => void interpolateVideoNode(node)}
-                    onDownload={downloadNodeImage}
                     onCrop={(node) => openNodeTool("crop", node.id)}
                     onSplit={(node) => openNodeTool("split", node.id)}
                     onUpscale={(node) => upscaleImageNode(node)}
                     onAngle={(node) => openNodeTool("angle", node.id)}
                     onView={handleNodePreview}
-                    onDelete={(node) => deleteNodes(new Set([node.id]))}
-                    onUngroup={(node) => ungroupSelection(new Set([node.id]))}
                 />
 
                 {hasMultipleSelectedNodes && !selectionBox ? (
@@ -2766,12 +2739,23 @@ function InfiniteCanvasPage() {
                     <CanvasNodeContextMenu
                         menu={contextMenu}
                         canCaptureVideoFrame={contextMenuNode?.type === CanvasNodeType.Video && Boolean(contextMenuNode.metadata?.content)}
+                        canDownload={(contextMenuNode?.type === CanvasNodeType.Image || contextMenuNode?.type === CanvasNodeType.Video || contextMenuNode?.type === CanvasNodeType.Audio) && Boolean(contextMenuNode.metadata?.content)}
                         canGroup={contextMenu.type === "node" && canGroupSelection}
                         canUngroup={contextMenu.type === "node" && canUngroupSelection}
                         onClose={() => setContextMenu(null)}
                         onCaptureVideoFrame={(position) => {
                             if (contextMenu.type !== "node") return;
                             void captureVideoNodeFrame(contextMenu.nodeId, position);
+                        }}
+                        onInfo={() => {
+                            if (contextMenu.type !== "node") return;
+                            openNodeTool("info", contextMenu.nodeId);
+                            setContextMenu(null);
+                        }}
+                        onDownload={() => {
+                            if (!contextMenuNode) return;
+                            downloadNodeImage(contextMenuNode);
+                            setContextMenu(null);
                         }}
                         onDuplicate={() => {
                             if (contextMenu.type !== "node") return;

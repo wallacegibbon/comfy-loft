@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { BetweenHorizontalStart, GalleryHorizontalEnd, GalleryHorizontal, Group, Plus, Trash2, Ungroup } from "lucide-react";
+import { BetweenHorizontalStart, Download, GalleryHorizontalEnd, GalleryHorizontal, Group, Info, Plus, Trash2, Ungroup } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { ContextMenuState } from "@/types/canvas";
@@ -8,13 +8,22 @@ import type { VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 import { CANVAS_DISMISS_GUARD } from "@/lib/canvas-overlay";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 
+/**
+ * The menu for a node or a connection, and only what *every* node has (docs/decisions.md #332): information,
+ * download, duplicate, grouping, delete — plus the three frame grabs, which are a clip's own but need the frame
+ * under the pointer, so they belong to the moment rather than to the node. What one kind of node can do lives on
+ * the bar over its card.
+ */
 export function CanvasNodeContextMenu({
     menu,
     canCaptureVideoFrame,
+    canDownload,
     canGroup,
     canUngroup,
     onClose,
     onCaptureVideoFrame,
+    onInfo,
+    onDownload,
     onDuplicate,
     onGroup,
     onUngroup,
@@ -22,10 +31,13 @@ export function CanvasNodeContextMenu({
 }: {
     menu: ContextMenuState;
     canCaptureVideoFrame: boolean;
+    canDownload: boolean;
     canGroup?: boolean;
     canUngroup?: boolean;
     onClose: () => void;
     onCaptureVideoFrame: (position: VideoFramePosition) => void;
+    onInfo: () => void;
+    onDownload: () => void;
     onDuplicate: () => void;
     onGroup?: () => void;
     onUngroup?: () => void;
@@ -55,15 +67,27 @@ export function CanvasNodeContextMenu({
                     <MenuButton icon={<BetweenHorizontalStart className="size-4" />} label={t("canvas.videoFrames.first")} onClick={() => onCaptureVideoFrame("first")} />
                     <MenuButton icon={<GalleryHorizontalEnd className="size-4" />} label={t("canvas.videoFrames.last")} onClick={() => onCaptureVideoFrame("last")} />
                     <MenuButton icon={<GalleryHorizontal className="size-4" />} label={t("canvas.videoFrames.current")} onClick={() => onCaptureVideoFrame("current")} />
-                    <div className="my-1 border-t" style={{ borderColor: theme.toolbar.border }} />
+                    <MenuDivider />
                 </>
             ) : null}
-            {menu.type === "node" && canGroup ? <MenuButton icon={<Group className="size-4" />} label={t("canvas.nodeToolbar.group")} onClick={onGroup} /> : null}
-            {menu.type === "node" && canUngroup ? <MenuButton icon={<Ungroup className="size-4" />} label={t("canvas.nodeToolbar.ungroup")} onClick={onUngroup} /> : null}
-            {menu.type === "node" ? <MenuButton icon={<Plus className="size-4" />} label={t("canvas.controls.duplicate")} onClick={onDuplicate} /> : null}
+            {menu.type === "node" ? (
+                <>
+                    <MenuButton icon={<Info className="size-4" />} label={t("canvas.nodeToolbar.info")} onClick={onInfo} />
+                    {canDownload ? <MenuButton icon={<Download className="size-4" />} label={t("common.download")} onClick={onDownload} /> : null}
+                    <MenuButton icon={<Plus className="size-4" />} label={t("canvas.controls.duplicate")} onClick={onDuplicate} />
+                    {canGroup ? <MenuButton icon={<Group className="size-4" />} label={t("canvas.nodeToolbar.group")} onClick={onGroup} /> : null}
+                    {canUngroup ? <MenuButton icon={<Ungroup className="size-4" />} label={t("canvas.nodeToolbar.ungroup")} onClick={onUngroup} /> : null}
+                    <MenuDivider />
+                </>
+            ) : null}
             <MenuButton icon={<Trash2 className="size-4" />} label={t("canvas.controls.delete")} onClick={onDelete} danger />
         </div>
     );
+}
+
+function MenuDivider() {
+    const theme = useCanvasTheme();
+    return <div className="my-1 border-t" style={{ borderColor: theme.toolbar.border }} />;
 }
 
 function MenuButton({ icon, label, onClick, danger = false }: { icon: ReactNode; label: string; onClick?: () => void; danger?: boolean }) {

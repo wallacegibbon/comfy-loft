@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { Clapperboard, Download, Ellipsis, Info, Maximize2, Minus, Plus, Trash2, Ungroup } from "lucide-react";
+import { Clapperboard, Maximize2, Minus, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Dialog } from "@/components/kit/dialog";
@@ -9,30 +9,22 @@ import { Tooltip } from "@/components/kit/tooltip";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
-import { readSetting, writeSetting } from "@/stores/use-settings-store";
 import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 import type { CanvasNodeToolbarItem } from "@/types/canvas-node";
-import { ImageToolSettingsModal, type ImageToolbarSettingsTool } from "./canvas-image-toolbar-settings-modal";
-import { IMAGE_QUICK_TOOLS_STORAGE_KEY, buildImageToolbarTools, defaultImageQuickToolIds, readImageQuickToolsConfig, type ImageQuickToolId } from "./canvas-image-toolbar-tools";
+import { buildImageToolbarTools } from "./canvas-image-toolbar-tools";
 
 type CanvasNodeHoverToolbarProps = {
     node: CanvasNodeData | null;
     viewport: ViewportTransform;
-    onKeep: (nodeId: string) => void;
-    onLeave: () => void;
-    onInfo: (node: CanvasNodeData) => void;
     onDecreaseFont: (node: CanvasNodeData) => void;
     onIncreaseFont: (node: CanvasNodeData) => void;
     onInterpolateVideo: (node: CanvasNodeData) => void;
-    onDownload: (node: CanvasNodeData) => void;
     onCrop: (node: CanvasNodeData) => void;
     onSplit: (node: CanvasNodeData) => void;
     onUpscale: (node: CanvasNodeData) => void;
     onAngle: (node: CanvasNodeData) => void;
     /** Opens the node's media at its own size — the clip's button, and the picture's `view` tool both. */
     onView: (node: CanvasNodeData) => void;
-    onDelete: (node: CanvasNodeData) => void;
-    onUngroup?: (node: CanvasNodeData) => void;
     extraTools?: CanvasNodeToolbarItem[];
 };
 
@@ -43,164 +35,62 @@ type ToolbarTool = {
     icon: ReactNode;
     onClick: () => void;
     active?: boolean;
-    danger?: boolean;
 };
 
-export function CanvasNodeHoverToolbar({
-    node,
-    viewport,
-    onKeep,
-    onLeave,
-    onInfo,
-    onDecreaseFont,
-    onIncreaseFont,
-    onInterpolateVideo,
-    onDownload,
-    onCrop,
-    onSplit,
-    onUpscale,
-    onAngle,
-    onView,
-    onDelete,
-    onUngroup,
-    extraTools = [],
-}: CanvasNodeHoverToolbarProps) {
-    const [quickImageToolIds, setQuickImageToolIds] = useState<ImageQuickToolId[]>(defaultImageQuickToolIds);
-    const [showImageToolLabels, setShowImageToolLabels] = useState(false);
-    const [draftImageToolIds, setDraftImageToolIds] = useState<ImageQuickToolId[]>(defaultImageQuickToolIds);
-    const [draftShowImageToolLabels, setDraftShowImageToolLabels] = useState(false);
-    const [imageToolSettingsOpen, setImageToolSettingsOpen] = useState(false);
+/**
+ * The bar over a selected node, and only what that *kind* of node can do (docs/decisions.md #332): a clip gets
+ * interpolate and view, a picture gets crop/split/upscale/angle/view, a text card gets its font size. What every
+ * node has — information, download, delete, duplicate, grouping — is in the right-click menu, and a node with no
+ * verbs of its own (a group, an empty audio card) gets no bar at all.
+ */
+export function CanvasNodeHoverToolbar({ node, viewport, onDecreaseFont, onIncreaseFont, onInterpolateVideo, onCrop, onSplit, onUpscale, onAngle, onView, extraTools = [] }: CanvasNodeHoverToolbarProps) {
     const { t } = useTranslation();
-
-    useEffect(() => {
-        // Whatever was saved is untrusted: it may predate a tool, or name one that is gone.
-        const config = readImageQuickToolsConfig(readSetting(IMAGE_QUICK_TOOLS_STORAGE_KEY, null));
-        if (!config.ids.length && !config.showLabels) return;
-        setQuickImageToolIds(config.ids);
-        setShowImageToolLabels(config.showLabels);
-    }, []);
-
-    useEffect(() => {
-        setImageToolSettingsOpen(false);
-    }, [node?.id]);
-
     if (!node) return null;
 
-    const activeNode = node;
     const left = viewport.x + (node.position.x + node.width / 2) * viewport.k;
     const top = viewport.y + node.position.y * viewport.k - 14;
     const isImage = node.type === CanvasNodeType.Image;
     const isVideo = node.type === CanvasNodeType.Video;
-    const isAudio = node.type === CanvasNodeType.Audio;
+    const isText = node.type === CanvasNodeType.Text;
     const hasImage = isImage && Boolean(node.metadata?.content);
     const hasVideo = isVideo && Boolean(node.metadata?.content);
-    const hasAudio = isAudio && Boolean(node.metadata?.content);
-    const isText = node.type === CanvasNodeType.Text;
-    const quickImageToolIdSet = new Set(quickImageToolIds);
-    const imageTools = buildImageToolbarTools(node, { onCrop, onSplit, onUpscale, onAngle, onViewImage: onView });
 
-    function openImageToolSettings() {
-        onKeep(activeNode.id);
-        setDraftImageToolIds(quickImageToolIds);
-        setDraftShowImageToolLabels(showImageToolLabels);
-        setImageToolSettingsOpen(true);
-    }
-
-    const baseToolbarTools: ToolbarTool[] = [
-        { id: "info", title: t("canvas.nodeToolbar.infoTitle"), label: t("canvas.nodeToolbar.info"), icon: <Info className="size-4" />, onClick: () => onInfo(node) },
-        ...(node.type === CanvasNodeType.Group && onUngroup ? [{ id: "ungroup", title: t("canvas.nodeToolbar.ungroupTitle"), label: t("canvas.nodeToolbar.ungroup"), icon: <Ungroup className="size-4" />, onClick: () => onUngroup(node) }] : []),
-        { id: "delete", title: t("canvas.nodeToolbar.removeTitle"), label: t("common.delete"), icon: <Trash2 className="size-4" />, onClick: () => onDelete(node), danger: true },
-    ];
-    const nodeToolbarTools: ToolbarTool[] = [
-        ...(hasImage || hasVideo || hasAudio
+    const tools: ToolbarTool[] = [
+        ...(hasVideo
             ? [
-                  {
-                      id: "download",
-                      title: t(hasAudio ? "canvas.nodeToolbar.downloadAudio" : hasVideo ? "canvas.nodeToolbar.downloadVideo" : "canvas.nodeToolbar.downloadImage"),
-                      label: t("common.download"),
-                      icon: <Download className="size-4" />,
-                      onClick: () => onDownload(node),
-                  },
+                  { id: "videoInterpolate", title: t("canvas.nodeToolbar.interpolateTitle"), label: t("canvas.nodeToolbar.interpolate"), icon: <Clapperboard className="size-4" />, onClick: () => onInterpolateVideo(node) },
+                  // The card's double click opens a clip at its own size, and a gesture nobody can see is not a tool
+                  // (#331). Same act as the picture's `view`, so the same glyph.
+                  { id: "viewVideo", title: t("canvas.nodeToolbar.viewVideoTitle"), label: t("canvas.nodeToolbar.viewVideo"), icon: <Maximize2 className="size-4" />, onClick: () => onView(node) },
               ]
             : []),
-        ...(hasVideo ? [{ id: "videoInterpolate", title: t("canvas.nodeToolbar.interpolateTitle"), label: t("canvas.nodeToolbar.interpolate"), icon: <Clapperboard className="size-4" />, onClick: () => onInterpolateVideo(node) }] : []),
-        // The card's double click opens a clip at its own size, and a gesture nobody can see is not a tool (#331).
-        // Same act as the picture's `view`, so the same glyph, and last for the same reason it is last there.
-        ...(hasVideo ? [{ id: "viewVideo", title: t("canvas.nodeToolbar.viewVideoTitle"), label: t("canvas.nodeToolbar.viewVideo"), icon: <Maximize2 className="size-4" />, onClick: () => onView(node) }] : []),
-        ...(isText ? [{ id: "decreaseFont", title: t("canvas.nodeToolbar.decreaseFont"), label: t("canvas.nodeToolbar.zoomOut"), icon: <Minus className="size-4" />, onClick: () => onDecreaseFont(node) }] : []),
-        ...(isText ? [{ id: "increaseFont", title: t("canvas.nodeToolbar.increaseFont"), label: t("canvas.nodeToolbar.zoomIn"), icon: <Plus className="size-4" />, onClick: () => onIncreaseFont(node) }] : []),
-        ...(hasImage ? imageTools.map((tool) => ({ id: tool.id, title: tool.title, label: tool.label, icon: tool.icon, active: tool.active, onClick: tool.onClick })) : []),
+        ...(isText
+            ? [
+                  { id: "decreaseFont", title: t("canvas.nodeToolbar.decreaseFont"), label: t("canvas.nodeToolbar.zoomOut"), icon: <Minus className="size-4" />, onClick: () => onDecreaseFont(node) },
+                  { id: "increaseFont", title: t("canvas.nodeToolbar.increaseFont"), label: t("canvas.nodeToolbar.zoomIn"), icon: <Plus className="size-4" />, onClick: () => onIncreaseFont(node) },
+              ]
+            : []),
+        ...(hasImage ? buildImageToolbarTools(node, { onCrop, onSplit, onUpscale, onAngle, onViewImage: onView }) : []),
+        ...extraTools,
     ];
-    const toolbarTools = hasImage ? [...baseToolbarTools, ...nodeToolbarTools].filter((tool) => quickImageToolIdSet.has(tool.id as ImageQuickToolId)) : [...baseToolbarTools, ...nodeToolbarTools, ...extraTools];
-    const selectableImageToolbarTools = [...baseToolbarTools, ...nodeToolbarTools].filter((tool) => tool.id !== "retry") as ImageToolbarSettingsTool[];
 
-    const closeImageToolSettings = () => {
-        setImageToolSettingsOpen(false);
-        onLeave();
-    };
-
-    const setDraftImageToolVisible = (id: ImageQuickToolId, visible: boolean) => {
-        setDraftImageToolIds((current) => {
-            const selected = new Set(current);
-            if (visible) selected.add(id);
-            else selected.delete(id);
-            return selectableImageToolbarTools.filter((tool) => selected.has(tool.id)).map((tool) => tool.id);
-        });
-    };
-
-    const saveImageToolSettings = () => {
-        const config = { ids: draftImageToolIds, showLabels: draftShowImageToolLabels };
-        setQuickImageToolIds(config.ids);
-        setShowImageToolLabels(config.showLabels);
-        writeSetting(IMAGE_QUICK_TOOLS_STORAGE_KEY, config);
-        closeImageToolSettings();
-    };
+    if (!tools.length) return null;
 
     return (
-        <>
-            {/* Under the canvas chrome, with the node it belongs to: the bars, the dock and the side panel are
-                the board's frame, and a node that slides under them takes its toolbar along (#192). At 70 it
-                was drawn *over* the panel while the node itself was under it, which reads as a floating tool
-                attached to nothing. */}
-            <div
-                className="absolute z-[45] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
-                data-node-toolbar={node.id}
-                style={{ left, top }}
-                onMouseEnter={() => onKeep(node.id)}
-                onMouseLeave={() => {
-                    if (!imageToolSettingsOpen) onLeave();
-                }}
-                onMouseDown={(event) => event.stopPropagation()}
-                onPointerDown={(event) => event.stopPropagation()}
-            >
-                {toolbarTools.map((tool) => (
-                    <ToolbarAction key={tool.id} {...tool} showLabel={isImage ? showImageToolLabels : true} />
-                ))}
-                {hasImage ? (
-                    <ToolbarAction
-                        id="more"
-                        title={t("canvas.imageTools.configure")}
-                        label={t("canvas.imageTools.more")}
-                        icon={<Ellipsis className="size-4" />}
-                        active={imageToolSettingsOpen}
-                        onClick={openImageToolSettings}
-                        showLabel={showImageToolLabels}
-                    />
-                ) : null}
-            </div>
-            {hasImage ? (
-                <ImageToolSettingsModal
-                    open={imageToolSettingsOpen}
-                    tools={selectableImageToolbarTools}
-                    selectedIds={draftImageToolIds}
-                    showLabels={draftShowImageToolLabels}
-                    onToggle={setDraftImageToolVisible}
-                    onShowLabelsChange={setDraftShowImageToolLabels}
-                    onCancel={closeImageToolSettings}
-                    onSave={saveImageToolSettings}
-                />
-            ) : null}
-        </>
+        // Under the canvas chrome, with the node it belongs to: the bars, the dock and the side panel are the
+        // board's frame, and a node that slides under them takes its toolbar along (#192). At 70 it was drawn
+        // *over* the panel while the node itself was under it, which reads as a floating tool attached to nothing.
+        <div
+            className="absolute z-[45] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
+            data-node-toolbar={node.id}
+            style={{ left, top }}
+            onMouseDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+        >
+            {tools.map((tool) => (
+                <ToolbarAction key={tool.id} {...tool} />
+            ))}
+        </div>
     );
 }
 
@@ -286,14 +176,13 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
     );
 }
 
-function ToolbarAction({ title, label, icon, onClick, showLabel, active = false, danger = false }: ToolbarTool & { showLabel: boolean }) {
-    const hasText = showLabel && Boolean(label);
+function ToolbarAction({ title, label, icon, onClick, active = false }: ToolbarTool) {
     return (
         <Tooltip title={title} placement="top" mouseEnterDelay={0.2} color="#ffffff" styles={{ root: { color: "#242529", boxShadow: "0 8px 24px rgba(15,23,42,.16)", fontSize: 13, fontWeight: 500 } }}>
-            <button type="button" className={`group relative flex h-12 items-center whitespace-nowrap px-1.5 ${danger ? "text-[#ef4444]" : ""}`} onClick={onClick} aria-label={title}>
-                <span className={`flex h-9 items-center ${hasText ? "gap-2 px-2.5" : "justify-center px-2"} rounded-lg transition group-hover:bg-[#f0f0f1] ${active ? "bg-[#eeeeef]" : ""}`}>
+            <button type="button" className="group relative flex h-12 items-center whitespace-nowrap px-1.5" onClick={onClick} aria-label={title}>
+                <span className={`flex h-9 items-center gap-2 rounded-lg px-2.5 transition group-hover:bg-[#f0f0f1] ${active ? "bg-[#eeeeef]" : ""}`}>
                     {icon}
-                    {hasText ? <span>{label}</span> : null}
+                    <span>{label}</span>
                 </span>
             </button>
         </Tooltip>

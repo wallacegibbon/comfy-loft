@@ -11404,3 +11404,56 @@ multi-angle / view image / more), its own view still opening the picture. `npx v
 `onView`), `frontend/src/pages/canvas/project.tsx` (`onView={handleNodePreview}`),
 `frontend/src/components/canvas/canvas-node.tsx` (the `VideoNodeContent` note saying the gesture is a shortcut),
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts` (`canvas.nodeToolbar.viewVideo`, `viewVideoTitle`).
+
+
+## 332. The bar over a node holds what only that kind of node can do; the menu holds what all of them can
+
+**Decision** Two surfaces, one job each, nothing in both. The bar over a selected card carries the verbs of its
+type and nothing else: a picture gets crop / split / upscale / multi-angle / view image, a clip gets interpolate /
+view video, a text card gets its two font sizes. Information, download, duplicate, grouping and delete are every
+node's, so they live in the right-click menu, which is also the menu for a connection. A node with no verbs of its
+own — a group, an audio card — gets no bar at all. The one item that stays on the menu although it belongs to one
+type is frame capture: "the current frame" means the frame under the pointer, so it belongs to the moment rather
+than to the node.
+
+**Why** It is the user's rule, and it is the one that can be written down: *the bar is the node's own, the menu is
+everyone's*. The split it replaced could not be stated. The bar carried info, download, delete and ungroup beside
+the type-specific tools, so delete and ungroup appeared in both surfaces while duplicate and grouping appeared in
+only one; a reader could not tell which list a new verb belonged to, and neither could the next change. The picture
+bar had also grown a configuration system — a stored key, a settings dialog, a "show labels" switch and a "more"
+button — to hold eight entries in a 48-pixel strip, and after the move it holds five, which is the shape a bar can
+actually keep: labels on, no settings, no ellipsis, nothing to choose.
+
+**Cost** One more click for the five things that left the bar: deleting, downloading, reading the facts and
+ungrouping are now right-click (or the Delete key), not a button above the card. The image bar's labels are always
+on: with five entries the words cost nothing and the icons alone ("multi-angle" as a 3D rotation) were the part
+that needed a tooltip. And the picture bar is no longer configurable — there is nothing left to configure when a
+type has five tools and the bar is the only place they exist.
+
+**Rejected** Two other homes for the same verbs, both argued for and both wrong. *Everything into the right-click
+menu* hides crop/split/upscale/multi-angle behind a gesture nobody performs to find things, and it makes one menu
+that must also serve connections. *Everything into the panel under the card* is worse: that panel is the model and
+the options that model declares — model, mode, ratio, duration, generate — and a row of picture verbs inside it
+would blur the one surface in the app that has a single, clear subject. The bar and the panel are both anchored to
+the selected card; that was the reason to merge something, and the thing to merge was the *duplicated* verbs, not
+the panel.
+
+**Tested** In the browser against the running server, on a throwaway canvas holding an image, a clip, a text card,
+an audio card and a group (deleted afterwards, `lastCanvas` put back). Selecting the picture showed Crop / Split /
+Upscale / Multi-angle / View image and nothing else; the clip showed Interpolate / View video; the text card showed
+Smaller / Larger; the group and the audio card showed **no bar at all**. Right-clicking the picture gave Info /
+Download / Duplicate / —— / Delete, the clip gave the three frame grabs and then the same five, the audio card gave
+Info / Download / Duplicate / Delete, the group gave Info / Duplicate / Ungroup / Delete. Info opened "Node
+information" for the node that was right-clicked; Download saved the real file (`canvas-image-img.png`, 2.1 MB, in
+the browser's download directory); Crop on the bar still opened the crop dialog; the Delete key still deleted the
+selected card (toast "Deleted txt", undo offered). `npx vitest run` (598), `npx tsc --noEmit`, `npm run check`
+(828/795 keys, 187 modules), `npm run build` (575.92 kB — down from 586.19).
+
+**Where** `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx` (the type-gated tool list, no state, no
+settings), `frontend/src/components/canvas/canvas-context-menu.tsx` (info and download added, all node rows behind
+`menu.type === "node"`, a divider before the delete), `frontend/src/components/canvas/canvas-image-toolbar-tools.tsx`
+(the five definitions, the configuration layer gone), `frontend/src/pages/canvas/project.tsx` (`toolbarNodeId`,
+`keepNodeToolbar`, `hideNodeToolbar` and their five resets gone; `onInfo`/`onDownload`/`canDownload` wired into the
+menu), `frontend/src/i18n/locales/{en-US,zh-CN}.ts` (the eight `imageTools.*` configuration strings and the five
+bar-only `nodeToolbar.*` tooltips gone). Deleted: `canvas-image-toolbar-settings-modal.tsx`, and the kit components
+only it used — `kit/card.tsx`, `kit/text.tsx`, `Space` in `kit/display.tsx`.
