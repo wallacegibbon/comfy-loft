@@ -15,6 +15,10 @@ import { CanvasConflictError, CanvasMissingError, type CanvasDocument, type Canv
  *     start a second request: it marks the canvas dirty again, and the in-flight save schedules the
  *     next one when it finishes. That is what keeps `rev` meaningful — two saves racing each other
  *     would hand the server a stale `If-Match` on purpose.
+ *   - **Only writing what changed.** A flush whose document is the one already on disk is not a write: the
+ *     canvas is re-saved nowhere, `rev` keeps meaning "someone changed this", and `updatedAt` keeps meaning
+ *     "when". Without this, opening a canvas saved it — hydration builds new node objects, which the page
+ *     reads as an edit — so every open bumped the version and moved the canvas to the top of the list.
  *   - **Deciding what a failure means.** A network error is temporary: retry with backoff and keep the
  *     canvas dirty. A 409 is neither temporary nor a network failure: the copy on disk moved on, which
  *     in a single-user build means another tab is editing the same canvas. Retrying with the new version
@@ -57,6 +61,14 @@ export type SaveQueue = {
     /** Save every canvas that has anything pending. Used when the page is going away. */
     flushAll: () => Promise<void>;
     isDirty: (id: string) => boolean;
+    /**
+     * Record the canvas as it stands as the one on disk, without writing.
+     *
+     * Called when a canvas is opened: what a load produced is on disk by definition, and a queue that did not
+     * know it would write the document back the first time anything asked it to — which is how opening a canvas
+     * became a save.
+     */
+    noteOnDisk: (id: string) => void;
     /** Drop everything known about a canvas, after it was deleted. */
     forget: (id: string) => void;
 };
@@ -73,11 +85,23 @@ type Entry = {
     exhausted: boolean;
 };
 
+/**
+ * What was last written, per canvas, as the text a save would send.
+ *
+ * A string rather than a deep compare: the queue has no opinion about a document's shape, and the request
+ * serialises it anyway. The map holds one entry per canvas open in this tab, dropped when the canvas is
+ * forgotten.
+ */
+function fingerprint(snapshot: SaveSnapshot): string {
+    return JSON.stringify({ title: snapshot.title, document: snapshot.document });
+}
+
 export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
     const debounceMs = options.debounceMs ?? 400;
     const retryDelaysMs = options.retryDelaysMs ?? [1000, 2000, 5000];
     const timers = options.timers ?? globalThis;
     const entries = new Map<string, Entry>();
+    const written = new Map<string, string>();
 
     const entryOf = (id: string): Entry => {
         let entry = entries.get(id);
@@ -138,10 +162,19 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
         }
         if (!entry.dirty) return;
 
+        // The same document that is already on disk: nothing to write, and nothing the server would learn.
+        // `title` is compared with it because it travels in the same request.
+        const key = fingerprint(snapshot);
+        if (written.get(id) === key) {
+            entry.dirty = false;
+            return;
+        }
+
         entry.dirty = false;
         entry.running = true;
         try {
             const summary = await options.save(id, snapshot, flushOptions?.keepalive ? { keepalive: true } : undefined);
+            written.set(id, key);
             entry.conflicts = 0;
             entry.attempt = 0;
             entry.exhausted = false;
@@ -201,6 +234,10 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
         flush,
         flushAll,
         isDirty: (id) => Boolean(entries.get(id)?.dirty),
+        noteOnDisk: (id) => {
+            const snapshot = options.snapshot(id);
+            if (snapshot) written.set(id, fingerprint(snapshot));
+        },
         forget: (id) => {
             const entry = entries.get(id);
             if (entry) {
@@ -208,6 +245,7 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
                 cancel(entry.retry);
             }
             entries.delete(id);
+            written.delete(id);
         },
     };
 }

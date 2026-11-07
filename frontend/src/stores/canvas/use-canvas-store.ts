@@ -150,6 +150,9 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
             projects: [project, ...state.projects.filter((item) => item.id !== id)],
             canvases: upsertSummary(state.canvases, record.summary),
         }));
+        // What was just read is what is on disk. Without this the page's own hydration — new node objects, the
+        // same content — reads as a change, and opening a canvas saves it (docs/decisions.md #340).
+        queue.noteOnDisk(id);
         return project;
     },
 
@@ -159,6 +162,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
         const record = await requestCanvasCreate(title, document);
         const project = projectOf(record.summary, record.document);
         set((state) => ({ canvases: upsertSummary(state.canvases, record.summary), projects: [project, ...state.projects] }));
+        queue.noteOnDisk(project.id);
         return record.summary.id;
     },
 
@@ -168,6 +172,8 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
         const record = await requestCanvasImport(archive);
         const project = projectOf(record.summary, record.document);
         set((state) => ({ canvases: upsertSummary(state.canvases, record.summary), projects: [project, ...state.projects] }));
+        // An imported canvas is on disk as the server unpacked it, for the same reason a loaded one is.
+        queue.noteOnDisk(project.id);
         return record.summary.id;
     },
 

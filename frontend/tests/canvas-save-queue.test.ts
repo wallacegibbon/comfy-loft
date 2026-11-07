@@ -342,3 +342,66 @@ describe("the edges", () => {
         expect(state.saved).toHaveLength(0);
     });
 });
+
+/**
+ * A flush is not a write when the document is the one already on disk.
+ *
+ * Opening a canvas produced new node objects and the page read that as an edit, so the queue wrote the document
+ * back — which bumped `rev` (the number two tabs compare to notice each other's changes) and `updatedAt` (which
+ * orders the canvas list). `noteOnDisk` is what lets the queue tell "the canvas changed" from "the canvas was
+ * looked at": it records the loaded document as written.
+ */
+describe("only what changed", () => {
+    test("the document a load produced is not written back", async () => {
+        const { queue, state } = harness();
+        state.snapshots.set("c1", snapshotOf("opened"));
+        queue.noteOnDisk("c1");
+
+        queue.schedule("c1");
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+        expect(state.saved).toHaveLength(0);
+    });
+
+    test("an edit after the load is written, and once", async () => {
+        const { queue, state } = harness();
+        state.snapshots.set("c1", snapshotOf("opened"));
+        queue.noteOnDisk("c1");
+
+        state.snapshots.set("c1", snapshotOf("edited"));
+        queue.schedule("c1");
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+        expect(state.saved.map((save) => save.snapshot.title)).toEqual(["edited"]);
+
+        // The same document again — a second read of the same state, say — is not a second write.
+        queue.schedule("c1");
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+        expect(state.saved).toHaveLength(1);
+    });
+
+    test("a rename is a change even when the document is untouched", async () => {
+        const { queue, state } = harness();
+        state.snapshots.set("c1", snapshotOf("same"));
+        queue.noteOnDisk("c1");
+
+        state.snapshots.set("c1", { ...snapshotOf("same"), title: "renamed" });
+        queue.schedule("c1");
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+        expect(state.saved).toHaveLength(1);
+        expect(state.saved[0].snapshot.title).toBe("renamed");
+    });
+
+    test("a forgotten canvas is written from scratch next time it is opened", async () => {
+        const { queue, state } = harness();
+        state.snapshots.set("c1", snapshotOf("same"));
+        queue.noteOnDisk("c1");
+        queue.schedule("c1");
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+        expect(state.saved).toHaveLength(0);
+
+        // Deleted, which forgets it; then the same document arrives again as a new canvas.
+        queue.forget("c1");
+        queue.schedule("c1");
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+        expect(state.saved).toHaveLength(1);
+    });
+});
