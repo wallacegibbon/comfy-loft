@@ -11313,3 +11313,46 @@ still opened as a centred 1000-pixel panel, so the centring change cost the fixe
 double click, `onPreviewNode`), `frontend/src/components/kit/dialog.tsx` (the centring and the `auto` size),
 `frontend/src/pages/canvas/project.tsx` (`handleNodePreview`, the media dialog),
 `frontend/src/i18n/locales/{en-US,zh-CN}.ts` (`canvas.runtime.videoDetails`).
+
+
+## 330. A mask is opened by the mode that needs it, not by the picture's toolbar
+
+**Decision** Mask editing is not a quick tool on an image card's toolbar. It is opened by the control that
+chooses what the model should do with the picture: in the image settings popover, picking `inpaint` opens the mask
+editor (and `outpaint` opens the outpaint one). The toolbar keeps only the tools that act on the picture itself —
+info, delete, download, crop, split, upscale, angle, view.
+
+**Why** The user asked the question the button could not answer: "inpaint 的时候才需要它，放在一个图片的通用工具条
+上面有什么用呢". The code agrees with them, and more strongly than the question assumed. A mask is not something a
+picture carries; it is an input one *mode* of one model declares. Only `image-qwen21` has it: its `inpaint` variant
+binds `mask` to a second `LoadImage`, then `ImageToMask` → `InpaintCropImproved` → `SetLatentNoiseMask` → …
+→ `InpaintStitchImproved`. Every other image workflow in the registry takes **no pictures at all** — Z-Image Turbo
+and the MOSS ones have `EmptyLatentImage` and no `LoadImage`, and no `refs` binding — so pressing the toolbar button
+on one of them uploaded a source and a mask that the graph could not accept, and the run came back as a fresh
+text-to-image of the sentence: a picture that had nothing to do with the one it was painted on. It also lied about
+the mode: the run's config was given `imageMode: "inpaint"` on the way out without writing it back to the node, so
+the panel's pill still read "Text to image" for a run that had gone out as inpaint. A control that is wrong for
+every model but one, and misreports what it did for that one, belongs where the model and the mode are chosen.
+
+**Cost** One click more on the path that does work: Qwen's pill → 局部重绘 → editor, instead of a button on the
+card. And the editor is now found only by someone who has already decided to inpaint — the hint under the pills
+("选择后自动打开蒙版，只修改蒙版覆盖区域") is what has to teach it. The editor itself still holds its path for
+models without a real mask input — the blue-overlay-plus-instruction picture, sent as an ordinary reference — which
+is now reachable from nowhere; it is left in place because removing it changes the payload of the one path we have
+only read, not run, and the next real inpaint run should decide it.
+
+**Rejected** Keeping the button and hiding it when the model has no mask input. That is a per-model condition on a
+toolbar shared by every picture, and it would still put the mask next to Crop. Also rejected: keeping it visible
+but disabled with a hint, which on a bar this dense is a permanently greyed button that has to be explained.
+
+**Tested** In the browser on a throwaway canvas (deleted afterwards): an image card's toolbar reads
+info / remove / download / crop / split / upscale / angle / view with no 局部编辑, and "Customize toolbar" lists the
+same eight, 8/8 checked; a node set to Qwen Image 2.1 whose mode pill is opened shows 局部重绘 and clicking it opens
+"Local mask edit" with brush, instructions and Generate. `npx vitest run` (598), `npx tsc --noEmit`, `npm run check`
+(840/807 keys — the two `imageTools.mask*` strings are gone, and the material hint no longer names a card tool that
+does not exist), `npm run build` (586.77 kB).
+
+**Where** `frontend/src/components/canvas/canvas-image-toolbar-tools.tsx` (the missing definition, and the note
+saying why), `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`,
+`frontend/src/pages/canvas/project.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts` (`canvas.imageTools.mask*`
+removed, `canvas.runtime.materialHint` corrected).

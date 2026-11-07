@@ -1,14 +1,13 @@
 import type { ReactNode } from "react";
-import { Brush, Grid2x2, Maximize2, Rotate3d, Scissors, ZoomIn } from "lucide-react";
+import { Grid2x2, Maximize2, Rotate3d, Scissors, ZoomIn } from "lucide-react";
 
 import type { CanvasNodeData } from "@/types/canvas";
 import i18n from "@/i18n";
 
-type ImageNodeActionToolId = "maskEdit" | "crop" | "split" | "upscale" | "angle" | "view";
+type ImageNodeActionToolId = "crop" | "split" | "upscale" | "angle" | "view";
 export type ImageQuickToolId = "info" | "delete" | "download" | ImageNodeActionToolId;
 
 type ImageToolHandlers = {
-    onMaskEdit: (node: CanvasNodeData) => void;
     onCrop: (node: CanvasNodeData) => void;
     onSplit: (node: CanvasNodeData) => void;
     onUpscale: (node: CanvasNodeData) => void;
@@ -36,14 +35,9 @@ export const IMAGE_QUICK_TOOLS_STORAGE_KEY = "canvas-image-quick-tools-v8";
 const defaultBaseToolIds: ImageQuickToolId[] = ["info", "delete", "download"];
 
 const imageToolDefinitions: ImageToolDefinition[] = [
-    {
-        id: "maskEdit",
-        defaultVisible: true,
-        label: () => i18n.t("canvas.imageTools.mask"),
-        title: () => i18n.t("canvas.imageTools.maskTitle"),
-        icon: () => <Brush className="size-4" />,
-        run: (node, handlers) => handlers.onMaskEdit(node),
-    },
+    // Everything here acts on the picture itself: crop, split, enlarge, re-shoot from another angle, look at it
+    // bigger. Mask editing is deliberately absent (docs/decisions.md #330): it is not a thing you do to a
+    // picture, it is the input one *mode* of one model needs, and the place that chooses the mode opens it.
     {
         id: "crop",
         defaultVisible: true,

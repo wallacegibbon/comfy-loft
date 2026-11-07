@@ -2733,7 +2733,6 @@ function InfiniteCanvasPage() {
                     onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
                     onInterpolateVideo={(node) => void interpolateVideoNode(node)}
                     onDownload={downloadNodeImage}
-                    onMaskEdit={(node) => openNodeTool("maskEdit", node.id)}
                     onCrop={(node) => openNodeTool("crop", node.id)}
                     onSplit={(node) => openNodeTool("split", node.id)}
                     onUpscale={(node) => upscaleImageNode(node)}

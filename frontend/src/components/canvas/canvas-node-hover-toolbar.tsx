@@ -25,7 +25,6 @@ type CanvasNodeHoverToolbarProps = {
     onIncreaseFont: (node: CanvasNodeData) => void;
     onInterpolateVideo: (node: CanvasNodeData) => void;
     onDownload: (node: CanvasNodeData) => void;
-    onMaskEdit: (node: CanvasNodeData) => void;
     onCrop: (node: CanvasNodeData) => void;
     onSplit: (node: CanvasNodeData) => void;
     onUpscale: (node: CanvasNodeData) => void;
@@ -56,7 +55,6 @@ export function CanvasNodeHoverToolbar({
     onIncreaseFont,
     onInterpolateVideo,
     onDownload,
-    onMaskEdit,
     onCrop,
     onSplit,
     onUpscale,
@@ -98,7 +96,7 @@ export function CanvasNodeHoverToolbar({
     const hasAudio = isAudio && Boolean(node.metadata?.content);
     const isText = node.type === CanvasNodeType.Text;
     const quickImageToolIdSet = new Set(quickImageToolIds);
-    const imageTools = buildImageToolbarTools(node, { onMaskEdit, onCrop, onSplit, onUpscale, onAngle, onViewImage });
+    const imageTools = buildImageToolbarTools(node, { onCrop, onSplit, onUpscale, onAngle, onViewImage });
 
     function openImageToolSettings() {
         onKeep(activeNode.id);
