@@ -1085,7 +1085,8 @@ switching used to mean leaving the canvas for the list page), `components/canvas
 ## 41. `npm run check` is the third gate, because the compiler cannot see these two bugs
 
 **Decision** Two scripts in `canvas/web/scripts/` run as `npm run check:i18n` and
-`npm run check:exports`, together with `tsc --noEmit` under `npm run check`.
+`npm run check:exports`, together with `tsc --noEmit` under `npm run check`. A third,
+`check:decisions`, joined them in #336: every `#N` a comment or a doc cites has an entry in this file.
 
 **Why they exist** Both catch a class of bug that type-checks, builds, and passes tests while
 being visibly broken:
@@ -1120,7 +1121,7 @@ _by_ the canvas. `canvas.project.*` keeps the list-management keys, which is wha
 actually means here.
 
 **Where** `canvas/web/scripts/check-i18n.cjs`, `scripts/check-exports.cjs`,
-`package.json`.
+`scripts/check-decisions.cjs`, `package.json`.
 
 
 ## 42. Ten "which node has which dialog open" states become one
@@ -10637,6 +10638,36 @@ modules), `make frontend`, `make build`. Not checked in a browser: the page on `
 `internal/server/agent_instructions.go`, `internal/server/mcp_test.go`,
 `frontend/tests/{node-model,canvas-agent-tools,node-generation-facts}.test.ts`.
 
+## 312. What models there are is data, and the agent can ask
+
+**Decision** A tool, `list_models({capability?})`: every workflow this canvas can run, grouped by the kind of
+content, with the ones that are **steps** named apart, each saying what it takes (words, or how many pictures or
+clips), the modes a family offers — including a mode whose node pack is missing, marked where it is offered — and,
+for a step, the knobs it declares. It is built from the same catalog the node's picker decides with
+(`describeModelCatalogs` over the config store's channels), so a listing can never offer a model a picker would
+not, and `set_node`'s `model` takes exactly the names it answers with.
+
+**Why** Asked how many image models the canvas had, the agent recited the names it had scraped off the nodes: nine
+image rows, three of them steps, two video workflows missing because nothing on screen used them, the audio one
+absent — and then said it could not get the complete list. It could not: no tool listed models. The prompt gained
+one sentence — ask, do not recite — and **no list**: the list is data and belongs in the answer to a call, and a
+list copied into a prompt is wrong the moment the operator installs a workflow. Counting is the question this
+answers, and a step is not a generator, so "how many image models" has a different answer once the upscaler stops
+counting.
+
+**Cost** One more tool, and one more place that has to know what a model is: the catalog's own description is
+where the words live, so a new field in a workflow's contract has to be added to that sentence as well.
+
+**Tested** Its own file, and the wiring in `frontend/tests/canvas-agent-tools.test.ts`: one catalog per kind is
+asked of the page, all three unless the call names one, and a kind that is not one of them is refused rather than
+silently ignored. The listing's rules — steps apart, an unused workflow still on the list — are pinned in
+`frontend/tests/node-model.test.ts`.
+
+**Where** `frontend/src/lib/canvas/node-model.ts` (`describeModelCatalogs`, `ModelCatalog.step`),
+`frontend/src/lib/canvas/canvas-agent-tools.ts` (`listModels`), `internal/server/routes_mcp.go` (`list_models`),
+`internal/server/agent_instructions.go` ("What models there are is data, not memory").
+
+
 ## 313. A workflow's special requirement is its own declaration, said before the press
 
 **Decision** Two surfaces, both reading data that was already published:
@@ -11626,6 +11657,22 @@ size / Increase font size. `npx vitest run` (602 in 52 files), `npx tsc --noEmit
 `active` class, `extraTools`), `frontend/src/components/canvas/canvas-image-toolbar-tools.tsx` (the definition type,
 `buildImageToolbarTools`), `frontend/src/types/canvas-node.ts` (`CanvasNodeToolbarItem` gone), the two dictionaries,
 and the four tests named above.
+
+### A number nothing answers to, and the gate that now reads them
+
+Three files cited `#312` for the decision behind `list_models` and `describeModelCatalogs`; `#312`'s own commit
+never wrote the entry, and the doc has no `## 312.` heading. Two comments cited `#188` and `#190` for entries
+the doc had deleted — correctly, since both subjects are gone, but the sentence that pointed at them stayed.
+A reader following any of the five numbers finds nothing, and that is worse than a sentence without a number:
+it reads like the rule is recorded somewhere they have not found. `#312` is written now, from the commit that
+made the decision and the code that still follows it; the two historical citations lost their numbers, since
+the sentence already says the thing is gone. And `npm run check:decisions` (`scripts/check-decisions.cjs`,
+third in `npm run check`) fails on the fifth one: it reads every `#N` written **in prose** — a comment, or a
+line of Markdown — and requires an entry. A `#` in code is not a citation, which is also what keeps hex colours
+out of it: this tree writes them in strings, never in comments.
+
+**Where** `docs/decisions.md` (#312, #41), `frontend/scripts/check-decisions.cjs`, `frontend/package.json`,
+`frontend/src/components/canvas/canvas-refresh-shell.tsx`, `frontend/tests/overlay-z-index.test.ts`.
 
 ### The same sweep, in the two places a document can go stale
 

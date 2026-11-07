@@ -6,8 +6,8 @@ import { CANVAS_CHROME_GAP, CANVAS_CHROME_GUTTER, CANVAS_ABOVE_DOCK_BOTTOM, CANV
  * It is the same three boxes the app stacks on the left — the bar at the top, the panel under it, the zoom
  * dock at the foot — at the same width, on the same left edge and with the same gaps (#191), so the real
  * chrome lands where the sketch was instead of jumping. Nothing else is sketched: this used to draw a
- * centred bottom dock and a minimap too, and neither exists any more (#188), so the loading frame promised
- * chrome that never came.
+ * centred bottom dock and a minimap too, and neither exists any more, so the loading frame promised chrome
+ * that never came.
  */
 export function CanvasRefreshShell() {
     const width = useCanvasChromeWidth();
