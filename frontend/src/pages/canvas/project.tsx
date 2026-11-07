@@ -1215,11 +1215,11 @@ function InfiniteCanvasPage() {
     }, [groupNodes]);
 
     /**
-     * Release these nodes from their groups, and say what that did.
+     * Dissolve these groups, and say what that did.
      *
-     * The button's own function: naming a group dissolves it, naming a member takes it out, and a group left
-     * with no members goes away — all of it `applyUngroupSelection`. The two lists are only for the answer a
-     * tool has to give; a press acts and says nothing.
+     * The button's own function. Naming a group dissolves it where it stands; naming a member is not a thing this
+     * can do — a card belongs to a group by where it stands, so a member is taken out by being dragged out (#335).
+     * The two lists are only for the answer a tool has to give; a press acts and says nothing.
      */
     const ungroupNodes = useCallback((ids: Set<string>): { released: string[]; dissolved: string[] } | null => {
         const before = nodesRef.current;

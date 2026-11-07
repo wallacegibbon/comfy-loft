@@ -1083,7 +1083,7 @@ describe("group_nodes: putting nodes in one card", () => {
         const { answer, text } = await textOf(hands, "group_nodes", { nodeIds: ["image-1", "text-1"] });
         expect(answer.isError).toBe(true);
         expect(text).toContain("already one group (group-9)");
-        expect(text).toContain("ungroup_nodes");
+        expect(text).toContain("move one of them out of the box");
         expect(written.grouped).toEqual([]);
     });
 
@@ -1108,10 +1108,15 @@ describe("ungroup_nodes: letting nodes out", () => {
         expect(text).toBe("released image-1, text-1; removed group-1");
     });
 
-    test("taking one node out leaves the group standing", async () => {
-        const { hands } = handsFor([placed("group-1", "group"), placed("image-1", "image", { groupId: "group-1" })]);
-        const { text } = await textOf(hands, "ungroup_nodes", { nodeIds: ["image-1"] });
-        expect(text).toBe("released image-1");
+    test("refuses a member, because a card belongs to a group by where it stands", async () => {
+        // Releasing it in place would put it back at its next move: a card drawn inside the box but not in the
+        // group (#335). The answer says how to take it out — move it — and nothing is written.
+        const { hands, written } = handsFor([placed("group-1", "group"), placed("image-1", "image", { groupId: "group-1" })]);
+        const { answer, text } = await textOf(hands, "ungroup_nodes", { nodeIds: ["image-1"] });
+        expect(answer.isError).toBe(true);
+        expect(text).toContain("inside group-1");
+        expect(text).toContain("move it outside the box");
+        expect(written.ungrouped).toEqual([]);
     });
 
     test("refuses a node that is in no group", async () => {

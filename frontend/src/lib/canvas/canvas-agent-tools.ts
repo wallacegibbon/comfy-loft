@@ -1038,7 +1038,7 @@ function groupNodes(hands: CanvasHands, args: unknown): ToolAnswer {
     // twice, so this names the group they are in and the two ways forward instead of making another one.
     if (!canGroupSelectedNodes(named, nodes)) {
         const groupId = members[0].metadata?.groupId;
-        return { content: [textBlock(`${nodeIds.join(", ")} are already one group (${groupId}): nothing to wrap. Name another node to merge into it, or release it with ungroup_nodes`)], isError: true };
+        return { content: [textBlock(`${nodeIds.join(", ")} are already one group (${groupId}): nothing to wrap. Name another node to merge into it, or move one of them out of the box`)], isError: true };
     }
 
     const made = hands.groupNodes(nodeIds);
@@ -1050,18 +1050,30 @@ function groupNodes(hands: CanvasHands, args: unknown): ToolAnswer {
  * Release nodes from their groups — the Ungroup button, given ids instead of the live selection.
  *
  * Two shapes, and which one is meant is decided by what the ids name: a group is dissolved and its members
- * stay on the canvas exactly as they were, and a member is taken out of its group. A group left with no
- * members goes away, which is the rule the button follows too. Nothing is deleted but the group's own card —
- * the members, their prompts and their results are untouched, and the connections were never inside it.
+ * stay on the canvas exactly as they were. Nothing is deleted but the group's own card — the members, their
+ * prompts and their results are untouched, and the connections were never inside it.
+ *
+ * It takes a group's id and not a member's (#335). A card is a member by where it stands, so releasing one in
+ * place would put it back at its next move: a card drawn inside the box that is not in the group. Taking a card
+ * out is `move_node`, far enough that it no longer stands in the box.
  */
 function ungroupNodes(hands: CanvasHands, args: unknown): ToolAnswer {
     const nodeIds = nodeIdsOf(args);
-    if (!nodeIds) return { content: [textBlock("ungroup_nodes needs nodeIds: a group's id to dissolve it, or the ids of the nodes to take out of theirs")], isError: true };
+    if (!nodeIds) return { content: [textBlock("ungroup_nodes needs nodeIds: the id of a group to dissolve")], isError: true };
     const nodes = hands.nodes();
     const missing = nodeIds.filter((nodeId) => !nodes.some((node) => node.id === nodeId));
     if (missing.length) return noSuchNodes(missing);
 
-    const done = hands.ungroupNodes(nodeIds);
+    const found = nodeIds.map((nodeId) => nodes.find((node) => node.id === nodeId)!);
+    const groups = found.filter((node) => node.type === "group").map((node) => node.id);
+    if (!groups.length) {
+        const members = found.filter((node) => node.metadata?.groupId);
+        if (!members.length) return { content: [textBlock(`${nodeIds.join(", ")} ${nodeIds.length === 1 ? "is" : "are"} not in a group: there is nothing to release`)], isError: true };
+        const groupsOf = [...new Set(members.map((node) => node.metadata?.groupId))];
+        return { content: [textBlock(`${members.map((node) => node.id).join(", ")} ${members.length === 1 ? "is" : "are"} inside ${groupsOf.join(", ")}, and a card belongs to a group by where it stands: move it outside the box to take it out. ungroup_nodes takes the id of a group to dissolve`)], isError: true };
+    }
+
+    const done = hands.ungroupNodes(groups);
     if (!done) return { content: [textBlock(`${nodeIds.join(", ")} ${nodeIds.length === 1 ? "is" : "are"} not in a group: there is nothing to release`)], isError: true };
     const parts: string[] = [];
     if (done.released.length) parts.push(`released ${done.released.join(", ")}`);

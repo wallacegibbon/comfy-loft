@@ -11533,3 +11533,42 @@ the menu like the others do.
 **Where** `frontend/src/components/canvas/canvas-context-menu.tsx` (`canDelete`, the delete row and its divider,
 `MenuButton`'s click), `frontend/src/pages/canvas/project.tsx` (`canDelete={contextMenuNode?.type !==
 CanvasNodeType.Group}`, the group/ungroup rows closing the menu).
+
+
+## 335. A card leaves a group by leaving the box, not by a menu item
+
+**Decision** Ungroup exists for **groups only**. The menu row, the selection bar's button and the agent's
+`ungroup_nodes` all take a group and dissolve it; a member is never released in place. Asked to do it anyway,
+`ungroup_nodes` answers where the card stands, that belonging is decided by where it stands, and that it comes out
+by being moved outside the box. `canUngroupSelectedNodes` is "the selection holds a group", and
+`applyUngroupSelection` dissolves groups and lets their members out — nothing else.
+
+**Why** Because membership is geometry, at the end of every move: `findContainingGroupId` reads the boxes and the
+card's centre, and a card standing inside a box joins it again (#308). So "released, but still standing in the
+box" is a state the drawing cannot show: the card looks like it is in the group and is not, until somebody nudges
+it. Two states that look identical and behave differently is the worst kind of state to keep, and the user said it
+plainly: "不要让它看上去好像在组里，其实不在组里 —— 这是个非常糟糕的设计".
+
+**Cost** Taking one card out of a group is a drag, not a menu row: pick it up and put it down outside the box. That
+gesture is what the canvas already reads (#308), so nothing new has to be learnt — but the discoverable version of
+the act is gone, and a canvas saved before this change may still hold a member whose card sits outside its box
+(the data model allows it; the UI just no longer creates it).
+
+**Rejected** Ungrouping a member *and* moving it out of the box in the same press: a verb that silently relocates
+what it acts on is a worse surprise than a drag the user did not think of. Also rejected: keeping the row and
+showing it greyed when the card is loose — the row was only ever meaningful for a card in a group, and a permanently
+greyed or conditionally appearing row is what raised the question in the first place ("有的没有，有的有，怎么回事啊").
+
+**Tested** `frontend/tests/canvas-node-geometry.test.ts`: a member on its own, and a selection of members with no
+group among them, are not a group to dissolve (`applyUngroupSelection` returns null); `canUngroupSelectedNodes` is
+true for a group, false for a member, false for a loose node; dissolving still lets every member out where it
+stands. `frontend/tests/canvas-agent-tools.test.ts`: `ungroup_nodes` on a member is refused with "inside group-1 …
+move it outside the box", and nothing is written to the canvas. In the browser against the running server, on a
+throwaway canvas (deleted afterwards, `lastCanvas` put back): a member's menu read Info / Download / Duplicate /
+Delete with no Ungroup, the group card's menu read Info / Duplicate / Ungroup, and dissolving it removed the box,
+left both pictures where they stood, selected, with no `groupId` in the saved document. `npx vitest run` (597),
+`npx tsc --noEmit`, `npm run check` (830/797 keys, 187 modules), `npm run build` (577.65 kB).
+
+**Where** `frontend/src/lib/canvas/canvas-node-geometry.ts` (`canUngroupSelectedNodes`, `applyUngroupSelection`),
+`frontend/src/lib/canvas/canvas-agent-tools.ts` (`ungroupNodes`, and the sentence `group_nodes` gives when the set
+is already one group), `frontend/src/pages/canvas/project.tsx` (`ungroupNodes`' doc), its two test files.

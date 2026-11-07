@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { applyGroupSelection, applyUngroupSelection, settleMoveMembership, withGroupMembers, withoutEmptiedGroups } from "../src/lib/canvas/canvas-node-geometry";
+import { applyGroupSelection, applyUngroupSelection, canUngroupSelectedNodes, settleMoveMembership, withGroupMembers, withoutEmptiedGroups } from "../src/lib/canvas/canvas-node-geometry";
 import type { CanvasNodeData } from "../src/types/canvas";
 
 /**
@@ -55,21 +55,21 @@ describe("ungrouping", () => {
         expect(groupOf(result, "m2")).toBeUndefined();
     });
 
-    test("taking one member out leaves the card standing for the others", () => {
-        const result = applyUngroupSelection(new Set(["m1"]), [node("g1", "group"), node("m1", "text", "g1"), node("m2", "text", "g1")], []);
-        expect(ids(result)).toEqual(["g1", "m1", "m2"]);
-        expect(groupOf(result, "m1")).toBeUndefined();
-        expect(groupOf(result, "m2")).toBe("g1");
+    test("a member on its own is not a group to dissolve: nothing happens", () => {
+        // Standing inside the box *is* membership — the next move of that card puts it back
+        // (`findContainingGroupId`), so "out of the group but still in the box" is a state the drawing cannot
+        // show (#335). Taking a card out means taking it out.
+        const canvas = [node("g1", "group"), node("m1", "text", "g1"), node("m2", "text", "g1")];
+        expect(applyUngroupSelection(new Set(["m1"]), canvas, [])).toBeNull();
+        expect(applyUngroupSelection(new Set(["m1", "m2"]), canvas, [])).toBeNull();
     });
 
-    test("taking the last member out removes the card it emptied", () => {
-        const result = applyUngroupSelection(new Set(["m1"]), [node("g1", "group"), node("m1", "text", "g1")], []);
-        expect(ids(result)).toEqual(["m1"]);
-    });
-
-    test("leaves an empty group that was already empty", () => {
-        const result = applyUngroupSelection(new Set(["m1"]), [node("empty", "group"), node("g1", "group"), node("m1", "text", "g1")], []);
-        expect(ids(result)).toEqual(["empty", "m1"]);
+    test("only a group among the selection can be ungrouped", () => {
+        const canvas = [node("g1", "group"), node("m1", "text", "g1"), node("m2", "text", "g1"), node("loose", "text")];
+        expect(canUngroupSelectedNodes(new Set(["g1"]), canvas)).toBe(true);
+        expect(canUngroupSelectedNodes(new Set(["m1"]), canvas)).toBe(false);
+        expect(canUngroupSelectedNodes(new Set(["m1", "m2"]), canvas)).toBe(false);
+        expect(canUngroupSelectedNodes(new Set(["loose"]), canvas)).toBe(false);
     });
 
     test("says nothing when there is nothing to release", () => {

@@ -117,8 +117,14 @@ export function canGroupSelectedNodes(selectedIds: Set<string>, nodes: CanvasNod
     return !groupId || members.some((node) => node.metadata?.groupId !== groupId);
 }
 
+/**
+ * Whether these cards include a group to dissolve.
+ *
+ * A *member* is deliberately not one of them (docs/decisions.md #335): membership is where a card sits, and a card
+ * still inside the box would be a member again at its next move — see `applyUngroupSelection`.
+ */
 export function canUngroupSelectedNodes(selectedIds: Set<string>, nodes: CanvasNodeData[]) {
-    return nodes.some((node) => selectedIds.has(node.id) && (node.type === CanvasNodeType.Group || Boolean(node.metadata?.groupId)));
+    return nodes.some((node) => selectedIds.has(node.id) && node.type === CanvasNodeType.Group);
 }
 
 /**
@@ -175,16 +181,23 @@ export function applyGroupSelection(selectedIds: Set<string>, nodes: CanvasNodeD
     return { ...next, selectedIds: [group.id] };
 }
 
+/**
+ * Dissolve these groups: the boxes go, their members stay where they are and stop belonging to anything.
+ *
+ * A member on its own is not a thing this can do (#335). Standing inside a box *is* membership — the next move of
+ * that card puts it back (`findContainingGroupId`) — so "take this card out of its group" without moving it is a
+ * state the drawing cannot show: a card that looks like it is in the box and is not. Taking a card out means
+ * taking it out: drag it past the edge.
+ */
 export function applyUngroupSelection(selectedIds: Set<string>, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
     const flattenedGroupIds = selectedGroupIds(selectedIds, nodes);
-    if (!flattenedGroupIds.size && !nodes.some((node) => selectedIds.has(node.id) && node.metadata?.groupId)) return null;
+    if (!flattenedGroupIds.size) return null;
     const releasedIds = new Set<string>();
     const updated = nodes
         .filter((node) => !flattenedGroupIds.has(node.id))
         .map((node) => {
             const groupId = node.metadata?.groupId;
-            if (!groupId) return node;
-            if (!flattenedGroupIds.has(groupId) && !selectedIds.has(node.id)) return node;
+            if (!groupId || !flattenedGroupIds.has(groupId)) return node;
             releasedIds.add(node.id);
             return { ...node, metadata: { ...node.metadata, groupId: undefined } };
         });
