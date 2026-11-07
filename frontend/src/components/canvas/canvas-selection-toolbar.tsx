@@ -1,9 +1,8 @@
-import type { ReactNode } from "react";
 import { Group, Merge, Play, Ungroup } from "lucide-react";
 
 import { useTranslation } from "react-i18next";
 
-import { Tooltip } from "@/components/kit/tooltip";
+import { CanvasBar, CanvasBarButton } from "@/components/canvas/canvas-bar";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { nodeBounds } from "@/lib/canvas/canvas-node-geometry";
 import type { CanvasNodeData, ViewportTransform } from "@/types/canvas";
@@ -68,31 +67,13 @@ export function CanvasSelectionToolbar({
                 />
             </svg>
             {showActions ? (
-                <div
-                    className="absolute z-[45] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
-                    style={{ left: left + width / 2, top: top - 8 }}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    onPointerDown={(event) => event.stopPropagation()}
-                >
-                    {canSyncPlay ? <SelectionAction title={t("canvas.nodeToolbar.syncPlayTitle")} label={t("canvas.nodeToolbar.syncPlay")} icon={<Play className="size-4" />} onClick={onSyncPlay} /> : null}
-                    {canJoinClips ? <SelectionAction title={t("canvas.nodeToolbar.joinClipsTitle")} label={t("canvas.nodeToolbar.joinClips")} icon={<Merge className="size-4" />} onClick={onJoinClips} /> : null}
-                    {canGroup ? <SelectionAction title={t("canvas.nodeToolbar.groupTitle")} label={t("canvas.nodeToolbar.group")} icon={<Group className="size-4" />} onClick={onGroup} /> : null}
-                    {canUngroup ? <SelectionAction title={t("canvas.nodeToolbar.ungroupTitle")} label={t("canvas.nodeToolbar.ungroup")} icon={<Ungroup className="size-4" />} onClick={onUngroup} /> : null}
-                </div>
+                <CanvasBar left={left + width / 2} top={top - 8}>
+                    {canSyncPlay ? <CanvasBarButton title={t("canvas.nodeToolbar.syncPlayTitle")} label={t("canvas.nodeToolbar.syncPlay")} icon={<Play className="size-4" />} onClick={onSyncPlay} /> : null}
+                    {canJoinClips ? <CanvasBarButton title={t("canvas.nodeToolbar.joinClipsTitle")} label={t("canvas.nodeToolbar.joinClips")} icon={<Merge className="size-4" />} onClick={onJoinClips} /> : null}
+                    {canGroup ? <CanvasBarButton title={t("canvas.nodeToolbar.groupTitle")} label={t("canvas.nodeToolbar.group")} icon={<Group className="size-4" />} onClick={onGroup} /> : null}
+                    {canUngroup ? <CanvasBarButton title={t("canvas.nodeToolbar.ungroupTitle")} label={t("canvas.nodeToolbar.ungroup")} icon={<Ungroup className="size-4" />} onClick={onUngroup} /> : null}
+                </CanvasBar>
             ) : null}
         </>
-    );
-}
-
-function SelectionAction({ title, label, icon, onClick }: { title: string; label: string; icon: ReactNode; onClick: () => void }) {
-    return (
-        <Tooltip title={title} placement="top" mouseEnterDelay={0.2} color="#ffffff" styles={{ root: { color: "#242529", boxShadow: "0 8px 24px rgba(15,23,42,.16)", fontSize: 13, fontWeight: 500 } }}>
-            <button type="button" className="group relative flex h-12 items-center whitespace-nowrap px-1.5" onClick={onClick} aria-label={title}>
-                <span className="flex h-9 items-center gap-2 rounded-lg px-2.5 transition group-hover:bg-[#f0f0f1]">
-                    {icon}
-                    <span>{label}</span>
-                </span>
-            </button>
-        </Tooltip>
     );
 }

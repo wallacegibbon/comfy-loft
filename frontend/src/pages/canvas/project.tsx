@@ -47,7 +47,8 @@ import { CanvasNodeOutpaintDialog } from "@/components/canvas/canvas-node-outpai
 import { CanvasNodeMossLayoutDialog } from "@/components/canvas/canvas-node-moss-layout-dialog";
 import { CanvasNodeSplitDialog } from "@/components/canvas/canvas-node-split-dialog";
 import { buildNodeGenerationContext, describeEmptyInputs, hydrateNodeGenerationContext, inputsHoldingNothing } from "@/components/canvas/canvas-node-generation";
-import { CanvasNodeHoverToolbar, CanvasNodeInfoModal } from "@/components/canvas/canvas-node-hover-toolbar";
+import { CanvasNodeInfoModal } from "@/components/canvas/canvas-node-info-modal";
+import { CanvasNodeToolbar } from "@/components/canvas/canvas-node-toolbar";
 import { CanvasSelectionToolbar } from "@/components/canvas/canvas-selection-toolbar";
 import { InfiniteCanvas } from "@/components/canvas/infinite-canvas";
 import { Minimap } from "@/components/canvas/canvas-mini-map";
@@ -2702,7 +2703,7 @@ function InfiniteCanvasPage() {
                     </div>
                 </div>
 
-                <CanvasNodeHoverToolbar
+                <CanvasNodeToolbar
                     node={isNodeDragging || isNodeResizing || nodeImageSettingsOpen || Boolean(referencePickerNodeId) ? null : toolbarNode}
                     viewport={viewport}
                     onDecreaseFont={(node) => handleFontSizeChange(node.id, Math.max(10, (node.metadata?.fontSize || 14) - 2))}
