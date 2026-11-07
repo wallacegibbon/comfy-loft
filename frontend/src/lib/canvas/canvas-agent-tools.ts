@@ -1070,7 +1070,14 @@ function ungroupNodes(hands: CanvasHands, args: unknown): ToolAnswer {
         const members = found.filter((node) => node.metadata?.groupId);
         if (!members.length) return { content: [textBlock(`${nodeIds.join(", ")} ${nodeIds.length === 1 ? "is" : "are"} not in a group: there is nothing to release`)], isError: true };
         const groupsOf = [...new Set(members.map((node) => node.metadata?.groupId))];
-        return { content: [textBlock(`${members.map((node) => node.id).join(", ")} ${members.length === 1 ? "is" : "are"} inside ${groupsOf.join(", ")}, and a card belongs to a group by where it stands: move it outside the box to take it out. ungroup_nodes takes the id of a group to dissolve`)], isError: true };
+        return {
+            content: [
+                textBlock(
+                    `${members.map((node) => node.id).join(", ")} ${members.length === 1 ? "is" : "are"} inside ${groupsOf.join(", ")}, and a card belongs to a group by where it stands: move it outside the box to take it out. ungroup_nodes takes the id of a group to dissolve`,
+                ),
+            ],
+            isError: true,
+        };
     }
 
     const done = hands.ungroupNodes(groups);

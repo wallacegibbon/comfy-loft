@@ -16,10 +16,10 @@ type ImageToolHandlers = {
 
 type ImageToolDefinition = {
     id: ImageNodeActionToolId;
-    label: string | ((node: CanvasNodeData) => string);
-    title: string | ((node: CanvasNodeData) => string);
-    icon: (node: CanvasNodeData) => ReactNode;
-    active?: (node: CanvasNodeData) => boolean;
+    /** Both are read when the bar is drawn, so the dictionary is asked at the moment the words are shown. */
+    label: () => string;
+    title: () => string;
+    icon: () => ReactNode;
     run: (node: CanvasNodeData, handlers: ImageToolHandlers) => void;
 };
 
@@ -70,14 +70,9 @@ const imageToolDefinitions: ImageToolDefinition[] = [
 export function buildImageToolbarTools(node: CanvasNodeData, handlers: ImageToolHandlers) {
     return imageToolDefinitions.map((tool) => ({
         id: tool.id,
-        label: resolveToolText(tool.label, node),
-        title: resolveToolText(tool.title, node),
-        icon: tool.icon(node),
-        active: tool.active?.(node),
+        label: tool.label(),
+        title: tool.title(),
+        icon: tool.icon(),
         onClick: () => tool.run(node, handlers),
     }));
-}
-
-function resolveToolText(value: string | ((node: CanvasNodeData) => string), node: CanvasNodeData) {
-    return typeof value === "function" ? value(node) : value;
 }

@@ -29,16 +29,5 @@ export type CanvasNodeDefinition = {
     resource?: (node: CanvasNodeData) => CanvasNodeResource | null;
 };
 
-/** One button a node can contribute to its own hover toolbar. */
-export type CanvasNodeToolbarItem = {
-    id: string;
-    title: string;
-    label: string;
-    icon: ReactNode;
-    onClick: () => void;
-    active?: boolean;
-    danger?: boolean;
-};
-
 /** What a node contributes to whatever it is wired into. */
 export type CanvasNodeResource = { kind: CanvasResourceKind; text?: string; url?: string; loras?: Array<{ name: string; strength: number }> };

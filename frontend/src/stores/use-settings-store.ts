@@ -35,7 +35,25 @@ type SettingsStore = {
     flush: () => void;
 };
 
-const bootstrapped: SettingsBlob = RUNTIME_SETTINGS;
+/**
+ * Preferences this build no longer has, dropped as a document is read.
+ *
+ * `canvas-image-quick-tools-v8` held which tools a picture's bar showed. #332 gave every kind of node one fixed
+ * list, so nothing reads the key and nothing writes it — but the document it was written into belongs to the
+ * workspace and outlives the build that made it, and a key left in it is a preference the next reader has to
+ * prove is not one. Dropping it on read is the same rule the config store follows for the address of the old
+ * single speech server (#252): a preference that moved is removed, not left to rot.
+ */
+const DEAD_SETTINGS: string[] = ["canvas-image-quick-tools-v8"];
+
+function withoutDeadSettings(document: SettingsBlob): SettingsBlob {
+    if (!DEAD_SETTINGS.some((key) => key in document)) return document;
+    const next = { ...document };
+    DEAD_SETTINGS.forEach((key) => delete next[key]);
+    return next;
+}
+
+const bootstrapped: SettingsBlob = withoutDeadSettings(RUNTIME_SETTINGS);
 const SAVE_DEBOUNCE_MS = 600;
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -52,7 +70,7 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
         if (get().ready) return;
         try {
             const settings = await requestSettings();
-            set({ settings, ready: true, error: null });
+            set({ settings: withoutDeadSettings(settings), ready: true, error: null });
         } catch (error) {
             // Leave `ready` false: without a document of record, a save would replace the server's
             // preferences with this build's defaults.

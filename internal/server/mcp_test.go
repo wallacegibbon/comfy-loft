@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -562,5 +563,56 @@ func waitForEnv(t *testing.T, path string) spawnEnv {
 			t.Fatalf("the fake agent recorded no environment at %s", path)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestToolsDescribeWhatTheCanvasAccepts: the schema is the only thing the model reads before it calls, so it
+// has to describe the call the canvas will take. Two of them had drifted from the code beside them — #335 made
+// `ungroup_nodes` take a group and refuse a member, and `create_node` makes a group, which the canvas's own
+// create menu offers and the tool's own answer still described (#336).
+func TestToolsDescribeWhatTheCanvasAccepts(t *testing.T) {
+	server := newTestServer(t, newFakeComfy(t))
+	found := map[string]mcpTool{}
+	for _, tool := range server.mcpTools() {
+		found[tool.Name] = tool
+	}
+
+	ungroup, ok := found["ungroup_nodes"]
+	if !ok {
+		t.Fatal("there is no ungroup_nodes tool")
+	}
+	if !strings.Contains(strings.ToLower(ungroup.Description), "dissolve") {
+		t.Fatalf("ungroup_nodes does not say what it does to a group: %q", ungroup.Description)
+	}
+	// The sentence that was there before #335: a member id does not leave its group, it is refused.
+	for _, gone := range []string{"it leaves the group it is in", "the nodes to take out of theirs"} {
+		if strings.Contains(ungroup.Description, gone) {
+			t.Fatalf("ungroup_nodes still promises %q: %q", gone, ungroup.Description)
+		}
+	}
+	if strings.Contains(string(ungroup.InputSchema), "take out of theirs") {
+		t.Fatalf("ungroup_nodes' argument still offers a member's id: %s", ungroup.InputSchema)
+	}
+
+	create, ok := found["create_node"]
+	if !ok {
+		t.Fatal("there is no create_node tool")
+	}
+	var schema struct {
+		Properties struct {
+			Type struct {
+				Enum []string `json:"enum"`
+			} `json:"type"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(create.InputSchema, &schema); err != nil {
+		t.Fatalf("create_node's schema is not JSON: %v", err)
+	}
+	// A group is a type the canvas makes, so a schema without it and a description that explains it were
+	// telling the model two different things.
+	for _, want := range []string{"image", "video", "audio", "text", "group"} {
+		if !slices.Contains(schema.Properties.Type.Enum, want) {
+			t.Fatalf("create_node cannot be asked for %q: %v", want, schema.Properties.Type.Enum)
+		}
 	}
 }

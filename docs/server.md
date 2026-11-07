@@ -340,6 +340,7 @@ Media, runs and files:
 | `GET`  | `/api/runs/{id}`                  | Status, progress, preview frame, outputs, error.                                                            |
 | `GET`  | `/api/runs/{id}/preview`          | In-flight preview frame, when one exists.                                                                   |
 | `DELETE` | `/api/runs/{id}`                | Cancel (idempotent; also interrupts ComfyUI).                                                               |
+| `POST` | `/api/canvases/{id}/join`         | Join several of that canvas's clips into one file, in the order given. Not a run: a stream copy, no model, no queue (#324). `{"files": ["<name>", …], "reencode": false}`; clips that disagree on codec, size, pixel format, frame rate, sample rate or channel count are refused with the field that differs, and `reencode` is the caller asking for every frame to be rewritten. Answers like an upload, plus the joined clip's `durationMs`, `width` and `height`. |
 | `GET`  | `/api/canvases/{id}/files/{name}` | One file of a canvas: an upload or a finished run's artifact. Cacheable for good — a name is written once.  |
 
 Metadata and management:

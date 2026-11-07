@@ -544,8 +544,6 @@ export default {
             runId: "运行 ID",
             decreaseFont: "减小字号",
             increaseFont: "增大字号",
-            zoomOut: "缩小",
-            zoomIn: "放大",
             nodeInfo: "节点信息",
             type: "类型",
             size: "尺寸",

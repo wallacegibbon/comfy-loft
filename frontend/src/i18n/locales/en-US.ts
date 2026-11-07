@@ -509,8 +509,6 @@ export default {
             runId: "Run ID",
             decreaseFont: "Decrease font size",
             increaseFont: "Increase font size",
-            zoomOut: "Smaller",
-            zoomIn: "Larger",
             nodeInfo: "Node information",
             type: "Type",
             size: "Size",

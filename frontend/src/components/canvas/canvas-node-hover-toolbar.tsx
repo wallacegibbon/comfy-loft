@@ -11,7 +11,6 @@ import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
 import type { VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
-import type { CanvasNodeToolbarItem } from "@/types/canvas-node";
 import { buildImageToolbarTools } from "./canvas-image-toolbar-tools";
 
 type CanvasNodeHoverToolbarProps = {
@@ -27,7 +26,6 @@ type CanvasNodeHoverToolbarProps = {
     /** Opens the node's media at its own size — the clip's button, and the picture's `view` tool both. */
     onView: (node: CanvasNodeData) => void;
     onCaptureVideoFrame: (node: CanvasNodeData, position: VideoFramePosition) => void;
-    extraTools?: CanvasNodeToolbarItem[];
 };
 
 type ToolbarTool = {
@@ -36,7 +34,6 @@ type ToolbarTool = {
     label: string;
     icon: ReactNode;
     onClick?: () => void;
-    active?: boolean;
     /** The choices behind one button, when the verbs are three forms of one act — a clip's frame grabs are. */
     menu?: { id: string; label: string; icon: ReactNode; onClick: () => void }[];
 };
@@ -47,7 +44,7 @@ type ToolbarTool = {
  * What every node has — information, download, delete, duplicate, grouping — is in the right-click menu, and a node
  * with no verbs of its own (a group, an empty audio card) gets no bar at all.
  */
-export function CanvasNodeHoverToolbar({ node, viewport, onDecreaseFont, onIncreaseFont, onInterpolateVideo, onCrop, onSplit, onUpscale, onAngle, onView, onCaptureVideoFrame, extraTools = [] }: CanvasNodeHoverToolbarProps) {
+export function CanvasNodeHoverToolbar({ node, viewport, onDecreaseFont, onIncreaseFont, onInterpolateVideo, onCrop, onSplit, onUpscale, onAngle, onView, onCaptureVideoFrame }: CanvasNodeHoverToolbarProps) {
     const { t } = useTranslation();
     if (!node) return null;
 
@@ -85,12 +82,13 @@ export function CanvasNodeHoverToolbar({ node, viewport, onDecreaseFont, onIncre
             : []),
         ...(isText
             ? [
-                  { id: "decreaseFont", title: t("canvas.nodeToolbar.decreaseFont"), label: t("canvas.nodeToolbar.zoomOut"), icon: <Minus className="size-4" />, onClick: () => onDecreaseFont(node) },
-                  { id: "increaseFont", title: t("canvas.nodeToolbar.increaseFont"), label: t("canvas.nodeToolbar.zoomIn"), icon: <Plus className="size-4" />, onClick: () => onIncreaseFont(node) },
+                  // The label, not just the tooltip, has to say *what* gets smaller: with the words always on
+                  // (#332), "缩小" over a text card reads as zooming the canvas, which it does not do.
+                  { id: "decreaseFont", title: t("canvas.nodeToolbar.decreaseFont"), label: t("canvas.nodeToolbar.decreaseFont"), icon: <Minus className="size-4" />, onClick: () => onDecreaseFont(node) },
+                  { id: "increaseFont", title: t("canvas.nodeToolbar.increaseFont"), label: t("canvas.nodeToolbar.increaseFont"), icon: <Plus className="size-4" />, onClick: () => onIncreaseFont(node) },
               ]
             : []),
         ...(hasImage ? buildImageToolbarTools(node, { onCrop, onSplit, onUpscale, onAngle, onViewImage: onView }) : []),
-        ...extraTools,
     ];
 
     if (!tools.length) return null;
@@ -195,7 +193,7 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
     );
 }
 
-function ToolbarAction({ title, label, icon, onClick, active = false, menu }: ToolbarTool) {
+function ToolbarAction({ title, label, icon, onClick, menu }: ToolbarTool) {
     const [open, setOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
     const isOpen = Boolean(menu) && open;
@@ -223,7 +221,7 @@ function ToolbarAction({ title, label, icon, onClick, active = false, menu }: To
                     aria-haspopup={menu ? "menu" : undefined}
                     aria-expanded={menu ? isOpen : undefined}
                 >
-                    <span className={`flex h-9 items-center gap-2 rounded-lg px-2.5 transition group-hover:bg-[#f0f0f1] ${active || isOpen ? "bg-[#eeeeef]" : ""}`}>
+                    <span className={`flex h-9 items-center gap-2 rounded-lg px-2.5 transition group-hover:bg-[#f0f0f1] ${isOpen ? "bg-[#eeeeef]" : ""}`}>
                         {icon}
                         <span>{label}</span>
                         {menu ? <ChevronDown className="size-3.5 opacity-40" /> : null}

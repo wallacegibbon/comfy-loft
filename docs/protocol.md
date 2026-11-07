@@ -1,9 +1,12 @@
 # The server protocol
 
-Status: **landed, and `/v1/*` is gone** (decisions #69). Every media type, every canvas node and every tool
-action submits a run; there is no second way to produce media. What the migration left behind is the shape:
+Status: **landed, and `/v1/*` is gone** (decisions #69). Every media type and every canvas node submits a
+run, and so does every tool action that a workflow can do; there is no second way to *generate* media. What
+the migration left behind is the shape:
 
 - One execution core over the task store. Video, audio, image and every tool action submit through it.
+  Two actions do not, because nothing is asked of a model: joining clips is a mux (`POST
+  /api/canvases/{id}/join`, #324) and taking a frame out of a clip is a draw on a canvas in the page (#323).
 - Media type is **data**, not routing: `accepts` / `frameMode` / `mode` / `promptInject` / `promptReorder` /
   `sourceVideoFrames` live in `registry.json` and are resolved by `workflow.PlanMedia`; no handler names a
   workflow id, and `outputs.formats` declares the containers an encoder can write.
@@ -59,6 +62,7 @@ Every write names its canvas, and the two read paths for bytes are files of that
 | `GET` | `/api/runs` | List/filter runs (`status`, `workflow`), newest first. |
 | `GET` | `/api/canvases/{id}/files/{name}` | The bytes of one file: an upload, or a finished run's artifact. Cacheable for good — a name is written once. |
 | `POST` | `/api/canvases/import` | One exported canvas archive (a zip: `canvas.json`, `manifest.json`, `files/<name>`) in, one canvas out. The files keep the names the document uses, so nothing is rewritten. |
+| `POST` | `/api/canvases/{id}/join` | Join that canvas's own clips into one file, in the order named. Not a run: a stream copy, refused with the field that differs when the inputs disagree, and `reencode: true` when the caller means to rewrite every frame. Answers like an upload. |
 
 `/health`, `/api/canvases*`, `/api/settings`, `/api/loras`, `/api/resources/*`, `/api/system/*`,
 `/api/speech/*` and `/api/agent/*` are the rest of the surface: they manage the server, the workspace, the

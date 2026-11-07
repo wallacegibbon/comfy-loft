@@ -11371,9 +11371,9 @@ sends one payload), `frontend/src/i18n/locales/{en-US,zh-CN}.ts` (`canvas.imageT
 the same dialog the double click on the card opens — the clip at its own resolution, with the browser's controls —
 because it is the same handler: the toolbar's `onView`, and the card's double click, both reach the page's
 `handleNodePreview`. An empty video card has no such entry, for the same reason it has no download: there is
-nothing to open. The toolbar's picture tool and the clip's button are one prop (`onView`) but two definitions: the
-picture's `view` is a quick tool that "Customize toolbar" can hide, the clip's is a fixed entry on a bar that has
-no configuration.
+nothing to open. The toolbar's picture tool and the clip's button are one prop (`onView`) and two definitions:
+the picture's `view` is the last entry on the picture's list, the clip's `viewVideo` the last entry on its own,
+because the two bars are built by two functions for two kinds of card (#332).
 
 **Why** The user said it in one line: the picture's toolbar ends with a preview that opens the picture bigger, and
 the clip had that answer only as a double click on the card — "缺少一个工具条上面的按钮". #329 gave the clip the
@@ -11382,14 +11382,14 @@ gesture nobody can see is not a tool. The prop was named `onViewImage` while it 
 `onView` now that both cards ask for it, and the name stays literal inside the image-tools module, where the
 handler is still a picture's.
 
-**Cost** The clip's bar gains a fifth entry it cannot hide, while the picture's sixth-to-last can be hidden in
-Customize toolbar. That asymmetry is the honest one: the picture's bar is a set of optional tools on top of
-info/delete/download, and the clip's is a fixed list of the four things a clip can do.
+**Cost** The clip's bar gains a fourth entry — interpolate, frame, view. There is no longer an asymmetry to
+defend: neither bar is configurable since #332, so the clip's list of what a clip can do and the picture's list
+of what a picture can do are the same kind of list.
 
-**Rejected** Reusing the picture's `view` definition by making `buildImageToolbarTools` type-agnostic. That list is
-a set of quick tools filtered by the saved preference and keyed by `ImageQuickToolId`; a clip has no such config,
-and its `viewVideo` is not a quick-tool id — a second definition with its own words is smaller than teaching the
-config that some ids are not choosable. Also rejected: a dialog of its own for clips. It is one dialog, titled by
+**Rejected** Reusing the picture's `view` definition by making `buildImageToolbarTools` type-agnostic. That list
+is the picture's five verbs, keyed by ids that only a picture has; a clip's `viewVideo` is not one of them, and
+the clip's bar is built from its own three. A second definition with its own words is smaller than teaching one
+list to serve a card it is not about. Also rejected: a dialog of its own for clips. It is one dialog, titled by
 the node's type since #329.
 
 **Tested** In the browser against the running server, on a throwaway canvas (deleted afterwards, `lastCanvas` put
@@ -11572,3 +11572,74 @@ left both pictures where they stood, selected, with no `groupId` in the saved do
 **Where** `frontend/src/lib/canvas/canvas-node-geometry.ts` (`canUngroupSelectedNodes`, `applyUngroupSelection`),
 `frontend/src/lib/canvas/canvas-agent-tools.ts` (`ungroupNodes`, and the sentence `group_nodes` gives when the set
 is already one group), `frontend/src/pages/canvas/project.tsx` (`ungroupNodes`' doc), its two test files.
+
+
+## 336. A sweep after #335: a gate left red, and five sentences that promised a call the canvas refuses
+
+**Decision** Six things fixed in one pass, all of them the same shape — something still *said* what the code no
+longer does. (1) `npm run check` was red at #335: a template literal in `canvas-agent-tools.ts` ran past the
+formatter's 255 columns, so `format:check` failed and `tsc` was never reached. (2) The MCP `ungroup_nodes`
+description still offered "name a node and it leaves the group it is in", which #335 refuses — the description and
+its argument now say a group to dissolve, and the agent's own rule says a card leaves by being moved out of the
+box. (3) `capture_frame` called the frame grabs "the card's own menu": they are a button on its bar since #333.
+(4) `create_node`'s schema did not list `group` among its types, though the canvas makes one — the create menu
+offers it, `CREATE_TYPES` accepts it, a test makes one — and the same description explained how. (5) A text card's
+bar reads "Smaller" / "Larger", which are words about zoom: since #332 the labels are always on, so the words are
+the button, and a font button that says 缩小 is a button that lies about what it does. It reads 减小字号 /
+增大字号 now, and the two `zoomOut`/`zoomIn` keys under `nodeToolbar` are gone (the editors' own zoom keeps its
+pair). (6) The bar's dead machinery: `extraTools` (a prop no caller passes), `CanvasNodeToolbarItem` (a second,
+unused button shape with a `danger` field nothing renders), `active` (a class no definition ever sets) and
+`resolveToolText`'s string branch (every definition is a thunk).
+
+**Why** A description is the only thing the model reads before it calls, so a sentence that contradicts the code
+costs a failed call and a retry that works around a refusal that is correct; the same is true of a label on a
+button, which is the only thing a person reads before pressing. The dead machinery is the project's own rule
+stated in `types/canvas-node.ts` — "a flag nothing sets is a branch nothing takes" — found false in the file next
+to it. And a gate that is red at HEAD is worse than no gate: the next reader is told the code is checked.
+
+**Cost** One more rule to keep: the words on the bar are read as the command, so a reused key (`zoomOut`) that
+happens to fit the tooltip does not fit the label. Nothing was reflowed or restructured; the sweep touched six
+files and deleted two exported names.
+
+**Rejected** Leaving the tool descriptions to the next change that touches the same behaviour. They were already a
+release behind twice: #333 moved the frame grabs and left `capture_frame` pointing at the menu, #335 changed what
+`ungroup_nodes` accepts and left two descriptions promising the old call. The stale sentence is invisible to every
+gate this project has — no compiler, no test, no i18n check reads English prose a model is told — so the only
+place it gets caught is a reader looking for exactly this. Also rejected: keeping `zoomOut`/`zoomIn` and passing a
+longer `title`; the label is what the button says.
+
+**Tested** `internal/server/mcp_test.go` (`TestToolsDescribeWhatTheCanvasAccepts`): `ungroup_nodes` says
+"dissolve" and no longer says "it leaves the group it is in" or "the nodes to take out of theirs", and
+`create_node`'s enum is exactly image / video / audio / text / group. `frontend/tests/canvas-image-toolbar-tools.test.ts`:
+a picture's bar is crop, split, upscale, angle, view in that order, each with a label and a longer title, and each
+button calls its own handler and no other. `frontend/tests/settings-dead-keys.test.ts`: a stored preferences
+document loses the key #332 orphaned and keeps every other key — see the paragraph below. In the browser against
+the running server, on a throwaway canvas (deleted afterwards, `lastCanvas` put back): a text card's bar read
+减小字号 / 增大字号, and pressing 增大字号 took its text from 14px to 16px; a picture's bar read Crop / Split /
+Upscale / Multi-angle / View image, and Crop opened the crop dialog; in English the text card read Decrease font
+size / Increase font size. `npx vitest run` (602 in 52 files), `npx tsc --noEmit`, `npm run check` (828/797 keys,
+187 modules), `npm run build` (577.62 kB), `make check` (504 exported declarations, all reachable).
+
+**Where** `frontend/src/lib/canvas/canvas-agent-tools.ts` (the wrapped return), `internal/server/routes_mcp.go`
+(`ungroup_nodes`, `capture_frame`, `create_node`'s enum and its description), `internal/server/agent_instructions.go`
+(the group paragraph), `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx` (the two font labels, the
+`active` class, `extraTools`), `frontend/src/components/canvas/canvas-image-toolbar-tools.tsx` (the definition type,
+`buildImageToolbarTools`), `frontend/src/types/canvas-node.ts` (`CanvasNodeToolbarItem` gone), the two dictionaries,
+and the four tests named above.
+
+### The same sweep, in the two places a document can go stale
+
+Two leftovers of the same kind, both in documents rather than in code:
+
+- **A preference nothing reads.** `canvas-image-quick-tools-v8` was which tools a picture's bar showed; #332
+  deleted the reader and the writer and left the key in the workspace's settings, where it outlives the build
+  that made it. `use-settings-store.ts` now drops it as a document is read — the bootstrap and the HTTP fallback
+  both — the way the config store already drops the address of the old single speech server (#252). The next
+  write persists the pruned document.
+- **A route in no table.** `POST /api/canvases/{id}/join` landed in #324 and neither `docs/server.md` nor
+  `docs/protocol.md` listed it, while both claim to be complete ("every one of them is served today"). Both have
+  the row now, and `protocol.md`'s opening claim — "every tool action submits a run" — says what it always meant:
+  every action a model can be asked for does, except joining clips (a mux) and taking a frame (a draw in the page).
+
+**Where** `frontend/src/stores/use-settings-store.ts` (`DEAD_SETTINGS`, `withoutDeadSettings`),
+`frontend/tests/settings-dead-keys.test.ts`, `docs/server.md`, `docs/protocol.md`.

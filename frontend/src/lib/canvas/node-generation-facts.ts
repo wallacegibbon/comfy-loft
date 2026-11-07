@@ -3,20 +3,6 @@ import type { ModelAccepts } from "@/stores/use-config-store";
 import { CanvasNodeType, type CanvasNodeMetadata } from "@/types/canvas";
 
 /**
- * How a node's content came to be, in one clause, for the two tools that answer questions about a node.
- *
- * `list_nodes` said every fact about a node except what made its content, and `read_node` handed over the
- * bytes and nothing about them, so an agent asked "which model drew this picture, and when" could only
- * guess from the prompt. The facts are on the node itself (docs/decisions.md #227, `workflow` and
- * `generatedAt`); this is the one place they are put into words, so the two tools cannot word them
- * differently and a third caller gets the same sentence.
- *
- * The stamp is the server's own: an ISO 8601 instant in UTC, printed as it was recorded rather than
- * formatted for a locale. The same sentence is read by a model and by the user, and the user's machine is
- * not necessarily where the server runs — a `toLocaleString` here would be a different string for every
- * reader of the same fact.
- */
-/**
  * What a node's run is doing right now, or what its last one ended in: the answer to "is anything happening
  * here?", which nothing on the canvas used to say.
  *
@@ -47,6 +33,20 @@ export function heldNoun(type: string): string {
     return "nodes";
 }
 
+/**
+ * How a node's content came to be, in one clause, for the two tools that answer questions about a node.
+ *
+ * `list_nodes` said every fact about a node except what made its content, and `read_node` handed over the
+ * bytes and nothing about them, so an agent asked "which model drew this picture, and when" could only
+ * guess from the prompt. The facts are on the node itself (docs/decisions.md #227, `workflow` and
+ * `generatedAt`); this is the one place they are put into words, so the two tools cannot word them
+ * differently and a third caller gets the same sentence.
+ *
+ * The stamp is the server's own: an ISO 8601 instant in UTC, printed as it was recorded rather than
+ * formatted for a locale. The same sentence is read by a model and by the user, and the user's machine is
+ * not necessarily where the server runs — a `toLocaleString` here would be a different string for every
+ * reader of the same fact.
+ */
 export function generationClause(metadata: CanvasNodeMetadata | undefined): string {
     const workflow = (metadata?.workflow || "").trim();
     const generatedAt = (metadata?.generatedAt || "").trim();

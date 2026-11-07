@@ -91,15 +91,6 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
 const RUN_CONTENT_TYPES = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio];
 
 /**
- * A node whose run was still out when the page went away.
- *
- * The run belongs to the server, not to the page, so the only thing that has to survive is the id the
- * node keeps in `runId` — and the answer is the same for every kind of content. It used to be three
- * predicates with three names for the field and a status check on two of them, so a single failed check
- * left an audio or image node unable to re-attach at all, while video re-attached whatever its status
- * said (#235).
- */
-/**
  * Whether this node is a *generator* here — something a press of the send button can ask — rather than a
  * piece of material.
  *
@@ -133,6 +124,15 @@ export function materialClause(node: CanvasNodeData) {
     return `${node.id} holds ${heldNoun(node.type)} this canvas did not make — material, not a run`;
 }
 
+/**
+ * A node whose run was still out when the page went away.
+ *
+ * The run belongs to the server, not to the page, so the only thing that has to survive is the id the
+ * node keeps in `runId` — and the answer is the same for every kind of content. It used to be three
+ * predicates with three names for the field and a status check on two of them, so a single failed check
+ * left an audio or image node unable to re-attach at all, while video re-attached whatever its status
+ * said (#235).
+ */
 export function hasResumableRun(node: CanvasNodeData) {
     return RUN_CONTENT_TYPES.includes(node.type as CanvasNodeType) && Boolean(node.metadata?.runId) && !node.metadata?.content;
 }

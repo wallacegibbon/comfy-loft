@@ -135,7 +135,7 @@ func (s *Server) mcpTools() []mcpTool {
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"type": {"type": "string", "enum": ["image", "video", "audio", "text"], "description": "What kind of node. A group is structure rather than content, and a LoRA node names a file the user has to pick in its own panel, so neither is made here."},
+				"type": {"type": "string", "enum": ["image", "video", "audio", "text", "group"], "description": "What kind of node. A group is structure rather than content: it can be made, empty, and nothing can be asked of it — wrapping nodes that already exist is one call with group_nodes. A LoRA node names a file the user has to pick in its own panel, so it is not made here."},
 				"prompt": {"type": "string", "description": "What the node starts with: a text node's body, or the prompt the node's own panel shows."},
 				"position": {
 					"type": "object",
@@ -162,7 +162,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "capture_frame",
-		Description: "Take a film's first and/or last frame out of it, as picture nodes wired to the film it came from — the card's own menu, and the one way a longer clip is made, because the last frame of one clip is the first frame of the next. Nothing is asked of a model: the frame is decoded in the browser and becomes an ordinary picture, and what it makes holds no model, so it is material — connect it to the node that should run from it. A picture is one frame already, and a film that is still generating holds no clip to take a frame out of. The frame the user is looking at is theirs to take from the card; a playhead is not something a tool can see.",
+		Description: "Take a film's first and/or last frame out of it, as picture nodes wired to the film it came from — the card's own bar, and the one way a longer clip is made, because the last frame of one clip is the first frame of the next. Nothing is asked of a model: the frame is decoded in the browser and becomes an ordinary picture, and what it makes holds no model, so it is material — connect it to the node that should run from it. A picture is one frame already, and a film that is still generating holds no clip to take a frame out of. The frame the user is looking at is theirs to take from the card; a playhead is not something a tool can see.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -316,7 +316,7 @@ func (s *Server) mcpTools() []mcpTool {
 		}`),
 	}, {
 		Name:        "ungroup_nodes",
-		Description: "Take nodes out of their groups, the way Ungroup does: name a group and it is dissolved, its members left on the canvas exactly as they were; name a node and it leaves the group it is in. A group left with no members goes away. Nothing else changes — prompts, results and connections were never inside the group — and the user can undo it.",
+		Description: "Dissolve groups, the way Ungroup does: name a group and its box goes, its members left on the canvas exactly where they were, belonging to nothing. A card does not leave a group this way — being inside the box is what makes it a member, and a card released in place would be a member again the moment it moved — so a member's id is refused with the group it is in: to take one card out, move it out of the box with move_node. Nothing else changes — prompts, results and connections were never inside the group — and the user can undo it.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -324,7 +324,7 @@ func (s *Server) mcpTools() []mcpTool {
 					"type": "array",
 					"items": {"type": "string"},
 					"minItems": 1,
-					"description": "The ids list_nodes reported: a group to dissolve, or the nodes to take out of theirs."
+					"description": "The ids list_nodes reported: the groups to dissolve."
 				}
 			},
 			"required": ["nodeIds"],
