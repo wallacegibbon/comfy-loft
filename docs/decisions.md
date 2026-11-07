@@ -11457,3 +11457,45 @@ settings), `frontend/src/components/canvas/canvas-context-menu.tsx` (info and do
 menu), `frontend/src/i18n/locales/{en-US,zh-CN}.ts` (the eight `imageTools.*` configuration strings and the five
 bar-only `nodeToolbar.*` tooltips gone). Deleted: `canvas-image-toolbar-settings-modal.tsx`, and the kit components
 only it used — `kit/card.tsx`, `kit/text.tsx`, `Space` in `kit/display.tsx`.
+
+
+## 333. A clip's frame grabs are a button on its bar, not entries in the menu
+
+**Decision** "Capture a frame" is one button on the clip's bar, opening three choices: first frame, last frame,
+current frame. It is the fifth thing on that bar (interpolate, frame ▸, view), and the right-click menu no longer
+has the three entries: the menu is every node's verbs, and a frame grab is a clip's own.
+
+**Why** #332 put the three grabs on the menu as the one exception to its own rule — they belong to a clip, but
+"the current frame" needs the frame under the pointer. The request that followed was direct: they are the clip's,
+so they go where the clip's other verbs are. The exception did not survive the question, and it should not have:
+the bar is already anchored to the card and the clip is right there under it, so "current" means the playhead of
+the clip whose bar you are pressing — no pointer position needed, and one less thing the menu carries for a type
+it is not about. Three flat buttons would have been wider than the card they sit over (the three label sets plus
+interpolate plus view is ~500 px against a 420 px card), so it is one button with a small menu: the chevron says
+there is more behind it, and the item you pick closes it.
+
+**Cost** A menu inside the bar — the first popover anchored to a bar button in this app, with its own dismissal
+(a press outside it, in the capture phase, so a press that starts a canvas drag closes it before the drag begins).
+One more click for anyone grabbing frames often: two presses instead of one. And the three grabs share a glyph
+family that has to be kept symmetrical by hand: lucide ships `gallery-horizontal-end` and no start, so the first
+frame is that same glyph mirrored (`-scale-x-100`), and the pair then reads as one strip marked at either end.
+
+**Rejected** Three separate buttons on the bar: at 420 px per card the bar becomes wider than the card and covers
+its neighbours, and the three of them are one act with three answers, not three acts. Also rejected: keeping the
+frame grabs in the menu and calling the pointer-position rule an exception — an exception nobody can state is how
+#332's problem started.
+
+**Tested** In the browser against the running server, on a throwaway canvas with one clip and one picture (deleted
+afterwards, `lastCanvas` put back): the clip's bar read Interpolate / Frame ▾ / View video; the Frame button opened
+the three items under itself and pressing Frame again closed it; Capture current frame put a **new image node** on
+the canvas, wired from the clip and selected, showing the frame — the clip's own bar rules applied to it (Crop /
+Split / Upscale / Multi-angle / View image); the clip's right-click menu was Info / Download / Duplicate / —— /
+Delete with no frame entries left; a press elsewhere closed the popover. The three icons were read back from a
+zoomed screenshot: marker left, marker right, markers both sides. `npx vitest run` (598), `npx tsc --noEmit`,
+`npm run check` (830/797 keys, 187 modules), `npm run build` (577.10 kB).
+
+**Where** `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx` (`ToolbarTool.menu`, the popover in
+`ToolbarAction`, the `captureFrame` button and its three items), `frontend/src/components/canvas/canvas-context-menu.tsx`
+(the frame block, `canCaptureVideoFrame` and `onCaptureVideoFrame` gone), `frontend/src/pages/canvas/project.tsx`
+(`onCaptureVideoFrame` wired to the bar), `frontend/src/i18n/locales/{en-US,zh-CN}.ts`
+(`canvas.nodeToolbar.captureFrame`, `captureFrameTitle`).

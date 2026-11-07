@@ -1,27 +1,23 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { BetweenHorizontalStart, Download, GalleryHorizontalEnd, GalleryHorizontal, Group, Info, Plus, Trash2, Ungroup } from "lucide-react";
+import { Download, Group, Info, Plus, Trash2, Ungroup } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { ContextMenuState } from "@/types/canvas";
-import type { VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 import { CANVAS_DISMISS_GUARD } from "@/lib/canvas-overlay";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 
 /**
  * The menu for a node or a connection, and only what *every* node has (docs/decisions.md #332): information,
- * download, duplicate, grouping, delete — plus the three frame grabs, which are a clip's own but need the frame
- * under the pointer, so they belong to the moment rather than to the node. What one kind of node can do lives on
- * the bar over its card.
+ * download, duplicate, grouping, delete. What one kind of node can do lives on the bar over its card — a clip's
+ * three frame grabs included, since they are as much a clip's own as its interpolate (#333).
  */
 export function CanvasNodeContextMenu({
     menu,
-    canCaptureVideoFrame,
     canDownload,
     canGroup,
     canUngroup,
     onClose,
-    onCaptureVideoFrame,
     onInfo,
     onDownload,
     onDuplicate,
@@ -30,12 +26,10 @@ export function CanvasNodeContextMenu({
     onDelete,
 }: {
     menu: ContextMenuState;
-    canCaptureVideoFrame: boolean;
     canDownload: boolean;
     canGroup?: boolean;
     canUngroup?: boolean;
     onClose: () => void;
-    onCaptureVideoFrame: (position: VideoFramePosition) => void;
     onInfo: () => void;
     onDownload: () => void;
     onDuplicate: () => void;
@@ -62,14 +56,6 @@ export function CanvasNodeContextMenu({
             style={{ left: menu.x, top: menu.y, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
             onPointerDown={(event) => event.stopPropagation()}
         >
-            {canCaptureVideoFrame ? (
-                <>
-                    <MenuButton icon={<BetweenHorizontalStart className="size-4" />} label={t("canvas.videoFrames.first")} onClick={() => onCaptureVideoFrame("first")} />
-                    <MenuButton icon={<GalleryHorizontalEnd className="size-4" />} label={t("canvas.videoFrames.last")} onClick={() => onCaptureVideoFrame("last")} />
-                    <MenuButton icon={<GalleryHorizontal className="size-4" />} label={t("canvas.videoFrames.current")} onClick={() => onCaptureVideoFrame("current")} />
-                    <MenuDivider />
-                </>
-            ) : null}
             {menu.type === "node" ? (
                 <>
                     <MenuButton icon={<Info className="size-4" />} label={t("canvas.nodeToolbar.info")} onClick={onInfo} />

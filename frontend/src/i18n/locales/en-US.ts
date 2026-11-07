@@ -529,6 +529,8 @@ export default {
             joinClipsTitle: "Join the selected clips into one, left to right",
             interpolate: "Interpolate",
             interpolateTitle: "RIFE interpolation",
+            captureFrame: "Frame",
+            captureFrameTitle: "Take a frame from this clip as a new picture",
             viewVideo: "View video",
             viewVideoTitle: "Open the clip at its own resolution",
         },

@@ -564,6 +564,8 @@ export default {
             joinClipsTitle: "把选中的视频从左到右拼成一个",
             interpolate: "插帧",
             interpolateTitle: "RIFE 插帧",
+            captureFrame: "截帧",
+            captureFrameTitle: "从这段视频里取一帧，另存为一张图片",
             viewVideo: "查看视频",
             viewVideoTitle: "按原分辨率查看视频",
         },

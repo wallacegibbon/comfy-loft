@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { Clapperboard, Maximize2, Minus, Plus } from "lucide-react";
+import { ChevronDown, Clapperboard, GalleryHorizontal, GalleryHorizontalEnd, Maximize2, Minus, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Dialog } from "@/components/kit/dialog";
@@ -9,6 +9,7 @@ import { Tooltip } from "@/components/kit/tooltip";
 import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
+import type { VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 import type { CanvasNodeToolbarItem } from "@/types/canvas-node";
 import { buildImageToolbarTools } from "./canvas-image-toolbar-tools";
@@ -25,6 +26,7 @@ type CanvasNodeHoverToolbarProps = {
     onAngle: (node: CanvasNodeData) => void;
     /** Opens the node's media at its own size — the clip's button, and the picture's `view` tool both. */
     onView: (node: CanvasNodeData) => void;
+    onCaptureVideoFrame: (node: CanvasNodeData, position: VideoFramePosition) => void;
     extraTools?: CanvasNodeToolbarItem[];
 };
 
@@ -33,17 +35,19 @@ type ToolbarTool = {
     title: string;
     label: string;
     icon: ReactNode;
-    onClick: () => void;
+    onClick?: () => void;
     active?: boolean;
+    /** The choices behind one button, when the verbs are three forms of one act — a clip's frame grabs are. */
+    menu?: { id: string; label: string; icon: ReactNode; onClick: () => void }[];
 };
 
 /**
  * The bar over a selected node, and only what that *kind* of node can do (docs/decisions.md #332): a clip gets
- * interpolate and view, a picture gets crop/split/upscale/angle/view, a text card gets its font size. What every
- * node has — information, download, delete, duplicate, grouping — is in the right-click menu, and a node with no
- * verbs of its own (a group, an empty audio card) gets no bar at all.
+ * interpolate, a frame grab and view, a picture gets crop/split/upscale/angle/view, a text card gets its font size.
+ * What every node has — information, download, delete, duplicate, grouping — is in the right-click menu, and a node
+ * with no verbs of its own (a group, an empty audio card) gets no bar at all.
  */
-export function CanvasNodeHoverToolbar({ node, viewport, onDecreaseFont, onIncreaseFont, onInterpolateVideo, onCrop, onSplit, onUpscale, onAngle, onView, extraTools = [] }: CanvasNodeHoverToolbarProps) {
+export function CanvasNodeHoverToolbar({ node, viewport, onDecreaseFont, onIncreaseFont, onInterpolateVideo, onCrop, onSplit, onUpscale, onAngle, onView, onCaptureVideoFrame, extraTools = [] }: CanvasNodeHoverToolbarProps) {
     const { t } = useTranslation();
     if (!node) return null;
 
@@ -59,6 +63,21 @@ export function CanvasNodeHoverToolbar({ node, viewport, onDecreaseFont, onIncre
         ...(hasVideo
             ? [
                   { id: "videoInterpolate", title: t("canvas.nodeToolbar.interpolateTitle"), label: t("canvas.nodeToolbar.interpolate"), icon: <Clapperboard className="size-4" />, onClick: () => onInterpolateVideo(node) },
+                  // A frame grab is three answers to one question, so it is one button with a menu: the three of them
+                  // in the bar would be wider than the card they sit over (#333).
+                  {
+                      id: "captureFrame",
+                      title: t("canvas.nodeToolbar.captureFrameTitle"),
+                      label: t("canvas.nodeToolbar.captureFrame"),
+                      icon: <GalleryHorizontal className="size-4" />,
+                      menu: [
+                          // Lucide has `gallery-horizontal-end` and no start, so the first frame is that glyph
+                          // mirrored: the pair reads as one strip with the marker at either end.
+                          { id: "firstFrame", label: t("canvas.videoFrames.first"), icon: <GalleryHorizontalEnd className="size-4 -scale-x-100" />, onClick: () => onCaptureVideoFrame(node, "first") },
+                          { id: "lastFrame", label: t("canvas.videoFrames.last"), icon: <GalleryHorizontalEnd className="size-4" />, onClick: () => onCaptureVideoFrame(node, "last") },
+                          { id: "currentFrame", label: t("canvas.videoFrames.current"), icon: <GalleryHorizontal className="size-4" />, onClick: () => onCaptureVideoFrame(node, "current") },
+                      ],
+                  },
                   // The card's double click opens a clip at its own size, and a gesture nobody can see is not a tool
                   // (#331). Same act as the picture's `view`, so the same glyph.
                   { id: "viewVideo", title: t("canvas.nodeToolbar.viewVideoTitle"), label: t("canvas.nodeToolbar.viewVideo"), icon: <Maximize2 className="size-4" />, onClick: () => onView(node) },
@@ -176,16 +195,61 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
     );
 }
 
-function ToolbarAction({ title, label, icon, onClick, active = false }: ToolbarTool) {
+function ToolbarAction({ title, label, icon, onClick, active = false, menu }: ToolbarTool) {
+    const [open, setOpen] = useState(false);
+    const rootRef = useRef<HTMLDivElement>(null);
+    const isOpen = Boolean(menu) && open;
+
+    // The popover belongs to the button and closes on any press outside it. Capture phase, so a press that starts
+    // a drag on the canvas closes the menu before the drag begins.
+    useEffect(() => {
+        if (!open) return;
+        const close = (event: PointerEvent) => {
+            if (event.target instanceof Node && rootRef.current?.contains(event.target)) return;
+            setOpen(false);
+        };
+        window.addEventListener("pointerdown", close, true);
+        return () => window.removeEventListener("pointerdown", close, true);
+    }, [open]);
+
     return (
-        <Tooltip title={title} placement="top" mouseEnterDelay={0.2} color="#ffffff" styles={{ root: { color: "#242529", boxShadow: "0 8px 24px rgba(15,23,42,.16)", fontSize: 13, fontWeight: 500 } }}>
-            <button type="button" className="group relative flex h-12 items-center whitespace-nowrap px-1.5" onClick={onClick} aria-label={title}>
-                <span className={`flex h-9 items-center gap-2 rounded-lg px-2.5 transition group-hover:bg-[#f0f0f1] ${active ? "bg-[#eeeeef]" : ""}`}>
-                    {icon}
-                    <span>{label}</span>
-                </span>
-            </button>
-        </Tooltip>
+        <div ref={rootRef} className="relative flex h-12 items-center">
+            <Tooltip title={title} placement="top" mouseEnterDelay={0.2} color="#ffffff" styles={{ root: { color: "#242529", boxShadow: "0 8px 24px rgba(15,23,42,.16)", fontSize: 13, fontWeight: 500 } }}>
+                <button
+                    type="button"
+                    className="group relative flex h-12 items-center whitespace-nowrap px-1.5"
+                    onClick={() => (menu ? setOpen((value) => !value) : onClick?.())}
+                    aria-label={title}
+                    aria-haspopup={menu ? "menu" : undefined}
+                    aria-expanded={menu ? isOpen : undefined}
+                >
+                    <span className={`flex h-9 items-center gap-2 rounded-lg px-2.5 transition group-hover:bg-[#f0f0f1] ${active || isOpen ? "bg-[#eeeeef]" : ""}`}>
+                        {icon}
+                        <span>{label}</span>
+                        {menu ? <ChevronDown className="size-3.5 opacity-40" /> : null}
+                    </span>
+                </button>
+            </Tooltip>
+            {isOpen ? (
+                <div role="menu" className="absolute left-0 top-full z-10 mt-1 min-w-44 overflow-hidden rounded-xl border border-[#e3e3e5] bg-white py-1 text-[13px] text-[#242529] shadow-[0_12px_32px_rgba(15,23,42,.18)]">
+                    {menu?.map((item) => (
+                        <button
+                            key={item.id}
+                            type="button"
+                            role="menuitem"
+                            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-2 text-left transition-colors hover:bg-[#f0f0f1]"
+                            onClick={() => {
+                                setOpen(false);
+                                item.onClick();
+                            }}
+                        >
+                            {item.icon}
+                            <span>{item.label}</span>
+                        </button>
+                    ))}
+                </div>
+            ) : null}
+        </div>
     );
 }
 

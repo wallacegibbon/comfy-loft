@@ -2708,6 +2708,7 @@ function InfiniteCanvasPage() {
                     onDecreaseFont={(node) => handleFontSizeChange(node.id, Math.max(10, (node.metadata?.fontSize || 14) - 2))}
                     onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
                     onInterpolateVideo={(node) => void interpolateVideoNode(node)}
+                    onCaptureVideoFrame={(node, position) => void captureVideoNodeFrame(node.id, position)}
                     onCrop={(node) => openNodeTool("crop", node.id)}
                     onSplit={(node) => openNodeTool("split", node.id)}
                     onUpscale={(node) => upscaleImageNode(node)}
@@ -2738,15 +2739,10 @@ function InfiniteCanvasPage() {
                 {contextMenu ? (
                     <CanvasNodeContextMenu
                         menu={contextMenu}
-                        canCaptureVideoFrame={contextMenuNode?.type === CanvasNodeType.Video && Boolean(contextMenuNode.metadata?.content)}
                         canDownload={(contextMenuNode?.type === CanvasNodeType.Image || contextMenuNode?.type === CanvasNodeType.Video || contextMenuNode?.type === CanvasNodeType.Audio) && Boolean(contextMenuNode.metadata?.content)}
                         canGroup={contextMenu.type === "node" && canGroupSelection}
                         canUngroup={contextMenu.type === "node" && canUngroupSelection}
                         onClose={() => setContextMenu(null)}
-                        onCaptureVideoFrame={(position) => {
-                            if (contextMenu.type !== "node") return;
-                            void captureVideoNodeFrame(contextMenu.nodeId, position);
-                        }}
                         onInfo={() => {
                             if (contextMenu.type !== "node") return;
                             openNodeTool("info", contextMenu.nodeId);
