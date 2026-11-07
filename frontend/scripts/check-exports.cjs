@@ -29,6 +29,10 @@ const EXEMPT = new Set([path.join(WEB, "src/vite-env.d.ts")]);
 // the product code.
 const TEST_ONLY = new Map([
     [
+        "src/lib/canvas/canvas-change.ts:CanvasSnapshot",
+        "the two states a step is described from. Product code passes the page's own history entry, which is a superset, so nothing names this type; the test builds one by name to say what a step looks like without a page",
+    ],
+    [
         "src/lib/canvas/canvas-trash.ts:TRASH_LIMIT",
         "how many deletions a canvas remembers. It is the default argument of `withTrashed` and nothing else reads it by name — the trash list shows whatever it holds — so the test is the only caller that has to know the number",
     ],

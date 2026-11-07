@@ -115,6 +115,13 @@ const DYNAMIC_PREFIXES = new Map([
             why: "the suffix is one of INPUT_MEDIA in lib/agent-models.ts — the four media words a model may declare; `text` has no box because AlayaCore never filters it",
         },
     ],
+    [
+        "canvas.change",
+        {
+            values: ["delete", "restore", "create", "update", "move", "resize", "connect", "disconnect", "canvas"],
+            why: "the suffix is a CanvasChange's kind (lib/canvas/canvas-change.ts) — the one sentence the undo menu item is written in, chosen by the diff",
+        },
+    ],
     ["canvas.videoFrames", { why: "the suffix is one of first/last/both plus a Title suffix; the template cannot say which" }],
     ["apiErrors", { why: "the suffix of apiText(key) is an error-code constant from the calling service" }],
 ]);

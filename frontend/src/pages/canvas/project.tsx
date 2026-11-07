@@ -98,6 +98,7 @@ import {
 } from "@/lib/canvas/canvas-generation-helpers";
 import { videoRunMetadata } from "@/lib/canvas/video-run-metadata";
 import { restoreFromTrash, trashedEntries, withTrashed } from "@/lib/canvas/canvas-trash";
+import { changeSubject, changeText, describeChange, type CanvasChange } from "@/lib/canvas/canvas-change";
 import { getNodeDefinition, isBuiltinNodeType } from "@/lib/canvas/node-registry";
 import { registerBuiltinNodes } from "@/components/canvas/nodes/builtin-nodes";
 import { confirm } from "@/components/kit/confirm";
@@ -138,6 +139,14 @@ type CanvasHistoryEntry = Pick<CanvasClipboard, "nodes" | "connections"> & {
     showImageInfo: boolean;
     /** The trash travels with the canvas, so an undo of a delete is not also a copy left behind (#327). */
     trash: CanvasTrashEntry[];
+    /**
+     * What stepping onto this entry undoes, in words (#328).
+     *
+     * A stack entry is a state, and a state does not say what happened between two of them: "Undo" was the same
+     * word whether a picture had just been deleted or a card nudged. Optional because a snapshot taken now has
+     * no step yet — the label is put on when the step is pushed.
+     */
+    label?: CanvasChange | null;
 };
 
 type CanvasGenerationRequest = {
@@ -260,7 +269,7 @@ function InfiniteCanvasPage() {
     const [activeNodeTool, setActiveNodeTool] = useState<CanvasNodeToolState>(null);
     const [previewNodeId, setPreviewNodeId] = useState<string | null>(null);
     const [hoverPreviewNodeId, setHoverPreviewNodeId] = useState<string | null>(null);
-    const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
+    const [historyState, setHistoryState] = useState<{ canUndo: boolean; canRedo: boolean; undo: CanvasChange | null; redo: CanvasChange | null }>({ canUndo: false, canRedo: false, undo: null, redo: null });
     const [isNodeDragging, setIsNodeDragging] = useState(false);
     const [isNodeResizing, setIsNodeResizing] = useState(false);
     const [dropTargetGroupId, setDropTargetGroupId] = useState<string | null>(null);
@@ -640,7 +649,7 @@ function InfiniteCanvasPage() {
                 showImageInfo: project.showImageInfo || false,
                 trash: restoredTrash,
             };
-            setHistoryState({ canUndo: false, canRedo: false });
+            setHistoryState({ canUndo: false, canRedo: false, undo: null, redo: null });
             if (live) setProjectLoaded(true);
         };
         void restore();
@@ -651,18 +660,22 @@ function InfiniteCanvasPage() {
 
     useEffect(() => {
         if (!projectLoaded || applyingHistoryRef.current || historyPausedRef.current) return;
-        const next = createHistoryEntry();
         const previous = lastHistoryRef.current;
-        if (previous?.nodes === next.nodes && previous.connections === next.connections && previous.backgroundMode === next.backgroundMode && previous.showImageInfo === next.showImageInfo && previous.trash === next.trash) return;
+        // One question, asked twice: whether anything worth a step happened, and — when the timer fires — what
+        // to call it. `describeChange` answers both, and it answers null for a run's progress tick, so a render
+        // no longer fills the stack with steps that undo nothing (#328).
+        if (previous && !describeChange(previous, createHistoryEntry())) return;
 
         if (historyCommitTimerRef.current) clearTimeout(historyCommitTimerRef.current);
         historyCommitTimerRef.current = setTimeout(() => {
             const current = createHistoryEntry();
             const last = lastHistoryRef.current;
             if (!last) return;
-            historyRef.current.past = [...historyRef.current.past.slice(-49), last];
+            const change = describeChange(last, current);
+            if (!change) return;
+            historyRef.current.past = [...historyRef.current.past.slice(-49), { ...last, label: change }];
             historyRef.current.future = [];
-            setHistoryState({ canUndo: true, canRedo: false });
+            setHistoryState({ canUndo: true, canRedo: false, undo: change, redo: null });
             lastHistoryRef.current = current;
             historyCommitTimerRef.current = null;
         }, 180);
@@ -1105,29 +1118,6 @@ function InfiniteCanvasPage() {
         setContextMenu((current) => (current?.type === "node" && ids.has(current.nodeId) ? null : current));
     }, []);
 
-    const deleteNodes = useCallback(
-        (ids: Set<string>): { removed: string[] } => {
-            if (!ids.size) return { removed: [] };
-            const before = nodesRef.current;
-            // The cards that go, and the members of any group among them released where they stand.
-            const kept = before.filter((node) => !ids.has(node.id)).map((node) => (node.metadata?.groupId && ids.has(node.metadata.groupId) ? { ...node, metadata: { ...node.metadata, groupId: undefined } } : node));
-            // Deleting a card's last member empties it, and that shell is debris this press made (#318).
-            const remaining = connectionsRef.current.filter((conn) => !ids.has(conn.fromNodeId) && !ids.has(conn.toNodeId));
-            const settled = withoutEmptiedGroups(before, kept, remaining);
-            setNodes(settled.nodes);
-            setConnections(settled.connections);
-            // Nothing is lost, and the file it held is not either: the entry names it, and the server frees a
-            // file only when this document stops naming it (#327).
-            const entries = trashedEntries(before, connectionsRef.current, ids, new Date().toISOString());
-            if (entries.length) setTrash((current) => withTrashed(current, entries));
-            setSelectedNodeIds(new Set());
-            setSelectedConnectionId(null);
-            forgetNodes(new Set([...ids, ...settled.removed]));
-            return { removed: settled.removed };
-        },
-        [forgetNodes, projectId],
-    );
-
     /**
      * Put deleted nodes back where they were, wires and all.
      *
@@ -1145,6 +1135,37 @@ function InfiniteCanvasPage() {
         setSelectedConnectionId(null);
         return { restored: outcome.restored, missing: outcome.missing };
     }, []);
+
+    const deleteNodes = useCallback(
+        (ids: Set<string>): { removed: string[] } => {
+            if (!ids.size) return { removed: [] };
+            const before = nodesRef.current;
+            // The cards that go, and the members of any group among them released where they stand.
+            const kept = before.filter((node) => !ids.has(node.id)).map((node) => (node.metadata?.groupId && ids.has(node.metadata.groupId) ? { ...node, metadata: { ...node.metadata, groupId: undefined } } : node));
+            // Deleting a card's last member empties it, and that shell is debris this press made (#318).
+            const remaining = connectionsRef.current.filter((conn) => !ids.has(conn.fromNodeId) && !ids.has(conn.toNodeId));
+            const settled = withoutEmptiedGroups(before, kept, remaining);
+            setNodes(settled.nodes);
+            setConnections(settled.connections);
+            // Nothing is lost, and the file it held is not either: the entry names it, and the server frees a
+            // file only when this document stops naming it (#327).
+            const entries = trashedEntries(before, connectionsRef.current, ids, new Date().toISOString());
+            if (entries.length) {
+                setTrash((current) => withTrashed(current, entries));
+                // Said out loud, with the way back on the sentence. A node disappearing is the one thing here a
+                // person cannot simply draw again, and whoever deleted it — a hand or the agent — the toast is
+                // where they learn it is recoverable (#328). The action restores from the trash, so it still
+                // works for a reader who has since reloaded.
+                const trashed = entries.map((entry) => entry.node.id);
+                toast.action(t("canvas.toast.deleted", { what: changeSubject(trashed, t) }), { label: t("canvas.undo"), onClick: () => restoreNodes(trashed) });
+            }
+            setSelectedNodeIds(new Set());
+            setSelectedConnectionId(null);
+            forgetNodes(new Set([...ids, ...settled.removed]));
+            return { removed: settled.removed };
+        },
+        [forgetNodes, projectId, restoreNodes, t],
+    );
 
     /**
      * Put one node's top-left corner where a tool says, the way the end of a drag does.
@@ -1505,7 +1526,8 @@ function InfiniteCanvasPage() {
         setTimeout(() => {
             lastHistoryRef.current = entry;
             applyingHistoryRef.current = false;
-            setHistoryState({ canUndo: historyRef.current.past.length > 0, canRedo: historyRef.current.future.length > 0 });
+            const { past, future } = historyRef.current;
+            setHistoryState({ canUndo: past.length > 0, canRedo: future.length > 0, undo: past[past.length - 1]?.label ?? null, redo: future[future.length - 1]?.label ?? null });
         });
     }, []);
 
@@ -1513,7 +1535,8 @@ function InfiniteCanvasPage() {
         const previous = historyRef.current.past.pop();
         const current = lastHistoryRef.current;
         if (!previous || !current) return;
-        historyRef.current.future.push(current);
+        // The step is the same one seen from the other side: what undo takes back, redo puts again.
+        historyRef.current.future.push({ ...current, label: previous.label });
         applyHistory(previous);
     }, [applyHistory]);
 
@@ -1521,7 +1544,7 @@ function InfiniteCanvasPage() {
         const next = historyRef.current.future.pop();
         const current = lastHistoryRef.current;
         if (!next || !current) return;
-        historyRef.current.past.push(current);
+        historyRef.current.past.push({ ...current, label: next.label });
         applyHistory(next);
     }, [applyHistory]);
 
@@ -2516,6 +2539,8 @@ function InfiniteCanvasPage() {
                         canvasTool,
                         canUndo: historyState.canUndo,
                         canRedo: historyState.canRedo,
+                        undoLabel: historyState.undo ? t("canvas.undoOf", { what: changeText(historyState.undo, t) }) : undefined,
+                        redoLabel: historyState.redo ? t("canvas.redoOf", { what: changeText(historyState.redo, t) }) : undefined,
                         selectedCount: selectedNodeIds.size,
                         backgroundMode,
                         showImageInfo,

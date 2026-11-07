@@ -11220,3 +11220,45 @@ and the header's hint to "Files are kept".
 `frontend/src/services/api/canvases.ts` (`readTrash`), `frontend/src/lib/canvas/canvas-document.ts`,
 `frontend/src/types/canvas.ts` (`CanvasTrashEntry`), `internal/server/routes_mcp.go` (`nodeIdSchema`, the two
 tools), `internal/server/agent_instructions.go`, `internal/canvas/canvas.go`.
+
+
+## 328. Undo says what it will take back, and a delete offers it
+
+**Decision** A history step is described as it is made — `{ kind, ids }` from `describeChange` — and the Canvas
+menu's item reads "Undo: deleted image-3", "Undo: moved image-3", "Undo: connected a → b". A delete also answers
+with a toast that carries the way back: "Deleted image-3" and an **Undo** button that restores from the trash. The
+step count and the "progress unavailable" flag a run writes into a node's metadata are not changes: the diff that
+makes the label is also what decides whether a step is taken at all.
+
+**Why** The user's report was "the agent's operations and mine are not connected". Mechanically they were — the
+agent's `delete_node` is the page's own `deleteNodes`, so it lands in the same stack — but three things made that
+invisible, and one of them was a real leak:
+
+- *The word "Undo" says nothing.* After an agent turn the stack holds one step covering whatever the whole turn
+  did, and the menu looked the same whether that was a deletion or a nudge. A person had to press it to find out.
+- *The one destructive gesture was silent.* A node vanishing is the only thing here that cannot be redrawn from
+  what is left, and nothing said it was recoverable (#327 made it recoverable; this says so).
+- *A run was filling the stack.* `stepProgress` is written into the node's metadata on every poll, so `nodes`
+  changed identity twice a second and each change committed a history entry: a two-minute render wrote eighty
+  steps and pushed everything the user had done out of a fifty-step stack. Undo had been unusable after any long
+  run, which is exactly when a person most wants it.
+
+**Cost** The diff runs on every state change — two `JSON.stringify` per node, on a board that may hold hundreds,
+every 180 ms of activity. And a step is described by its loudest part (a deletion over an addition over a wire
+over a change): a step that did three things is named for one of them, so "Undo: deleted image-3" may also put
+back a wire. Both are prices of one sentence in a menu.
+
+**Rejected** A per-call history step for each agent tool call. It would make Undo step through a turn one action
+at a time — asked for and declined, because undoing a whole turn with one press is what most people mean. Also
+rejected: taking Ctrl+Z from the agent panel's textarea. Focus in a text box means the text box, and a shortcut
+that silently means different things in different places is worse than one that only works on the canvas.
+
+**Tested** `frontend/tests/canvas-change.test.ts` (14: nothing-changed is null, delete vs restore vs create, move
+vs resize vs edit, wire made vs cut, canvas-only, a deletion named over an addition, a progress tick is not a
+step, a finished run is one, and the wording through a fake `t`). In the browser on a throwaway canvas (deleted
+afterwards): the Delete key answered "Deleted image-verify" with an Undo button, which put the picture back; the
+menu read "Undo: deleted image-verify" and restored it; a drag then read "Undo: moved image-verify".
+
+**Where** `frontend/src/lib/canvas/canvas-change.ts`, `frontend/src/pages/canvas/project.tsx` (the history
+effect, `deleteNodes`, the menu's labels), `frontend/src/components/canvas/canvas-menu.tsx`,
+`frontend/src/components/kit/toast.ts` (`action`), `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.

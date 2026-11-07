@@ -22,6 +22,8 @@ export function canvasMenuItems({
     canvasTool,
     canUndo,
     canRedo,
+    undoLabel,
+    redoLabel,
     selectedCount,
     backgroundMode,
     showImageInfo,
@@ -45,6 +47,14 @@ export function canvasMenuItems({
     canvasTool: "select" | "pan";
     canUndo: boolean;
     canRedo: boolean;
+    /**
+     * What Undo will take back, already worded — "deleted image-3" (#328).
+     *
+     * The item has one line and the caller has the step and the language, so the sentence is built there and
+     * this only chooses whether to say it. Absent (a step nobody described), the item says plain "Undo".
+     */
+    undoLabel?: string;
+    redoLabel?: string;
     selectedCount: number;
     backgroundMode: CanvasBackgroundMode;
     showImageInfo: boolean;
@@ -75,8 +85,8 @@ export function canvasMenuItems({
 
         { type: "divider", key: "edit-divider" },
         { type: "label", key: "edit-label", text: t("canvas.menu.edit") },
-        { key: "undo", icon: <Undo2 className="size-4" />, label: t("canvas.undo"), shortcut: "Ctrl+Z", disabled: !canUndo, onClick: onUndo },
-        { key: "redo", icon: <Redo2 className="size-4" />, label: t("canvas.redo"), shortcut: "Ctrl+Shift+Z", disabled: !canRedo, onClick: onRedo },
+        { key: "undo", icon: <Undo2 className="size-4" />, label: undoLabel || t("canvas.undo"), shortcut: "Ctrl+Z", disabled: !canUndo, onClick: onUndo },
+        { key: "redo", icon: <Redo2 className="size-4" />, label: redoLabel || t("canvas.redo"), shortcut: "Ctrl+Shift+Z", disabled: !canRedo, onClick: onRedo },
         { key: "focus", icon: <LocateFixed className="size-4" />, label: t("canvas.toolbar.focus"), disabled: !selectedCount, onClick: onFocusSelected },
         { key: "delete-selected", icon: <Trash2 className="size-4" />, label: t("canvas.deleteSelected"), shortcut: "Delete", disabled: !selectedCount, danger: true, onClick: onDeleteSelected },
 

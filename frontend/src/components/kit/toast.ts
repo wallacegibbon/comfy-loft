@@ -24,4 +24,14 @@ export const toast = {
         const id = sonnerToast.loading(text, { duration: Infinity });
         return () => sonnerToast.dismiss(id);
     },
+    /**
+     * A message with one button on it — the way back out of a gesture that just destroyed something.
+     *
+     * The action is the point: a delete is the one thing on this canvas a person can see disappear and cannot
+     * draw again, so the sentence that says it happened carries the undo with it instead of trusting anyone to
+     * find the menu (#328). Long enough to read and act on, short enough not to sit over the canvas.
+     */
+    action(text: string, options: { label: string; onClick: () => void; duration?: number }) {
+        sonnerToast(text, { action: { label: options.label, onClick: options.onClick }, duration: options.duration ?? 8000 });
+    },
 };
