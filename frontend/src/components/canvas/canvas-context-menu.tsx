@@ -14,6 +14,7 @@ import { useCanvasTheme } from "@/lib/canvas/use-canvas-theme";
  */
 export function CanvasNodeContextMenu({
     menu,
+    canDelete,
     canDownload,
     canGroup,
     canUngroup,
@@ -26,6 +27,11 @@ export function CanvasNodeContextMenu({
     onDelete,
 }: {
     menu: ContextMenuState;
+    /**
+     * A group cannot be deleted — deleting one only dissolves it and destroys nothing (#327), so the menu offers
+     * Ungroup and no delete row: two names for one act, one of them a lie (#334).
+     */
+    canDelete: boolean;
     canDownload: boolean;
     canGroup?: boolean;
     canUngroup?: boolean;
@@ -63,10 +69,10 @@ export function CanvasNodeContextMenu({
                     <MenuButton icon={<Plus className="size-4" />} label={t("canvas.controls.duplicate")} onClick={onDuplicate} />
                     {canGroup ? <MenuButton icon={<Group className="size-4" />} label={t("canvas.nodeToolbar.group")} onClick={onGroup} /> : null}
                     {canUngroup ? <MenuButton icon={<Ungroup className="size-4" />} label={t("canvas.nodeToolbar.ungroup")} onClick={onUngroup} /> : null}
-                    <MenuDivider />
+                    {canDelete ? <MenuDivider /> : null}
                 </>
             ) : null}
-            <MenuButton icon={<Trash2 className="size-4" />} label={t("canvas.controls.delete")} onClick={onDelete} danger />
+            {canDelete ? <MenuButton icon={<Trash2 className="size-4" />} label={t("canvas.controls.delete")} onClick={onDelete} danger /> : null}
         </div>
     );
 }
@@ -76,11 +82,13 @@ function MenuDivider() {
     return <div className="my-1 border-t" style={{ borderColor: theme.toolbar.border }} />;
 }
 
+// `onClick={() => onClick?.()}` and not `onClick={onClick}`: a handler taking a `Set` of ids was being handed the
+// click's MouseEvent, which is how Ungroup threw `e.has is not a function` (#334).
 function MenuButton({ icon, label, onClick, danger = false }: { icon: ReactNode; label: string; onClick?: () => void; danger?: boolean }) {
     const theme = useCanvasTheme();
 
     return (
-        <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:opacity-80" style={{ color: danger ? "#f87171" : theme.node.text }} onClick={onClick}>
+        <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:opacity-80" style={{ color: danger ? "#f87171" : theme.node.text }} onClick={() => onClick?.()}>
             {icon}
             <span>{label}</span>
         </button>

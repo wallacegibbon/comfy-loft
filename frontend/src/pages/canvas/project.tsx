@@ -2739,6 +2739,7 @@ function InfiniteCanvasPage() {
                 {contextMenu ? (
                     <CanvasNodeContextMenu
                         menu={contextMenu}
+                        canDelete={contextMenuNode?.type !== CanvasNodeType.Group}
                         canDownload={(contextMenuNode?.type === CanvasNodeType.Image || contextMenuNode?.type === CanvasNodeType.Video || contextMenuNode?.type === CanvasNodeType.Audio) && Boolean(contextMenuNode.metadata?.content)}
                         canGroup={contextMenu.type === "node" && canGroupSelection}
                         canUngroup={contextMenu.type === "node" && canUngroupSelection}
@@ -2758,8 +2759,14 @@ function InfiniteCanvasPage() {
                             duplicateNode(contextMenu.nodeId);
                             setContextMenu(null);
                         }}
-                        onGroup={groupSelection}
-                        onUngroup={ungroupSelection}
+                        onGroup={() => {
+                            groupSelection();
+                            setContextMenu(null);
+                        }}
+                        onUngroup={() => {
+                            ungroupSelection();
+                            setContextMenu(null);
+                        }}
                         onDelete={() => {
                             if (contextMenu.type === "node") {
                                 deleteNodes(new Set([contextMenu.nodeId]));

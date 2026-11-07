@@ -11499,3 +11499,37 @@ zoomed screenshot: marker left, marker right, markers both sides. `npx vitest ru
 (the frame block, `canCaptureVideoFrame` and `onCaptureVideoFrame` gone), `frontend/src/pages/canvas/project.tsx`
 (`onCaptureVideoFrame` wired to the bar), `frontend/src/i18n/locales/{en-US,zh-CN}.ts`
 (`canvas.nodeToolbar.captureFrame`, `captureFrameTitle`).
+
+
+## 334. A group is dissolved, not deleted, and the menu says so
+
+**Decision** The right-click menu of a **group card** reads info, duplicate, ungroup — and no delete. Every other
+node keeps its delete, and a member of a group keeps both: ungroup there means "take this card out of its group,
+the card stays", while delete means "this card goes". With the delete row gone from a group card, the divider that
+separated it goes too.
+
+**Why** A group cannot be deleted. Deleting one releases its members and destroys nothing (#327): the trash never
+holds a group, because a box with no members in it is not something anyone wants back. So on a group card the menu
+offered two names for one act, and one of them was a lie — which is what the question "右键菜单里面的 ungroup 有什么用
+啊" was really asking. On a *member* the two rows are not the same act at all, which is why ungroup stays there.
+
+**Cost** A user who wants "the box gone" has to pick a verb that does not say delete. That is the point — it is the
+honest word — but it is a small unlearning for anyone used to right-click → delete on everything. The Delete key
+still dissolves a group it is pressed on, unchanged: the keyboard is not a menu and has no row to relabel.
+
+**Tested** In the browser against the running server, on a throwaway canvas (deleted afterwards, `lastCanvas` put
+back): a group card's menu read Info / Duplicate / Ungroup with no delete row and no dangling divider; pressing
+Ungroup dissolved it — both pictures stayed where they were, stayed selected, and the dashed box was gone; grouping
+them again from the selection bar and right-clicking **one member** gave Info / Download / Duplicate / Ungroup / ——
+/ Delete, and pressing Ungroup released that one picture (the box went to "Group 1 node", the card and its file
+untouched, `groupId` cleared in the saved document).
+
+That test also found a bug that had nothing to do with this change and was older than it: every row in this menu
+was wired `onClick={onClick}`, so the click's `MouseEvent` was passed into handlers that take a `Set` of ids —
+right-click → Ungroup threw `TypeError: e.has is not a function` and did nothing, on any node, in every build since
+the menu grew the row. `MenuButton` now calls `onClick?.()` with no arguments, and the group and ungroup rows close
+the menu like the others do.
+
+**Where** `frontend/src/components/canvas/canvas-context-menu.tsx` (`canDelete`, the delete row and its divider,
+`MenuButton`'s click), `frontend/src/pages/canvas/project.tsx` (`canDelete={contextMenuNode?.type !==
+CanvasNodeType.Group}`, the group/ungroup rows closing the menu).
