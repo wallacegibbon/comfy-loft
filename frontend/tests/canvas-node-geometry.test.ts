@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { applyGroupSelection, applyUngroupSelection, canUngroupSelectedNodes, settleMoveMembership, withGroupMembers, withoutEmptiedGroups } from "../src/lib/canvas/canvas-node-geometry";
+import { applyGroupSelection, applyUngroupSelection, canUngroupSelectedNodes, movingIntoGroupIds, settleMoveMembership, withGroupMembers, withoutEmptiedGroups } from "../src/lib/canvas/canvas-node-geometry";
 import type { CanvasNodeData } from "../src/types/canvas";
 
 /**
@@ -157,6 +157,26 @@ describe("who belongs to what after a move", () => {
         const moved = canvas().map((node) => (node.id === "m1" ? card("m1", "text", 100, 340, "g1") : node));
         const after = settleMoveMembership(moved, new Set(["m1"]));
         expect(groupOf(after, "m1")).toBeUndefined();
+    });
+
+    test("one drag, two cards: each of them lands where its own card is", () => {
+        // The rule is per node, so a gesture is not one answer. Two loose cards dragged at once, one over g1 and
+        // one over g2, join the two different groups they landed in — which is what two separate drags would do,
+        // and what move_node does one card at a time. Before #339 the drag had a second rule for this: every
+        // moving card joined the last group *any* of them touched, and both cards were snapped into its box.
+        const moved = [card("g1", "group", 0, 0, undefined, 300), card("g2", "group", 0, 400, undefined, 300), card("a", "text", 100, 100), card("b", "text", 100, 450)];
+        const after = settleMoveMembership(moved, new Set(["a", "b"]));
+        expect(groupOf(after, "a")).toBe("g1");
+        expect(groupOf(after, "b")).toBe("g2");
+    });
+
+    test("the highlight names the same groups the drop will use", () => {
+        // Drawn from the same function, so it cannot promise something the drop does not do.
+        const moved = [card("g1", "group", 0, 0, undefined, 300), card("g2", "group", 0, 400, undefined, 300), card("a", "text", 100, 100), card("b", "text", 100, 450)];
+        expect([...movingIntoGroupIds(moved, new Set(["a", "b"]))].sort()).toEqual(["g1", "g2"]);
+        // A card over bare canvas joins nothing, so nothing lights up.
+        const loose = [card("g1", "group", 0, 0, undefined, 300), card("a", "text", 100, 340)];
+        expect([...movingIntoGroupIds(loose, new Set(["a"]))]).toEqual([]);
     });
 
     test("a member moved on its own into another card joins that one", () => {

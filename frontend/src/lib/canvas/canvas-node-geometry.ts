@@ -18,36 +18,6 @@ function containsCenter(group: CanvasNodeData, node: CanvasNodeData) {
     return centerX >= group.position.x && centerX <= group.position.x + group.width && centerY >= group.position.y && centerY <= group.position.y + group.height;
 }
 
-export function findGroupDropTarget(movedIds: Set<string>, nodes: CanvasNodeData[]) {
-    if (nodes.some((node) => movedIds.has(node.id) && node.type === CanvasNodeType.Group)) return null;
-    const movingNodes = nodes.filter((node) => movedIds.has(node.id) && node.type !== CanvasNodeType.Group);
-    if (!movingNodes.length) return null;
-    // Walk backwards instead of copying and reversing; this runs on every drag frame.
-    for (let index = nodes.length - 1; index >= 0; index -= 1) {
-        const group = nodes[index];
-        if (group.type !== CanvasNodeType.Group || movedIds.has(group.id)) continue;
-        if (movingNodes.some((node) => containsCenter(group, node))) return group;
-    }
-    return null;
-}
-
-export function snapNodesIntoGroup(movedIds: Set<string>, nodes: CanvasNodeData[], group: CanvasNodeData) {
-    const movingNodes = nodes.filter((node) => movedIds.has(node.id) && node.type !== CanvasNodeType.Group);
-    if (!movingNodes.length) return nodes;
-    const pad = 24;
-    const bounds = nodeBounds(movingNodes);
-    const left = group.position.x + pad;
-    const top = group.position.y + pad;
-    const right = group.position.x + group.width - pad;
-    const bottom = group.position.y + group.height - pad;
-    const dx = bounds.right - bounds.left > right - left ? left - bounds.left : bounds.left < left ? left - bounds.left : bounds.right > right ? right - bounds.right : 0;
-    const dy = bounds.bottom - bounds.top > bottom - top ? top - bounds.top : bounds.top < top ? top - bounds.top : bounds.bottom > bottom ? bottom - bounds.bottom : 0;
-    return nodes.map((node) => {
-        if (!movedIds.has(node.id) || node.type === CanvasNodeType.Group) return node;
-        return { ...node, position: { x: node.position.x + dx, y: node.position.y + dy }, metadata: { ...node.metadata, groupId: group.id } };
-    });
-}
-
 const GROUP_WRAP_PADDING = 24;
 const GROUP_WRAP_TOP_PADDING = 52;
 
@@ -76,7 +46,7 @@ export function withGroupMembers(ids: Set<string>, nodes: CanvasNodeData[]) {
 }
 
 /**
- * Who belongs to what after a move — the rule a drag leaves behind, for the drag and for `move_node`.
+ * Who belongs to what after a move — the one rule, for a drag and for `move_node`.
  *
  * A card that travels with its own group keeps that group, whatever it passes over. The box and the nodes
  * inside it are one thing to move, so where the move puts them says nothing about who they belong to: two
@@ -85,7 +55,12 @@ export function withGroupMembers(ids: Set<string>, nodes: CanvasNodeData[]) {
  * through the other's rectangle (#316).
  *
  * A node that moves *without* its group is judged by where it landed, and that is the person's own gesture:
- * a member dragged out of its card leaves it, and a loose node dropped on a card joins it.
+ * a member dragged out of its card leaves it, and a loose node dropped on a card joins it. **Per node**, not
+ * per gesture: a drag that carries two loose cards across two different cards puts each of them where it
+ * landed, which is what `move_node` does with one (docs/decisions.md #339). The drag used to answer this twice —
+ * this function when nothing was under the pointer, and a whole-gesture rule (`snapNodesIntoGroup`, gone) that
+ * put every moving card into the last card any of them touched. Two answers to one question, and the one a hand
+ * got depended on whether the pointer happened to be over a box.
  */
 export function settleMoveMembership(moved: CanvasNodeData[], movedIds: Set<string>) {
     // The groups this move carries. A member of one of them needs no reading of geometry at all.
@@ -98,6 +73,23 @@ export function settleMoveMembership(moved: CanvasNodeData[], movedIds: Set<stri
         if (containing === groupId) return node;
         return { ...node, metadata: { ...node.metadata, groupId: containing } };
     });
+}
+
+/**
+ * The groups a drag would put a card into, for the box that lights up while the pointer moves.
+ *
+ * Read from `settleMoveMembership` — the rule the drop will actually apply — so the highlight cannot promise
+ * something the drop does not do. A group that is itself being dragged is left out: its own members are not
+ * "joining" it, they are travelling with it.
+ */
+export function movingIntoGroupIds(preview: CanvasNodeData[], movedIds: Set<string>): Set<string> {
+    const ids = new Set<string>();
+    for (const node of settleMoveMembership(preview, movedIds)) {
+        if (!movedIds.has(node.id) || node.type === CanvasNodeType.Group) continue;
+        const groupId = node.metadata?.groupId;
+        if (groupId && !movedIds.has(groupId)) ids.add(groupId);
+    }
+    return ids;
 }
 
 export function getGroupWrapRect(members: CanvasNodeData[]) {

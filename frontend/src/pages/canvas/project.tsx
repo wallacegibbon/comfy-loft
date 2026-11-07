@@ -74,13 +74,12 @@ import {
     canGroupSelectedNodes,
     canUngroupSelectedNodes,
     collectGroupMemberNodes,
-    findGroupDropTarget,
     focusViewportForNode,
     getConnectionTargetAnchor,
     getGroupWrapRect,
+    movingIntoGroupIds,
     normalizeConnection,
     settleMoveMembership,
-    snapNodesIntoGroup,
     withGroupMembers,
     withoutEmptiedGroups,
 } from "@/lib/canvas/canvas-node-geometry";
@@ -166,6 +165,9 @@ type CanvasNodeToolState = { kind: CanvasNodeTool; nodeId: string } | null;
 
 // Stable empty reference array prevents `... || []` from invalidating CanvasNode's React.memo on every render.
 const EMPTY_REFERENCES: CanvasResourceReference[] = [];
+// The same for the drag highlight: "no card is about to join anything" is one value, not a new `Set` per frame.
+const EMPTY_GROUP_IDS: Set<string> = new Set();
+const sameIds = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every((id) => b.has(id));
 const CONNECTION_HANDLE_HIT_RADIUS = 40;
 const CONNECTION_NODE_HIT_PADDING = 32;
 
@@ -272,7 +274,9 @@ function InfiniteCanvasPage() {
     const [historyState, setHistoryState] = useState<{ canUndo: boolean; canRedo: boolean; undo: CanvasChange | null; redo: CanvasChange | null }>({ canUndo: false, canRedo: false, undo: null, redo: null });
     const [isNodeDragging, setIsNodeDragging] = useState(false);
     const [isNodeResizing, setIsNodeResizing] = useState(false);
-    const [dropTargetGroupId, setDropTargetGroupId] = useState<string | null>(null);
+    // The groups this drag would put a card into, drawn as a highlight while the pointer moves. A set because the
+    // answer is per card: two cards dragged across two groups feed both (docs/decisions.md #339).
+    const [dropTargetGroupIds, setDropTargetGroupIds] = useState<Set<string>>(new Set());
     const [referencePickerNodeId, setReferencePickerNodeId] = useState<string | null>(null);
     // The agent panel asking for a node: the canvas becomes clickable and the answer goes back to the panel.
     const [pickingForAgent, setPickingForAgent] = useState(false);
@@ -1651,18 +1655,17 @@ function InfiniteCanvasPage() {
         historyPausedRef.current = false;
         nodeDraggingRef.current = false;
         setIsNodeDragging(false);
-        setDropTargetGroupId(null);
+        setDropTargetGroupIds(EMPTY_GROUP_IDS);
         if (dragRef.current.hasMoved && clientX != null && clientY != null) {
             const before = nodesRef.current;
             const moved = before.map((node) => {
                 const initial = initialPositions.get(node.id);
                 return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
             });
-            const targetGroup = findGroupDropTarget(movedIds, moved);
-            // Dropping onto a card states the membership; anywhere else it is settled by where the cards
-            // landed — the same rule the tool's move reads (`settleMoveMembership`, #316). Either way the card
-            // this move emptied is debris it made, and goes (#317).
-            const placed = targetGroup ? snapNodesIntoGroup(movedIds, moved, targetGroup) : settleMoveMembership(moved, movedIds);
+            // Where the cards landed settles the membership, one card at a time — the same function the tool's
+            // move reads (`settleMoveMembership`, #316, #339). The card this move emptied is debris it made, and
+            // goes (#317).
+            const placed = settleMoveMembership(moved, movedIds);
             const settled = withoutEmptiedGroups(before, placed, connectionsRef.current);
             setNodes(settled.nodes);
             setConnections(settled.connections);
@@ -1705,7 +1708,10 @@ function InfiniteCanvasPage() {
                         const initial = initialPositions.get(node.id);
                         return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
                     });
-                    setDropTargetGroupId(findGroupDropTarget(movedIds, previewNodes)?.id || null);
+                    // Only when the set really changed: a Set is a new object every frame, and setting it would
+                    // re-render the whole board sixty times a second for a highlight that did not move.
+                    const joining = movingIntoGroupIds(previewNodes, movedIds);
+                    setDropTargetGroupIds((current) => (sameIds(current, joining) ? current : joining));
                     setNodes((prev) =>
                         prev.map((node) => {
                             const initial = initialPositions.get(node.id);
@@ -2613,7 +2619,7 @@ function InfiniteCanvasPage() {
                             // nothing asks it anything (#278). Everything else under the pointer opens one.
                             showPanel={!isNodeResizing && dialogNodeId === node.id && !selectionBox && node.type !== CanvasNodeType.Text}
                             groupChildCount={groupChildCountById.get(node.id) || 0}
-                            isGroupDropTarget={dropTargetGroupId === node.id}
+                            isGroupDropTarget={dropTargetGroupIds.has(node.id)}
                             showImageInfo={showImageInfo}
                             mentionReferences={mentionReferencesByNodeId.get(node.id) || EMPTY_REFERENCES}
                             renderPanel={renderNodePanel}
