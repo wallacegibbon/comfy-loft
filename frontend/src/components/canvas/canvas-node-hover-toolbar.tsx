@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { Clapperboard, Download, Ellipsis, Info, Minus, Plus, Trash2, Ungroup } from "lucide-react";
+import { Clapperboard, Download, Ellipsis, Info, Maximize2, Minus, Plus, Trash2, Ungroup } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Dialog } from "@/components/kit/dialog";
@@ -29,7 +29,8 @@ type CanvasNodeHoverToolbarProps = {
     onSplit: (node: CanvasNodeData) => void;
     onUpscale: (node: CanvasNodeData) => void;
     onAngle: (node: CanvasNodeData) => void;
-    onViewImage: (node: CanvasNodeData) => void;
+    /** Opens the node's media at its own size — the clip's button, and the picture's `view` tool both. */
+    onView: (node: CanvasNodeData) => void;
     onDelete: (node: CanvasNodeData) => void;
     onUngroup?: (node: CanvasNodeData) => void;
     extraTools?: CanvasNodeToolbarItem[];
@@ -59,7 +60,7 @@ export function CanvasNodeHoverToolbar({
     onSplit,
     onUpscale,
     onAngle,
-    onViewImage,
+    onView,
     onDelete,
     onUngroup,
     extraTools = [],
@@ -96,7 +97,7 @@ export function CanvasNodeHoverToolbar({
     const hasAudio = isAudio && Boolean(node.metadata?.content);
     const isText = node.type === CanvasNodeType.Text;
     const quickImageToolIdSet = new Set(quickImageToolIds);
-    const imageTools = buildImageToolbarTools(node, { onCrop, onSplit, onUpscale, onAngle, onViewImage });
+    const imageTools = buildImageToolbarTools(node, { onCrop, onSplit, onUpscale, onAngle, onViewImage: onView });
 
     function openImageToolSettings() {
         onKeep(activeNode.id);
@@ -123,6 +124,9 @@ export function CanvasNodeHoverToolbar({
               ]
             : []),
         ...(hasVideo ? [{ id: "videoInterpolate", title: t("canvas.nodeToolbar.interpolateTitle"), label: t("canvas.nodeToolbar.interpolate"), icon: <Clapperboard className="size-4" />, onClick: () => onInterpolateVideo(node) }] : []),
+        // The card's double click opens a clip at its own size, and a gesture nobody can see is not a tool (#331).
+        // Same act as the picture's `view`, so the same glyph, and last for the same reason it is last there.
+        ...(hasVideo ? [{ id: "viewVideo", title: t("canvas.nodeToolbar.viewVideoTitle"), label: t("canvas.nodeToolbar.viewVideo"), icon: <Maximize2 className="size-4" />, onClick: () => onView(node) }] : []),
         ...(isText ? [{ id: "decreaseFont", title: t("canvas.nodeToolbar.decreaseFont"), label: t("canvas.nodeToolbar.zoomOut"), icon: <Minus className="size-4" />, onClick: () => onDecreaseFont(node) }] : []),
         ...(isText ? [{ id: "increaseFont", title: t("canvas.nodeToolbar.increaseFont"), label: t("canvas.nodeToolbar.zoomIn"), icon: <Plus className="size-4" />, onClick: () => onIncreaseFont(node) }] : []),
         ...(hasImage ? imageTools.map((tool) => ({ id: tool.id, title: tool.title, label: tool.label, icon: tool.icon, active: tool.active, onClick: tool.onClick })) : []),

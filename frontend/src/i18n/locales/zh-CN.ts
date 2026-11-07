@@ -577,6 +577,8 @@ export default {
             joinClipsTitle: "把选中的视频从左到右拼成一个",
             interpolate: "插帧",
             interpolateTitle: "RIFE 插帧",
+            viewVideo: "查看视频",
+            viewVideoTitle: "按原分辨率查看视频",
         },
         runtime: {
             runUnwatched: "无法确认这次运行的状态（{{reason}}）。它可能还在跑，刷新页面会自动接上",

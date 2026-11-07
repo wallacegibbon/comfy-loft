@@ -540,7 +540,8 @@ function EmptyImageContent({ theme }: NodeContentRendererProps) {
  * (docs/decisions.md #277).
  *
  * The double click on the still frame asks for the clip at its own size (see the card's `onDoubleClick`); the
- * button answers its own presses, so pressing it twice plays, it does not open anything.
+ * button answers its own presses, so pressing it twice plays, it does not open anything. The card's toolbar
+ * asks for the same thing with a button (#331), so the gesture is a shortcut and not the only way in.
  */
 function VideoNodeContent({ node, theme, onVideoDimensions }: NodeContentRendererProps) {
     const { t } = useTranslation();

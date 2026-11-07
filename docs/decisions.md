@@ -11363,3 +11363,44 @@ saying why), `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`,
 `frontend/src/pages/canvas/project.tsx`, `frontend/src/pages/canvas/hooks/use-image-editors.ts` (`maskEditImageNode`
 sends one payload), `frontend/src/i18n/locales/{en-US,zh-CN}.ts` (`canvas.imageTools.mask*` and
 `canvas.runtime.maskPrompt` removed, `canvas.runtime.materialHint` corrected).
+
+
+## 331. A clip opens at its own size from its toolbar, not only from a gesture
+
+**Decision** The video card's toolbar reads info, delete, download, interpolate, view video. The last entry opens
+the same dialog the double click on the card opens — the clip at its own resolution, with the browser's controls —
+because it is the same handler: the toolbar's `onView`, and the card's double click, both reach the page's
+`handleNodePreview`. An empty video card has no such entry, for the same reason it has no download: there is
+nothing to open. The toolbar's picture tool and the clip's button are one prop (`onView`) but two definitions: the
+picture's `view` is a quick tool that "Customize toolbar" can hide, the clip's is a fixed entry on a bar that has
+no configuration.
+
+**Why** The user said it in one line: the picture's toolbar ends with a preview that opens the picture bigger, and
+the clip had that answer only as a double click on the card — "缺少一个工具条上面的按钮". #329 gave the clip the
+picture's behaviour; a picture also had the button, so the two cards answered the same question differently, and a
+gesture nobody can see is not a tool. The prop was named `onViewImage` while it served only the picture tool; it is
+`onView` now that both cards ask for it, and the name stays literal inside the image-tools module, where the
+handler is still a picture's.
+
+**Cost** The clip's bar gains a fifth entry it cannot hide, while the picture's sixth-to-last can be hidden in
+Customize toolbar. That asymmetry is the honest one: the picture's bar is a set of optional tools on top of
+info/delete/download, and the clip's is a fixed list of the four things a clip can do.
+
+**Rejected** Reusing the picture's `view` definition by making `buildImageToolbarTools` type-agnostic. That list is
+a set of quick tools filtered by the saved preference and keyed by `ImageQuickToolId`; a clip has no such config,
+and its `viewVideo` is not a quick-tool id — a second definition with its own words is smaller than teaching the
+config that some ids are not choosable. Also rejected: a dialog of its own for clips. It is one dialog, titled by
+the node's type since #329.
+
+**Tested** In the browser against the running server, on a throwaway canvas (deleted afterwards, `lastCanvas` put
+back): a selected 736×736 clip's toolbar read Info / Delete / Download / Interpolate / View video, and the button
+opened "Video details" at 736 — the clip's own width — with the native controls (scrubber, play, full screen,
+volume); in 简体中文 the same bar read 信息 / 删除 / 下载 / 插帧 / 查看视频 and opened 视频详情. An empty video card's
+toolbar offered only Info / Delete, and the picture card's toolbar was unchanged (crop / split / upscale /
+multi-angle / view image / more), its own view still opening the picture. `npx vitest run` (598),
+`npx tsc --noEmit`, `npm run check` (841/808 keys, 190 modules), `npm run build` (586.19 kB).
+
+**Where** `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx` (the `viewVideo` entry, `onViewImage` →
+`onView`), `frontend/src/pages/canvas/project.tsx` (`onView={handleNodePreview}`),
+`frontend/src/components/canvas/canvas-node.tsx` (the `VideoNodeContent` note saying the gesture is a shortcut),
+`frontend/src/i18n/locales/{en-US,zh-CN}.ts` (`canvas.nodeToolbar.viewVideo`, `viewVideoTitle`).

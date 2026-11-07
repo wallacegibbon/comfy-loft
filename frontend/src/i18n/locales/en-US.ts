@@ -542,6 +542,8 @@ export default {
             joinClipsTitle: "Join the selected clips into one, left to right",
             interpolate: "Interpolate",
             interpolateTitle: "RIFE interpolation",
+            viewVideo: "View video",
+            viewVideoTitle: "Open the clip at its own resolution",
         },
         runtime: {
             runUnwatched: "Could not confirm the run ({{reason}}). It may still be going — reload the page and it will be picked up",

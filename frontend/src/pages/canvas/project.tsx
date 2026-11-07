@@ -2737,7 +2737,7 @@ function InfiniteCanvasPage() {
                     onSplit={(node) => openNodeTool("split", node.id)}
                     onUpscale={(node) => upscaleImageNode(node)}
                     onAngle={(node) => openNodeTool("angle", node.id)}
-                    onViewImage={handleNodePreview}
+                    onView={handleNodePreview}
                     onDelete={(node) => deleteNodes(new Set([node.id]))}
                     onUngroup={(node) => ungroupSelection(new Set([node.id]))}
                 />
