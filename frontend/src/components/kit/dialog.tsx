@@ -19,6 +19,12 @@ import { cn } from "@/lib/utils";
  * is the price and is accepted. Only two things are exempt: a confirmation, where a 1000px box around
  * one sentence would be its own kind of wrong, and an image preview, whose size *is* the image.
  *
+ * That last case is why the window is centred by auto margins rather than by a `-translate-x-1/2`.
+ * A translate moves a fit-content box after the fact but does not widen it: with `left: 50%` the
+ * shrink-to-fit width is capped at the space from the middle to the right edge, so a 3840-wide
+ * picture was shown no wider than half the window. Auto margins leave the whole window available,
+ * and `auto` is sized by its media up to `max-w`, so a clip opens at its own resolution.
+ *
  * Behaviour worth knowing:
  *   - The body scrolls; the dialog is capped at 90dvh. `bodyStyle`/`bodyClassName` still
  *     reach the body for the handful of panels that tune padding or max height.
@@ -65,7 +71,9 @@ const SIZE_CLASS: Record<DialogProps["size"], string> = {
     // Fixed in both directions on purpose — see the note on `size` above.
     panel: "h-[min(760px,88dvh)] w-[1000px]",
     form: "max-h-[90dvh] w-[520px]",
-    auto: "max-h-[90dvh] w-auto",
+    // `w-fit` is the media's own size — see the note on centring below, which is what lets it be the whole
+    // window's worth of media rather than half of it.
+    auto: "max-h-[90dvh] w-fit",
 };
 
 export function Dialog({ open, onClose, title, label, children, footer, size, className, bodyClassName, bodyStyle, closable = true, maskClosable = true, escapeClosable = true }: DialogProps) {
@@ -94,7 +102,7 @@ export function Dialog({ open, onClose, title, label, children, footer, size, cl
                         if (!escapeClosable) event.preventDefault();
                     }}
                     className={cn(
-                        "fixed left-1/2 top-1/2 z-[1301] flex max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xl outline-none dark:border-stone-800 dark:bg-stone-900 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+                        "fixed inset-x-0 top-1/2 z-[1301] mx-auto flex max-w-[calc(100vw-32px)] -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xl outline-none dark:border-stone-800 dark:bg-stone-900 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
                         SIZE_CLASS[size],
                         className,
                     )}

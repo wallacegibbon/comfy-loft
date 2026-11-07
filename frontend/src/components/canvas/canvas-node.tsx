@@ -45,7 +45,8 @@ type CanvasNodeProps = {
     onContentChange: (nodeId: string, content: string) => void;
     onVideoDimensions?: (nodeId: string, width: number, height: number) => void;
     onDownloadImage?: (node: CanvasNodeData) => void;
-    onViewImage?: (node: CanvasNodeData, imageId?: string) => void;
+    /** Opens a picture or a clip at its own size — what the double click on a card asks for. */
+    onPreviewNode?: (node: CanvasNodeData) => void;
     onSelectReference?: (nodeId: string) => void;
     onContextMenu: (event: React.MouseEvent, nodeId: string) => void;
 };
@@ -90,7 +91,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     onContentChange,
     onVideoDimensions,
     onDownloadImage,
-    onViewImage,
+    onPreviewNode,
     onSelectReference,
     onContextMenu,
 }: CanvasNodeProps) {
@@ -279,9 +280,13 @@ export const CanvasNode = React.memo(function CanvasNode({
                         event.stopPropagation();
                         return;
                     }
-                    if (data.type === CanvasNodeType.Image && hasImageContent) {
+                    // A picture and a clip both open at their own size: what a card cannot give is the whole of
+                    // it. A clip only asks while it is a still — once it plays, the element takes the pointer and
+                    // a double click on it is the browser's own, so that is the one target that is not a request.
+                    if ((data.type === CanvasNodeType.Image && hasImageContent) || (data.type === CanvasNodeType.Video && hasVideoContent)) {
+                        if (event.target instanceof HTMLVideoElement) return;
                         event.stopPropagation();
-                        onViewImage?.(data);
+                        onPreviewNode?.(data);
                         return;
                     }
                     if (data.type !== CanvasNodeType.Text) return;
@@ -533,6 +538,9 @@ function EmptyImageContent({ theme }: NodeContentRendererProps) {
  * The state comes from the element's own events rather than from the click, so a play started from anywhere —
  * the button, the multi-selection's sync-play, the native controls — leaves the node in the same shape
  * (docs/decisions.md #277).
+ *
+ * The double click on the still frame asks for the clip at its own size (see the card's `onDoubleClick`); the
+ * button answers its own presses, so pressing it twice plays, it does not open anything.
  */
 function VideoNodeContent({ node, theme, onVideoDimensions }: NodeContentRendererProps) {
     const { t } = useTranslation();
@@ -575,6 +583,9 @@ function VideoNodeContent({ node, theme, onVideoDimensions }: NodeContentRendere
                         title={t("canvas.node.play")}
                         onPointerDown={(event) => event.stopPropagation()}
                         onMouseDown={(event) => event.stopPropagation()}
+                        // Two presses of this button are two plays, not a request to open the clip: the
+                        // button says what a click means, and the double click on the card is not it.
+                        onDoubleClick={(event) => event.stopPropagation()}
                         onClick={(event) => {
                             event.stopPropagation();
                             void videoRef.current?.play().catch(() => undefined);

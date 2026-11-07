@@ -602,6 +602,7 @@ export default {
             connectionHoldsNothing: "{{name}} 还没有内容，这条连线传不过去：先把它填上，或者断开这条线",
             untitledCanvas: "未命名画布",
             imageDetails: "图片详情",
+            videoDetails: "视频详情",
             clearTitle: "清空画布？",
             clear: "清空",
             clearDescription: "这会删除当前画布上的所有节点和连线。",

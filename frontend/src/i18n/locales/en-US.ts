@@ -567,6 +567,7 @@ export default {
             connectionHoldsNothing: "{{name}} holds nothing yet, so this connection carries nothing: fill it in, or remove the connection",
             untitledCanvas: "Untitled canvas",
             imageDetails: "Image details",
+            videoDetails: "Video details",
             clearTitle: "Clear canvas?",
             clear: "Clear",
             clearDescription: "This will delete every node and connection on the current canvas.",

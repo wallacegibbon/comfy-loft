@@ -11262,3 +11262,54 @@ menu read "Undo: deleted image-verify" and restored it; a drag then read "Undo: 
 **Where** `frontend/src/lib/canvas/canvas-change.ts`, `frontend/src/pages/canvas/project.tsx` (the history
 effect, `deleteNodes`, the menu's labels), `frontend/src/components/canvas/canvas-menu.tsx`,
 `frontend/src/components/kit/toast.ts` (`action`), `frontend/src/i18n/locales/{en-US,zh-CN}.ts`.
+
+
+## 329. A clip opens at its own size, and the window can be as wide as the window
+
+**Decision** Double-clicking a clip card opens the media dialog the way a double-click on a picture already did:
+the same dialog, titled "Video details" instead of "Image details", showing the clip at its own resolution,
+shrunk only when the window is smaller than it is, with the browser's controls and playing from the start. The
+dialog is sized by its media, so a 736-pixel clip opens 736 wide and a 3840-pixel one opens as wide as the window
+allows. Two clicks are not a request: the play button over the still frame swallows its own double click (two
+presses are two plays), and while a clip *is* playing the frame belongs to the element, so a double click there is
+the browser's own and opens nothing.
+
+**Why** A card is a fixed box, and a clip's whole point — detail, motion, framing — lives in its resolution, so
+the card is the one view that cannot show it. The elements list already answers this for a picture (hovering a row
+shows the picture at its own size), and the canvas answered it for a picture; a clip had no answer at all, because
+`onDoubleClick` returned early for every type but Image and Text. The user asked for the picture's behaviour on a
+clip, and for the size to be the clip's own.
+
+That request then exposed a real bug in the dialog itself. It was centred with `left: 50%` plus
+`-translate-x-1/2` and sized `w-auto`, and a translate moves a box after the fact without widening it: with
+`left: 50%` the shrink-to-fit width is capped at the space from the middle of the window to its right edge, so no
+preview — picture or clip — could ever be wider than half the window. Measured before the fix: a 3840×2160 clip
+came out 1125 wide in a 2263-wide window, letterboxed inside its own box because the height had been clamped while
+the width had not. Centring by `inset-x-0` + `mx-auto` leaves the whole window available, and the `auto` size is
+now `w-fit`: 2133×1200 for the same clip, edge to edge, no letterbox. The picture path is unchanged in appearance
+and gains the same headroom when a picture is bigger than half the screen.
+
+**Cost** The dialog's element is a second `<video>` for the same file, so the preview fetches it again (a cache
+hit for a local file, and the reason `preload` is not forced off). `autoPlay` means opening a clip's preview always
+starts it — the double click is treated as the decision to watch, which is what the gesture means; there is no
+muted autoplay and no loop. A clip already playing on its card keeps the native player while it plays, so the one
+state where the card does not answer the double click is the state where the browser already has a bigger answer.
+
+**Rejected** Reusing the elements list's hover overlay for this. It is a pointer-transparent box with no controls:
+the same size, but nothing to scrub with, and it would sit over the canvas rather than over the window. Also
+rejected: giving the preview a fixed `panel` size. The dialog's own note says a window that resizes to its contents
+breaks the user's sense of where it is — the exemption is for media, whose size *is* the thing being looked at, and
+a 720p clip has no business being shown in a 1000-pixel frame.
+
+**Tested** In the browser on a throwaway canvas (deleted afterwards) against the running server: a 736×736 clip
+with a recorded natural size, the same clip with none, a 1280×720 clip and a 3840×2160 clip. Each opened at its own
+size — 736, 736, 1280 and 2133×1200 — with the 4K one filling the window and the test pattern's squares square,
+i.e. the ratio held with both constraints clamping. Double-clicking the play button started playback and opened
+nothing (native controls appeared, no dialog). A picture still opened as "Image details" at 736, and Preferences
+still opened as a centred 1000-pixel panel, so the centring change cost the fixed sizes nothing. `npx vitest run`
+(598), `npx tsc --noEmit`, `npm run check` (842/809 keys, 190 modules), `npm run build` (587.30 kB).
+
+**Where** `frontend/src/components/canvas/canvas-node.tsx` (the card's `onDoubleClick`, the play button's own
+double click, `onPreviewNode`), `frontend/src/components/kit/dialog.tsx` (the centring and the `auto` size),
+`frontend/src/pages/canvas/project.tsx` (`handleNodePreview`, the media dialog),
+`frontend/src/i18n/locales/{en-US,zh-CN}.ts` (`canvas.runtime.videoDetails`).

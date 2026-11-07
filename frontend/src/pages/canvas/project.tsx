@@ -2430,7 +2430,7 @@ function InfiniteCanvasPage() {
     const handleNodeHoverEnd = useCallback((nodeId: string) => {
         setHoveredNodeId((current) => (current === nodeId ? null : current));
     }, []);
-    const handleNodeViewImage = useCallback((node: CanvasNodeData) => {
+    const handleNodePreview = useCallback((node: CanvasNodeData) => {
         setPreviewNodeId(node.id);
     }, []);
     const handleSidebarHoverNode = useCallback((nodeId: string | null) => {
@@ -2647,7 +2647,7 @@ function InfiniteCanvasPage() {
                             onResizeEnd={handleNodeResizeEnd}
                             onContentChange={handleNodeContentChange}
                             onVideoDimensions={handleVideoDimensions}
-                            onViewImage={handleNodeViewImage}
+                            onPreviewNode={handleNodePreview}
                             onSelectReference={pickingForAgent ? finishAgentPick : selectNodeReference}
                             onContextMenu={handleNodeContextMenu}
                         />
@@ -2738,7 +2738,7 @@ function InfiniteCanvasPage() {
                     onSplit={(node) => openNodeTool("split", node.id)}
                     onUpscale={(node) => upscaleImageNode(node)}
                     onAngle={(node) => openNodeTool("angle", node.id)}
-                    onViewImage={handleNodeViewImage}
+                    onViewImage={handleNodePreview}
                     onDelete={(node) => deleteNodes(new Set([node.id]))}
                     onUngroup={(node) => ungroupSelection(new Set([node.id]))}
                 />
@@ -2834,14 +2834,23 @@ function InfiniteCanvasPage() {
                 ) : null}
 
                 <Dialog
-                    title={t("canvas.runtime.imageDetails")}
+                    title={t(previewNode?.type === CanvasNodeType.Video ? "canvas.runtime.videoDetails" : "canvas.runtime.imageDetails")}
                     open={Boolean(previewContent)}
                     onClose={() => setPreviewNodeId(null)}
                     size="auto"
                     bodyClassName="p-0"
                     bodyStyle={{ display: "flex", justifyContent: "center", alignItems: "center", maxHeight: "80vh" }}
                 >
-                    {previewContent ? <img src={previewContent} alt="" style={{ maxWidth: "100%", maxHeight: "80vh", objectFit: "contain" }} /> : null}
+                    {/* A picture and a clip open the same way: at their own size, shrunk only when the screen is
+                        smaller than they are. A clip comes with the browser's own controls and starts by itself,
+                        because the double click was the decision to watch it. */}
+                    {previewContent ? (
+                        previewNode?.type === CanvasNodeType.Video ? (
+                            <video src={previewContent} controls autoPlay playsInline style={{ maxWidth: "100%", maxHeight: "80vh", objectFit: "contain" }} />
+                        ) : (
+                            <img src={previewContent} alt="" style={{ maxWidth: "100%", maxHeight: "80vh", objectFit: "contain" }} />
+                        )
+                    ) : null}
                 </Dialog>
 
                 <Dialog
