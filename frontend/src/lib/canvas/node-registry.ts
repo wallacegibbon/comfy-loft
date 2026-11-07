@@ -24,15 +24,6 @@ export function listNodeDefinitions() {
     return Array.from(definitions.values());
 }
 
-const FALLBACK_SPEC = { width: 340, height: 240, metadata: {} as CanvasNodeDefinition["defaultMetadata"] };
-
-// Provide the default size and metadata shared by createCanvasNode and agent operations.
-export function getNodeSpec(type: string) {
-    const def = definitions.get(type);
-    if (!def) return FALLBACK_SPEC;
-    return { width: def.defaultSize.width, height: def.defaultSize.height, metadata: def.defaultMetadata };
-}
-
 export function isBuiltinNodeType(type: string) {
     return (Object.values(CanvasNodeType) as string[]).includes(type);
 }
