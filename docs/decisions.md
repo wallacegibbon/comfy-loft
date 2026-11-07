@@ -11336,10 +11336,11 @@ every model but one, and misreports what it did for that one, belongs where the 
 
 **Cost** One click more on the path that does work: Qwen's pill → 局部重绘 → editor, instead of a button on the
 card. And the editor is now found only by someone who has already decided to inpaint — the hint under the pills
-("选择后自动打开蒙版，只修改蒙版覆盖区域") is what has to teach it. The editor itself still holds its path for
-models without a real mask input — the blue-overlay-plus-instruction picture, sent as an ordinary reference — which
-is now reachable from nowhere; it is left in place because removing it changes the payload of the one path we have
-only read, not run, and the next real inpaint run should decide it.
+("选择后自动打开蒙版，只修改蒙版覆盖区域") is what has to teach it. The editor's payload is one shape now: it always
+sends the white-on-transparent mask with `imageMode: "inpaint"` and the instruction as written, instead of choosing
+between a real mask and a blue-overlay-plus-instruction picture depending on the model's workflow id. The drawn
+overlay is still uploaded, but only as the mask node's own picture — what you see when you reopen that node — so
+that binding and that picture are two files with two jobs rather than two candidate payloads.
 
 **Rejected** Keeping the button and hiding it when the model has no mask input. That is a per-model condition on a
 toolbar shared by every picture, and it would still put the mask next to Crop. Also rejected: keeping it visible
@@ -11348,11 +11349,17 @@ but disabled with a hint, which on a bar this dense is a permanently greyed butt
 **Tested** In the browser on a throwaway canvas (deleted afterwards): an image card's toolbar reads
 info / remove / download / crop / split / upscale / angle / view with no 局部编辑, and "Customize toolbar" lists the
 same eight, 8/8 checked; a node set to Qwen Image 2.1 whose mode pill is opened shows 局部重绘 and clicking it opens
-"Local mask edit" with brush, instructions and Generate. `npx vitest run` (598), `npx tsc --noEmit`, `npm run check`
-(840/807 keys — the two `imageTools.mask*` strings are gone, and the material hint no longer names a card tool that
-does not exist), `npm run build` (586.77 kB).
+"Local mask edit" with brush, instructions and Generate. The inpaint itself was run twice on that canvas — once with
+the old payload, once after it was collapsed to one shape — because the collapse changes what is sent to ComfyUI and
+reading it was not enough: a brush dot in the middle of the animal with "turn the selected area into a bright red
+balloon" came back a red balloon in exactly that spot, frame still 736×736; after the trim, "…a glowing yellow
+lantern" came back a lantern in the same spot, with `references: [files/source.png, files/up-e76b452f.png]` and the
+mask node binding that same file. Nothing outside the mask moved in either run. `npx vitest run` (598),
+`npx tsc --noEmit`, `npm run check` (839/806 keys — the two `imageTools.mask*` strings and `canvas.runtime.maskPrompt`
+are gone, and the material hint no longer names a card tool that does not exist), `npm run build` (585.89 kB).
 
 **Where** `frontend/src/components/canvas/canvas-image-toolbar-tools.tsx` (the missing definition, and the note
 saying why), `frontend/src/components/canvas/canvas-node-hover-toolbar.tsx`,
-`frontend/src/pages/canvas/project.tsx`, `frontend/src/i18n/locales/{en-US,zh-CN}.ts` (`canvas.imageTools.mask*`
-removed, `canvas.runtime.materialHint` corrected).
+`frontend/src/pages/canvas/project.tsx`, `frontend/src/pages/canvas/hooks/use-image-editors.ts` (`maskEditImageNode`
+sends one payload), `frontend/src/i18n/locales/{en-US,zh-CN}.ts` (`canvas.imageTools.mask*` and
+`canvas.runtime.maskPrompt` removed, `canvas.runtime.materialHint` corrected).

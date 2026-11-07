@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 import { toast } from "@/components/kit/toast";
 import { requestEdit, requestGeneration, requestImageAngle } from "@/services/api/image";
 import { uploadImage } from "@/services/image-storage";
-import { channelModelOf, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
+import { useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { cropDataUrl, splitDataUrl } from "@/lib/canvas/canvas-image-data";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
@@ -19,7 +19,6 @@ import type { CanvasImageAngleParams } from "@/components/canvas/canvas-node-ang
 import { buildImageGenerationMetadata, buildStepNodeMetadata, imageMetadata, referenceUrl } from "@/lib/canvas/canvas-node-factory";
 import { IMAGE_ANGLE_WORKFLOW, IMAGE_UPSCALE_WORKFLOW } from "@/lib/canvas/tool-workflows";
 import { buildAngleLabel, buildAnglePrompt, buildGenerationConfig, isGenerationCanceled } from "@/lib/canvas/canvas-generation-helpers";
-import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import { NODE_STATUS_ERROR, NODE_STATUS_IDLE, NODE_STATUS_LOADING } from "@/lib/canvas/canvas-node-status";
 import type { NodeEditorDeps } from "@/pages/canvas/hooks/node-editor-deps";
 
@@ -103,31 +102,30 @@ export function useImageEditors(deps: NodeEditorDeps) {
     const maskEditImageNode = useCallback(
         async (node: CanvasNodeData, payload: CanvasImageMaskEditPayload) => {
             if (!node.metadata?.content) return;
-            const isQwenImage = channelModelOf(effectiveConfig, buildGenerationConfig(effectiveConfig, node, "image").model)?.model.workflowId === "image-qwen21";
+            // The only way in is a model's inpaint mode (docs/decisions.md #330), so the run is an inpaint run by
+            // definition and the mask is the binary one the workflow takes — not a picture of the marks.
             const generationConfig = {
                 ...buildGenerationConfig(effectiveConfig, node, "image"),
                 count: "1",
                 size: node.metadata?.size || "auto",
-                ...(isQwenImage ? { imageMode: "inpaint" } : {}),
+                imageMode: "inpaint",
             };
             if (!isAiConfigReady(generationConfig, generationConfig.model)) {
                 openPreferences();
                 return;
             }
-            const userPrompt = payload.prompt.trim();
-            const prompt = isQwenImage ? userPrompt : t("canvas.runtime.maskPrompt", { source: imageReferenceLabel(0), mask: imageReferenceLabel(1), prompt: userPrompt });
+            const prompt = payload.prompt.trim();
             closeNodeTool();
-            const maskImage = await uploadImage(payload.maskDataUrl);
-            const generationMask = isQwenImage ? await uploadImage(payload.binaryMaskDataUrl) : null;
+            // Two files, two jobs. The drawn mask is the source with the marks on it: it is what the mask node
+            // shows, so reopening it looks like what was painted. The binary one is white-on-transparent, which
+            // is what SetLatentNoiseMask reads, and it is the file the node binds as its mask.
+            const drawnMask = await uploadImage(payload.maskDataUrl);
+            const generationMask = await uploadImage(payload.binaryMaskDataUrl);
             const maskNodeId = nanoid();
             const childId = nanoid();
             const source = { id: node.id, name: `${node.id}.png`, type: node.metadata.mimeType || "image/png", dataUrl: node.metadata.content, storageKey: node.metadata.storageKey };
-            const maskSource = { id: maskNodeId, name: "mask.png", type: maskImage.mimeType || "image/png", dataUrl: maskImage.url, storageKey: maskImage.storageKey };
-            const references = [source, generationMask ? { ...maskSource, dataUrl: generationMask.url, storageKey: generationMask.storageKey } : maskSource];
-            // The node shows the mask drawn over the source; the mask itself is whichever of the two
-            // files the workflow takes. Bound to the node, so it is kept with it and an inpaint run can
-            // take it from the connection instead of the user redrawing the same marks.
-            const sentMask = references[1];
+            const sentMask = { id: maskNodeId, name: "mask.png", type: generationMask.mimeType || "image/png", dataUrl: generationMask.url, storageKey: generationMask.storageKey };
+            const references = [source, sentMask];
             const maskBinding = sentMask.storageKey ? { mask: { storageKey: sentMask.storageKey, mimeType: sentMask.type } } : {};
             const generationMetadata = buildImageGenerationMetadata("edit", generationConfig, references);
             const childMetadata = { prompt, status: NODE_STATUS_LOADING, ...generationMetadata };
@@ -139,7 +137,7 @@ export function useImageEditors(deps: NodeEditorDeps) {
                     position: { x: node.position.x, y: node.position.y + node.height + 96 },
                     width: node.width,
                     height: node.height,
-                    metadata: { ...imageMetadata(maskImage), ...maskBinding },
+                    metadata: { ...imageMetadata(drawnMask), ...maskBinding },
                 },
                 {
                     id: childId,
